@@ -48,7 +48,7 @@ All PR acceptance criteria met:
 
 - Phase 1 blockers exit 1 before any writes (prevents half-installed state)
 - Structured findings with stable `id` strings ready for downstream tooling consumption
-- Four-surface `GH_BKIT_TOKEN` sweep implemented (shell, .npmrc, GitHub secret, Vercel env)
+- Four-surface `GH_BKIT_TOKEN_INSTALL` sweep implemented (shell, .npmrc, GitHub secret, Vercel env)
 - All previously emitted `printSink` strings migrated with no behavioral regression
 - Comprehensive test coverage across unit, integration, and snapshot tests
 - Documentation updated (README, decisions.md, knowledge.md)

@@ -130,7 +130,7 @@ jobs:
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
-          # Do not swap in GH_BKIT_TOKEN — it has no access to the consumer repo.
+          # Do not swap in GH_BKIT_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
       - name: Configure git user

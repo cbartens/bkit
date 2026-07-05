@@ -89,7 +89,7 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit`, ru
 | Cursor v1 schema differs from bkit's shipped shape | P3.T0 spike must pass before A1 work |
 | Phase 3 blocker on `--auto-revert` install | uninstall in-process, exit 1 |
 | Concurrent `bkit install` mid-failure (P4) | Staging dir discarded, consumer files untouched |
-| Empty `GH_BKIT_TOKEN=""` vs unset | Action text differentiates (B4) |
+| Empty `GH_BKIT_TOKEN_INSTALL=""` vs unset | Action text differentiates (B4) |
 | pnpm 10 onlyBuiltDependencies missing | Already advised — no change |
 | Tier-3 hash retro-fit (consumer pre-dates `tier3Hashes` field) | Treat as unknown → preserve-default; tested in P2.T3 |
 
@@ -215,7 +215,7 @@ This plan introduces four explicit Major-Changes-bar items. Each requires explic
 - [ ] **PII** — N/A; bkit logs no PII.
 - [ ] **Redirect URL** — N/A.
 - [ ] **Webhook** — N/A.
-- [ ] **New secret/env var** — `GH_BKIT_TOKEN` already documented (no new secret).
+- [ ] **New secret/env var** — `GH_BKIT_TOKEN_INSTALL` already documented (no new secret).
 
 _Mostly N/A — bkit is a CLI tool with no API/DB/auth surface. Only `.bkitignore` parsing introduces consumer-supplied input; treat as untrusted glob string only._
 
@@ -262,7 +262,7 @@ _Mostly N/A — bkit is a CLI tool with no API/DB/auth surface. Only `.bkitignor
 | [MODIFY] | `.agents/scripts/bkit-install.ts` | `main()` dispatch arm for `doctor`; LOG_PREFIX on dry-run banner (B5). |
 | [MODIFY] | `.agents/scripts/bkit-postinstall.ts` | Expose `runPostInstallCheck(modules, cwd, { dryRun: true })` read-only replay (no writes); cross-phase dedup position-stable (B2); changelog version-delta header (A7). |
 | [MODIFY] | `.agents/scripts/bkit-preflight.ts` | Anchor `hasBkitMarkers` (B1); `detectShellToken` empty vs unset (B4); update `gh-bkit-token-secret-unknown` action text (B6). |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN:-}` fallback iff pnpm supports it (B6). |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN_INSTALL:-}` fallback iff pnpm supports it (B6). |
 | [NEW] | `.agents/scripts/bkit-doctor.integration.test.ts` | Stale-pin fixture; assert exit 0 + banner content. |
 | [MODIFY] | `.agents/scripts/bkit-cli.test.ts` | Verb parsing for `doctor`. |
 | [MODIFY] | `.agents/scripts/bkit-preflight.test.ts` | New fixtures for B1/B4/B6. |
@@ -377,7 +377,7 @@ _Mostly N/A — bkit is a CLI tool with no API/DB/auth surface. Only `.bkitignor
 - [ ] **P1.T3:** Position-stable cross-phase dedup in `runPostInstallCheck`. Verify: `pnpm vitest run .agents/scripts/bkit-postinstall.test.ts`. **Closes B2.**
 - [ ] **P1.T4:** Differentiate `unset` vs empty-string in `detectShellToken`. Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`. **Closes B4.**
 - [ ] **P1.T5:** Prepend `LOG_PREFIX` to dry-run blocker banner. Verify: `pnpm vitest run .agents/scripts/bkit-install.test.ts`. **Closes B5.**
-- [ ] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct `export GH_BKIT_TOKEN=…`. (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file). Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`; manual `pnpm install` in shell without token (no warning). **Closes B6.**
+- [ ] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct `export GH_BKIT_TOKEN_INSTALL=…`. (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file). Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`; manual `pnpm install` in shell without token (no warning). **Closes B6.**
 - [ ] **P1.T7:** Changelog version-delta header in `bkit-postinstall.ts` (depends on P1.T0 skeleton existing). Verify: `pnpm vitest run .agents/scripts/bkit-postinstall.test.ts`. **Closes A7.**
 - [ ] **P1.T8:** README "Doctor" section + help-text rollup. CHANGELOG v0.6.x bullets per closed task. Verify: `pnpm lint:prose`. **Depends on P1.T1-T7.**
 - [ ] **🔒 Phase 1 Gate:** `pnpm typecheck && pnpm vitest run && pnpm lint:prose && pnpm tsx .agents/scripts/bkit-install.ts doctor` (against the producer repo itself — note: producer entrypoint is `pnpm tsx .agents/scripts/bkit-install.ts <verb>`, NOT `pnpm exec bkit`).

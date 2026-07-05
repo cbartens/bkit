@@ -1,7 +1,7 @@
 // bkit-templates.content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template has been updated for registry-based auth)
 // Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
-// enforces template CONTENT (GH_BKIT_TOKEN, renovate baseBranches, etc.).
+// enforces template CONTENT (GH_BKIT_TOKEN_INSTALL, renovate baseBranches, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -28,12 +28,12 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).not.toContain("git config --global url.");
   });
 
-  it("install step carries env: GH_BKIT_TOKEN block", () => {
-    expect(content).toContain("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}");
+  it("install step carries env: GH_BKIT_TOKEN_INSTALL block", () => {
+    expect(content).toContain("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}");
   });
 
-  it("env: GH_BKIT_TOKEN appears under the install step (after pnpm install --frozen-lockfile)", () => {
-    // Note: GH_BKIT_TOKEN is declared at BOTH job-level (so subsequent pnpm/npx
+  it("env: GH_BKIT_TOKEN_INSTALL appears under the install step (after pnpm install --frozen-lockfile)", () => {
+    // Note: GH_BKIT_TOKEN_INSTALL is declared at BOTH job-level (so subsequent pnpm/npx
     // steps don't emit ".npmrc env substitution failed" warnings) AND at the
     // install step itself (explicit, plus required by the BAR-138 contract).
     // This assertion locates the step-level declaration adjacent to the install
@@ -41,7 +41,9 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     const lines = content.split("\n");
     const installLineIdx = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
     const envTokenIdx = lines.findIndex(
-      (l, i) => i > installLineIdx && l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
+      (l, i) =>
+        i > installLineIdx &&
+        l.includes("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}"),
     );
     expect(installLineIdx).toBeGreaterThan(-1);
     expect(envTokenIdx).toBeGreaterThan(installLineIdx);
@@ -207,6 +209,13 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
   });
 
+  it("fences the self-hosted renovate.yml workflow in BOTH ignorePaths and the DO-NOT-BUMP rule (#325, KN-CORE-5)", () => {
+    // renovate.yml is bkit-owned + SHA-pinned; consumer Renovate must never re-pin it.
+    // Absent on Mend-runner installs, so ignoring it there is a harmless no-op.
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/renovate\.yml"/);
+    expect(content).toMatch(/matchFileNames:[\s\S]*renovate\.yml[\s\S]*enabled:\s*false/);
+  });
+
   it("ignores bkit-cloud.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
     // `enabled: false` only suppresses version updates; the github-actions manager
     // still scans the file and applies pinDigests, recreating a "Pin dependencies"
@@ -292,7 +301,69 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // instead (RENOVATE_LOCAL_STUB), which bkit never overwrites. Guard the
     // config KEY + the secret ref (prose may still reference `hostRules`).
     expect(content).not.toMatch(/^\s*hostRules:/m);
-    expect(content).not.toMatch(/secrets\.GH_BKIT_TOKEN/);
+    expect(content).not.toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
+  });
+});
+
+describe("self-hosted renovate workflow template (.bkit/templates/.github/workflows/renovate.yml) (#325)", () => {
+  const WORKFLOW = path.resolve(".bkit/templates/.github/workflows/renovate.yml");
+  const content = fs.readFileSync(WORKFLOW, "utf-8");
+
+  it("template file exists", () => {
+    expect(fs.existsSync(WORKFLOW)).toBe(true);
+  });
+
+  it("runs renovatebot/github-action SHA-pinned (KN-CORE-5) on ubuntu-latest", () => {
+    expect(content).toMatch(/uses:\s*renovatebot\/github-action@[0-9a-f]{40}\s*#/);
+    expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
+  });
+
+  it("wakes on a schedule cron + workflow_dispatch (logLevel / dryRun inputs)", () => {
+    expect(content).toMatch(/schedule:/);
+    expect(content).toMatch(/cron:/);
+    expect(content).toMatch(/workflow_dispatch:/);
+    expect(content).toMatch(/logLevel:/);
+    expect(content).toMatch(/dryRun:/);
+  });
+
+  it("serialises runs (concurrency group, no cancel-in-progress)", () => {
+    expect(content).toMatch(/concurrency:/);
+    expect(content).toMatch(/cancel-in-progress:\s*false/);
+  });
+
+  it("authenticates with GH_BKIT_TOKEN, never the default GITHUB_TOKEN", () => {
+    // GITHUB_TOKEN-opened PRs don't trigger CI, so platformAutomerge never fires (#325).
+    expect(content).toMatch(/token:\s*\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}/);
+    expect(content).not.toMatch(/token:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
+    expect(content).not.toMatch(/token:\s*\$\{\{\s*github\.token\s*\}\}/);
+  });
+
+  it("injects private-registry auth via RENOVATE_HOST_RULES from GH_BKIT_TOKEN_INSTALL", () => {
+    expect(content).toMatch(/RENOVATE_HOST_RULES:/);
+    expect(content).toMatch(/npm\.pkg\.github\.com/);
+    expect(content).toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
+  });
+
+  it("scopes to this repo only (no org-wide autodiscover)", () => {
+    expect(content).toMatch(/RENOVATE_REPOSITORIES:\s*\$\{\{\s*github\.repository\s*\}\}/);
+    expect(content).toMatch(/RENOVATE_AUTODISCOVER:\s*"false"/);
+  });
+
+  it("allow-lists the PNPM_* env so renovate.json5's env block is not rejected (allowedEnv)", () => {
+    // renovate.json5 sets env: { PNPM_WORKERS, PNPM_MAX_WORKERS }; allowedEnv is a
+    // global-only option, so without this the self-hosted bot rejects the whole config.
+    expect(content).toMatch(/RENOVATE_ALLOWED_ENV:\s*"PNPM_\*"/);
+  });
+
+  it("never INJECTS model/tracker secrets into the runner (security.md § token isolation)", () => {
+    // The names may appear in a "do NOT add these" comment, but must never be
+    // referenced as `secrets.*` (which would expose them to the Renovate runner).
+    expect(content).not.toMatch(/secrets\.ANTHROPIC_API_KEY/);
+    expect(content).not.toMatch(/secrets\.LINEAR_API_KEY/);
+  });
+
+  it("uses least-privilege job permissions (contents: read)", () => {
+    expect(content).toMatch(/permissions:\s+contents:\s*read/);
   });
 });
 

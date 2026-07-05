@@ -196,8 +196,8 @@ None.
 
 #### [MODIFY] `.agents/templates/.github/workflows/ci.yml`
 
-- Wrap **exactly** the existing `Install Dependencies` step (carries `GH_BKIT_TOKEN` env block — bkit's auth surface) AND the existing `Run Bkit Check` step in `# bkit:start` / `# bkit:end` (YAML comment syntax). Consumer's surrounding job structure is untouched.
-- **Note:** template currently has no `setup-auth` step — `Install Dependencies` IS the auth surface (sets `GH_BKIT_TOKEN` in `env`). Marker covers `Install Dependencies` + `Run Bkit Check`. Intervening consumer steps (typecheck/test/format/vale/slop) are NOT inside the marker block.
+- Wrap **exactly** the existing `Install Dependencies` step (carries `GH_BKIT_TOKEN_INSTALL` env block — bkit's auth surface) AND the existing `Run Bkit Check` step in `# bkit:start` / `# bkit:end` (YAML comment syntax). Consumer's surrounding job structure is untouched.
+- **Note:** template currently has no `setup-auth` step — `Install Dependencies` IS the auth surface (sets `GH_BKIT_TOKEN_INSTALL` in `env`). Marker covers `Install Dependencies` + `Run Bkit Check`. Intervening consumer steps (typecheck/test/format/vale/slop) are NOT inside the marker block.
 - **Marker location precise spec:**
   - `# bkit:start` immediately above `- name: Install Dependencies` line (currently line 23). Indent: 6 spaces (same as `- name:`).
   - **Open-block intent:** marker block opens at `Install Dependencies` and closes at `Run Bkit Check` — meaning the consumer steps `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan` (lines 33–46) end up INSIDE the marker block. **This is acceptable** — those steps are part of bkit's "run all checks" CI contract; if a consumer customises them they trigger `tier2-text-drift`. v2.0.0 ships with one block covering `Install Dependencies` through `Run Bkit Check` inclusive.
@@ -210,7 +210,7 @@ None.
     # ... (existing body)
     run: pnpm install --frozen-lockfile
     env:
-      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
 
   - name: Run Typecheck
     # ... (existing body)

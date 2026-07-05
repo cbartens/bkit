@@ -34,7 +34,7 @@ New tests: 2 added, 2 passed.
 `bkit-modules.integration.test.ts`: 28/28 tests pass (26 pre-existing + 2 new).
 Typecheck: clean (0 errors).
 
-Pre-existing failures (out-of-scope, unrelated): `templates.test.ts` — 4 tests fail due to a CI template change (`.github/actions/setup-auth@v1` composite action added; tests assert the old inline `env: GH_BKIT_TOKEN` pattern). These failures pre-date this agent's changes.
+Pre-existing failures (out-of-scope, unrelated): `templates.test.ts` — 4 tests fail due to a CI template change (`.github/actions/setup-auth@v1` composite action added; tests assert the old inline `env: GH_BKIT_TOKEN_INSTALL` pattern). These failures pre-date this agent's changes.
 
 ## Blockers
 

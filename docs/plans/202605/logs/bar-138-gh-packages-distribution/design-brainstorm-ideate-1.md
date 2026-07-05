@@ -38,7 +38,7 @@
 
 ### Approach A2 — Hard cutover, replace messages in v0.4.0 ⭐ Recommended
 
-- **Summary:** Drop `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` git-shim language and `VERCEL_AUTH_INSTRUCTIONS` git-shim block. Replace with `.npmrc`-based instructions. `checkBkitTokenSecret` keeps its name and detection logic; only the "fix it like this" copy changes.
+- **Summary:** Drop `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` git-shim language and `VERCEL_AUTH_INSTRUCTIONS` git-shim block. Replace with `.npmrc`-based instructions. `checkBkitTokenSecret` keeps its name and detection logic; only the "fix it like this" copy changes.
 - **Complexity:** LOW — string replacement in `runCiModule` + tests.
 - **Extensibility:** Single source of truth for the new install path. Future auth changes (e.g. fine-grained PAT default) edit one place.
 - **Risk:** A consumer running `bkit install --ci` from v0.4.0 against a v0.3.x-era setup gets new instructions while still on the old install model. Mitigated: v0.4.0 is the cutover; the new instructions are exactly what the consumer needs to migrate (per design-input consumer guide). Print messages double as the migration prompt.
@@ -147,6 +147,6 @@
 | 3. `dist/` build & verify | **A3** — keep committed `dist/` + `check:dist` gate in release workflow | B3 (`prepublishOnly: tsc`), C3 (build in CI, gitignore `dist/`) | Honors BAR-130 v0.3.0 invariant ("no lifecycle hooks"); `check:dist` is the existing safety net; repo-cleanliness gains do not outweigh re-introducing hook fragility |
 | 4. Pre-release validation | **A4** — `v0.4.0-pre.1` (pipeline only), `v0.4.0-pre.2` (prints + README), then `v0.4.0` | B4 (single shot, local `npm pack`), C4 (one combined pre.1) | Matches design-input implementation order; isolates pipeline-auth bugs from message-rendering bugs; cheap insurance for first-ever GH Packages publish |
 | 5. `repository.url` | **A5** — drop `git+` prefix | B5 (leave as-is) | Free hygiene win; standard npm convention; helps GH Packages "linked repository" UX |
-| (constant) Token reuse | Reuse `GH_BKIT_TOKEN` name, expand scope to `read:packages` | New env var | Design-input explicit; avoids forcing consumers to rotate two secrets simultaneously |
+| (constant) Token reuse | Reuse `GH_BKIT_TOKEN_INSTALL` name, expand scope to `read:packages` | New env var | Design-input explicit; avoids forcing consumers to rotate two secrets simultaneously |
 | (constant) Backward compat | None — v0.3.x stays usable for un-migrated consumers; v0.4.0 is the cutover | Dual-publish (git+npm), shim package | Design-input explicit "no dual-publish"; per-consumer migration is a separate per-repo PR |
 | (constant) ADR | Add `DE-3` documenting GH Packages choice over npmjs (cost), git-dep (fragility), tarball-release (URL clunk), vendoring (per-repo work) | Skip ADR | Distribution model is architectural; future contributors will ask "why not npmjs?" |

@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.2.0] — 2026-07-05
+
+Add a self-hosted Renovate runner (`bkit install --renovate=self`) for large monorepos that OOM on Mend's 3 GB hosted runner, and split the GitHub token scheme into a read-only install token and a general write token (the latter now also powers self-hosted Renovate). **Breaking:** the token rename requires a one-time secret rename on upgrade — a `gh-token-scheme-rename` advisory guides it (#325).
+
+### Added
+
+- **Self-hosted Renovate runner — `bkit install --renovate=self`.** Ships a bkit-managed, SHA-pinned `.github/workflows/renovate.yml` running `renovatebot/github-action` on `ubuntu-latest` (~16 GB) as an alternative to the Mend-hosted Renovate App, for large pnpm-11 monorepos that hit Mend's 3 GB microvm ceiling (`kernel-out-of-memory`; #308, KN-41). One flag selects the module + runner (auto-selects renovate, like `--typescript` auto-adds `--ci`); `--renovate=mend` (default) uses the hosted App and reclaims a stale workflow. The config `renovate.json5` is single-source (byte-identical for both runners); the mode is the presence of the workflow file, recorded in `package.json` `bkit.renovateRunner`. Platform auth uses `GH_BKIT_TOKEN` (never `GITHUB_TOKEN`, whose PRs don't trigger CI); registry auth stays on the classic `GH_BKIT_TOKEN_INSTALL` via `RENOVATE_HOST_RULES`. A self-managed GitHub App is documented as the no-expiry hardening path. New advisories: `renovate-self-hosted-mend-both-active` (warns to suspend the Mend App); the pnpm-11 OOM advisory is suppressed on self-hosted. Docs: `deployments.md` § Self-hosted Renovate, KN-CORE-10, DE-34.
+
+### Changed
+
+- **BREAKING — GitHub token scheme split.** Two clearly-separated tokens replace the old pair: `GH_BKIT_TOKEN_INSTALL` (classic `read:packages`, for GitHub Packages install/lockfile auth — the former `GH_BKIT_TOKEN`) and `GH_BKIT_TOKEN` (the general fine-grained WRITE token — the former `GH_MCP_TOKEN` — powering the GitHub MCP server AND self-hosted Renovate's platform auth). Splitting write from `read:packages` keeps least privilege on the widely-distributed install token, and is forced by GitHub Packages rejecting fine-grained PATs (403). **On upgrade you must rename the secret** everywhere it lives (local `.bkit/.env`, CI Actions secret, Vercel env, Mend dashboard) — the `gh-token-scheme-rename` advisory fires with step-by-step guidance; the token VALUES do not change. All shipped detectors, docs, `.env.example`, and the presence matrix updated. Docs: DE-35.
+
+---
+
 ## [4.1.12] — 2026-07-04
 
 Share the unit branch-coverage gate between CI and the `/bkit-build` pre-PR check via a single `test:coverage:unit` script, and add a memory-hygiene guideline to the shipped `CLAUDE.md`.

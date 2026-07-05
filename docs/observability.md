@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Observability
 
@@ -110,7 +110,7 @@ Post-install findings are rendered via `formatChecklist(ctx.advisories)` (export
 
 ## Phase 3 Token-Surface Detectors
 
-Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN` at four surfaces and emits actionable advisory text. Detector names are the audit trail:
+Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces and emits actionable advisory text. Detector names are the audit trail:
 
 <!-- prettier-ignore -->
 | Detector | Surface |

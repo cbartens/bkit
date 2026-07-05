@@ -18,12 +18,12 @@ Strategy: STANDARD — first diagnosis attempt for this build-test failure. No p
 
 Four assertion failures across two test files, all rooted in a single regression in `.agents/templates/.github/workflows/ci.yml`:
 
-1. `.agents/scripts/templates.test.ts` — `install step carries env: GH_BKIT_TOKEN block` (line 27-29). Expected substring `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` not found in template.
-2. `.agents/scripts/templates.test.ts` — `env: GH_BKIT_TOKEN appears under the install step (after pnpm install --frozen-lockfile)` (line 31-41). `envTokenIdx` is `-1` (substring missing) so the comparison fails.
-3. `.agents/scripts/templates.test.ts` — `snapshot matches expected template content (regression guard)` (line 52-54). Stored snapshot at `.agents/scripts/__snapshots__/templates.test.ts.snap` lines 26-29 still has the inline `Install Dependencies` step with `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`. Current template instead has a `cbartens/bkit/.github/actions/setup-auth@v1` step plus a plain `Install Dependencies` step without an `env:` block.
-4. `.agents/scripts/bkit-install.test.ts` — `ci.yml template install step carries env: GH_BKIT_TOKEN for registry auth (BAR-138)` (line 888-901). Same missing substring as failures (1)+(2).
+1. `.agents/scripts/templates.test.ts` — `install step carries env: GH_BKIT_TOKEN_INSTALL block` (line 27-29). Expected substring `GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}` not found in template.
+2. `.agents/scripts/templates.test.ts` — `env: GH_BKIT_TOKEN_INSTALL appears under the install step (after pnpm install --frozen-lockfile)` (line 31-41). `envTokenIdx` is `-1` (substring missing) so the comparison fails.
+3. `.agents/scripts/templates.test.ts` — `snapshot matches expected template content (regression guard)` (line 52-54). Stored snapshot at `.agents/scripts/__snapshots__/templates.test.ts.snap` lines 26-29 still has the inline `Install Dependencies` step with `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`. Current template instead has a `cbartens/bkit/.github/actions/setup-auth@v1` step plus a plain `Install Dependencies` step without an `env:` block.
+4. `.agents/scripts/bkit-install.test.ts` — `ci.yml template install step carries env: GH_BKIT_TOKEN_INSTALL for registry auth (BAR-138)` (line 888-901). Same missing substring as failures (1)+(2).
 
-All four are the same upstream defect: the inline `env: GH_BKIT_TOKEN` block under `Install Dependencies` was deleted when sub-plan-4 P4.T8 added the composite action.
+All four are the same upstream defect: the inline `env: GH_BKIT_TOKEN_INSTALL` block under `Install Dependencies` was deleted when sub-plan-4 P4.T8 added the composite action.
 
 ## Root Cause
 
@@ -33,10 +33,10 @@ All four are the same upstream defect: the inline `env: GH_BKIT_TOKEN` block und
 - name: Install Dependencies
   run: pnpm install --frozen-lockfile
   env:
-    GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+    GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
 ```
 
-Current state (lines 32-33 of `.agents/templates/.github/workflows/ci.yml`): the step has no `env:` block; only the `setup-auth@v1` step above declares the token (via `with: token: ${{ secrets.GH_BKIT_TOKEN }}`).
+Current state (lines 32-33 of `.agents/templates/.github/workflows/ci.yml`): the step has no `env:` block; only the `setup-auth@v1` step above declares the token (via `with: token: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`).
 
 **Plan-level violation (design fragility):** The sub-plan-4 runbook is unambiguous on this point:
 
@@ -53,7 +53,7 @@ The tests themselves are CORRECT — they encode the BAR-138 + RETAIN-WITH-REASO
 
 ## Recommended Fix
 
-**The template must be restored to include the `env: GH_BKIT_TOKEN` block under `Install Dependencies` while keeping the new `setup-auth@v1` step.** Tests must NOT be relaxed — they enforce the plan's RETAIN-WITH-REASON decision.
+**The template must be restored to include the `env: GH_BKIT_TOKEN_INSTALL` block under `Install Dependencies` while keeping the new `setup-auth@v1` step.** Tests must NOT be relaxed — they enforce the plan's RETAIN-WITH-REASON decision.
 
 Edit `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/templates/.github/workflows/ci.yml`. Replace the current `Install Dependencies` step (lines 32-33):
 
@@ -68,20 +68,20 @@ with the original RETAIN-WITH-REASON form:
 - name: Install Dependencies
   run: pnpm install --frozen-lockfile
   env:
-    GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+    GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
 ```
 
 This satisfies all four failing assertions in one diff:
 
 - `templates.test.ts` line 28 substring assertion -> passes.
-- `templates.test.ts` line 31-41 ordering assertion (`envTokenIdx > installLineIdx` AND `envTokenIdx - installLineIdx <= 3`) -> passes; the `env:` line is line +1 and `GH_BKIT_TOKEN: …` is line +3 from the `pnpm install --frozen-lockfile` line.
+- `templates.test.ts` line 31-41 ordering assertion (`envTokenIdx > installLineIdx` AND `envTokenIdx - installLineIdx <= 3`) -> passes; the `env:` line is line +1 and `GH_BKIT_TOKEN_INSTALL: …` is line +3 from the `pnpm install --frozen-lockfile` line.
 - `bkit-install.test.ts` line 888-901 -> passes (same substring + ordering).
 - `templates.test.ts` snapshot -> passes; the existing committed snapshot at `.agents/scripts/__snapshots__/templates.test.ts.snap` still includes the inline `env:` block but does NOT include the `setup-auth@v1` block. Therefore the snapshot must ALSO be updated to add the new `setup-auth@v1` step (composite action must remain in the template per P4.T8).
 
 **Snapshot update step:** Delete and regenerate the snapshot, OR edit it manually to match the post-fix template. The recommended approach is to run `pnpm vitest run .agents/scripts/templates.test.ts -u` after the YAML fix lands; this rewrites `.agents/scripts/__snapshots__/templates.test.ts.snap` to match. Verify the regenerated snapshot still asserts:
 
-- presence of `- uses: cbartens/bkit/.github/actions/setup-auth@v1` and its `with: token: ${{ secrets.GH_BKIT_TOKEN }}` block;
-- presence of the inline `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` block under `pnpm install --frozen-lockfile`;
+- presence of `- uses: cbartens/bkit/.github/actions/setup-auth@v1` and its `with: token: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}` block;
+- presence of the inline `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}` block under `pnpm install --frozen-lockfile`;
 - both `{{DEFAULT_BRANCH}}` and `{{NODE_VERSION}}` token placeholders.
 
 **Do NOT** modify the test files. `templates.test.ts` lines 27-41 and `bkit-install.test.ts` lines 888-901 directly encode the plan's RETAIN-WITH-REASON contract; relaxing them would silently delete the bash fallback that the plan explicitly preserves until v1.1.0.

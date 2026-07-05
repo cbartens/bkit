@@ -20,7 +20,7 @@ bkit currently emits scattered `printSink.push()` advisory strings during instal
 - pre-write blocker detection (install can clobber a corrupt repo);
 - structured `{id, severity, detect, action}` finding shape (downstream tooling cannot parse);
 - post-install re-detection (some checks only become accurate after writes — devDeps, ci.yml env);
-- four-surface `GH_BKIT_TOKEN` sustainability sweep (shell / `.npmrc` / GH secret / Vercel env).
+- four-surface `GH_BKIT_TOKEN_INSTALL` sustainability sweep (shell / `.npmrc` / GH secret / Vercel env).
 
 This plan replaces the ad-hoc pattern with a three-phase install: **Preflight (read-only) → Install (current) → Post-install (re-detect + unified output)**. The `printSink: string[]` is replaced by a structured `PreflightFinding[]` accumulator; the existing banner-flush block becomes the formatter for the unified post-install output.
 
@@ -68,7 +68,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 1. _Running `bkit install` against a directory without `package.json` exits 1 with a single `[blocker] no-package-json` finding and zero writes._
 2. _Running `bkit install` in a healthy consumer repo with no advisories produces no checklist (only the existing `Done. N write(s).` line)._
-3. _Running `bkit install` against a repo missing `GH_BKIT_TOKEN` shell export emits exactly one `gh-bkit-token-missing-shell` advisory in the post-install checklist with the specific export command in `ACTION`._
+3. _Running `bkit install` against a repo missing `GH_BKIT_TOKEN_INSTALL` shell export emits exactly one `gh-bkit-token-missing-shell` advisory in the post-install checklist with the specific export command in `ACTION`._
 4. _The post-install checklist deduplicates findings whose `id` matches between Phase 1 (preflight) and Phase 3 (post-install re-detect)._
 5. _All findings carry `id`, `severity`, `detect`, `action` and render in the format shown in the issue body — verifiable by snapshot test._)
 
@@ -80,9 +80,9 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 - `.git/` exists;
 - `.husky/pre-commit` already exists with custom content but NO bkit markers;
 - `package.json#scripts.lint:prose` is the F9-vulnerable form (no `[ -d .vale/styles/write-good ]` guard);
-- `GH_BKIT_TOKEN` is exported in shell;
+- `GH_BKIT_TOKEN_INSTALL` is exported in shell;
 - `.npmrc` is missing the GH Packages registry lines;
-- `gh secret list` shows `GH_BKIT_TOKEN` IS set on the GitHub repo;
+- `gh secret list` shows `GH_BKIT_TOKEN_INSTALL` IS set on the GitHub repo;
 - `vercel.json` is absent;
 - vale is on PATH but `.vale/styles/write-good/` is absent.
 
@@ -131,11 +131,11 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | `runPreflight` returns advisory `lint-prose-f9-vulnerable` when `package.json#scripts.lint:prose` lacks the write-good guard | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
 | `runPreflight` returns advisory `bkit-version-major-downgrade` when on-disk major > installing major | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
 | `runPreflight` returns advisory `bkit-version-pin-stale` when installed `node_modules/@cbartens/bkit/package.json` version differs from `.agents/.bkit-version` AND installed > on-disk; emits NO finding when versions match, when `node_modules/@cbartens/bkit/package.json` is absent, or when `.agents/.bkit-version` is absent | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
-| `runPostInstallCheck` returns `gh-bkit-token-missing-shell` when `process.env.GH_BKIT_TOKEN` unset | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
+| `runPostInstallCheck` returns `gh-bkit-token-missing-shell` when `process.env.GH_BKIT_TOKEN_INSTALL` unset | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `npmrc-missing-gh-packages` when `.npmrc` lacks both required lines; emits NO finding (silent skip) when `.npmrc` is absent | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `gh-bkit-token-secret-{missing,present,unknown}` based on `gh secret list` exit | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `vercel-env-missing-{preview,production}` when `vercel env ls` reports absence; `unknown` if CLI fails | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
-| `runPostInstallCheck` returns `ci-yml-missing-token-env` when ci.yml install step has no `GH_BKIT_TOKEN` env mapping | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
+| `runPostInstallCheck` returns `ci-yml-missing-token-env` when ci.yml install step has no `GH_BKIT_TOKEN_INSTALL` env mapping | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `vale-package-not-synced` when vale on PATH but `.vale/styles/write-good/` absent | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `devdeps-need-fetch` when `ws.writes` shows package.json devDeps were added in this run | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | Findings are deduplicated by `id` when both phases emit the same finding | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
@@ -181,7 +181,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | `lint-prose-f9-vulnerable` | advisory | `lint:prose` script lacks write-good guard |
 | `bkit-version-major-downgrade` | advisory | `.bkit-version` major > installing major |
 | `bkit-version-pin-stale` | advisory | installed `@cbartens/bkit` version > `.bkit-version` (consumer ran `pnpm add` but not `bkit install`) |
-| `gh-bkit-token-missing-shell` | advisory | `process.env.GH_BKIT_TOKEN` unset |
+| `gh-bkit-token-missing-shell` | advisory | `process.env.GH_BKIT_TOKEN_INSTALL` unset |
 | `npmrc-missing-gh-packages` | advisory | `.npmrc` missing registry/auth lines |
 | `gh-bkit-token-secret-missing` | advisory | `gh secret list` confirms absent |
 | `gh-bkit-token-secret-unknown` | advisory | `gh` unavailable / unauthed / not GH repo |
@@ -263,7 +263,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | `ModuleContext.printSink: string[]` (string-array advisory channel) in `.agents/scripts/bkit-modules.ts` | `ModuleContext.advisories: PreflightFinding[]` | DELETE | Replacement is structured `{id, severity, detect, action}`; every push site is internal and migrated in this PR. No consumer dependency. |
 | `printSink` parameter on `writeTier3` and `ensurePackageJsonScripts` / `ensurePackageJsonDevDeps` consumers in `.agents/scripts/bkit-tiers.ts` (signature `printSink: string[]`) | `advisories: PreflightFinding[]` parameter | DELETE | Internal helper; co-modified. Each existing `printSink.push("[bkit] ...")` becomes `advisories.push({ id, severity: "advisory", detect, action })`. |
 | Post-install flush block in `bkit-install.ts main()` (lines 686–697 — banner + `--- i/N ---` formatter) | `formatChecklist(findings)` exported from `.agents/scripts/bkit-postinstall.ts` | DELETE | Inline-block replaced by reusable formatter so BAR-139 (`bkit uninstall`) can call the same renderer. |
-| `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` / `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` / `VERCEL_AUTH_INSTRUCTIONS` constants in `.agents/scripts/bkit-modules.ts` (multi-line `printSink` payload strings) | Per-detector `PreflightFinding.action` strings co-located in `.agents/scripts/bkit-postinstall.ts` | DELETE | These constants exist only to be `printSink.push`-ed from `runCiModule`; ownership moves to the post-install detector that emits the matching finding. The CI module no longer pushes auth instructions directly. |
+| `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` / `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` / `VERCEL_AUTH_INSTRUCTIONS` constants in `.agents/scripts/bkit-modules.ts` (multi-line `printSink` payload strings) | Per-detector `PreflightFinding.action` strings co-located in `.agents/scripts/bkit-postinstall.ts` | DELETE | These constants exist only to be `printSink.push`-ed from `runCiModule`; ownership moves to the post-install detector that emits the matching finding. The CI module no longer pushes auth instructions directly. |
 
 > [!CAUTION]
 > **Default = `DELETE`.** `RETAIN-WITH-REASON` only allowed for:
@@ -278,10 +278,10 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 - [x] **No new DB table/column** — N/A (bkit has no DB).
 - [x] **No role-gated mutation** — N/A.
 - [x] **User input** — argv parsing unchanged; no new input surfaces.
-- [x] **PII** — token detectors check **presence only** via `process.env.GH_BKIT_TOKEN !== ""`, `gh secret list --json name`, and `vercel env ls`. The token VALUE is never read, logged, or echoed. Snapshot tests assert `ACTION` strings reference `${GH_BKIT_TOKEN}` interpolation form, never a raw value.
+- [x] **PII** — token detectors check **presence only** via `process.env.GH_BKIT_TOKEN_INSTALL !== ""`, `gh secret list --json name`, and `vercel env ls`. The token VALUE is never read, logged, or echoed. Snapshot tests assert `ACTION` strings reference `${GH_BKIT_TOKEN_INSTALL}` interpolation form, never a raw value.
 - [x] **No redirect URL / webhook / new secret** — N/A.
 
-_Single PII-relevant rule: detectors MUST never include the token value in any log, advisory, or test fixture. Code-review-grep for `process.env.GH_BKIT_TOKEN` usage on read paths in detectors — must be `Boolean(...)` or `?.length` only._
+_Single PII-relevant rule: detectors MUST never include the token value in any log, advisory, or test fixture. Code-review-grep for `process.env.GH_BKIT_TOKEN_INSTALL` usage on read paths in detectors — must be `Boolean(...)` or `?.length` only._
 
 ## 🚨 Pre-Flight / Dependencies 🚨
 
@@ -299,7 +299,7 @@ _Single PII-relevant rule: detectors MUST never include the token value in any l
 
 ### Conditional (verify only when applicable)
 
-- [x] **Secrets & Env Vars:** No new secrets. Detectors READ `process.env.GH_BKIT_TOKEN` only to test presence (boolean) — never log the value.
+- [x] **Secrets & Env Vars:** No new secrets. Detectors READ `process.env.GH_BKIT_TOKEN_INSTALL` only to test presence (boolean) — never log the value.
 - [x] **Architecture:** New files live alongside existing peers in `.agents/scripts/` — no new package, no new monorepo topology change. Consistent with `bkit-install.ts` / `bkit-modules.ts` / `bkit-tiers.ts` colocation.
 - [x] **Observability:** Detectors emit structured `console.error("[bkit-install] {Message}", payload)` ONLY on internal errors (e.g. `gh secret list` returning non-zero AND non-empty stderr that isn't `command not found`). Findings themselves are emitted via the checklist formatter, NOT via `console.error`.
 
@@ -351,12 +351,12 @@ None.
   - `runPostInstallCheck(preflightAdvisories: PreflightFinding[], ws: WriteSet, modules: Set<ModuleFlag>, cwd?: string): PreflightFinding[]` — re-runs token-surface + ci.yml + vale-sync + devDeps detection, deduplicates Phase 3 findings by `id` intra-phase (first occurrence wins), then dedupes against `preflightAdvisories` by `id` cross-phase (Phase 3 wins on conflict because re-detection is more accurate).
   - `formatChecklist(findings: PreflightFinding[]): string` — pure renderer; returns the multi-line banner string (no `console.log` inside; caller logs). Format matches the issue body verbatim. **`formatChecklist([])` MUST return `""` (empty string)** so callers can `console.log(formatChecklist(findings))` unconditionally without producing a visible banner when there are zero findings (preserves the "no banner on zero advisories" edge-case contract).
 - **Token-surface detectors (4):**
-  - `detectShellToken()` — returns `present | missing` based on `Boolean(process.env.GH_BKIT_TOKEN)`. Never reads value.
-  - `detectNpmrcAuth(cwd)` — greps `.npmrc` for both `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN}`. Returns `present` when both lines match, `missing` when `.npmrc` exists but lacks one or both lines (emit `npmrc-missing-gh-packages`), and `unknown` when `.npmrc` is absent. **`unknown` produces NO finding (silent skip)** — the absence of `.npmrc` is not, on its own, evidence of misconfiguration; only an existing `.npmrc` without the required lines warrants the advisory.
+  - `detectShellToken()` — returns `present | missing` based on `Boolean(process.env.GH_BKIT_TOKEN_INSTALL)`. Never reads value.
+  - `detectNpmrcAuth(cwd)` — greps `.npmrc` for both `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN_INSTALL}`. Returns `present` when both lines match, `missing` when `.npmrc` exists but lacks one or both lines (emit `npmrc-missing-gh-packages`), and `unknown` when `.npmrc` is absent. **`unknown` produces NO finding (silent skip)** — the absence of `.npmrc` is not, on its own, evidence of misconfiguration; only an existing `.npmrc` without the required lines warrants the advisory.
   - `detectGhSecret()` — wraps existing `checkBkitTokenSecret()` from `bkit-modules.ts` (move it here). Returns `present | missing | unknown`.
-  - `detectVercelEnv(env: "preview" | "production")` — `execSync("vercel env ls " + env)`; greps for `GH_BKIT_TOKEN`. Returns `present | missing | unknown` (unknown if CLI absent / unauthed / no `vercel.json`). Skip both detectors silently if `detectVercelProject(cwd)` is false.
+  - `detectVercelEnv(env: "preview" | "production")` — `execSync("vercel env ls " + env)`; greps for `GH_BKIT_TOKEN_INSTALL`. Returns `present | missing | unknown` (unknown if CLI absent / unauthed / no `vercel.json`). Skip both detectors silently if `detectVercelProject(cwd)` is false.
 - **Other post-install detectors (3):**
-  - `detectCiYmlMissingTokenEnv(cwd)` — read `.github/workflows/ci.yml` if present; YAML-grep for an `Install` step without `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`. Returns `null` if no ci.yml or step structure unrecognised (no false positives on bespoke layouts).
+  - `detectCiYmlMissingTokenEnv(cwd)` — read `.github/workflows/ci.yml` if present; YAML-grep for an `Install` step without `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`. Returns `null` if no ci.yml or step structure unrecognised (no false positives on bespoke layouts).
   - `detectValePackageNotSynced(cwd)` — `vale --version` shells out (5s timeout); if non-zero, return null. If zero, check `fs.existsSync(".vale/styles/write-good")`.
   - `detectDevDepsNeedFetch(ws)` — scan `ws.writes` for any entry whose `path === "package.json"` AND was added as a devDep this run. The `ensurePackageJsonDevDeps` helper already returns `added: string[]`; thread that through `WriteSet` (extend `WriteEntry` with optional `devDepsAdded?: string[]`).
 - **Imports from `bkit-modules.ts`:** `detectVercelProject` (move it here too) and the `WriteSet` type from `bkit-tiers.ts`.
@@ -383,14 +383,14 @@ None.
   - `runCoreModule` first-install message → `id: "first-install-postinstall-steps"`.
   - `runCiModule` package.json missing/malformed messages → `id: "ci-package-json-{missing,malformed}"`.
   - `runCiModule` no test script → `id: "ci-no-test-script"`.
-  - `runCiModule` `GH_BKIT_TOKEN_MISSING/UNKNOWN_INSTRUCTIONS` → REMOVE (Phase 3 owns these now).
+  - `runCiModule` `GH_BKIT_TOKEN_INSTALL_MISSING/UNKNOWN_INSTRUCTIONS` → REMOVE (Phase 3 owns these now).
   - `runCiModule` `VERCEL_AUTH_INSTRUCTIONS` → REMOVE (Phase 3 owns these now).
   - `runLintModule` package.json missing/malformed → `id: "lint-package-json-{missing,malformed}"`.
   - `runLintModule` devDeps added → `id: "devdeps-need-fetch"` (Phase 3 also detects this — dedupe wins).
   - `runLintModule` write-good package hint → `id: "vale-sync-recommended"`.
   - `runGitHooksModule` package.json missing/malformed/preserved-prepare → `id: "git-hooks-package-json-{missing,malformed,preserved-prepare}"`.
   - `runGitHooksModule` husky devDep added → `id: "git-hooks-husky-devdep-added"`.
-- DELETE constants no longer pushed: `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` (their text moves into Phase 3 detector `action` fields verbatim — same instructions, new owner).
+- DELETE constants no longer pushed: `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` (their text moves into Phase 3 detector `action` fields verbatim — same instructions, new owner).
 - DELETE `checkBkitTokenSecret` (moved to `bkit-postinstall.ts`).
 - DELETE `detectVercelProject` (moved to `bkit-postinstall.ts`).
 
@@ -488,7 +488,7 @@ _Code-only — `git revert` sufficient._
 
 ### Phase F — Phase 3 Post-install (other detectors)
 
-- [x] **Task F1:** Implement `detectCiYmlMissingTokenEnv` + unit test (positive: ci.yml install step has no `env: GH_BKIT_TOKEN`; negative: env present; null: no ci.yml).
+- [x] **Task F1:** Implement `detectCiYmlMissingTokenEnv` + unit test (positive: ci.yml install step has no `env: GH_BKIT_TOKEN_INSTALL`; negative: env present; null: no ci.yml).
 - [x] **Task F2:** Implement `detectValePackageNotSynced` + unit test (mock `execSync`, three cases: vale absent, vale present + write-good present, vale present + write-good absent).
 - [x] **Task F3:** Extend `WriteEntry` with optional `devDepsAdded?: string[]`; update `ensurePackageJsonDevDeps` consumers in `bkit-modules.ts` to pass it through. Implement `detectDevDepsNeedFetch(ws)` + unit test.
 - [x] **Task F4:** Wire all detectors into `runPostInstallCheck`. Implement intra-phase dedupe-by-id (first occurrence wins) on the Phase 3 finding array BEFORE the cross-phase dedupe. Implement cross-phase dedupe-by-id (Phase 3 wins). Implement skip-on-dry-run guard. Apply the same intra-phase dedupe inside `runPreflight` (both `blockers` and `advisories`). Add unit tests asserting (a) intra-phase dedupe in `runPreflight`, (b) intra-phase dedupe in `runPostInstallCheck`.
@@ -497,7 +497,7 @@ _Code-only — `git revert` sufficient._
 ### Phase G — Wiring + Integration
 
 - [x] **Task G1:** In `bkit-install.ts main()`, between `dispatchModules` and the checklist flush, call `runPostInstallCheck(ctx.advisories, ws, modules)` for the install path. Replace inline flush with `const banner = formatChecklist(postFindings); if (banner) console.log(banner);` (the `if (banner)` guard is defensive — `formatChecklist([])` returns `""` — and ensures zero-advisory installs print no banner). **Dry-run path:** in `bkit check` mode, SKIP `runPostInstallCheck` but STILL apply the same guarded emit `const banner = formatChecklist(ctx.advisories); if (banner) console.log(banner);` so Phase 1 advisories accumulated in dry-run remain visible (preserves parity with the legacy `printSink` dump) while staying silent on zero-advisory dry-runs. Verify both branches with a dogfood `bkit install` and a dogfood `bkit check`.
-- [x] **Task G2:** DELETE the now-unused `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` constants from `bkit-modules.ts`. Re-create them as the `action` text on the matching Phase 3 detectors (verbatim text — same instructions). Confirm the install run on a healthy bkit dogfood repo emits zero advisories.
+- [x] **Task G2:** DELETE the now-unused `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` constants from `bkit-modules.ts`. Re-create them as the `action` text on the matching Phase 3 detectors (verbatim text — same instructions). Confirm the install run on a healthy bkit dogfood repo emits zero advisories.
 - [x] **Task G3:** Write `.agents/scripts/bkit-install.integration.test.ts` — two scenarios per Derived Test Matrix (blocker exit 1; full advisory checklist).
 - [x] **Task G4:** Add a third integration scenario to `.agents/scripts/bkit-install.integration.test.ts` covering `bkit check` (dry-run) on an advisory-triggering scratch consumer. Assert (a) Phase 1 advisories ARE rendered via `formatChecklist`, and (b) Phase 3 detectors are NOT invoked (no `gh secret list` / `vercel env ls` / `vale --version` calls; e.g., assert via `execSync` mock spy or environment-isolation that no Phase 3 spawn occurs).
 
@@ -505,7 +505,7 @@ _Code-only — `git revert` sufficient._
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Testing & Documentation`.
 
-- [x] **Gate 2 - Verified:** Every task A1–G4 above independently verified and checked off. Every `printSink.push` call site has been migrated. Three deleted constants no longer appear in `bkit-modules.ts` (`grep -n GH_BKIT_TOKEN_MISSING_INSTRUCTIONS .agents/scripts/bkit-modules.ts` returns nothing).
+- [x] **Gate 2 - Verified:** Every task A1–G4 above independently verified and checked off. Every `printSink.push` call site has been migrated. Three deleted constants no longer appear in `bkit-modules.ts` (`grep -n GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS .agents/scripts/bkit-modules.ts` returns nothing).
 
 > [!IMPORTANT]
 > **Testing Strategy (See `docs/testing.md`):**
@@ -557,6 +557,6 @@ _Code-only — `git revert` sufficient._
 
 - [ ] **Step 1 — Dogfood install on bkit repo:** From `bkit/` root run `pnpm bkit install --full` against the bkit repo itself. Expected: zero advisories, exit 0, `Done. N write(s).` line followed by no banner.
 - [ ] **Step 2 — Synthetic blocker:** In a `tmp/blocker-{uuid}/` scratch dir, create an empty dir (no `package.json`, no `.git/`), run `node --import tsx <bkit-root>/.agents/scripts/bkit-install.ts install --full`. Expected: exit 1, single `[blocker] no-package-json` line in the formatted output, no files written.
-- [ ] **Step 3 — Synthetic advisory matrix:** In a `tmp/advisory-{uuid}/` dir, seed `package.json` (valid), `.husky/pre-commit` (no markers), `.git/` (`git init`), unset `GH_BKIT_TOKEN`. Run `pnpm bkit install --full`. Expected: 4 numbered advisories visible — `husky-no-markers-precommit`, `gh-bkit-token-missing-shell`, `npmrc-missing-gh-packages`, `vale-package-not-synced` (if vale on PATH). Exit 0.
+- [ ] **Step 3 — Synthetic advisory matrix:** In a `tmp/advisory-{uuid}/` dir, seed `package.json` (valid), `.husky/pre-commit` (no markers), `.git/` (`git init`), unset `GH_BKIT_TOKEN_INSTALL`. Run `pnpm bkit install --full`. Expected: 4 numbered advisories visible — `husky-no-markers-precommit`, `gh-bkit-token-missing-shell`, `npmrc-missing-gh-packages`, `vale-package-not-synced` (if vale on PATH). Exit 0.
 - [ ] **Step 4 — `bkit check` parity:** Run `pnpm bkit check --full` on the same scratch dir. Expected: same blockers fire (Phase 1 runs); Phase 1 advisories ARE rendered via `formatChecklist(ctx.advisories)`; Phase 3 detectors SKIPPED (no token-surface / ci.yml / vale / devDeps re-detection in dry-run); existing drift-detection exit-1 path unchanged.
 - [ ] **Step 5 — Snapshot match:** `formatChecklist` output for a 3-finding fixture matches the example in the issue body byte-for-byte (line endings, divider widths, blank-line counts).

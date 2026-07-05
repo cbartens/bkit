@@ -15,6 +15,6 @@ DONE — Task P1.T2: Replace hasBkitMarkers with line-anchored regex (B1) (.agen
 DONE — Task P1.T3: Position-stable cross-phase dedup test added to bkit-postinstall.test.ts (B2) (.agents/scripts/bkit-postinstall.test.ts)
 DONE — Task P1.T4: detectShellToken differentiates unset vs empty-string (B4) (.agents/scripts/bkit-postinstall.ts, .agents/scripts/bkit-preflight.test.ts, .agents/scripts/bkit-postinstall.test.ts)
 DONE — Task P1.T5: LOG_PREFIX on dry-run blocker banner (B5) (.agents/scripts/bkit-install.ts, .agents/scripts/bkit-install.test.ts)
-DONE — Task P1.T6: gh-bkit-token-secret-unknown action text + ${GH_BKIT_TOKEN:-} fallback in bkit-modules.ts (B6) (.agents/scripts/bkit-postinstall.ts, .agents/scripts/bkit-modules.ts, .agents/scripts/bkit-preflight.test.ts)
+DONE — Task P1.T6: gh-bkit-token-secret-unknown action text + ${GH_BKIT_TOKEN_INSTALL:-} fallback in bkit-modules.ts (B6) (.agents/scripts/bkit-postinstall.ts, .agents/scripts/bkit-modules.ts, .agents/scripts/bkit-preflight.test.ts)
 DONE — Task P1.T7: Changelog version-delta header in bkit-postinstall.ts + readChangelogVersionDelta export (A7) (.agents/scripts/bkit-postinstall.ts, .agents/scripts/bkit-install.ts, .agents/scripts/bkit-postinstall.test.ts)
 DONE — Task P1.T8: README Doctor section + CHANGELOG v0.6.x bullets (README.md, CHANGELOG.md)

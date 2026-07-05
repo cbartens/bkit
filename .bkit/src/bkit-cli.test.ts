@@ -158,6 +158,42 @@ describe("parseArgs — module flags", () => {
     expect(msg).toMatch(/mutually exclusive/);
   });
 
+  // --renovate=<mend|self> (#325) — single flag: auto-selects the renovate module + runner.
+  it("--renovate=self alone → auto-selects renovate + renovateRunner=self", () => {
+    const result = parseArgs(["install", "--renovate=self"]);
+    expect(result.modules.has("renovate")).toBe(true);
+    expect(result.renovateRunner).toBe("self");
+  });
+
+  it("--renovate=mend alone → auto-selects renovate + renovateRunner=mend", () => {
+    const result = parseArgs(["install", "--renovate=mend"]);
+    expect(result.modules.has("renovate")).toBe(true);
+    expect(result.renovateRunner).toBe("mend");
+  });
+
+  it("--dependency=renovate --renovate=self → renovateRunner=self (explicit, equivalent)", () => {
+    const result = parseArgs(["install", "--dependency=renovate", "--renovate=self"]);
+    expect(result.modules.has("renovate")).toBe(true);
+    expect(result.renovateRunner).toBe("self");
+  });
+
+  it("--dependency=renovate alone → renovateRunner=null (unspecified; module defaults/preserves)", () => {
+    const result = parseArgs(["install", "--dependency=renovate"]);
+    expect(result.renovateRunner).toBeNull();
+  });
+
+  it("--renovate=<bad> → rejected", () => {
+    const msg = expectExit(() => parseArgs(["install", "--renovate=fly"]));
+    expect(msg).toMatch(/Unknown renovate runner/);
+  });
+
+  it("--dependency=dependabot --renovate=self → mutually-exclusive error (renovate auto-added)", () => {
+    const msg = expectExit(() =>
+      parseArgs(["install", "--dependency=dependabot", "--renovate=self"]),
+    );
+    expect(msg).toMatch(/mutually exclusive/);
+  });
+
   it("parseArgs returns resolved modules as a Set", () => {
     const result = parseArgs(["install", "--claude"]);
     expect(result.modules).toBeInstanceOf(Set);
@@ -336,6 +372,7 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--typescript");
     expect(output).toContain("--tooling");
     expect(output).toContain("--dependency=");
+    expect(output).toContain("--renovate=");
     expect(output).toContain("--auto=");
   });
 

@@ -103,7 +103,7 @@ Also wire `bkit install`'s Phase 3 post-install blockers (BAR-141) into the unin
 
 Currently bkit has no inverse of `bkit install`. Cleanup is manual and error-prone. Test scenarios that need a clean re-install (e.g., validating GHPR migration end-to-end on consumer repos) require the maintainer to remember the full file list and managed-block locations.
 
-A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can return `severity: "blocker"` (e.g. `ci-yml-missing-token-env` when `.npmrc` references `${GH_BKIT_TOKEN}` — the next CI run will 401). Currently the label changes but `process.exit(1)` doesn't fire, because Phase 3 runs _after_ writes and halting mid-install leaves a partially-applied state. Without a recovery primitive, exit-1 is just a worse failure mode than the current visibility-only treatment. Once `bkit uninstall` exists, Phase 3 can fail-loud-and-revert: render the banner, exit 1, and the consumer's recovery is `pnpm bkit uninstall && fix-the-gap && pnpm bkit install`.
+A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can return `severity: "blocker"` (e.g. `ci-yml-missing-token-env` when `.npmrc` references `${GH_BKIT_TOKEN_INSTALL}` — the next CI run will 401). Currently the label changes but `process.exit(1)` doesn't fire, because Phase 3 runs _after_ writes and halting mid-install leaves a partially-applied state. Without a recovery primitive, exit-1 is just a worse failure mode than the current visibility-only treatment. Once `bkit uninstall` exists, Phase 3 can fail-loud-and-revert: render the banner, exit 1, and the consumer's recovery is `pnpm bkit uninstall && fix-the-gap && pnpm bkit install`.
 
 ### Scope — In scope
 
@@ -163,7 +163,7 @@ A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can 
 6. Delete files that became 0-byte after stripping (`find docs -maxdepth 1 -name "*.md" -size 0 -delete`).
 7. Strip bkit-added `package.json` scripts (`typecheck`, `format:check`, `lint:prose`, `lint:slop`, `prepare`) and `pnpm.onlyBuiltDependencies` entries — only if value matches bkit default at install time.
 8. `pnpm install` to refresh lockfile.
-9. Optional: `gh secret delete GH_BKIT_TOKEN`.
+9. Optional: `gh secret delete GH_BKIT_TOKEN_INSTALL`.
 10. Verify with `grep -rln "bkit:start\|@cbartens/bkit\|\[bkit\]"` etc.
 
 Recommended `bkit uninstall` shape:
@@ -377,7 +377,7 @@ When Phase 3 supersedes a Phase 1 finding by id, the surviving entry moves to Ph
 
 **DoD:** When timeout fires, return `"unknown"` and emit a low-priority advisory pointing the consumer to `vercel link`. Or pre-check for `.vercel/project.json` and skip the `env ls` call if absent.
 
-#### B4. LOW-4: Empty-string `GH_BKIT_TOKEN=""` treated as "missing"
+#### B4. LOW-4: Empty-string `GH_BKIT_TOKEN_INSTALL=""` treated as "missing"
 
 `Boolean("")` returns false → `detectShellToken()` returns "missing". Technically correct but action text doesn't distinguish "unset" from "empty".
 
@@ -389,14 +389,14 @@ In dry-run mode, `LOG_PREFIX` is set to `[bkit-check]` but the blocker banner fr
 
 **DoD:** Banner output in `bkit-install.ts` blocker-exit path prepends `LOG_PREFIX` consistently.
 
-#### B6 (NEW from comments). `.npmrc` `${GH_BKIT_TOKEN}` warning noise in local dev
+#### B6 (NEW from comments). `.npmrc` `${GH_BKIT_TOKEN_INSTALL}` warning noise in local dev
 
-Every `pnpm` invocation in a shell without `GH_BKIT_TOKEN` exported emits warnings — fired ~30 times across various invocations in one session.
+Every `pnpm` invocation in a shell without `GH_BKIT_TOKEN_INSTALL` exported emits warnings — fired ~30 times across various invocations in one session.
 
 Two mitigations:
 
-1. **Cheap:** existing `[advisory] gh-bkit-token-secret-unknown` could include a clear DO step: "Add `export GH_BKIT_TOKEN=<paste>` to your shell rc — silences pnpm warnings in local dev."
-2. **Long-term:** test whether pnpm supports POSIX-style `${VAR:-}` fallback syntax in `.npmrc`. If yes, ship `_authToken=${GH_BKIT_TOKEN:-}` — still works in CI when var is set, silent when unset.
+1. **Cheap:** existing `[advisory] gh-bkit-token-secret-unknown` could include a clear DO step: "Add `export GH_BKIT_TOKEN_INSTALL=<paste>` to your shell rc — silences pnpm warnings in local dev."
+2. **Long-term:** test whether pnpm supports POSIX-style `${VAR:-}` fallback syntax in `.npmrc`. If yes, ship `_authToken=${GH_BKIT_TOKEN_INSTALL:-}` — still works in CI when var is set, silent when unset.
 
 ### BAR-142 Out of scope
 

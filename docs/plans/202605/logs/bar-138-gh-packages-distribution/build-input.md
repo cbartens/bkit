@@ -25,7 +25,7 @@ Eliminates: private-repo clone auth-shim, two auth surfaces (Actions + Vercel), 
 3. Installer print constants: drop git auth-shim language, replace with `.npmrc` setup instructions
 4. README + `.agents/README`: rewrite for npm-registry install path
 5. ADR DE-3: document distribution model change
-6. Token requirements update: `GH_BKIT_TOKEN` needs `read:packages` scope
+6. Token requirements update: `GH_BKIT_TOKEN_INSTALL` needs `read:packages` scope
 
 ### Sub-plans
 

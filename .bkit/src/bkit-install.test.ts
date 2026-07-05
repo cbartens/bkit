@@ -868,7 +868,7 @@ describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () =
 
 describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)", () => {
   // BAR-138: The consumer CI template was updated to use GitHub Packages
-  // registry auth (.npmrc + GH_BKIT_TOKEN env var) instead of the old git
+  // registry auth (.npmrc + GH_BKIT_TOKEN_INSTALL env var) instead of the old git
   // auth-shim (git config --global url.insteadOf). Tests updated accordingly.
 
   it("ci.yml template exists", () => {
@@ -885,19 +885,21 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     expect(content).not.toContain("Configure private-repo auth");
   });
 
-  it("ci.yml template install step carries env: GH_BKIT_TOKEN for registry auth (BAR-138)", () => {
+  it("ci.yml template install step carries env: GH_BKIT_TOKEN_INSTALL for registry auth (BAR-138)", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
-    // GH_BKIT_TOKEN must be present as the env var for registry auth
-    expect(content).toContain("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}");
-    // GH_BKIT_TOKEN is now declared at job-level too (so non-install pnpm steps
+    // GH_BKIT_TOKEN_INSTALL must be present as the env var for registry auth
+    expect(content).toContain("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}");
+    // GH_BKIT_TOKEN_INSTALL is now declared at job-level too (so non-install pnpm steps
     // don't emit ".npmrc env substitution failed" warnings). Locate the step-
     // level declaration adjacent to the install command, skipping any earlier
     // job-level occurrence.
     const lines = content.split("\n");
     const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
     const envTokenLine = lines.findIndex(
-      (l, i) => i > installLine && l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
+      (l, i) =>
+        i > installLine &&
+        l.includes("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}"),
     );
     expect(installLine).toBeGreaterThan(-1);
     expect(envTokenLine).toBeGreaterThan(installLine);
@@ -1386,7 +1388,8 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
   });
 
   it("maps dependency + cloud opt-ins (placeholder when the variant is unknown)", () => {
-    expect(flags(["renovate"])).toBe("--dependency=renovate");
+    // renovate emits the single --renovate=<runner> flag (#325); defaults to mend.
+    expect(flags(["renovate"])).toBe("--renovate=mend");
     expect(flags(["dependabot"])).toBe("--dependency=dependabot");
     expect(flags(["cloud"], null, "cursor")).toBe("--auto=cursor");
     expect(flags(["cloud"], null, null)).toBe("--auto=<variant>");
@@ -1394,7 +1397,7 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
 
   it("composes multiple modules in flag order", () => {
     expect(flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "renovate"])).toBe(
-      "--claude --cursor --tooling --dependency=renovate",
+      "--claude --cursor --tooling --renovate=mend",
     );
   });
 });

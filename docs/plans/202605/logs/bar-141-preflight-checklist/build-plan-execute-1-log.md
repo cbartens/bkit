@@ -33,12 +33,12 @@ DONE — Task F3: Extend WriteEntry with devDepsAdded?: string[], implement dete
 DONE — Task F4: Wire all detectors into runPostInstallCheck with intra-phase dedup + cross-phase dedup + dryRun guard; apply dedup in runPreflight — complete (`.agents/scripts/bkit-postinstall.ts`)
 DONE — Task F5: formatChecklist snapshot test, formatChecklist([]) empty-string test, detectVercelEnv no-project silent-skip test, detectNpmrcAuth absent-file silent-skip test — complete (`.agents/scripts/bkit-postinstall.test.ts`)
 DONE — Task G1: Wire runPostInstallCheck in bkit-install.ts (install + dry-run paths with guarded banner emit) — complete (`.agents/scripts/bkit-install.ts`)
-DONE — Task G2: Delete GH_BKIT_TOKEN_MISSING_INSTRUCTIONS, GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS, VERCEL_AUTH_INSTRUCTIONS from bkit-modules.ts; recreate verbatim as action strings in bkit-postinstall.ts — complete (`.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-postinstall.ts`)
+DONE — Task G2: Delete GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS, GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS, VERCEL_AUTH_INSTRUCTIONS from bkit-modules.ts; recreate verbatim as action strings in bkit-postinstall.ts — complete (`.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-postinstall.ts`)
 DONE — Task G3: Write bkit-install.integration.test.ts Scenario 1 (blocker exit 1) and Scenario 2 (advisory checklist) — complete (`.agents/scripts/bkit-install.integration.test.ts`)
 DONE — Task G4: Add Scenario 3 (bkit check dry-run: Phase 1 advisories rendered, Phase 3 detectors NOT invoked) to integration test — complete (`.agents/scripts/bkit-install.integration.test.ts`)
 DONE — Docs: Add ## Install lifecycle section to README.md with three-phase description, PreflightFinding shape, stable id registry, cross-link to Consumer CI auth — complete (`README.md`)
 DONE — Docs: Append DE-4 ADR to docs/decisions.md (BAR-141 structured PreflightFinding replaces printSink) — complete (`docs/decisions.md`)
 DONE — Docs: Append KN-4 gotcha to docs/knowledge.md (Phase 3 runs ONLY in install, not check — dry-run parity) — complete (`docs/knowledge.md`)
-DONE — Gate 2 verified: All tasks A1–G4 complete. printSink.push() call sites migrated. GH_BKIT_TOKEN_MISSING_INSTRUCTIONS / GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS / VERCEL_AUTH_INSTRUCTIONS deleted from bkit-modules.ts. 343 tests pass, 0 failures.
+DONE — Gate 2 verified: All tasks A1–G4 complete. printSink.push() call sites migrated. GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS / GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS / VERCEL_AUTH_INSTRUCTIONS deleted from bkit-modules.ts. 343 tests pass, 0 failures.
 DONE — Gate 3 verified: README, decisions.md, knowledge.md all updated per Documentation Updates table. docs.md unchanged (no new doc files).
 DONE — Gate 4 verified: pnpm typecheck, format:check, lint:slop, lint:prose all pass. 343 tests pass (13 test files). Integration test exercises blocker exit + advisory checklist + dry-run parity.

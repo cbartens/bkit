@@ -12,7 +12,7 @@ Verdict: CONCERNS
 | Publish npm to GH Packages from Actions | `actions/setup-node@v4` writes `~/.npmrc` from `registry-url` + `scope`; auths via `NODE_AUTH_TOKEN` (built-in `GITHUB_TOKEN` w/ `packages: write`) | Direct match — design uses exactly this snippet. User-scope `@cbartens` (not org) so first-publish with `GITHUB_TOKEN` is documented to work. | USE-AS-IS |
 | Tag-push trigger pattern | Standard `on: push: tags: ['v*']` | Standard idiom; matches design. Pre-release tags (`v0.4.0-pre.1`) fire identically. | USE-AS-IS |
 | Auto-link package → repo | Manifest `repository.url` (bare HTTPS preferred) auto-links when published from same repo with `GITHUB_TOKEN` | Design drops the `git+` prefix which aligns with docs guidance. | USE-AS-IS |
-| Consumer auth via `.npmrc` env interpolation | `${VAR}` substitution in `.npmrc` is npm/pnpm standard | Works with both. **Trap:** pnpm ≥7.20 silently ignores the entire `.npmrc` if `${GH_BKIT_TOKEN}` is unset (see Risks). | USE-AS-IS — but installer print MUST flag the silent-ignore failure mode. |
+| Consumer auth via `.npmrc` env interpolation | `${VAR}` substitution in `.npmrc` is npm/pnpm standard | Works with both. **Trap:** pnpm ≥7.20 silently ignores the entire `.npmrc` if `${GH_BKIT_TOKEN_INSTALL}` is unset (see Risks). | USE-AS-IS — but installer print MUST flag the silent-ignore failure mode. |
 | Release-notes / changelog automation | `release-please`, `changesets`, `semantic-release` | All exist; design explicitly defers (single-maintainer, tag-push-only). YAGNI for v0.4.0. | OUT-OF-SCOPE — defer (see § OUT OF SCOPE). |
 | Pre-release version retraction | `npm deprecate` works against GH Packages (community-confirmed); `npm unpublish` also supported within window | Design notes "untested in this codebase" — fair flag, no action needed yet. | USE-AS-IS when needed. |
 
@@ -22,7 +22,7 @@ Buildable as designed. All moving parts are off-the-shelf:
 
 - `actions/setup-node@v4` + `pnpm/action-setup@v4` already in use in `.github/workflows/ci.yml` (verified — Node 20 currently; design correctly upgrades release.yml to Node 22 for parity with `package.json#engines >=20` and avoids drift).
 - `dist/` ships pre-built (verified at `dist/bkit-*.js`); `pnpm check:dist` script exists and behaves as the design's gate (verified `package.json` line 30).
-- Print constants `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` (line 544), `VERCEL_AUTH_INSTRUCTIONS` (592), `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` (619), `CI_YML_MERGE_INSTRUCTIONS` (646), and the `onlyBuiltDependencies: ["@cbartens/bkit"]` line (357) all exist exactly where the design says — surgical edits feasible.
+- Print constants `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` (line 544), `VERCEL_AUTH_INSTRUCTIONS` (592), `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` (619), `CI_YML_MERGE_INSTRUCTIONS` (646), and the `onlyBuiltDependencies: ["@cbartens/bkit"]` line (357) all exist exactly where the design says — surgical edits feasible.
 - `checkBkitTokenSecret` (line 527) and `detectVercelProject` (line 581) untouched per design — auth-detection logic survives the rewrite.
 
 **Constraints / footguns identified:**
@@ -51,7 +51,7 @@ License / bundle / types: no impact (shipping bits unchanged; tarball contents i
 - **Monorepo fit:** None — bkit is a single-package repo; release.yml does not interact with ci.yml jobs.
 - **Systems touched:** `.github/workflows/release.yml` (new), `package.json` (manifest deltas), `.agents/scripts/bkit-modules.ts` (5 surgical string edits + 1 banner line drop), `.agents/templates/.github/workflows/ci.yml` (template for consumers, drop auth-shim step), `README.md`, `.agents/README.md`, `docs/decisions.md`. All in-repo, no external services beyond GH Packages registry.
 - **Blast radius:** Limited to v0.4.0+ consumers. v0.3.x git-dep path remains consumable for un-migrated consumers. No DB, no runtime services. Worst case (pre.1 fails): tag is throwaway, retry costs zero.
-- **Templates → bkit-self check:** `bkit install` mirrors `.agents/templates/.github/workflows/ci.yml` into the bkit repo's own `.github/workflows/ci.yml` only as a Tier 3 seed. Design touches the template; bkit's own ci.yml (Tier 3) needs the same edits applied (`Configure private-repo auth` step removal, `env: GH_BKIT_TOKEN` addition) — but this is bkit-self. Confirmed: `.github/workflows/ci.yml` lines 23-24 contain the `Configure private-repo auth` step the design removes from the template. If bkit-self continues using its own consumer auth-shim against bkit (it doesn't, since it's the source), this is moot. Verify the design intends to drop this step from bkit-self's ci.yml too — currently unstated.
+- **Templates → bkit-self check:** `bkit install` mirrors `.agents/templates/.github/workflows/ci.yml` into the bkit repo's own `.github/workflows/ci.yml` only as a Tier 3 seed. Design touches the template; bkit's own ci.yml (Tier 3) needs the same edits applied (`Configure private-repo auth` step removal, `env: GH_BKIT_TOKEN_INSTALL` addition) — but this is bkit-self. Confirmed: `.github/workflows/ci.yml` lines 23-24 contain the `Configure private-repo auth` step the design removes from the template. If bkit-self continues using its own consumer auth-shim against bkit (it doesn't, since it's the source), this is moot. Verify the design intends to drop this step from bkit-self's ci.yml too — currently unstated.
 
 ## PoC Approach
 
@@ -69,7 +69,7 @@ Total scope: ~10 LoC change + 1 new workflow file. Description fits well under 2
 
 1. **`access: restricted` semantics on first user-scoped publish.** Design flags this. Documented behavior: GH Packages defaults user-scoped packages to private; explicit `access: restricted` should be redundant but not harmful. Confirmed via design's own pre.1 gate. Non-blocking.
 2. **`tsc` emit determinism across Node 20 → 22 jump.** If `dist/` was built against Node 20 (current `ci.yml`) and `release.yml` runs `check:dist` on Node 22, emit could in principle drift. Resolve by harmonizing both workflows on the same Node version. **Blocker for pre.1 if not addressed — see CRITICAL.**
-3. **pnpm silent-ignore of `.npmrc` when `${GH_BKIT_TOKEN}` is unset.** Affects consumer migration UX, not bkit publish. The new `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` print copy must call out: "if env var is unset, pnpm silently ignores `.npmrc` — symptom is 401 from npmjs.org, not GH Packages." Design lists "calls out the scope explicitly" but does NOT enumerate the silent-ignore footgun. See CRITICAL.
+3. **pnpm silent-ignore of `.npmrc` when `${GH_BKIT_TOKEN_INSTALL}` is unset.** Affects consumer migration UX, not bkit publish. The new `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` print copy must call out: "if env var is unset, pnpm silently ignores `.npmrc` — symptom is 401 from npmjs.org, not GH Packages." Design lists "calls out the scope explicitly" but does NOT enumerate the silent-ignore footgun. See CRITICAL.
 4. **bkit-self ci.yml has the legacy git auth-shim (line 23-24).** Design touches the consumer template but does not state whether the bkit repo's own ci.yml drops the step. Since bkit-self is the source repo (not a consumer of `@cbartens/bkit`), the shim is dead code today. Cleanup is OPTIONAL but in-scope-aligned. See OPTIONAL.
 5. **Open question already in design — "Should `release.yml` also run `pnpm test` and `pnpm lint:*`?"** The proposed answer ("trust ci.yml on tagged SHA") is reasonable but only safe if **branch protection or a workflow check enforces that the tagged SHA has a green ci.yml run**. There is no such enforcement today. A tag pushed to a SHA where ci.yml never ran (or failed) will publish anyway. See CRITICAL.
 
@@ -89,7 +89,7 @@ PASS-able verdict elements: stack fit, ecosystem alignment, single-PR cutover tr
 
 1. **Resolve Node version drift before pre.1.** Either bump `ci.yml` to Node 22 in this PR or pin `release.yml` at Node 20. Pick one — design currently mandates 22 in release.yml while leaving `ci.yml` at 20, contradicting its own "match ci.yml discipline" stated mitigation.
 2. **Make ci.yml green on the tagged SHA a precondition for release.yml.** Either (a) add `needs:` / `workflow_run` dependency on ci.yml, (b) re-run `pnpm test` + `pnpm lint:*` inside release.yml (extra ~30s, design's own listed open question), or (c) document a hard maintainer protocol "never tag a SHA without green ci.yml". Option (b) is lowest-risk and the design's "lean release.yml" philosophy is YAGNI here when the cost is one extra `pnpm` invocation.
-3. **Add pnpm silent-ignore footgun to the rewritten print copy.** New `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` body must explicitly state: "if `GH_BKIT_TOKEN` is unset at install time, pnpm v7.20+ ignores the entire `.npmrc` and falls back to npmjs.org → opaque 401." Without this, consumer migrations will mis-debug as "registry down" or "scope wrong".
+3. **Add pnpm silent-ignore footgun to the rewritten print copy.** New `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` body must explicitly state: "if `GH_BKIT_TOKEN_INSTALL` is unset at install time, pnpm v7.20+ ignores the entire `.npmrc` and falls back to npmjs.org → opaque 401." Without this, consumer migrations will mis-debug as "registry down" or "scope wrong".
 
 ## OPTIONAL
 
@@ -104,4 +104,4 @@ PASS-able verdict elements: stack fit, ecosystem alignment, single-PR cutover tr
 2. Per-consumer migration PRs (`app-gether-life`, `www-visitfrasercoast-com`) — design-input expressly out of scope; tracked as separate per-repo work after v0.4.0 ships.
 3. Dual-publish to npmjs.org for cost-free public mirror — design rejected; matches design-input "no dual-publish" mandate.
 4. Refactor of `checkBkitTokenSecret` / `detectVercelProject` into a polymorphic auth-check module — premature; design's surgical-edit stance is correct.
-5. Migration of `BKIT_READ_TOKEN` → `GH_BKIT_TOKEN` (already shipped in v0.2.2; hard prerequisite per design-input, not this PR's burden).
+5. Migration of `BKIT_READ_TOKEN` → `GH_BKIT_TOKEN_INSTALL` (already shipped in v0.2.2; hard prerequisite per design-input, not this PR's burden).

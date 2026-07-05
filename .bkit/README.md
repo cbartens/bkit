@@ -82,7 +82,7 @@ Add to your shell, the Cursor Cloud Agent dashboard, and `apps/web/.env.example`
 # ==========================================
 CURSOR_API_KEY=""
 ANTHROPIC_API_KEY=""
-GH_MCP_TOKEN=""
+GH_BKIT_TOKEN=""
 ```
 
 **Linear tracker (`bkit install --tracker=linear`):**
@@ -95,13 +95,13 @@ LINEAR_API_KEY=""
 LINEAR_WEBHOOK_SECRET=""
 CURSOR_API_KEY=""
 ANTHROPIC_API_KEY=""
-GH_MCP_TOKEN=""
+GH_BKIT_TOKEN=""
 ```
 
 <!-- prettier-ignore -->
 | Variable | Tracker | Where read | Purpose |
 | --- | --- | --- | --- |
-| `GH_MCP_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W). |
+| `GH_BKIT_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W). |
 | `GH_TOKEN` | all | `gh` CLI inside **CI workflow Bash only** (`GH_TOKEN: ${{ github.token }}`) | Not seeded in `.bkit/.env` — local `gh` uses `gh auth login` keyring (#287). |
 | `GITHUB_ISSUE_ID` | github | Injected from PR body metadata marker `<!-- bkit:issue=#NNN -->` | Identifies the linked GitHub issue. Injected automatically — do not set manually. |
 | `ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (e.g. cloud automation, CI runs). |
@@ -144,7 +144,7 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 
 ## Distribution & install
 
-Consumer-facing install, auth (`GH_BKIT_TOKEN` / `.npmrc` / GHA / Vercel), and CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) live in the root `README.md`.
+Consumer-facing install, auth (`GH_BKIT_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel), and CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) live in the root `README.md`.
 
 The `.agents/` directory is **canonical**. `bkit install` regenerates host-specific outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across the consumer repo.
 
@@ -248,9 +248,9 @@ Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cu
 
 **GitHub tracker:** Dispatch is via PR-label trigger — Cursor Automations "Pull request label changed" event. The `bkit:auto` label on the PR (written by `bkit-build`) triggers the dispatch; the phase label (`bkit:plan`, `bkit:build`, etc.) tells Cursor which workflow to run. Issue comments are posted via the GitHub MCP. `/bkit-design` and `/bkit-plan` have no PR so they are local-IDE-only on Cursor cloud for the GitHub tracker.
 
-**Requirements (Linear):** issue must carry the `Auto` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_MCP_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
+**Requirements (Linear):** issue must carry the `Auto` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_BKIT_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
 
-**Requirements (GitHub):** `GH_MCP_TOKEN`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY` in the dashboard env. Cursor GitHub App must be installed on the repo/org. `GITHUB_ISSUE_ID` is injected from the PR body metadata marker `<!-- bkit:issue=#NNN -->` — no manual setup.
+**Requirements (GitHub):** `GH_BKIT_TOKEN`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY` in the dashboard env. Cursor GitHub App must be installed on the repo/org. `GITHUB_ISSUE_ID` is injected from the PR body metadata marker `<!-- bkit:issue=#NNN -->` — no manual setup.
 
 ### From Claude Code (interactive — local)
 
@@ -266,7 +266,7 @@ Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 Claude reads issue details, comments, and plan files automatically via the tracker MCP.
 
-**Requirements:** `GH_MCP_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.8 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_BKIT_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.8 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 
@@ -278,7 +278,7 @@ Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`.
 
 Orchestrator session reads workflow file from `.cursor/commands/`. Subagents are dispatched via `Task` and run with whatever `model:` value is pinned in their frontmatter (no host-side override).
 
-**Requirements:** `GH_MCP_TOKEN` (GitHub tracker, default) or `LINEAR_API_KEY` (Linear tracker). Cursor account in good standing.
+**Requirements:** `GH_BKIT_TOKEN` (GitHub tracker, default) or `LINEAR_API_KEY` (Linear tracker). Cursor account in good standing.
 
 ---
 

@@ -52,7 +52,7 @@ The inline snapshots lock the exact format: banner width, header text, divider `
 - `runPreflight` + `formatChecklist` pipeline exercised entirely via function APIs — same logical assertions as the subprocess test (exit banner non-empty, contains `[blocker]`, DETECT, ACTION), never silently skips
 - Single blocker renders `1/1` and `(1 item)` correctly
 - `detectShellToken` spy observation pattern confirmed functional (ESM live-binding caveat documented in code comment)
-- `runPostInstallCheck` emits `gh-bkit-token-missing-shell` when `GH_BKIT_TOKEN` is explicitly deleted — proven without subprocess
+- `runPostInstallCheck` emits `gh-bkit-token-missing-shell` when `GH_BKIT_TOKEN_INSTALL` is explicitly deleted — proven without subprocess
 
 ### Cross-phase dedup Phase-3-wins (bonus coverage)
 

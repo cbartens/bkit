@@ -37,9 +37,9 @@ jobs:
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #
-    # GH_BKIT_TOKEN is declared at the job level so $GH_BKIT_TOKEN is available to the
+    # GH_BKIT_TOKEN_INSTALL is declared at the job level so $GH_BKIT_TOKEN_INSTALL is available to the
     # install step's `pnpm config set` (the REQUIRED GH Packages auth — pnpm >=10.34.3
-    # 401s on a project-.npmrc ${GH_BKIT_TOKEN} env-substitution) and to any later
+    # 401s on a project-.npmrc ${GH_BKIT_TOKEN_INSTALL} env-substitution) and to any later
     # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
     # registry mapping; `pnpm config set` writes the shell-expanded literal token into
     # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
@@ -47,7 +47,7 @@ jobs:
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
-      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     # bkit:end verbose-ci-env
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -185,12 +185,12 @@ jobs:
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         # Write the GH Packages auth token into pnpm's user-level config before install
-        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN} ref).
+        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN_INSTALL} ref).
         run: |
-          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
           pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
 
       # Static checks first — they read the source tree and must scan it CLEAN.
       # Vitest/build run AFTER (below): they write coverage, dist/, and other
@@ -282,7 +282,7 @@ jobs:
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
-      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -364,10 +364,10 @@ jobs:
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: |
-          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
           pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
       # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.

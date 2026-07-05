@@ -8,7 +8,7 @@
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
-        "Authorization": "Bearer ${GH_MCP_TOKEN}"
+        "Authorization": "Bearer ${GH_BKIT_TOKEN}"
       }
     }
   }

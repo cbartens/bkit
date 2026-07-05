@@ -103,12 +103,13 @@
   // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
   // by consumer Renovate — scanning them only produces onboarding noise (and an
   // unauthable `@cbartens/bkit` lookup). See issue #132.
-  // `bkit-cloud.yml` is bkit-owned too and tag-pinned by design (new SHAs arrive
-  // via `bkit install`). It MUST be ignored here, not merely fenced by the
-  // packageRule below: `enabled: false` suppresses version bumps but the
-  // github-actions manager still SCANS the file and applies its tag->SHA
-  // pinDigests, recreating a "Pin dependencies" PR on every scan. ignorePaths
-  // stops the scan outright.
+  // `bkit-cloud.yml` and (on self-hosted Renovate) `renovate.yml` are bkit-owned
+  // too and SHA-pinned by design (new SHAs arrive via `bkit install`). They MUST be
+  // ignored here, not merely fenced by the packageRule below: `enabled: false`
+  // suppresses version bumps but the github-actions manager still SCANS the file and
+  // applies its tag->SHA pinDigests, recreating a "Pin dependencies" PR on every
+  // scan. ignorePaths stops the scan outright. (`renovate.yml` is absent on
+  // Mend-runner installs, so ignoring it there is a harmless no-op.)
   ignorePaths: [
     "**/node_modules/**",
     "**/dist/**",
@@ -116,6 +117,7 @@
     ".bkit/templates/**",
     ".agents/skills/**",
     ".github/workflows/bkit-cloud.yml",
+    ".github/workflows/renovate.yml",
   ],
 
   // ─────────────────────────────────────────────────────────────────────
@@ -147,6 +149,7 @@
     {
       matchFileNames: [
         ".github/workflows/bkit-cloud.yml",
+        ".github/workflows/renovate.yml",
       ],
       enabled: false,
     },

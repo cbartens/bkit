@@ -6,7 +6,7 @@ Verdict: PASS
 
 ## Overview
 
-The design shifts `@cbartens/bkit` distribution from a git-dependency (`github:cbartens/bkit#vX.Y.Z`) to the GitHub Packages npm registry, eliminating private-repo clone friction, auth-shim complexity, and lifecycle-hook fragility that plagued v0.3.x. A new tag-push-triggered `release.yml` publishes via `npm publish` using the built-in `GITHUB_TOKEN`. Consumers migrate via `.npmrc` + `GH_BKIT_TOKEN` env (expanded scope to `read:packages`), standard npm-registry semantics. v0.3.x remains consumable for unmigrated consumers; v0.4.0 is a hard cutover with no dual-publish. Installer prints updated to guide consumers through `.npmrc` setup instead of git-shim instructions. Two pre-release tags (`v0.4.0-pre.1` pipeline-only, `v0.4.0-pre.2` prints+docs) isolate risk before production `v0.4.0` cut.
+The design shifts `@cbartens/bkit` distribution from a git-dependency (`github:cbartens/bkit#vX.Y.Z`) to the GitHub Packages npm registry, eliminating private-repo clone friction, auth-shim complexity, and lifecycle-hook fragility that plagued v0.3.x. A new tag-push-triggered `release.yml` publishes via `npm publish` using the built-in `GITHUB_TOKEN`. Consumers migrate via `.npmrc` + `GH_BKIT_TOKEN_INSTALL` env (expanded scope to `read:packages`), standard npm-registry semantics. v0.3.x remains consumable for unmigrated consumers; v0.4.0 is a hard cutover with no dual-publish. Installer prints updated to guide consumers through `.npmrc` setup instead of git-shim instructions. Two pre-release tags (`v0.4.0-pre.1` pipeline-only, `v0.4.0-pre.2` prints+docs) isolate risk before production `v0.4.0` cut.
 
 ## Design Quality
 
@@ -59,14 +59,14 @@ The design shifts `@cbartens/bkit` distribution from a git-dependency (`github:c
 1. **`GITHUB_TOKEN` permissions mismatch on first publish** — mitigated by pre.1 smoke tag (zero-cost rollback if fail).
 2. **`check:dist` divergence via Node version drift** — resolved in v2 by pinning release.yml to Node 20 (matching ci.yml).
 3. **Pre-release versions visible in registry indefinitely** — acceptable for private package with `^0.4.0` semver (consumers won't pin to `pre.*` accidentally).
-4. **`GH_BKIT_TOKEN` PAT scope drift on consumers** — mitigated by installer print copy calling out scope explicitly + per-consumer migration guide.
+4. **`GH_BKIT_TOKEN_INSTALL` PAT scope drift on consumers** — mitigated by installer print copy calling out scope explicitly + per-consumer migration guide.
 5. **pnpm v7.20+ silently ignores `.npmrc` on unset env** — mitigated by rewritten print constants explicitly enumerating this footgun verbatim so consumer AI agents map symptom → cause.
 6. **Lifecycle-hook re-introduction by future contributors** — documented invariant in decisions.md + knowledge.md; code review must catch.
 7. **`npm deprecate` untested in this codebase** — flagged for first-deprecation event, no pre-ship action needed.
 
 **Open questions resolved post-review.** Design lists one open question: "Should release.yml run `pnpm test` and `pnpm lint:*`?" Both reviews flagged this as creating DoD/design mismatch (DoD says "gated by typecheck/test/check:dist" but design proposed "lean release.yml trusting prior CI"). Design-v2 resolves: release.yml **does** run the full check suite (typecheck+test+format+lint+check:dist) in-line before publishing. This becomes the single source of truth — release.yml does NOT trust prior CI; it re-runs the gate set on the tagged SHA.
 
-**Dependencies/assumptions stated.** The design explicitly lists three dependencies: (1) `cbartens/bkit` repo has `packages: write` available to built-in `GITHUB_TOKEN`, (2) `BKIT_READ_TOKEN` → `GH_BKIT_TOKEN` rename (v0.2.2) landed for all consumers already, (3) Node 20 + pnpm 10.x on release runner with engines.node = ">=20". All are reasonable; (2) is a hard prerequisite per design-input already shipped.
+**Dependencies/assumptions stated.** The design explicitly lists three dependencies: (1) `cbartens/bkit` repo has `packages: write` available to built-in `GITHUB_TOKEN`, (2) `BKIT_READ_TOKEN` → `GH_BKIT_TOKEN_INSTALL` rename (v0.2.2) landed for all consumers already, (3) Node 20 + pnpm 10.x on release runner with engines.node = ">=20". All are reasonable; (2) is a hard prerequisite per design-input already shipped.
 
 ## Scope
 
@@ -82,7 +82,7 @@ No action items required. Design-v2-reviewed has resolved all critical concerns 
 
 1. **Node version mismatch**: Resolved to Node 20 (matching ci.yml), not 22.
 2. **DoD/design gate mismatch**: Resolved — release.yml runs full check suite (typecheck+test+format+lint+check:dist) before publish.
-3. **pnpm silent-ignore footgun**: Mandated in print copy — both `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` and `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` must explicitly state pnpm's silent-ignore symptom.
+3. **pnpm silent-ignore footgun**: Mandated in print copy — both `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` and `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` must explicitly state pnpm's silent-ignore symptom.
 4. **bkit-self ci.yml cleanup (optional)**: Design notes removal of legacy `Configure private-repo auth` step from lines 23-24 of `.github/workflows/ci.yml` as aligned cleanup (same step removed from template). Not required but fits in same PR.
 
 The design is ready to enter planning. Pre.1 smoke tag is the validation gate; implementation can proceed immediately per the suggested implementation order in design-input.md.

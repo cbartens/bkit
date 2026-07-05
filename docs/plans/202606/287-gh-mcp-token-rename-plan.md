@@ -1,10 +1,10 @@
-# GH_MCP_TOKEN Rename Implementation Plan
+# GH_BKIT_TOKEN Rename Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement task-by-task.
 
-**Goal:** Rename the local/cloud MCP GitHub PAT from `GH_TOKEN` to `GH_MCP_TOKEN` so direnv no longer overrides `gh auth login` keyring auth (#287).
+**Goal:** Rename the local/cloud MCP GitHub PAT from `GH_TOKEN` to `GH_BKIT_TOKEN` so direnv no longer overrides `gh auth login` keyring auth (#287).
 
-**Architecture:** MCP configs reference `${GH_MCP_TOKEN}`; `.bkit/.env.example` seeds the new name; preflight/postinstall advisories check `GH_MCP_TOKEN`. CI workflows keep `GH_TOKEN: ${{ github.token }}` unchanged (GHA convention for `gh` in Actions).
+**Architecture:** MCP configs reference `${GH_BKIT_TOKEN}`; `.bkit/.env.example` seeds the new name; preflight/postinstall advisories check `GH_BKIT_TOKEN`. CI workflows keep `GH_TOKEN: ${{ github.token }}` unchanged (GHA convention for `gh` in Actions).
 
 **Tech Stack:** TypeScript (bkit install engine), JSON templates, markdown docs.
 
@@ -19,15 +19,15 @@
 
 ## Task 2: MCP JSON templates
 
-- [x] `.bkit/templates/.mcp.json` — `${GH_MCP_TOKEN}`
-- [x] `.bkit/templates/.cursor/mcp.json` — `${GH_MCP_TOKEN}`
+- [x] `.bkit/templates/.mcp.json` — `${GH_BKIT_TOKEN}`
+- [x] `.bkit/templates/.cursor/mcp.json` — `${GH_BKIT_TOKEN}`
 
 ## Task 3: Install engine (`.bkit/src/`)
 
 - [x] `bkit-postinstall.ts` — `detectShellGhMcpToken`, advisory IDs `gh-mcp-token-*`, project board copy
-- [x] `bkit-preflight.ts` — `GH_MCP_TOKEN` in REQUIRED_KEYS; token prose; legacy `GH_TOKEN` migration advisory
+- [x] `bkit-preflight.ts` — `GH_BKIT_TOKEN` in REQUIRED_KEYS; token prose; legacy `GH_TOKEN` migration advisory
 - [x] `bkit-modules.ts` — OpenCode MCP entry, GUI-isolation, cloud env strings
-- [x] `bkit-cli.ts` — `launchctl setenv GH_MCP_TOKEN`
+- [x] `bkit-cli.ts` — `launchctl setenv GH_BKIT_TOKEN`
 - [x] `bkit-install.ts` — comment only
 
 ## Task 4: Tests

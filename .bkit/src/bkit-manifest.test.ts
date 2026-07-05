@@ -12,6 +12,9 @@ import {
   CLOUD_MANIFEST_OPENCODE,
   OPENCODE_MANIFEST,
   parseCloudAgents,
+  parseRenovateRunner,
+  RENOVATE_RUNNERS,
+  DEFAULT_RENOVATE_RUNNER,
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
@@ -349,6 +352,48 @@ describe("getInstallManifest", () => {
 // ---------------------------------------------------------------------------
 // getModuleManifest — single-module accessor
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// parseRenovateRunner + RENOVATE_MANIFEST — self-hosted runner axis (#325)
+// ---------------------------------------------------------------------------
+
+describe("parseRenovateRunner — value space", () => {
+  it("accepts mend and self", () => {
+    expect(parseRenovateRunner("mend")).toBe("mend");
+    expect(parseRenovateRunner("self")).toBe("self");
+  });
+  it("rejects unknown / empty / non-string", () => {
+    expect(parseRenovateRunner("fly")).toBeNull();
+    expect(parseRenovateRunner("")).toBeNull();
+    expect(parseRenovateRunner(null)).toBeNull();
+    expect(parseRenovateRunner(undefined)).toBeNull();
+    expect(parseRenovateRunner(42)).toBeNull();
+  });
+  it("default runner is mend", () => {
+    expect(DEFAULT_RENOVATE_RUNNER).toBe("mend");
+    expect(RENOVATE_RUNNERS).toContain("mend");
+    expect(RENOVATE_RUNNERS).toContain("self");
+  });
+});
+
+describe("RENOVATE_MANIFEST — self-hosted workflow entry", () => {
+  it("ships .github/workflows/renovate.yml as a Tier-1 byte-equal renovate file", () => {
+    const entries = getModuleManifest("renovate");
+    const wf = entries.find((e) => e.path === ".github/workflows/renovate.yml");
+    expect(wf).toBeDefined();
+    expect(wf!.format).toBe("byte-equal-text");
+    expect(wf!.module).toBe("renovate");
+    // Canonical (auto-overwritten), NOT a seed-or-print consumer-owned file.
+    expect(wf!.seedOrPrint ?? false).toBe(false);
+  });
+  it("still owns renovate.json5 (canonical) and renovate-local.json5 (seed-or-print)", () => {
+    const entries = getModuleManifest("renovate");
+    const canonical = entries.find((e) => e.path === ".github/renovate.json5");
+    const local = entries.find((e) => e.path === ".github/renovate-local.json5");
+    expect(canonical?.seedOrPrint ?? false).toBe(false);
+    expect(local?.seedOrPrint).toBe(true);
+  });
+});
 
 describe("getModuleManifest", () => {
   const ALL_MODULES: ModuleName[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];

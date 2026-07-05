@@ -592,7 +592,7 @@ None.
 
 ##### [MODIFY] `.agents/templates/.github/workflows/ci.yml`
 
-- Wrap **exactly** the existing `Install Dependencies` step (which carries the `GH_BKIT_TOKEN` env block — bkit's auth surface) AND the existing `Run Bkit Check` step in `# bkit:start` / `# bkit:end` (YAML comment syntax). Consumer's surrounding job structure (other steps — `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan`; custom env; custom matrix) is untouched. **Note:** the plan-input charter referenced a `setup-auth` step name; this template does not have one. The `Install Dependencies` step IS the auth surface (it sets `GH_BKIT_TOKEN` in `env`). Marker covers `Install Dependencies` + `Run Bkit Check`. The intervening consumer steps (typecheck/test/format/vale/slop) are NOT inside the marker block.
+- Wrap **exactly** the existing `Install Dependencies` step (which carries the `GH_BKIT_TOKEN_INSTALL` env block — bkit's auth surface) AND the existing `Run Bkit Check` step in `# bkit:start` / `# bkit:end` (YAML comment syntax). Consumer's surrounding job structure (other steps — `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan`; custom env; custom matrix) is untouched. **Note:** the plan-input charter referenced a `setup-auth` step name; this template does not have one. The `Install Dependencies` step IS the auth surface (it sets `GH_BKIT_TOKEN_INSTALL` in `env`). Marker covers `Install Dependencies` + `Run Bkit Check`. The intervening consumer steps (typecheck/test/format/vale/slop) are NOT inside the marker block.
 - **Rationale:** would have caught the `app-gether-life` regression where the `pnpm bkit check` step was silently dropped.
 - **Marker location precise spec:**
   - Insert `# bkit:start` immediately above the `- name: Install Dependencies` line (currently line 23 of the template). The marker is at the same indentation as the `- name:` line (6 spaces).
@@ -606,7 +606,7 @@ None.
     # ... (existing body — preserved byte-identical)
     run: pnpm install --frozen-lockfile
     env:
-      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
 
   - name: Run Typecheck
     # ... (existing body)
@@ -875,7 +875,7 @@ _Code-only — `git revert` sufficient. Document rollback path in DE-16 "Trade-o
 
 - [ ] **Task 17a — Verify markers already present on reclassified `markered-text` files.** No marker-addition; assertion-only. Run `grep -l 'bkit:start' .agents/templates/.claude/hooks/preflight.sh .agents/templates/.cursor/hooks/preflight.sh .agents/templates/gitignore .agents/templates/.prettierignore .agents/templates/.husky/pre-commit` and confirm all five paths print. Run `grep -c 'bkit:start' <path>` for each — must return `1`. If any file is missing markers, the manifest reclassification (Task 19) MUST exclude it OR Task 17 must be extended; do not silently add markers as part of this task.
 
-- [ ] **Task 18 — Add Group B partial-ownership markers.** Edit `.agents/templates/.github/workflows/ci.yml`: insert `# bkit:start` immediately above the existing `- name: Install Dependencies` step (line 23 in current template) and `# bkit:end` immediately below the existing `- name: Run Bkit Check` step's `run:` line (line 49). The marker block covers `Install Dependencies` → `Run Bkit Check` inclusive (template currently has no `setup-auth` step — the `Install Dependencies` step IS the auth surface via its `GH_BKIT_TOKEN` env block). See the exact YAML in Architecture & Component Changes → Phase 2 Templates → Group B → `.github/workflows/ci.yml`. Edit `.agents/templates/.vale.ini` (wrap `StylesPath`/`Packages`/`MinAlertLevel`/House style enable). Verify: marker block content matches the spec exactly; surrounding consumer-territory comments remain. Verify: `grep -c '^        # bkit:start' .agents/templates/.github/workflows/ci.yml` returns `1`.
+- [ ] **Task 18 — Add Group B partial-ownership markers.** Edit `.agents/templates/.github/workflows/ci.yml`: insert `# bkit:start` immediately above the existing `- name: Install Dependencies` step (line 23 in current template) and `# bkit:end` immediately below the existing `- name: Run Bkit Check` step's `run:` line (line 49). The marker block covers `Install Dependencies` → `Run Bkit Check` inclusive (template currently has no `setup-auth` step — the `Install Dependencies` step IS the auth surface via its `GH_BKIT_TOKEN_INSTALL` env block). See the exact YAML in Architecture & Component Changes → Phase 2 Templates → Group B → `.github/workflows/ci.yml`. Edit `.agents/templates/.vale.ini` (wrap `StylesPath`/`Packages`/`MinAlertLevel`/House style enable). Verify: marker block content matches the spec exactly; surrounding consumer-territory comments remain. Verify: `grep -c '^        # bkit:start' .agents/templates/.github/workflows/ci.yml` returns `1`.
 
 - [ ] **Task 18a — Verify `.husky/pre-push` markers.** Inspect existing markers (lines 3–7). If any new bkit content needs wrapping, expand block; otherwise no change. Verify: `pnpm bkit check` against worktree itself reports zero drift on `.husky/pre-push`.
 

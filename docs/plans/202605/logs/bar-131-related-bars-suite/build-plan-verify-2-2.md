@@ -23,7 +23,7 @@ None. Both previously-failing items remediated and verified by direct grep + rea
 
 2. Gap 2 (--auto-revert integration test missing) — RESOLVED.
    - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-install.integration.test.ts:592-660` adds Scenario 8.
-   - Subprocess spawns `bkit install --core --auto-revert` against Phase 3 blocker fixture (ci.yml missing GH_BKIT_TOKEN env + `.npmrc` referencing `${GH_BKIT_TOKEN}`).
+   - Subprocess spawns `bkit install --core --auto-revert` against Phase 3 blocker fixture (ci.yml missing GH_BKIT_TOKEN_INSTALL env + `.npmrc` referencing `${GH_BKIT_TOKEN_INSTALL}`).
    - Asserts `result.status === 1`, `combined` contains "--auto-revert" message, and Tier-1 `.agents/.bkit-version` is absent post-revert (byte-identical-to-pre-install).
 
 ## Sub-Plans Verified
