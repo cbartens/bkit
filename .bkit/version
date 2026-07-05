@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "4.2.0",
+  "pinnedVersion": "4.2.1",
   "tier3Hashes": {
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
@@ -7,10 +7,10 @@
     ".claude/hooks/gateguard.cjs": "8c4a0a8f1aca77952dc3d015b4ae7212df1fa537d538f167468a342233513968",
     ".opencode/plugin/gateguard.js": "7b88afead57494de4918f5304b89ed797c3253350f40ade20eeeb70f2f67e25d",
     ".github/workflows/bkit-cloud.yml": "64ead416af070fe866a9f41eed40b629991b258d658406a8149fd059eb79c56a",
-    ".github/workflows/renovate.yml": "c0ec9b35762649fcdec85e745a47837848b1f2db2bd26d5a5de6bcfb0b620402"
+    ".github/workflows/renovate.yml": "75e5412307bc3c7e5100ed0f696086e4c42232e55b5d8920af6d05c5785aaf35"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "212810be4d617c2a1984939cd09492096ed43427d686c078b2b78525162b5919",
+    "docs/deployments.md": "b558806f7cc49ef543220a81527d99ef657973e7c1a60158c8bf81261025af4d",
     "docs/testing.md": "507d2ad209c97e6722ef77001d199c58f6ab173fa08e222e05aaa4651442b967",
     ".claude/settings.json": "0a10fe01fd6050fc48e3b52357eb2603a2f149ef90efb286f67661b2ab5eeb7c",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -54,7 +54,7 @@
     "docs/architecture.md": "bce27229f585d0923812239151435b891247ba2fb8047780936a0aa46c962feb",
     "docs/completed.md": "858741e31d97e651a073a97843f3e3a73ff105228e0b086ef92365ec91648e47",
     "docs/decisions.md": "f82dd76871d96ea27c68afcfc85b09d267ac53a3662803aa7deecc9563858a50",
-    "docs/knowledge.md": "a97252edeb571bfbdb41f7af2e15647249ba55b15fc0f4790313daba8fe2241d",
+    "docs/knowledge.md": "eca5181b0a59e126eac80230dc218c7686165ba3101e076b3aab61ba39d4f554",
     "docs/pending.md": "675f74b75105ddfde96b5a022854fa726516ab756ba3ec32e83f595c81364ba4",
     "docs/technology.md": "ef65b067fb1650138d748ae1235934f9589a7f7007ad0ac6ce2f19327b3c46df",
     ".github/workflows/bkit-cloud.yml": "64ead416af070fe866a9f41eed40b629991b258d658406a8149fd059eb79c56a",
@@ -70,6 +70,6 @@
     ".bkit/scripts/bkit-protect-main.sh": "30759666aa21a4cdf4a3a8211d3e389ceb79cb390724486906e796a7d6ab3a4f",
     ".bkit/scripts/bkit-slop-delta.sh": "4962c4cbd0421f3debb167450a5f1a39aa836b008bdf66480213400d6499d337",
     ".bkit/scripts/bkit-slop-type-suppression.mjs": "f9eb65fe10286e59e81950e7f9e980a2b04ebce8b4485344bf3b698eba91934b",
-    ".github/workflows/renovate.yml": "c0ec9b35762649fcdec85e745a47837848b1f2db2bd26d5a5de6bcfb0b620402"
+    ".github/workflows/renovate.yml": "75e5412307bc3c7e5100ed0f696086e4c42232e55b5d8920af6d05c5785aaf35"
   }
 }

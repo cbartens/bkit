@@ -14,7 +14,7 @@ tools:
   websearch: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 **Scope:** As specified by input and Read/Update/Create section.
