@@ -162,7 +162,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 | --- | --- | --- | --- |
 | `renderCloudWorkflow` Linear render branch (`isLinear` mcp/secret substitution) `.agents/scripts/bkit-modules.ts:1910-1921` | GitHub-only render (drop `@@CLOUD_TRACKER_*@@` Linear paths; add `id-token`) | DELETE | `bkit-cloud.yml` is GitHub-tracker-only; the Linear branch is vestigial (FINAL SCOPE "Vestigial Linear branch removed"). |
 | `bkit-cloud.yml:22-25` "`github.token` handles all repo git/gh; no App" rationale (canonical + template) | App-auth framing (`id-token: write` + App required) | DELETE | FINAL SCOPE decision 1: delete the framing; commits/PRs/comments appear as the App. |
-| `bkit-modules.ts:2075` "Do NOT add `GH_BKIT_TOKEN` … github.token" advisory line | App-required advisory text | DELETE | Same as above; advisory must state App + `/install-github-app` required (decision 2). |
+| `bkit-modules.ts:2075` "Do NOT add `GH_BKIT_TOKEN_INSTALL` … github.token" advisory line | App-required advisory text | DELETE | Same as above; advisory must state App + `/install-github-app` required (decision 2). |
 | Bare `Auto` label in `.agents/templates/.claude/hooks/preflight.sh:8,109-111` + `.agents/templates/.cursor/hooks/preflight.sh:8,96-98` | `bkit:auto` | DELETE | Label convention: `bkit:` prefix on every tracker (FINAL SCOPE Labels row; migrate bare `Auto`). |
 | Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\|cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. |
 
@@ -174,7 +174,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 > bkit is a tooling repo, not the app-gether-life app — the template's API-route/RLS/Zod rows do not apply. Relevant rows:
 
 - [x] **Webhook / event trigger** — `bkit-cloud.yml` `workflow_run` and `claude.yml` `issue_comment` are GitHub-native events; the two-tier gate (`bkit [auto route]` marker + in-job `bkit:auto` re-check) is the trust boundary. No raw webhook secret to verify (GitHub signs events).
-- [x] **New secret/env var** — `ANTHROPIC_API_KEY` (existing) is the only required secret; `id-token: write` is an OIDC grant, not a stored secret. No new stored secret. `GH_BKIT_TOKEN` must NOT be added to `bkit-cloud.yml` (package-install scoped, no consumer-repo access).
+- [x] **New secret/env var** — `ANTHROPIC_API_KEY` (existing) is the only required secret; `id-token: write` is an OIDC grant, not a stored secret. No new stored secret. `GH_BKIT_TOKEN_INSTALL` must NOT be added to `bkit-cloud.yml` (package-install scoped, no consumer-repo access).
 - [x] **Auth model** — `claude-code-action@v1` authenticates as the Claude App via OIDC (federated, no long-lived token). Confirm `permissions:` block grants `id-token: write` and no broader scope than needed.
 
 _No new API routes, DB writes, or user-input schemas — bkit ships workflow + CLI + docs only._

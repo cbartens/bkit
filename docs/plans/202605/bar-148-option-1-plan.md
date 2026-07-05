@@ -224,7 +224,7 @@ None — plan adds without replacing.
 - [x] **New secret/env var** — `ANTHROPIC_API_KEY` is added to consumer-side documentation in `docs/deployments.md` template (under § "Required GHA secrets") with kill-date-free guidance. Stored in GHA repo secrets per consumer.
 - [x] **Webhook** — `workflow_run` is GHA-internal; no signature verification needed. Filtered to `feat/**` branches and `conclusion in (success, failure)` to limit dispatch surface.
 - [x] **PII** — router never logs raw PII. Only `{FID}`, `PR_NUMBER`, `headSha`, GHA run URL flow into the Linear comment.
-- [x] **Secrets** — `ANTHROPIC_API_KEY` and `GH_BKIT_TOKEN` (existing) referenced via `${{ secrets.* }}`; never echoed.
+- [x] **Secrets** — `ANTHROPIC_API_KEY` and `GH_BKIT_TOKEN_INSTALL` (existing) referenced via `${{ secrets.* }}`; never echoed.
 - [x] **Permissions hardening** — router job declares `permissions: { contents: read, pull-requests: write, issues: write, actions: read }` only.
 - [x] **Allowed tools sandbox** — `claude_args` passes `--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__linear__*` to lock the runner-side Claude session to the same surface that `.claude/settings.json` already grants the local orchestrator.
 
@@ -357,10 +357,10 @@ Plan executes Path A; Path B documented for traceability. Schema extension is ad
         - uses: pnpm/action-setup@v4
         - uses: cbartens/bkit/.github/actions/setup-auth@v1
           with:
-            token: ${{ secrets.GH_BKIT_TOKEN }}
+            token: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
         - run: pnpm install --frozen-lockfile
           env:
-            GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+            GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
         - uses: anthropics/claude-code-action@v1
           env:
             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -379,7 +379,7 @@ Plan executes Path A; Path B documented for traceability. Schema extension is ad
 
 #### [NEW] `.agents/templates/.github/workflows/bkit-ci-router.yml`
 
-- **Purpose:** Tier-3 seed-or-print template installed into consumer repos by `bkit install`. Token-substituted (none currently — workflow has no consumer-specific tokens beyond inherited `GH_BKIT_TOKEN`).
+- **Purpose:** Tier-3 seed-or-print template installed into consumer repos by `bkit install`. Token-substituted (none currently — workflow has no consumer-specific tokens beyond inherited `GH_BKIT_TOKEN_INSTALL`).
 - Body matches `[NEW] .github/workflows/bkit-ci-router.yml` above 1:1.
 - Installer hashes the rendered template into `.agents/.bkit-version#canonicalHashes` per DE-10.
 

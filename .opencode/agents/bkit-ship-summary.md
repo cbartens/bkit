@@ -9,7 +9,7 @@ tools:
   edit: true
 reasoningEffort: none
 ---
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a ship cycle for completion and follow-up needs.
 **Scope:** As specified by input and Read/Update/Create section.

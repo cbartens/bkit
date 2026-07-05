@@ -817,8 +817,8 @@ export function detectMissingDotenv(cwd, tracker = "linear") {
     if (fs.existsSync(envPath))
         return null;
     const tokens = tracker === "linear"
-        ? "GH_MCP_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY"
-        : "GH_MCP_TOKEN, GH_BKIT_TOKEN";
+        ? "GH_BKIT_TOKEN, GH_BKIT_TOKEN_INSTALL, LINEAR_API_KEY"
+        : "GH_BKIT_TOKEN, GH_BKIT_TOKEN_INSTALL";
     return {
         id: "mcp-env-missing-dotenv",
         severity: "advisory",
@@ -851,11 +851,11 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
     }
     const REQUIRED_KEYS = [
         {
-            key: "GH_MCP_TOKEN",
+            key: "GH_BKIT_TOKEN",
             description: "fine-grained PAT for the GitHub MCP server (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write)",
         },
         {
-            key: "GH_BKIT_TOKEN",
+            key: "GH_BKIT_TOKEN_INSTALL",
             description: "classic PAT with read:packages scope for authenticating to the GitHub Packages npm registry (@cbartens/* packages)",
         },
         // LINEAR_API_KEY only matters under the Linear tracker (issue #138) — a github/none
@@ -932,11 +932,11 @@ export function detectDirenvMissing(cwd, tracker = "linear") {
         return null;
     // LINEAR_API_KEY only matters under the Linear tracker (issue #138).
     const editKeys = tracker === "linear"
-        ? "GH_BKIT_TOKEN, GH_MCP_TOKEN, LINEAR_API_KEY"
-        : "GH_BKIT_TOKEN, GH_MCP_TOKEN";
+        ? "GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN, LINEAR_API_KEY"
+        : "GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN";
     const exportKeys = tracker === "linear"
-        ? "GH_BKIT_TOKEN / GH_MCP_TOKEN / LINEAR_API_KEY"
-        : "GH_BKIT_TOKEN / GH_MCP_TOKEN";
+        ? "GH_BKIT_TOKEN_INSTALL / GH_BKIT_TOKEN / LINEAR_API_KEY"
+        : "GH_BKIT_TOKEN_INSTALL / GH_BKIT_TOKEN";
     return {
         id: "mcp-env-direnv-missing",
         severity: "advisory",
@@ -985,7 +985,7 @@ export function detectDirenvNotAllowed(cwd, tracker = "linear") {
             id: "mcp-env-direnv-not-allowed",
             severity: "advisory",
             detect: "direnv is installed but the .envrc in this repo is blocked. .bkit/.env is not being auto-loaded.",
-            action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "GH_MCP_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_MCP_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
+            action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "GH_BKIT_TOKEN, GH_BKIT_TOKEN_INSTALL, and LINEAR_API_KEY" : "GH_BKIT_TOKEN and GH_BKIT_TOKEN_INSTALL"} into your shell whenever you cd into the repo.`,
         };
     }
     return null;

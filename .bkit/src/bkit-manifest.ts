@@ -111,6 +111,38 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 }
 
 // ---------------------------------------------------------------------------
+// Renovate runner — WHERE Renovate executes (#325)
+// ---------------------------------------------------------------------------
+
+/**
+ * Where Renovate runs, chosen via
+ * `bkit install --renovate=<name>`.
+ * - `mend`       — Mend Community Cloud hosted GitHub App (default). No workflow
+ *                  file; activated by installing the App (the Phase A/B flow).
+ * - `self` — a bkit-managed `.github/workflows/renovate.yml` runs
+ *                  `renovatebot/github-action` on `ubuntu-latest` (~16 GB), the
+ *                  escape hatch for repos that OOM on Mend's 3 GB hosted microvm
+ *                  (physical `kernel-out-of-memory`; #308, KN-41).
+ *
+ * Orthogonal to `depUpdater` (which is WHAT = renovate); this is WHERE. Recorded
+ * in `package.json` `bkit.renovateRunner`. Like `cloudAgents`, file presence
+ * (`.github/workflows/renovate.yml`) is the authoritative "self-hosted" signal;
+ * the manifest field only distinguishes the deliberate mode on a re-install.
+ */
+export const RENOVATE_RUNNERS = ["mend", "self"] as const;
+export type RenovateRunner = (typeof RENOVATE_RUNNERS)[number];
+
+/** Default when consumer manifest has no `bkit.renovateRunner` field. */
+export const DEFAULT_RENOVATE_RUNNER: RenovateRunner = "mend";
+
+/** Narrow an unknown string to `RenovateRunner` or return `null` if invalid. */
+export function parseRenovateRunner(value: unknown): RenovateRunner | null {
+  return typeof value === "string" && (RENOVATE_RUNNERS as readonly string[]).includes(value)
+    ? (value as RenovateRunner)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
 
@@ -327,6 +359,16 @@ const RENOVATE_MANIFEST: ManifestEntry[] = [
     module: "renovate",
     seedOrPrint: true,
   },
+  // .github/workflows/renovate.yml — self-hosted GitHub Actions runner (#325).
+  // Written by runRenovateModule ONLY when renovateRunner === "self"; on a
+  // "mend" install it is hash-guarded-reclaimed (deleted while byte-equal to the
+  // canonical template, preserved once the consumer edits it) so migrating back to
+  // Mend never leaves a second, double-running Renovate. Kept in this SINGLE union
+  // manifest (no mend/self split, unlike CLOUD_MANIFEST): a mend consumer
+  // simply never has the file on disk, so union-removal of an absent file on
+  // uninstall is a no-op — the DECISION-D rationale documented above. Canonical
+  // Tier-1 byte-equal (force-overwritten every install), exactly like bkit-cloud.yml.
+  { path: ".github/workflows/renovate.yml", format: "byte-equal-text", module: "renovate" },
 ];
 
 // Dependabot is opt-in via `bkit install --dependency=dependabot` — first-party GitHub

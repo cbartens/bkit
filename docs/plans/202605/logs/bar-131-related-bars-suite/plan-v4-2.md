@@ -66,7 +66,7 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 | Tier-3 `ci.yml` modified by consumer | Preserve whole; skip unless `--force` |
 | `.bkitignore` lists a Tier-3 file | `bkit check` exits 0 even if drift exists |
 | Phase 3 blocker on `--auto-revert` install | uninstall in-process, exit 1 |
-| Empty `GH_BKIT_TOKEN=""` vs unset | Action text differentiates (B4 — already shipped in sub-plan-1) |
+| Empty `GH_BKIT_TOKEN_INSTALL=""` vs unset | Action text differentiates (B4 — already shipped in sub-plan-1) |
 | Tier-3 hash retro-fit (consumer pre-dates `tier3Hashes` field) | Treat as unknown -> preserve-default; tested in P2.T3 |
 | Removed `--module <name>` flag (P2.T6) | Not user-visible (flag never shipped); not a semver-major break |
 

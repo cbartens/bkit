@@ -37,7 +37,7 @@ Failures: 4
 
 ### Nits (optional)
 
-- [P1.T6] Action text instruction "instruct `export GH_BKIT_TOKEN=…`" — partial wording. Spell out the recommended one-liner so the test fixture asserts on a concrete string.
+- [P1.T6] Action text instruction "instruct `export GH_BKIT_TOKEN_INSTALL=…`" — partial wording. Spell out the recommended one-liner so the test fixture asserts on a concrete string.
 
 - [P2.T6] Long scope embedded in checkbox bullet — readability suffers. Consider splitting Flag-style decision into a sub-bullet or separate rationale block.
 

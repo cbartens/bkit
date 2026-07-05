@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
 **Scope:** As specified by input and Read/Update/Create section.

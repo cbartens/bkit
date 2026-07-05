@@ -35,7 +35,7 @@ Walked changed-files vs `docs/*.md` references. Source surfaces (post-merge tree
 | `.github/workflows/test-action.yml` | NEW — meta-test for setup-auth manual smoke. Surfaced in DE-11. |
 | `.agents/templates/.claude/settings.json` | RESHAPED — `__bkit__` envelope at top. Surfaced in DE-7, DE-8, KN-8. |
 | `.agents/templates/.cursor/hooks.json` | RESHAPED — `__bkit__` envelope at top. Surfaced in DE-7, DE-8, KN-8. |
-| `.agents/templates/.github/workflows/ci.yml` | EXTENDED — `setup-auth@v1` step ADDED, inline `env: GH_BKIT_TOKEN` block RETAINED. Surfaced in DE-11. |
+| `.agents/templates/.github/workflows/ci.yml` | EXTENDED — `setup-auth@v1` step ADDED, inline `env: GH_BKIT_TOKEN_INSTALL` block RETAINED. Surfaced in DE-11. |
 | `tests/fixtures/heavy-customised-consumer/` | NEW — re-used by 3 integration test files. Surfaced in testing.md (this update). |
 | `CHANGELOG.md` | UPDATED in build phase — v0.6.0, v0.7.0, v0.8.0, v0.9.0, v1.0.0 entries appended. No further action. |
 | `README.md` | UPDATED in build phase across 5 sub-plan docs rollups (`## Doctor`, `## Uninstall`, `## .bkitignore`, `## Upgrade`, `__bkit__` section). No further action. |

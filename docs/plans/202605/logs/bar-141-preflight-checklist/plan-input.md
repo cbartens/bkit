@@ -30,7 +30,7 @@ BAR-138 smoke testing surfaced repeated patterns where consumers hit footguns du
 - `.husky/pre-commit` exists without bkit markers → bkit silently appends, frankenstein hook
 - `package.json#scripts.lint:prose` is the F9-vulnerable form → bkit preserves (consumer-wins) but consumer doesn't realize the bug is preserved with it
 - `.npmrc` missing GHPR registry config → next `pnpm install` fails opaquely
-- `GH_BKIT_TOKEN` set in shell but missing as GitHub repo secret → CI fails on next push
+- `GH_BKIT_TOKEN_INSTALL` set in shell but missing as GitHub repo secret → CI fails on next push
 - Vale on PATH but `.vale/styles/write-good/` missing → husky pre-commit hard-fails locally
 
 bkit currently has scattered `printSink` messages for some of these but no structured detection or AI-pasteable consolidation.
@@ -82,21 +82,21 @@ export function runPostInstallCheck(
 
 Re-runs detection AFTER writes (some state changes during install). Combines with preflight advisories, deduplicates, prints unified output.
 
-**Four-surface** `GH_BKIT_TOKEN` sustainability check:
+**Four-surface** `GH_BKIT_TOKEN_INSTALL` sustainability check:
 
 <!-- prettier-ignore -->
 | Surface | Detector | Finding when missing |
 | --- | --- | --- |
-| Local shell | `process.env.GH_BKIT_TOKEN` | "Set `export GH_BKIT_TOKEN=<classic PAT>` in your shell rc" |
-| `.npmrc` | grep for `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN}` | "Prepend two lines to .npmrc: ..." |
-| GitHub Actions secret | `gh secret list \| grep GH_BKIT_TOKEN` (existing `checkBkitTokenSecret`) | "Run `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN`" |
-| Vercel env (optional) | `vercel env ls preview \| grep GH_BKIT_TOKEN` | "Run `vercel env add GH_BKIT_TOKEN preview` and `... production`" |
+| Local shell | `process.env.GH_BKIT_TOKEN_INSTALL` | "Set `export GH_BKIT_TOKEN_INSTALL=<classic PAT>` in your shell rc" |
+| `.npmrc` | grep for `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN_INSTALL}` | "Prepend two lines to .npmrc: ..." |
+| GitHub Actions secret | `gh secret list \| grep GH_BKIT_TOKEN_INSTALL` (existing `checkBkitTokenSecret`) | "Run `gh secret set GH_BKIT_TOKEN_INSTALL --body=$GH_BKIT_TOKEN_INSTALL`" |
+| Vercel env (optional) | `vercel env ls preview \| grep GH_BKIT_TOKEN_INSTALL` | "Run `vercel env add GH_BKIT_TOKEN_INSTALL preview` and `... production`" |
 
 Each detector returns `present` / `missing` / `unknown` (last for cases where the CLI isn't available — distinguishes "we can't tell" from false positives).
 
 **Other post-install detectors:**
 
-- `ci-yml-missing-token-env` — gether-style: existing custom ci.yml's Install step has no `env: GH_BKIT_TOKEN`. Detect via grep on the workflow YAML.
+- `ci-yml-missing-token-env` — gether-style: existing custom ci.yml's Install step has no `env: GH_BKIT_TOKEN_INSTALL`. Detect via grep on the workflow YAML.
 - `vale-package-not-synced` — vale on PATH but `.vale/styles/write-good/` absent
 - `devdeps-need-fetch` — bkit added new devDeps in this run (consumer needs `pnpm install`)
 
@@ -121,8 +121,8 @@ ACTION: Replace lint:prose with this value (one line, copy verbatim):
   bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping"; fi'
 
 --- 3/3 [advisory] gh-secret-missing ---
-DETECT: gh CLI reports no GH_BKIT_TOKEN secret on this GitHub repo
-ACTION: Run: gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN
+DETECT: gh CLI reports no GH_BKIT_TOKEN_INSTALL secret on this GitHub repo
+ACTION: Run: gh secret set GH_BKIT_TOKEN_INSTALL --body=$GH_BKIT_TOKEN_INSTALL
 
 After applying all ACTION items, run: pnpm install && pnpm bkit check
 ==========================================================

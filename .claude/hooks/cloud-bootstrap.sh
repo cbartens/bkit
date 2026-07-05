@@ -39,8 +39,8 @@ cd "$REPO_ROOT"
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
   # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
   # config before install (supplements the project .npmrc auth token line).
-  if [ -n "${GH_BKIT_TOKEN:-}" ]; then
-    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" || log "pnpm config set failed (non-blocking)"
+  if [ -n "${GH_BKIT_TOKEN_INSTALL:-}" ]; then
+    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" || log "pnpm config set failed (non-blocking)"
   fi
   log "pnpm install --frozen-lockfile"
   pnpm install --frozen-lockfile --prefer-offline || log "pnpm install failed (non-blocking)"

@@ -28,7 +28,7 @@ Per `build-plan-verify-1-1.md`: All Phase A–G runbook tasks (A1–G4) verified
 
 Code migration complete:
 
-- `bkit-modules.ts`: `ModuleContext.printSink: string[]` replaced by `advisories: PreflightFinding[]`; all `printSink.push()` call sites (15+) migrated to structured findings. Constants `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` deleted; ownership moved to Phase 3 detectors.
+- `bkit-modules.ts`: `ModuleContext.printSink: string[]` replaced by `advisories: PreflightFinding[]`; all `printSink.push()` call sites (15+) migrated to structured findings. Constants `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` deleted; ownership moved to Phase 3 detectors.
 - `bkit-tiers.ts`: `writeTier3` signature updated; `ensurePackageJsonDevDeps` consumers threaded devDeps metadata through for Phase 3 detection.
 - `bkit-install.ts`: Phase 1 wired BEFORE `resolveTokens` (blocker exit-1 short-circuit); Phase 3 invoked POST-dispatch with cross-phase dedup; dry-run path preserves Phase 1 advisory visibility while suppressing Phase 3 detectors.
 
@@ -75,7 +75,7 @@ Challenge phase identified 10 MEDIUM/LOW findings; all remediated before test ru
 1. **MEDIUM-1 — Empty `.bkit-version` produces NaN-major advisory:** Added empty-string and `Number.isNaN()` guards in `detectBkitVersionMajorDowngrade` and `detectBkitVersionPinStale`.
 2. **MEDIUM-2 — `ctx.advisories` not deduplicated before `runPostInstallCheck`:** Added `dedupeById(preflightAdvisories)` call inside `runPostInstallCheck` before cross-phase filter.
 3. **MEDIUM-3 — Intra-phase dedup not tested:** Exported `dedupeById` helper and added direct unit tests exercising duplicate injection via spies.
-4. **MEDIUM-4 — `detectCiYmlMissingTokenEnv` brittle to whitespace/quoting:** Replaced literal substring match with regex `/GH_BKIT_TOKEN\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}/` supporting variants.
+4. **MEDIUM-4 — `detectCiYmlMissingTokenEnv` brittle to whitespace/quoting:** Replaced literal substring match with regex `/GH_BKIT_TOKEN_INSTALL\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN_INSTALL\s*\}\}/` supporting variants.
 5. **MEDIUM-5 — Template injection in `detectVercelEnv`:** Switched from `execSync(\`vercel env ls ${env}\`)`to`execFileSync("vercel", ["env", "ls", env])` with runtime guard.
 
 **LOW findings (deferred or documented):**
@@ -108,9 +108,9 @@ All tests pass. No test coverage gaps remain per plan Derived Test Matrix.
 
 2. **Vercel CLI latency on unlinked projects (LOW):** Consumers with `vercel.json` but no `.vercel/project.json` will incur a 10s timeout per `detectVercelEnv` call (2x for preview + production = 20s per install). Acceptable with timeout guard; documented in code comment.
 
-3. **CI yml false positives on custom layouts (MEDIUM-4 residual):** Even with regex flex, a consumer with a bespoke CI workflow that manually passes `GH_BKIT_TOKEN` as a pipeline parameter (not an `env` block) may still trigger the advisory. Action text now documents "bespoke layouts may need manual verification" as a hedge.
+3. **CI yml false positives on custom layouts (MEDIUM-4 residual):** Even with regex flex, a consumer with a bespoke CI workflow that manually passes `GH_BKIT_TOKEN_INSTALL` as a pipeline parameter (not an `env` block) may still trigger the advisory. Action text now documents "bespoke layouts may need manual verification" as a hedge.
 
-4. **Token presence semantics (LOW-4):** Empty-string `GH_BKIT_TOKEN=""` is treated as "missing". Technically correct but not called out in action text. Acceptable; edge case.
+4. **Token presence semantics (LOW-4):** Empty-string `GH_BKIT_TOKEN_INSTALL=""` is treated as "missing". Technically correct but not called out in action text. Acceptable; edge case.
 
 5. **DedupeById export (maintenance risk):** Now exported for testing; future changes to the dedup contract must be coordinated across `bkit-preflight.ts` and `bkit-postinstall.ts`. Low risk — simple function; documented in both files.
 

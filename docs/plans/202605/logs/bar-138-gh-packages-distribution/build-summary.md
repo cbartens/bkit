@@ -10,7 +10,7 @@ BAR-138 GitHub Packages npm registry distribution implementation completed succe
 
 **Phase A:** Pipeline foundation — `package.json` (private: false, publishConfig for GH Packages, version 0.4.0-pre.2), `.github/workflows/release.yml` (tag-push trigger, full check suite, npm publish with GITHUB_TOKEN).
 
-**Phase B:** Installer/docs — print constants in `.agents/scripts/bkit-modules.ts` rewritten for `.npmrc` + `GH_BKIT_TOKEN` flow (dropped git auth-shim language); consumer CI template and bkit-self CI.yml dead-code removed; README.md and `.agents/README.md` rewritten for registry distribution; ADR DE-3, KN-1 knowledge entries, and per-consumer migration notes added; dist/ rebuilt with print-constant edits.
+**Phase B:** Installer/docs — print constants in `.agents/scripts/bkit-modules.ts` rewritten for `.npmrc` + `GH_BKIT_TOKEN_INSTALL` flow (dropped git auth-shim language); consumer CI template and bkit-self CI.yml dead-code removed; README.md and `.agents/README.md` rewritten for registry distribution; ADR DE-3, KN-1 knowledge entries, and per-consumer migration notes added; dist/ rebuilt with print-constant edits.
 
 **Phase C:** Validation — Vitest test suite expanded (bkit-modules.test.ts, release-workflow.test.ts, templates.test.ts); all tests passing; challenge phase identified 5 LOW-severity findings (concurrency, SHA-pinning, tarball test files, publishConfig semantics, environment protection), all remediated; challenge-tests added 9 new tests covering remediated concerns.
 
@@ -72,7 +72,7 @@ Tests validate all remediations; no bugs caught in generated tests themselves. A
 **Informational — no action this cycle:**
 
 - **Repository visibility drift:** GH Packages derives package visibility from linked repo visibility, not `publishConfig.access` field. If `cbartens/bkit` repo were made public, the published package would become public. Mitigation: repo remains private; ADR DE-3 documents this coupling; maintainer awareness sufficient.
-- **Token scope drift on consumers:** Reused `GH_BKIT_TOKEN` env-var name with expanded scope (`Contents: read` + `Packages: read`) means v0.3.x consumers with legacy tokens will 401 at registry install. Not a regression — per-consumer migration PRs handle scope rotation as part of upgrade. README + installer print + ADR enumerate required scopes verbatim.
+- **Token scope drift on consumers:** Reused `GH_BKIT_TOKEN_INSTALL` env-var name with expanded scope (`Contents: read` + `Packages: read`) means v0.3.x consumers with legacy tokens will 401 at registry install. Not a regression — per-consumer migration PRs handle scope rotation as part of upgrade. README + installer print + ADR enumerate required scopes verbatim.
 - **Multi-maintainer environment escalation:** Current single-maintainer publish workflow has no secondary approval gate. Tag-push access → immediate publish. Not required for v0.4.0 (single maintainer); noted as future hardening when project onboards second maintainer (environment: production + required-reviewer protection).
 
 ## Action Items
@@ -81,7 +81,7 @@ None blocking v0.4.0 ship. All plan work and challenge remediation complete.
 
 **Outstanding human-gated items (expected, not failures):**
 
-- C4: Registry install smoke test with real `GH_BKIT_TOKEN` against pre.2 from scratch consumer (user performs manually)
+- C4: Registry install smoke test with real `GH_BKIT_TOKEN_INSTALL` against pre.2 from scratch consumer (user performs manually)
 - C5 gate: Canonical smoke transcript (gated on registry availability)
 - D2–D5: Squash-merge feat/bar-138 → dev, promote dev → main, tag v0.4.0 on main, flip BAR-131 Linear issue to Done (user performs)
 - Verification Plan / Manual Verification / Gates 2/3/4 checkboxes (post-ship summary subagent)

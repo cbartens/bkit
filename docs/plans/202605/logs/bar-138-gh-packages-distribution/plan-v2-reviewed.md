@@ -13,14 +13,14 @@ Verdict: CONCERNS
 
 ## Context & Goals
 
-Migrate `@cbartens/bkit` distribution from a git-dependency (with consumer-side git auth-shim) to the **GitHub Packages npm registry**. Ships as **v0.4.0** in a single atomic cutover — no dual-publish, no feature flag. The change eliminates the entire git-clone + auth-shim story (private-repo clone + auth-shim, two surfaces, lifecycle-hook OOM trap, pnpm tag-drop) by switching to standard scoped-package semantics: `@cbartens:registry=https://npm.pkg.github.com` + `.npmrc` + `GH_BKIT_TOKEN` (with `read:packages` scope) on the consumer side.
+Migrate `@cbartens/bkit` distribution from a git-dependency (with consumer-side git auth-shim) to the **GitHub Packages npm registry**. Ships as **v0.4.0** in a single atomic cutover — no dual-publish, no feature flag. The change eliminates the entire git-clone + auth-shim story (private-repo clone + auth-shim, two surfaces, lifecycle-hook OOM trap, pnpm tag-drop) by switching to standard scoped-package semantics: `@cbartens:registry=https://npm.pkg.github.com` + `.npmrc` + `GH_BKIT_TOKEN_INSTALL` (with `read:packages` scope) on the consumer side.
 
 This plan covers ONLY the bkit-side ship (the publishing pipeline, installer print messages, README/docs, ADR, pre-release validations, and a scratch-consumer smoke test). Per-consumer migrations (`app-gether-life`, `www-visitfrasercoast-com`, etc.) are out of scope and live in separate follow-up PRs after v0.4.0 lands.
 
 **Success Criteria:**
 
 - `npm publish` from a tag-push (`v*`) on the bkit repo succeeds against `https://npm.pkg.github.com/@cbartens/bkit` with the built-in `GITHUB_TOKEN` (`packages: write`).
-- A scratch consumer repo with only `.npmrc` + `GH_BKIT_TOKEN` env installs `@cbartens/bkit@^0.4.0` end-to-end with zero git config or `installCommand` patching.
+- A scratch consumer repo with only `.npmrc` + `GH_BKIT_TOKEN_INSTALL` env installs `@cbartens/bkit@^0.4.0` end-to-end with zero git config or `installCommand` patching.
 - `bkit install --ci` print messages reference `.npmrc` flow only — no `insteadOf` shim, no `installCommand` shim, no git auth language anywhere; `pnpm` silent-`.npmrc`-ignore footgun is called out verbatim in both missing/unknown branches.
 
 ---
@@ -35,27 +35,27 @@ This plan covers ONLY the bkit-side ship (the publishing pipeline, installer pri
 
 ### Narrative _(inherited from design — do not rewrite)_
 
-As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH_BKIT_TOKEN` env var to my repo, then run `pnpm add -D @cbartens/bkit@^0.4.0` and `pnpm install` — the package resolves from the GitHub Packages npm registry without any git-clone, `insteadOf` shim, or Vercel `installCommand` hack. Running `bkit install --full` afterwards prints AI-actionable migration instructions that reference the new `.npmrc` flow rather than the old git auth shim.
+As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH_BKIT_TOKEN_INSTALL` env var to my repo, then run `pnpm add -D @cbartens/bkit@^0.4.0` and `pnpm install` — the package resolves from the GitHub Packages npm registry without any git-clone, `insteadOf` shim, or Vercel `installCommand` hack. Running `bkit install --full` afterwards prints AI-actionable migration instructions that reference the new `.npmrc` flow rather than the old git auth shim.
 
 ### Success Criteria _(inherited from design — do not rewrite)_
 
 1. `npm publish` from a tag-push (`v*`) on the bkit repo succeeds against `https://npm.pkg.github.com/@cbartens/bkit` with the built-in `GITHUB_TOKEN` (`packages: write`).
-2. A scratch consumer repo with only `.npmrc` + `GH_BKIT_TOKEN` env installs `@cbartens/bkit@^0.4.0` end-to-end (GitHub Actions and Vercel) with zero git config or `installCommand` patching.
-3. `bkit install --ci` prints `.npmrc`-based AI instructions when `GH_BKIT_TOKEN` is missing/unknown and prints a Vercel env-var-only block when `vercel.json` is present (no git-shim language anywhere).
-4. The seeded consumer CI template (`.agents/templates/.github/workflows/ci.yml`) sets `GH_BKIT_TOKEN` as an env on the install step and contains no `Configure private-repo auth` step. bkit-self's own `.github/workflows/ci.yml` likewise has the dead `Configure private-repo auth` step removed (it was never needed — bkit-self is the source repo).
+2. A scratch consumer repo with only `.npmrc` + `GH_BKIT_TOKEN_INSTALL` env installs `@cbartens/bkit@^0.4.0` end-to-end (GitHub Actions and Vercel) with zero git config or `installCommand` patching.
+3. `bkit install --ci` prints `.npmrc`-based AI instructions when `GH_BKIT_TOKEN_INSTALL` is missing/unknown and prints a Vercel env-var-only block when `vercel.json` is present (no git-shim language anywhere).
+4. The seeded consumer CI template (`.agents/templates/.github/workflows/ci.yml`) sets `GH_BKIT_TOKEN_INSTALL` as an env on the install step and contains no `Configure private-repo auth` step. bkit-self's own `.github/workflows/ci.yml` likewise has the dead `Configure private-repo auth` step removed (it was never needed — bkit-self is the source repo).
 5. Pre-release tags `v0.4.0-pre.1` (pipeline only) and `v0.4.0-pre.2` (prints + docs) both publish successfully before `v0.4.0` cuts; ADR `DE-3` records the distribution decision.
 
 ### Concrete Example _(plan expands from design)_
 
-**Setup:** A scratch consumer repo `tmp/bar-138-smoke/` with a minimal `package.json`, no `.npmrc`, no GHA workflow. The maintainer has just published `v0.4.0-pre.2` to GitHub Packages from the bkit repo. The maintainer's shell exports `GH_BKIT_TOKEN` (PAT with `read:packages`).
+**Setup:** A scratch consumer repo `tmp/bar-138-smoke/` with a minimal `package.json`, no `.npmrc`, no GHA workflow. The maintainer has just published `v0.4.0-pre.2` to GitHub Packages from the bkit repo. The maintainer's shell exports `GH_BKIT_TOKEN_INSTALL` (PAT with `read:packages`).
 
 **Steps:**
 
-1. Maintainer runs `echo "@cbartens:registry=https://npm.pkg.github.com" > .npmrc; echo "//npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}" >> .npmrc` → `.npmrc` written.
+1. Maintainer runs `echo "@cbartens:registry=https://npm.pkg.github.com" > .npmrc; echo "//npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN_INSTALL}" >> .npmrc` → `.npmrc` written.
 2. Maintainer runs `pnpm add -D @cbartens/bkit@0.4.0-pre.2` → pnpm resolves the tarball from `https://npm.pkg.github.com/@cbartens/bkit/-/...tgz`, `package.json` shows `"@cbartens/bkit": "0.4.0-pre.2"`, lockfile pins the registry URL.
-3. Maintainer runs `pnpm exec bkit install --full` → bkit seeds `.agents/`, `.claude/`, `.cursor/`, `.github/workflows/ci.yml`, `.husky/`, `.vale/` etc.; print sink emits `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` (or `_UNKNOWN_`) referencing `.npmrc` setup and `read:packages` scope; first-install banner has NO `onlyBuiltDependencies` line.
-4. Maintainer inspects the seeded `.github/workflows/ci.yml` → it has no `Configure private-repo auth` step and the install step carries `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`.
-5. Maintainer commits `.npmrc`, pushes to a feature branch, sets `GH_BKIT_TOKEN` GHA secret → CI on the scratch repo turns green, install step pulls `@cbartens/bkit@0.4.0-pre.2` from GH Packages.
+3. Maintainer runs `pnpm exec bkit install --full` → bkit seeds `.agents/`, `.claude/`, `.cursor/`, `.github/workflows/ci.yml`, `.husky/`, `.vale/` etc.; print sink emits `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` (or `_UNKNOWN_`) referencing `.npmrc` setup and `read:packages` scope; first-install banner has NO `onlyBuiltDependencies` line.
+4. Maintainer inspects the seeded `.github/workflows/ci.yml` → it has no `Configure private-repo auth` step and the install step carries `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`.
+5. Maintainer commits `.npmrc`, pushes to a feature branch, sets `GH_BKIT_TOKEN_INSTALL` GHA secret → CI on the scratch repo turns green, install step pulls `@cbartens/bkit@0.4.0-pre.2` from GH Packages.
 
 **Outcome:** The scratch consumer installs, runs, and CI-validates `@cbartens/bkit` over the registry path with zero git auth ceremony. Maintainer cuts the production `v0.4.0` tag immediately afterwards.
 
@@ -66,13 +66,13 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 | --- | --- |
 | Tag-without-version-bump on bkit repo (re-tagging the same SHA against an already-published version). | `release.yml` re-runs the full check suite, then `npm publish` exits non-zero ("cannot publish over previously published version"). No silent overwrite. |
 | Consumer still on v0.3.x git-dep model after v0.4.0 ships. | v0.3.x remains consumable from git (no dual-publish required); per-consumer migration is a separate PR — out of scope here. |
-| Consumer has stale `GH_BKIT_TOKEN` PAT scoped only `Contents: read`. | `pnpm install` fails with 401 from the registry; installer print and README explicitly call out the required `read:packages` (classic) / Packages: read (fine-grained) scope. |
+| Consumer has stale `GH_BKIT_TOKEN_INSTALL` PAT scoped only `Contents: read`. | `pnpm install` fails with 401 from the registry; installer print and README explicitly call out the required `read:packages` (classic) / Packages: read (fine-grained) scope. |
 | Consumer with `vercel.json` containing the legacy `installCommand` git-shim. | `bkit install --ci` print directs the AI to remove the shim and rely on `.npmrc` + Vercel env var. |
-| `GH_BKIT_TOKEN` is unset at consumer install time (CI secret missing or local shell missing the export). | pnpm v7.20+ silently ignores the entire `.npmrc` and falls back to npmjs.org → opaque 401. Installer print copy enumerates this exact symptom-to-cause mapping verbatim in both `_MISSING_` and `_UNKNOWN_` constants. |
+| `GH_BKIT_TOKEN_INSTALL` is unset at consumer install time (CI secret missing or local shell missing the export). | pnpm v7.20+ silently ignores the entire `.npmrc` and falls back to npmjs.org → opaque 401. Installer print copy enumerates this exact symptom-to-cause mapping verbatim in both `_MISSING_` and `_UNKNOWN_` constants. |
 | `release.yml` runs against a SHA whose committed `dist/` is stale. | `pnpm check:dist` fails before `npm publish`; tag is throwaway, maintainer re-builds locally and re-tags. |
 | Pre-release tag `v0.4.0-pre.1` fails on `permissions: packages: write` mismatch. | Failure isolated to the throwaway pre-release tag; ADR `DE-3` documents fallback to `access: public` if needed. |
 | `npm publish` from `release.yml` succeeds but the package is not associated with the source repo in GitHub Packages UI. | `repository.url` set to bare HTTPS (`https://github.com/cbartens/bkit.git`, no `git+` prefix) — GitHub Packages auto-links once first publish lands. |
-| Consumer's `.npmrc` has `${GH_BKIT_TOKEN}` interpolated literally (no env expansion). | pnpm install fails with 401; README and installer print copy show the exact `${GH_BKIT_TOKEN}` env-interpolation form and warn against hardcoding. |
+| Consumer's `.npmrc` has `${GH_BKIT_TOKEN_INSTALL}` interpolated literally (no env expansion). | pnpm install fails with 401; README and installer print copy show the exact `${GH_BKIT_TOKEN_INSTALL}` env-interpolation form and warn against hardcoding. |
 
 ### Derived Test Matrix
 
@@ -83,16 +83,16 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 | --- | --- | --- |
 | `package.json` manifest fields render correctly: `private:false`, `publishConfig.registry`, `publishConfig.access`, bare HTTPS `repository.url`, refreshed `description`. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) or new `.agents/scripts/package-manifest.test.ts` |
 | `release.yml` triggers on tag-push (`v*`) and contains: setup-node 20 + registry-url + scope, full check suite, `npm publish` with `NODE_AUTH_TOKEN: GITHUB_TOKEN`, `permissions: packages: write`. | Schema/lint (yamllint + structural assertion) | `.agents/scripts/release-workflow.test.ts` (new) |
-| `runCiModule` print sink contains the rewritten `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` (`.npmrc` + `read:packages` + pnpm silent-ignore warning) when `gh secret list` reports missing. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
-| `runCiModule` print sink contains the rewritten `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` (same pnpm silent-ignore warning) when `gh` is unavailable. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
+| `runCiModule` print sink contains the rewritten `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` (`.npmrc` + `read:packages` + pnpm silent-ignore warning) when `gh secret list` reports missing. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
+| `runCiModule` print sink contains the rewritten `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` (same pnpm silent-ignore warning) when `gh` is unavailable. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
 | `runCiModule` print sink contains the rewritten `VERCEL_AUTH_INSTRUCTIONS` (env-var-only, NO `installCommand` shim) when `vercel.json` is detected. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
 | `runCoreModule` first-install banner does NOT contain the `onlyBuiltDependencies` line. | Unit (Vitest) | `.agents/scripts/bkit-modules.test.ts` (extend) |
-| Seeded consumer template `.agents/templates/.github/workflows/ci.yml` has NO `Configure private-repo auth` step and the install step carries `env: GH_BKIT_TOKEN`. | Snapshot/diff | `.agents/scripts/templates.test.ts` (extend or new) |
+| Seeded consumer template `.agents/templates/.github/workflows/ci.yml` has NO `Configure private-repo auth` step and the install step carries `env: GH_BKIT_TOKEN_INSTALL`. | Snapshot/diff | `.agents/scripts/templates.test.ts` (extend or new) |
 | bkit-self `.github/workflows/ci.yml` has NO `Configure private-repo auth` step (dead-code removal). | Manual + grep | shell command `grep -F 'Configure private-repo auth' .github/workflows/ci.yml` returns empty |
 | `pnpm check:dist` passes after rebuilding `dist/` from the print-constant edits. | Script | `pnpm check:dist` (CI gate) |
 | `v0.4.0-pre.1` publishes successfully to GH Packages from `release.yml` (pipeline-only validation). | Live release smoke | GitHub Actions run on tag push |
 | `v0.4.0-pre.2` publishes successfully (prints + docs included) from `release.yml`. | Live release smoke | GitHub Actions run on tag push |
-| Scratch consumer repo at `tmp/bar-138-smoke/` installs `@cbartens/bkit@0.4.0-pre.2` via `.npmrc` + `GH_BKIT_TOKEN` and `bkit install --full` runs clean. | Manual smoke | `tmp/bar-138-smoke/` (scratch repo) |
+| Scratch consumer repo at `tmp/bar-138-smoke/` installs `@cbartens/bkit@0.4.0-pre.2` via `.npmrc` + `GH_BKIT_TOKEN_INSTALL` and `bkit install --full` runs clean. | Manual smoke | `tmp/bar-138-smoke/` (scratch repo) |
 | `v0.4.0` publishes successfully and is consumable via `^0.4.0` semver from the registry. | Live release smoke | GitHub Actions run on tag push |
 
 ### 👤 ✅ Human Confirmation
@@ -111,15 +111,15 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 > Review proposed names and breaking changes below. This is the only other section requiring your attention.
 
 > [!WARNING]
-> **Distribution model breaking change.** v0.4.0 hard-cuts from `pnpm add -D github:cbartens/bkit#vX.Y.Z` (git dependency) to `pnpm add -D @cbartens/bkit@^0.4.0` (GitHub Packages npm registry). v0.3.x consumers are **not** force-migrated — they continue to install from git unchanged — but any consumer that bumps to `^0.4.0` MUST add `.npmrc`, expand their `GH_BKIT_TOKEN` PAT scope to include `read:packages` (classic) / Packages: read (fine-grained), and remove their GHA `insteadOf` step + Vercel `installCommand` shim. **No dual-publish.** Per-consumer migrations are separate PRs after v0.4.0 lands.
+> **Distribution model breaking change.** v0.4.0 hard-cuts from `pnpm add -D github:cbartens/bkit#vX.Y.Z` (git dependency) to `pnpm add -D @cbartens/bkit@^0.4.0` (GitHub Packages npm registry). v0.3.x consumers are **not** force-migrated — they continue to install from git unchanged — but any consumer that bumps to `^0.4.0` MUST add `.npmrc`, expand their `GH_BKIT_TOKEN_INSTALL` PAT scope to include `read:packages` (classic) / Packages: read (fine-grained), and remove their GHA `insteadOf` step + Vercel `installCommand` shim. **No dual-publish.** Per-consumer migrations are separate PRs after v0.4.0 lands.
 
 > [!IMPORTANT]
-> **PAT scope expansion (same env-var name).** `GH_BKIT_TOKEN` is reused (no rename) — only the required PAT scopes change. Existing `Contents: read`-only PATs will 401 against the registry. Migration prompt + README + ADR `DE-3` enumerate the new scope set.
+> **PAT scope expansion (same env-var name).** `GH_BKIT_TOKEN_INSTALL` is reused (no rename) — only the required PAT scopes change. Existing `Contents: read`-only PATs will 401 against the registry. Migration prompt + README + ADR `DE-3` enumerate the new scope set.
 
 **Naming decisions (final):**
 
 - Package name: `@cbartens/bkit` (unchanged).
-- Env-var name: `GH_BKIT_TOKEN` (unchanged; scope expanded).
+- Env-var name: `GH_BKIT_TOKEN_INSTALL` (unchanged; scope expanded).
 - Workflow file: `.github/workflows/release.yml` (new).
 - ADR: `DE-3` (next free ID per `decisions.md` template).
 - Tags: `v0.4.0-pre.1` → `v0.4.0-pre.2` → `v0.4.0` (semver pre-release ordering).
@@ -166,7 +166,7 @@ Full rationale lives in the design document (`docs/plans/drafts/bar-138-gh-packa
 
 ## Out of Scope
 
-- **Per-consumer migrations** — `app-gether-life`, `www-visitfrasercoast-com`, etc. ship in separate PRs after v0.4.0 lands. Each consumer adds `.npmrc`, expands `GH_BKIT_TOKEN` scope, drops GHA `insteadOf` step + Vercel `installCommand` shim. Tracked as follow-ups in `docs/pending.md`.
+- **Per-consumer migrations** — `app-gether-life`, `www-visitfrasercoast-com`, etc. ship in separate PRs after v0.4.0 lands. Each consumer adds `.npmrc`, expands `GH_BKIT_TOKEN_INSTALL` scope, drops GHA `insteadOf` step + Vercel `installCommand` shim. Tracked as follow-ups in `docs/pending.md`.
 - **Backward-compatible dual-publish** — no git+registry simultaneous publishing.
 - **`BKIT_READ_TOKEN` rename** — already landed (v0.2.2); not re-litigated here.
 - **Bumping bkit-self CI to Node 22** — design pins `release.yml` to Node 20 to match `ci.yml` and preserve `check:dist` determinism. Any future bump must happen in lock-step with a `dist/` regeneration commit.
@@ -188,9 +188,9 @@ Full rationale lives in the design document (`docs/plans/drafts/bar-138-gh-packa
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
 | `.github/workflows/ci.yml` step "Configure private-repo auth" (lines 23–24) | (none — bkit-self is source repo, never a consumer) | DELETE | Dead code; `insteadOf` shim is consumer-only; cleanup fits this PR per design. |
-| `.agents/templates/.github/workflows/ci.yml` step "Configure private-repo auth" (lines 23–24) | install step `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` block | DELETE | Replaced by `.npmrc` + env block; consumer no longer needs git auth-shim. |
-| `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — `.npmrc` setup + `read:packages` + pnpm silent-ignore warning | DELETE | Old body references git auth-shim that no longer exists. |
-| `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — same shape, `.npmrc` + pnpm silent-ignore warning | DELETE | Old body references git auth-shim. |
+| `.agents/templates/.github/workflows/ci.yml` step "Configure private-repo auth" (lines 23–24) | install step `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}` block | DELETE | Replaced by `.npmrc` + env block; consumer no longer needs git auth-shim. |
+| `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — `.npmrc` setup + `read:packages` + pnpm silent-ignore warning | DELETE | Old body references git auth-shim that no longer exists. |
+| `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — same shape, `.npmrc` + pnpm silent-ignore warning | DELETE | Old body references git auth-shim. |
 | `VERCEL_AUTH_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — Vercel env-var-only, NO `installCommand` shim | DELETE | Old body told consumer to add `installCommand` git-shim, now obsolete. |
 | `CI_YML_MERGE_INSTRUCTIONS` constant body in `.agents/scripts/bkit-modules.ts` | rewritten body — `.npmrc`-based merge guidance | DELETE | Old body references git auth-shim merge actions. |
 | First-install banner `onlyBuiltDependencies: ["@cbartens/bkit"]` line in `runCoreModule` | (none — line removed) | DELETE | BAR-130 #5 workaround obsolete post-v0.3.0; registry packages with no lifecycle hooks do not need it. |
@@ -208,7 +208,7 @@ Full rationale lives in the design document (`docs/plans/drafts/bar-138-gh-packa
 - [ ] **PII** — n/a (no logs of user data; `console.log` already used by installer).
 - [ ] **Redirect URL** — n/a.
 - [ ] **Webhook** — n/a.
-- [x] **New secret/env var** — `GH_BKIT_TOKEN` env-var name unchanged. PAT scope expanded to include `read:packages` (classic) / Packages: read (fine-grained). Documented in README, installer prints, and ADR `DE-3`. Release workflow uses the built-in `GITHUB_TOKEN` (no new secret in bkit repo).
+- [x] **New secret/env var** — `GH_BKIT_TOKEN_INSTALL` env-var name unchanged. PAT scope expanded to include `read:packages` (classic) / Packages: read (fine-grained). Documented in README, installer prints, and ADR `DE-3`. Release workflow uses the built-in `GITHUB_TOKEN` (no new secret in bkit repo).
 
 > [!IMPORTANT]
 > **Token-scope drift risk on consumers.** The same env-var name reused with expanded PAT scope means a consumer's existing `Contents: read`-only token will silently 401 against the registry. Mitigation: installer print copy + README + ADR enumerate the required scopes verbatim. Per-consumer migration PRs will rotate scopes as part of the upgrade.
@@ -221,8 +221,8 @@ Full rationale lives in the design document (`docs/plans/drafts/bar-138-gh-packa
 
 - [ ] **Package Management:** Verify `package.json` for required packages. No new runtime deps; only manifest fields change. `pnpm-lock.yaml` should remain stable post-edit (no new entries).
 - [ ] **Dependency Versions:** Spot-check `pnpm --version` (matches `package.json#packageManager` = `pnpm@10.33.0`), `node --version` (≥20), `gh --version`, `npm --version`. Confirm `actions/setup-node@v4`, `pnpm/action-setup@v4` are current pins (already used in `ci.yml`).
-- [ ] **User Context:** Verify maintainer has push access to `cbartens/bkit` and `packages: write` is available on the built-in `GITHUB_TOKEN` (default for private repos in same owner). Verify maintainer has a local `GH_BKIT_TOKEN` PAT with `read:packages` for the scratch-consumer smoke test.
-- [ ] **Pending Blockers:** Linear search for label `blocker` referencing BAR-138 / BAR-130 / BAR-131. Confirm `BKIT_READ_TOKEN → GH_BKIT_TOKEN` rename (v0.2.2) has fully landed (design assumes; out of scope here).
+- [ ] **User Context:** Verify maintainer has push access to `cbartens/bkit` and `packages: write` is available on the built-in `GITHUB_TOKEN` (default for private repos in same owner). Verify maintainer has a local `GH_BKIT_TOKEN_INSTALL` PAT with `read:packages` for the scratch-consumer smoke test.
+- [ ] **Pending Blockers:** Linear search for label `blocker` referencing BAR-138 / BAR-130 / BAR-131. Confirm `BKIT_READ_TOKEN → GH_BKIT_TOKEN_INSTALL` rename (v0.2.2) has fully landed (design assumes; out of scope here).
 - [ ] **Project Context:** Re-read `docs/decisions.md` for prior `DE-*` entries (next ID = `DE-3` per current count). Re-read `docs/knowledge.md` for any BAR-130 lifecycle-hook lessons that constrain `dist/` handling.
 - [ ] **Testing & Quality:** Align with `docs/testing.md` — Vitest unit only for installer print constants; no Playwright; no integration tests for build/distribution path.
 - [ ] **Prerequisite Plans:** None. v0.3.0 (BAR-130) lifecycle-hook removal already shipped; this builds on top.
@@ -261,7 +261,7 @@ Distribution model shift from git-dep (`github:cbartens/bkit#vX.Y.Z`) to GitHub 
 **Invariants preserved (do NOT regress):**
 
 - No lifecycle hooks in the published package — `prepare` / `prepublishOnly` / `postinstall` stay forbidden (BAR-130 v0.3.0 invariant). `dist/` remains pre-built and committed; `check:dist` is the staleness gate.
-- `checkBkitTokenSecret` and the `GH_BKIT_TOKEN` env-var name are unchanged — only PAT scope expands and the surrounding instructional copy changes.
+- `checkBkitTokenSecret` and the `GH_BKIT_TOKEN_INSTALL` env-var name are unchanged — only PAT scope expands and the surrounding instructional copy changes.
 
 ### Database Migrations
 
@@ -311,13 +311,13 @@ Not applicable.
 #### [MODIFY] `.agents/scripts/bkit-modules.ts`
 
 - **Existence Check:** Confirmed.
-- Replace `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` body — drop git-shim language; new copy directs the AI to:
-  - Add `.npmrc` with `@cbartens:registry=https://npm.pkg.github.com` + `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`.
-  - Set `GH_BKIT_TOKEN` GHA secret (PAT with `read:packages` / Packages: read scope; classic OR fine-grained).
-  - Verbatim warning: pnpm v7.20+ silently ignores `.npmrc` when `${GH_BKIT_TOKEN}` env is unset → install falls back to npmjs.org → opaque 401 (NOT "token missing"). Phrase so an AI agent can map symptom → cause.
-- Replace `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` body — same shape as `_MISSING_`; include the same pnpm silent-ignore warning so symptom-to-cause is consistent across both states.
-- Replace `VERCEL_AUTH_INSTRUCTIONS` body — Vercel env-var-only setup; explicitly tells AI to REMOVE any legacy `installCommand: "git config --global url.\"...\".insteadOf ... && pnpm install"` and replace with plain `pnpm install` (or remove `installCommand` entirely), plus add `GH_BKIT_TOKEN` via `vercel env add` for preview + production. Heuristic (`detectVercelProject`) unchanged.
-- Replace `CI_YML_MERGE_INSTRUCTIONS` body — `.npmrc`-based merge guidance: tells AI to (a) ensure `.npmrc` exists at repo root, (b) ensure install step has `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`, (c) remove any `Configure private-repo auth` `git config --global url.…insteadOf` step, (d) ensure GHA secret `GH_BKIT_TOKEN` has `read:packages` scope.
+- Replace `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` body — drop git-shim language; new copy directs the AI to:
+  - Add `.npmrc` with `@cbartens:registry=https://npm.pkg.github.com` + `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}`.
+  - Set `GH_BKIT_TOKEN_INSTALL` GHA secret (PAT with `read:packages` / Packages: read scope; classic OR fine-grained).
+  - Verbatim warning: pnpm v7.20+ silently ignores `.npmrc` when `${GH_BKIT_TOKEN_INSTALL}` env is unset → install falls back to npmjs.org → opaque 401 (NOT "token missing"). Phrase so an AI agent can map symptom → cause.
+- Replace `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` body — same shape as `_MISSING_`; include the same pnpm silent-ignore warning so symptom-to-cause is consistent across both states.
+- Replace `VERCEL_AUTH_INSTRUCTIONS` body — Vercel env-var-only setup; explicitly tells AI to REMOVE any legacy `installCommand: "git config --global url.\"...\".insteadOf ... && pnpm install"` and replace with plain `pnpm install` (or remove `installCommand` entirely), plus add `GH_BKIT_TOKEN_INSTALL` via `vercel env add` for preview + production. Heuristic (`detectVercelProject`) unchanged.
+- Replace `CI_YML_MERGE_INSTRUCTIONS` body — `.npmrc`-based merge guidance: tells AI to (a) ensure `.npmrc` exists at repo root, (b) ensure install step has `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`, (c) remove any `Configure private-repo auth` `git config --global url.…insteadOf` step, (d) ensure GHA secret `GH_BKIT_TOKEN_INSTALL` has `read:packages` scope.
 - In `runCoreModule` first-install banner: REMOVE the `3. Add to pnpm-workspace.yaml or package.json: onlyBuiltDependencies: ["@cbartens/bkit"]` block. Renumber remaining steps. Update step 1 prose to reference `read:packages` scope.
 - `checkBkitTokenSecret()` and `detectVercelProject()` function bodies unchanged — only the surrounding string constants change.
 
@@ -332,7 +332,7 @@ Not applicable.
   - name: Install dependencies
     run: pnpm install --frozen-lockfile
     env:
-      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
   ```
 - The consumer is expected to commit `.npmrc` at their repo root (out of scope for the bkit-side seed; documented in `CI_YML_MERGE_INSTRUCTIONS` and README).
 - Token replacements (`{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`) unchanged.
@@ -352,8 +352,8 @@ Not applicable.
 - **Existence Check:** Confirmed.
 - Rewrite `## Install` section — replace `pnpm add -D github:cbartens/bkit#v0.2.0` with `pnpm add -D @cbartens/bkit@^0.4.0`; remove pnpm tag-drop note (no longer applies on registry path).
 - DELETE `### ⚠️ One-time consumer config (pnpm 10+)` section (the `onlyBuiltDependencies` allowlist is obsolete — registry packages with no lifecycle hooks do not need it).
-- Rewrite `## Consumer CI auth` section — single GitHub Packages auth section: (1) PAT scope = `read:packages` (classic) / Packages: read (fine-grained); (2) GHA secret name = `GH_BKIT_TOKEN`; (3) `.npmrc` snippet at repo root; (4) install step `env:` block; (5) explicit pnpm silent-ignore warning.
-- Rewrite `## Consumer Vercel auth` section — env-var-only: (1) `vercel env add GH_BKIT_TOKEN preview production`; (2) `.npmrc` committed at repo root is sufficient — NO `installCommand` shim required; (3) explicit warning that any pre-existing `installCommand` git-shim must be removed.
+- Rewrite `## Consumer CI auth` section — single GitHub Packages auth section: (1) PAT scope = `read:packages` (classic) / Packages: read (fine-grained); (2) GHA secret name = `GH_BKIT_TOKEN_INSTALL`; (3) `.npmrc` snippet at repo root; (4) install step `env:` block; (5) explicit pnpm silent-ignore warning.
+- Rewrite `## Consumer Vercel auth` section — env-var-only: (1) `vercel env add GH_BKIT_TOKEN_INSTALL preview production`; (2) `.npmrc` committed at repo root is sufficient — NO `installCommand` shim required; (3) explicit warning that any pre-existing `installCommand` git-shim must be removed.
 - Refresh any `## Removed in v0.2.0` historical-breaking-changes block to also note v0.4.0 git-dep cutover.
 
 #### [MODIFY] `.agents/README.md`
@@ -382,7 +382,7 @@ Not applicable.
 - APPEND a `KN-N` entry pre-emptively (next free ID per the file's count) for the pnpm v7.20+ silent-`.npmrc`-ignore footgun. Body:
   - **Symptom:** `pnpm install` fails with opaque 401 against npmjs.org (NOT against `npm.pkg.github.com`); error text reads as a generic auth failure, NOT "token missing".
   - **Root cause:** When any `${VAR}` reference inside `.npmrc` resolves to an unset env-var, pnpm v7.20+ silently ignores the ENTIRE `.npmrc` file and falls back to defaults. The `@cbartens:registry=https://npm.pkg.github.com` line is dropped; pnpm hits npmjs.org; npmjs.org has no `@cbartens/bkit`; 401.
-  - **Fix:** Ensure `GH_BKIT_TOKEN` is exported in the maintainer's shell, set as a GHA secret on the consumer repo, and set as a Vercel env var (preview + production) for any Vercel-deployed consumer. Verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install`.
+  - **Fix:** Ensure `GH_BKIT_TOKEN_INSTALL` is exported in the maintainer's shell, set as a GHA secret on the consumer repo, and set as a Vercel env var (preview + production) for any Vercel-deployed consumer. Verify with `echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"` before `pnpm install`.
   - **Source:** phase
   - **Related:** BAR-138, DE-3, `.agents/scripts/bkit-modules.ts` (installer print copy enumerates this verbatim).
 
@@ -395,7 +395,7 @@ Not applicable.
   - **Category:** infra
   - **Severity:** normal
   - **Status:** open
-  - **Description:** {consumer-name} still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` shim.
+  - **Description:** {consumer-name} still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc`, expand `GH_BKIT_TOKEN_INSTALL` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` shim.
   - **Source:** phase
   - **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
 - Known consumers to enumerate: `app-gether-life`, `www-visitfrasercoast-com`. (Add others if discovered during build.)
@@ -415,7 +415,7 @@ None.
 | `docs/pending.md` | APPEND per-consumer migration entries (`app-gether-life`, `www-visitfrasercoast-com`, plus any others discovered). |
 | `README.md` | Rewrite Install / Consumer CI auth / Consumer Vercel auth sections; delete pnpm 10 allowlist section. |
 | `.agents/README.md` | Rewrite Distribution + Install/regenerate sections; delete pnpm 10 allowlist subsection. |
-| `docs/knowledge.md` | APPEND `KN-N` entry pre-emptively for the pnpm v7.20+ silent-`.npmrc`-ignore footgun (symptom: opaque 401 from npmjs.org when `${GH_BKIT_TOKEN}` is unset, NOT "token missing"; root cause: pnpm silently ignores entire `.npmrc` on unresolved env-var; fix: ensure `GH_BKIT_TOKEN` is exported in shell / set as GHA secret / set as Vercel env var). This is a maintainer-discoverable gotcha and belongs in the canonical knowledge home — not just buried in installer print copy. |
+| `docs/knowledge.md` | APPEND `KN-N` entry pre-emptively for the pnpm v7.20+ silent-`.npmrc`-ignore footgun (symptom: opaque 401 from npmjs.org when `${GH_BKIT_TOKEN_INSTALL}` is unset, NOT "token missing"; root cause: pnpm silently ignores entire `.npmrc` on unresolved env-var; fix: ensure `GH_BKIT_TOKEN_INSTALL` is exported in shell / set as GHA secret / set as Vercel env var). This is a maintainer-discoverable gotcha and belongs in the canonical knowledge home — not just buried in installer print copy. |
 
 ## Rollback Strategy
 
@@ -468,24 +468,24 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
 
 ### Phase B — Installer prints + templates + bkit-self ci.yml + docs (validates UX layer)
 
-- [ ] **Task B1: Rewrite `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` constant in `.agents/scripts/bkit-modules.ts`.**
-  - Scope: Replace body verbatim with the `.npmrc`-based AI-actionable block. MUST include: (a) `.npmrc` snippet (registry + `_authToken=${GH_BKIT_TOKEN}`), (b) `GH_BKIT_TOKEN` GHA secret instructions with `read:packages` (classic) / Packages: read (fine-grained) PAT scope, (c) verbatim pnpm v7.20+ silent-ignore-on-unset-env warning so an AI agent can map symptom → cause.
-  - Acceptance: New constant body contains literal substrings `@cbartens:registry=https://npm.pkg.github.com`, `_authToken=${GH_BKIT_TOKEN}`, `read:packages`, `pnpm`, `silently ignores`. Old git-shim language strings (`insteadOf`, `git config --global url.`) are absent.
+- [ ] **Task B1: Rewrite `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` constant in `.agents/scripts/bkit-modules.ts`.**
+  - Scope: Replace body verbatim with the `.npmrc`-based AI-actionable block. MUST include: (a) `.npmrc` snippet (registry + `_authToken=${GH_BKIT_TOKEN_INSTALL}`), (b) `GH_BKIT_TOKEN_INSTALL` GHA secret instructions with `read:packages` (classic) / Packages: read (fine-grained) PAT scope, (c) verbatim pnpm v7.20+ silent-ignore-on-unset-env warning so an AI agent can map symptom → cause.
+  - Acceptance: New constant body contains literal substrings `@cbartens:registry=https://npm.pkg.github.com`, `_authToken=${GH_BKIT_TOKEN_INSTALL}`, `read:packages`, `pnpm`, `silently ignores`. Old git-shim language strings (`insteadOf`, `git config --global url.`) are absent.
   - Verification: Vitest unit test (Task C1) asserts these substrings in the constant body. Manual inspection: `grep -n 'insteadOf' .agents/scripts/bkit-modules.ts` returns empty.
 
-- [ ] **Task B2: Rewrite `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` constant.**
+- [ ] **Task B2: Rewrite `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` constant.**
   - Scope: Same shape as `_MISSING_`; same pnpm silent-ignore warning verbatim; copy adapted for "couldn't auto-check" framing (no `gh` CLI / not a GH repo).
   - Acceptance: New body contains the same `.npmrc`/`read:packages`/silent-ignore substrings. No `insteadOf` / git-shim language.
   - Verification: Vitest unit test (Task C1) asserts substrings.
 
 - [ ] **Task B3: Rewrite `VERCEL_AUTH_INSTRUCTIONS` constant.**
-  - Scope: New body — env-var-only Vercel setup. Tells AI to (a) `vercel env add GH_BKIT_TOKEN preview` + `production`, (b) commit `.npmrc` at repo root, (c) REMOVE any pre-existing `installCommand: "git config --global url.…insteadOf … && pnpm install"` (set `installCommand` to `pnpm install` or remove the key entirely), (d) trigger redeploy. Heuristic (`detectVercelProject`) unchanged.
-  - Acceptance: New body contains `vercel env add GH_BKIT_TOKEN`, `.npmrc`, `Remove` (referring to `installCommand` shim). Old `git config --global url.…` literal absent.
+  - Scope: New body — env-var-only Vercel setup. Tells AI to (a) `vercel env add GH_BKIT_TOKEN_INSTALL preview` + `production`, (b) commit `.npmrc` at repo root, (c) REMOVE any pre-existing `installCommand: "git config --global url.…insteadOf … && pnpm install"` (set `installCommand` to `pnpm install` or remove the key entirely), (d) trigger redeploy. Heuristic (`detectVercelProject`) unchanged.
+  - Acceptance: New body contains `vercel env add GH_BKIT_TOKEN_INSTALL`, `.npmrc`, `Remove` (referring to `installCommand` shim). Old `git config --global url.…` literal absent.
   - Verification: Vitest unit test (Task C1) asserts substrings.
 
 - [ ] **Task B4: Rewrite `CI_YML_MERGE_INSTRUCTIONS` constant.**
-  - Scope: New body — `.npmrc`-based merge guidance for a consumer's existing ci.yml: (a) commit `.npmrc` at repo root, (b) ensure install step has `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`, (c) remove any `Configure private-repo auth` `git config --global url.…insteadOf` step, (d) GHA secret has `read:packages` PAT scope.
-  - Acceptance: New body contains `.npmrc`, `env: GH_BKIT_TOKEN`, `Remove` (or equivalent for the dead auth-shim step), `read:packages`. Old auth-shim merge actions absent.
+  - Scope: New body — `.npmrc`-based merge guidance for a consumer's existing ci.yml: (a) commit `.npmrc` at repo root, (b) ensure install step has `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`, (c) remove any `Configure private-repo auth` `git config --global url.…insteadOf` step, (d) GHA secret has `read:packages` PAT scope.
+  - Acceptance: New body contains `.npmrc`, `env: GH_BKIT_TOKEN_INSTALL`, `Remove` (or equivalent for the dead auth-shim step), `read:packages`. Old auth-shim merge actions absent.
   - Verification: Vitest unit test (Task C1) asserts substrings.
 
 - [ ] **Task B5: Remove `onlyBuiltDependencies` line from first-install banner in `runCoreModule`.**
@@ -494,7 +494,7 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
   - Verification: Vitest unit test (Task C1) asserts `onlyBuiltDependencies` is absent from the banner constant. `pnpm test` green.
 
 - [ ] **Task B6: Edit `.agents/templates/.github/workflows/ci.yml` (consumer CI template).**
-  - Scope: DELETE the "Configure private-repo auth" step (lines 23–24). Add `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` block to the "Install dependencies" step. Token replacements (`{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`) unchanged.
+  - Scope: DELETE the "Configure private-repo auth" step (lines 23–24). Add `env: { GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }} }` block to the "Install dependencies" step. Token replacements (`{{DEFAULT_BRANCH}}`, `{{NODE_VERSION}}`) unchanged.
   - Acceptance: `grep -F 'Configure private-repo auth' .agents/templates/.github/workflows/ci.yml` returns empty. `grep -A1 'Install dependencies' .agents/templates/.github/workflows/ci.yml` shows the install run line followed by the `env:` block.
   - Verification: `yamllint` passes against the template. Snapshot test (Task C2) asserts the diff.
 
@@ -504,7 +504,7 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
   - Verification: `yamllint` passes. Push to feature branch and confirm `ci.yml` runs green (the deleted step was dead — removal must not break anything).
 
 - [ ] **Task B8: Rewrite `README.md` install + consumer-CI + Vercel sections.**
-  - Scope: `## Install` — replace `pnpm add -D github:cbartens/bkit#v0.2.0` with `pnpm add -D @cbartens/bkit@^0.4.0`; remove pnpm tag-drop note. DELETE `### ⚠️ One-time consumer config (pnpm 10+)` section. Rewrite `## Consumer CI auth`: PAT scope = `read:packages`; GHA secret = `GH_BKIT_TOKEN`; `.npmrc` snippet at repo root; install step `env:` block; explicit pnpm silent-ignore warning. Rewrite `## Consumer Vercel auth`: env-var-only; `vercel env add` for preview + production; explicit removal of any pre-existing `installCommand` git-shim.
+  - Scope: `## Install` — replace `pnpm add -D github:cbartens/bkit#v0.2.0` with `pnpm add -D @cbartens/bkit@^0.4.0`; remove pnpm tag-drop note. DELETE `### ⚠️ One-time consumer config (pnpm 10+)` section. Rewrite `## Consumer CI auth`: PAT scope = `read:packages`; GHA secret = `GH_BKIT_TOKEN_INSTALL`; `.npmrc` snippet at repo root; install step `env:` block; explicit pnpm silent-ignore warning. Rewrite `## Consumer Vercel auth`: env-var-only; `vercel env add` for preview + production; explicit removal of any pre-existing `installCommand` git-shim.
   - Acceptance: `grep -F 'github:cbartens/bkit' README.md` returns empty. `grep -F '@cbartens/bkit@^0.4.0' README.md` matches. `grep -F 'onlyBuiltDependencies' README.md` returns empty (or only in v0.2.0 historical-removal context; verify). `grep -F 'installCommand' README.md` shows context that explicitly tells consumers to remove it.
   - Verification: Manual prose review for tone consistency; `pnpm format:check` and `pnpm lint:prose` green.
 
@@ -558,28 +558,28 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
 
 - [ ] **Task C1: Extend (or create) Vitest unit tests for installer print constants.**
   - Scope: In `.agents/scripts/bkit-modules.test.ts` (or a new `.agents/scripts/install-prints.test.ts` — match existing test conventions for that source file by inspecting the dir before deciding). Add tests asserting:
-    - `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` contains `.npmrc`, `_authToken=${GH_BKIT_TOKEN}`, `read:packages`, `silently ignores`. Does NOT contain `insteadOf` or `git config --global url.`.
-    - `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` same.
-    - `VERCEL_AUTH_INSTRUCTIONS` contains `vercel env add GH_BKIT_TOKEN`, `.npmrc`, `Remove` (referring to `installCommand`). Does NOT contain `git config --global url.`.
-    - `CI_YML_MERGE_INSTRUCTIONS` contains `.npmrc`, `env: GH_BKIT_TOKEN`, `read:packages`. Does NOT contain `Configure private-repo auth` (as a directive to add).
+    - `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` contains `.npmrc`, `_authToken=${GH_BKIT_TOKEN_INSTALL}`, `read:packages`, `silently ignores`. Does NOT contain `insteadOf` or `git config --global url.`.
+    - `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS` same.
+    - `VERCEL_AUTH_INSTRUCTIONS` contains `vercel env add GH_BKIT_TOKEN_INSTALL`, `.npmrc`, `Remove` (referring to `installCommand`). Does NOT contain `git config --global url.`.
+    - `CI_YML_MERGE_INSTRUCTIONS` contains `.npmrc`, `env: GH_BKIT_TOKEN_INSTALL`, `read:packages`. Does NOT contain `Configure private-repo auth` (as a directive to add).
     - `runCoreModule` first-install banner does NOT contain `onlyBuiltDependencies`.
   - Acceptance: New tests are in the file, `pnpm test` green.
   - Verification: Comment out one print constant edit locally → corresponding test fails; revert.
 
 - [ ] **Task C2: Add snapshot/diff test for `.agents/templates/.github/workflows/ci.yml`.**
-  - Scope: Either (a) add to existing template-snapshot test file if one exists in `.agents/scripts/`, or (b) create `.agents/scripts/templates.test.ts` with a Vitest snapshot of the rendered template post-edit. Test asserts: no `Configure private-repo auth` substring; install step contains `env: GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}`.
+  - Scope: Either (a) add to existing template-snapshot test file if one exists in `.agents/scripts/`, or (b) create `.agents/scripts/templates.test.ts` with a Vitest snapshot of the rendered template post-edit. Test asserts: no `Configure private-repo auth` substring; install step contains `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`.
   - Acceptance: `pnpm test` green. Manual edit to reintroduce the dead step → test fails; revert.
   - Verification: Snapshot diff is committed.
 
 - [ ] **Task C3: Create scratch consumer repo for end-to-end smoke.**
-  - Scope: Under `tmp/bar-138-smoke/` (NEVER `/tmp/` per repo rules), `git init`; minimal `package.json` (`name`, `version`, `private: true`, `packageManager: pnpm@10.33.0`); `.npmrc` with the registry+authToken lines; export `GH_BKIT_TOKEN` (PAT with `read:packages`).
+  - Scope: Under `tmp/bar-138-smoke/` (NEVER `/tmp/` per repo rules), `git init`; minimal `package.json` (`name`, `version`, `private: true`, `packageManager: pnpm@10.33.0`); `.npmrc` with the registry+authToken lines; export `GH_BKIT_TOKEN_INSTALL` (PAT with `read:packages`).
   - Acceptance: `tmp/bar-138-smoke/.npmrc` exists with the two required lines. `tmp/bar-138-smoke/package.json` is valid.
   - Verification: `cat tmp/bar-138-smoke/.npmrc` shows registry + authToken. `tmp/` is git-ignored at repo root (verify against `.gitignore`).
 
 - [ ] **Task C4: Smoke-install `@cbartens/bkit@0.4.0-pre.2` in scratch repo.**
   - Scope: `cd tmp/bar-138-smoke; pnpm add -D @cbartens/bkit@0.4.0-pre.2`. Verify `pnpm install` succeeds (registry resolution, no git auth involved). `pnpm exec bkit install --full` → run completes, `.agents/`, `.claude/`, `.cursor/`, `.github/workflows/ci.yml`, `.husky/`, `.vale/` all seeded; print sink emits the rewritten messages (capture stdout for inspection).
   - Acceptance: `bkit install --full` exits 0. Captured stdout contains `.npmrc`-based instructions (or shows present-state silence if `gh` reports the secret as set on the scratch repo). First-install banner has no `onlyBuiltDependencies` line.
-  - Verification: Visual inspection of captured stdout. Inspection of seeded `.github/workflows/ci.yml` — has no `Configure private-repo auth` step; install step has `env: GH_BKIT_TOKEN`. Inspection of seeded `.agents/.bkit-version` = `0.4.0-pre.2`.
+  - Verification: Visual inspection of captured stdout. Inspection of seeded `.github/workflows/ci.yml` — has no `Configure private-repo auth` step; install step has `env: GH_BKIT_TOKEN_INSTALL`. Inspection of seeded `.agents/.bkit-version` = `0.4.0-pre.2`.
 
 - [ ] **Task C5 🔒 GATE — scratch-consumer smoke test must pass before cutting v0.4.0 production.**
   - Scope: If smoke fails (registry 401, install failure, missing template fields, regression in print copy), STOP. Diagnose; fix in bkit; cut a `v0.4.0-pre.3` if needed; re-run smoke. Do NOT cut `v0.4.0` until smoke is green.

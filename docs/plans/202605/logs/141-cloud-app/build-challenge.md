@@ -109,6 +109,6 @@ Lens: bugs (challenge-1 only).
 - **`$GITHUB_OUTPUT` injection via parsed `FID`/`ISSUE`** (`bkit-cloud.yml:185`) — `\d+` / `[^\s>]+` cannot capture a newline, so multi-line output-key injection is unreachable (challenge-2).
 - **Shell command injection in ctx step** — `PR_BODY` / `ISSUE_LABELS` are double-quoted and piped, never `eval`'d; `gh` calls use separate args (challenge-2).
 - **Secrets to forks** — `workflow_run` runs base-repo workflow with base secrets; fork PRs do not push to `feat/**` in base repo; `claude.yml` is not `pull_request_target`. Renovate token-isolation invariant preserved (challenge-2).
-- **`LINEAR_API_KEY` decoupling** (`bkit-modules.ts`, `bkit-postinstall.ts`) — removes the Linear secret + `mcp__linear__*` surface from the GitHub-only render; advisory correctly tells consumers NOT to add `GH_BKIT_TOKEN` (challenge-2).
+- **`LINEAR_API_KEY` decoupling** (`bkit-modules.ts`, `bkit-postinstall.ts`) — removes the Linear secret + `mcp__linear__*` surface from the GitHub-only render; advisory correctly tells consumers NOT to add `GH_BKIT_TOKEN_INSTALL` (challenge-2).
 - **DECISION-E PR-label-mirror deletion** (`trackers.md`, `bkit-cloud.md`) — removes write-only PR-label propagation; live kill switch is the in-job issue-label read; no authz regression (challenge-2).
 - **`prompt:` / `claude_args` interpolation** (`bkit-cloud.yml:193,197`) — `phase` hardcoded `ship`/`debug`; `arg` is a numeric PR number or trusted `workflow_dispatch` input; no untrusted free-text reaches the prompt on the CI path (challenge-2).

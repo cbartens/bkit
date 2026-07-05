@@ -38,6 +38,8 @@ import {
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
   buildPnpmReleaseAgeOomAdvisory,
+  buildRenovateSelfHostedMendAdvisory,
+  buildTokenRenameMigrationAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   detectRenderedPromptsStale,
@@ -106,39 +108,39 @@ function makeWs(...writes: import("./bkit-install").WriteEntry[]): WriteSet {
 // ---------------------------------------------------------------------------
 
 describe("detectShellToken", () => {
-  it("returns 'present' when GH_BKIT_TOKEN is set and non-empty", () => {
-    process.env.GH_BKIT_TOKEN = "some-token-value";
+  it("returns 'present' when GH_BKIT_TOKEN_INSTALL is set and non-empty", () => {
+    process.env.GH_BKIT_TOKEN_INSTALL = "some-token-value";
     expect(detectShellToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_BKIT_TOKEN is not set", () => {
-    delete process.env.GH_BKIT_TOKEN;
+  it("returns 'missing' when GH_BKIT_TOKEN_INSTALL is not set", () => {
+    delete process.env.GH_BKIT_TOKEN_INSTALL;
     expect(detectShellToken()).toBe("missing");
   });
 
-  it("B4: returns 'empty' when GH_BKIT_TOKEN is set to empty string (differentiates from unset)", () => {
-    process.env.GH_BKIT_TOKEN = "";
+  it("B4: returns 'empty' when GH_BKIT_TOKEN_INSTALL is set to empty string (differentiates from unset)", () => {
+    process.env.GH_BKIT_TOKEN_INSTALL = "";
     expect(detectShellToken()).toBe("empty");
   });
 });
 
 // ---------------------------------------------------------------------------
-// detectShellGhMcpToken (GH_MCP_TOKEN — GitHub MCP auth)
+// detectShellGhMcpToken (GH_BKIT_TOKEN — GitHub MCP auth)
 // ---------------------------------------------------------------------------
 
 describe("detectShellGhMcpToken", () => {
-  it("returns 'present' when GH_MCP_TOKEN is set and non-empty", () => {
-    process.env.GH_MCP_TOKEN = "ghp_value";
+  it("returns 'present' when GH_BKIT_TOKEN is set and non-empty", () => {
+    process.env.GH_BKIT_TOKEN = "ghp_value";
     expect(detectShellGhMcpToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_MCP_TOKEN is not set", () => {
-    delete process.env.GH_MCP_TOKEN;
+  it("returns 'missing' when GH_BKIT_TOKEN is not set", () => {
+    delete process.env.GH_BKIT_TOKEN;
     expect(detectShellGhMcpToken()).toBe("missing");
   });
 
-  it("returns 'empty' when GH_MCP_TOKEN is set to empty string", () => {
-    process.env.GH_MCP_TOKEN = "";
+  it("returns 'empty' when GH_BKIT_TOKEN is set to empty string", () => {
+    process.env.GH_BKIT_TOKEN = "";
     expect(detectShellGhMcpToken()).toBe("empty");
   });
 });
@@ -450,7 +452,7 @@ describe("detectNpmrcAuth", () => {
     // Still 'present' for the registry check; the legacy line is flagged separately.
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcAuth(tmpDir)).toBe("present");
@@ -459,7 +461,7 @@ describe("detectNpmrcAuth", () => {
   it("returns 'missing' when .npmrc exists but lacks the @cbartens registry mapping", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcAuth(tmpDir)).toBe("missing");
@@ -487,7 +489,7 @@ describe("detectNpmrcLegacyAuthToken", () => {
   it("returns true when .npmrc carries a legacy GH Packages auth-token line", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(true);
@@ -535,7 +537,7 @@ describe("detectVercelInstallCommandMissingAuth", () => {
       path.join(tmpDir, "vercel.json"),
       JSON.stringify({
         installCommand:
-          'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" && pnpm install',
+          'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && pnpm install',
       }),
       "utf-8",
     );
@@ -547,7 +549,7 @@ describe("detectVercelInstallCommandMissingAuth", () => {
       path.join(tmpDir, "vercel.json"),
       JSON.stringify({
         installCommand:
-          "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install",
+          "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install",
       }),
       "utf-8",
     );
@@ -577,12 +579,12 @@ describe("detectVercelInstallCommandMissingAuth", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectGhSecret", () => {
-  it("returns 'present' when gh CLI reports GH_BKIT_TOKEN exists", () => {
-    execSync.mockReturnValue("GH_BKIT_TOKEN\n");
+  it("returns 'present' when gh CLI reports GH_BKIT_TOKEN_INSTALL exists", () => {
+    execSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL\n");
     expect(detectGhSecret()).toBe("present");
   });
 
-  it("returns 'missing' when gh CLI reports no GH_BKIT_TOKEN", () => {
+  it("returns 'missing' when gh CLI reports no GH_BKIT_TOKEN_INSTALL", () => {
     execSync.mockReturnValue("OTHER_SECRET\n");
     expect(detectGhSecret()).toBe("missing");
   });
@@ -656,7 +658,7 @@ describe("detectVercelEnv", () => {
     expect(result).toBe("unknown");
   });
 
-  it("returns 'present' when vercel CLI reports GH_BKIT_TOKEN", () => {
+  it("returns 'present' when vercel CLI reports GH_BKIT_TOKEN_INSTALL", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
@@ -665,11 +667,11 @@ describe("detectVercelEnv", () => {
       '{"projectId":"proj_x"}',
       "utf-8",
     );
-    execFileSync.mockReturnValue("GH_BKIT_TOKEN  preview\n");
+    execFileSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("present");
   });
 
-  it("returns 'missing' when vercel CLI output lacks GH_BKIT_TOKEN", () => {
+  it("returns 'missing' when vercel CLI output lacks GH_BKIT_TOKEN_INSTALL", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
@@ -719,9 +721,11 @@ describe("detectCiYmlMissingTokenEnv", () => {
     );
   };
   // #274 canonical correct install step: pnpm config set (user-level auth) + env mapping.
-  const CONFIG_SET = '          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"';
+  const CONFIG_SET =
+    '          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"';
   const INSTALL = "          pnpm install --frozen-lockfile";
-  const ENV_BLOCK = "        env:\n          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}";
+  const ENV_BLOCK =
+    "        env:\n          GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}";
   const correctStep = `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n${ENV_BLOCK}`;
 
   it("returns null when install step has both pnpm config set and env mapping", () => {
@@ -731,14 +735,14 @@ describe("detectCiYmlMissingTokenEnv", () => {
 
   it("returns null when env mapping uses quotes (with config set)", () => {
     writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN: "\${{ secrets.GH_BKIT_TOKEN }}"`,
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN_INSTALL: "\${{ secrets.GH_BKIT_TOKEN_INSTALL }}"`,
     );
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
 
   it("returns null when env mapping has no inner spaces (with config set)", () => {
     writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN: \${{secrets.GH_BKIT_TOKEN}}`,
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN_INSTALL: \${{secrets.GH_BKIT_TOKEN_INSTALL}}`,
     );
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
@@ -764,7 +768,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
     writeCi(`      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}`);
     const result = detectCiYmlMissingTokenEnv(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("GH_BKIT_TOKEN env mapping");
+    expect(result!.detect).toContain("GH_BKIT_TOKEN_INSTALL env mapping");
   });
 
   it("returns null when ci.yml is absent", () => {
@@ -784,11 +788,11 @@ describe("detectCiYmlMissingTokenEnv", () => {
     expect(result!.detect).toContain("401");
   });
 
-  it("elevates to blocker when .npmrc carries a legacy ${GH_BKIT_TOKEN} ref and wiring is incomplete", () => {
+  it("elevates to blocker when .npmrc carries a legacy ${GH_BKIT_TOKEN_INSTALL} ref and wiring is incomplete", () => {
     writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
       "utf-8",
     );
     const result = detectCiYmlMissingTokenEnv(tmpDir);
@@ -1290,6 +1294,66 @@ describe("buildPnpmReleaseAgeOomAdvisory", () => {
   it("reads the numeric value, not minimumReleaseAgeExclude — `0` + an exclude list clears", () => {
     seed('minimumReleaseAge: 0\nminimumReleaseAgeExclude:\n  - "@cbartens/*"\n');
     expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("null when self-hosted Renovate is active — 16 GB runner, the microvm OOM cannot occur (#325)", () => {
+    seed(); // pnpm 11 + gate active + renovate.json5 → would otherwise fire
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "name: Renovate\n");
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildRenovateSelfHostedMendAdvisory — mutual-exclusion warning (#325)
+// ---------------------------------------------------------------------------
+
+describe("buildRenovateSelfHostedMendAdvisory", () => {
+  it("fires whenever the self-hosted workflow is present (App state is off-repo/undetectable)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "name: Renovate\n");
+    const result = buildRenovateSelfHostedMendAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("renovate-self-hosted-mend-both-active");
+    expect(result!.severity).toBe("advisory");
+    expect(result!.action).toMatch(/Mend Renovate App is suspended/);
+  });
+
+  it("null for a Mend consumer with no self-hosted workflow", () => {
+    expect(buildRenovateSelfHostedMendAdvisory(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildTokenRenameMigrationAdvisory — GH_BKIT_TOKEN scheme split migration
+// ---------------------------------------------------------------------------
+
+describe("buildTokenRenameMigrationAdvisory", () => {
+  const writeEnv = (body: string) => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), body, "utf-8");
+  };
+
+  it("fires when .bkit/.env still has GH_MCP_TOKEN (old scheme)", () => {
+    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_MCP_TOKEN=y\n");
+    const r = buildTokenRenameMigrationAdvisory(tmpDir);
+    expect(r).not.toBeNull();
+    expect(r!.id).toBe("gh-token-scheme-rename");
+    expect(r!.action).toMatch(/GH_MCP_TOKEN.*->.*GH_BKIT_TOKEN/);
+  });
+
+  it("fires when GH_BKIT_TOKEN present without the new GH_BKIT_TOKEN_INSTALL", () => {
+    writeEnv("GH_BKIT_TOKEN=x\n");
+    expect(buildTokenRenameMigrationAdvisory(tmpDir)?.id).toBe("gh-token-scheme-rename");
+  });
+
+  it("null for the new scheme (GH_BKIT_TOKEN_INSTALL present, no GH_MCP_TOKEN)", () => {
+    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_BKIT_TOKEN=y\n");
+    expect(buildTokenRenameMigrationAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("null when there is no .bkit/.env", () => {
+    expect(buildTokenRenameMigrationAdvisory(tmpDir)).toBeNull();
   });
 });
 
@@ -1802,7 +1866,7 @@ describe("runPostInstallCheck deduplication", () => {
     // cross-phase dedup: if preflightAdvisories has an id that Phase 3 would also emit,
     // Phase 3 wins (its entry replaces preflight's).
     // Set up: shell token missing → Phase 3 will emit gh-bkit-token-unset-shell
-    delete process.env.GH_BKIT_TOKEN;
+    delete process.env.GH_BKIT_TOKEN_INSTALL;
 
     // Simulate a preflight advisory with the same id
     const preflightAdvisories: PreflightFinding[] = [
@@ -1824,8 +1888,8 @@ describe("runPostInstallCheck deduplication", () => {
     expect(matches[0]!.detect).not.toBe("Old preflight detect text");
   });
 
-  it("gh-bkit-token-unset-shell is emitted when GH_BKIT_TOKEN is unset", () => {
-    delete process.env.GH_BKIT_TOKEN;
+  it("gh-bkit-token-unset-shell is emitted when GH_BKIT_TOKEN_INSTALL is unset", () => {
+    delete process.env.GH_BKIT_TOKEN_INSTALL;
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
   });
@@ -1837,20 +1901,20 @@ describe("runPostInstallCheck deduplication", () => {
       "utf-8",
     );
     // Ensure token is set so only npmrc advisory fires
-    process.env.GH_BKIT_TOKEN = "test";
+    process.env.GH_BKIT_TOKEN_INSTALL = "test";
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(true);
   });
 
   it("no finding is emitted for .npmrc when file is absent (silent skip)", () => {
-    process.env.GH_BKIT_TOKEN = "test";
+    process.env.GH_BKIT_TOKEN_INSTALL = "test";
     // No .npmrc file
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(false);
   });
 
   it("devdeps-need-fetch emitted when WriteSet has devDepsAdded", () => {
-    process.env.GH_BKIT_TOKEN = "test";
+    process.env.GH_BKIT_TOKEN_INSTALL = "test";
     const ws = makeWs({ path: "package.json", action: "update", devDepsAdded: ["prettier"] });
     const result = runPostInstallCheck([], ws, makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "devdeps-need-fetch")).toBe(true);
@@ -1861,7 +1925,7 @@ describe("runPostInstallCheck deduplication", () => {
     // appears at the back of the list (Phase 3 position), not inserted at preflight position.
     // This ensures the output order is stable: preflight findings (not superseded) first,
     // Phase 3 findings second.
-    process.env.GH_BKIT_TOKEN = "test"; // token present → no shell-token finding from Phase 3
+    process.env.GH_BKIT_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
 
     const preflightAdvisories: PreflightFinding[] = [
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "p1", action: "a1" },
@@ -1882,7 +1946,7 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("deduplicates duplicate ids within incoming preflightAdvisories (intra-preflight dedup)", () => {
-    process.env.GH_BKIT_TOKEN = "test";
+    process.env.GH_BKIT_TOKEN_INSTALL = "test";
     // Two entries with the same id — only the first should survive.
     const preflightAdvisories: PreflightFinding[] = [
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "first", action: "a1" },

@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.1.12",
+  "version": "4.2.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -86,6 +86,7 @@
     "opencodeProviders": [
       "nvidia",
       "opencode"
-    ]
+    ],
+    "renovateRunner": "self"
   }
 }

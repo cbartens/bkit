@@ -2,25 +2,35 @@
 # sync-github.sh — Push the minimal CI-required secrets to GitHub Actions.
 #
 # Usage:
-#   bash scripts/secrets/sync-github.sh                  # reads from .env.local
-#   bash scripts/secrets/sync-github.sh --dry-run        # show what would be pushed
+#   bash scripts/secrets/sync-github.sh                  # reads from apps/web/.env.preview
+#   bash scripts/secrets/sync-github.sh --dry-run         # show what would be pushed
 #
-# Pushes only the three secrets the post-CI router needs (see .bkit/cloud.md
-# "Claude — required GitHub repo secrets"). Phase 2 removes any other secrets
-# from the repo to keep the surface tight.
+# Config-driven (scripts/secrets/sync.config.sh): the curated CI scope is
+# GITHUB_KEYS (which now includes VERCEL_ORG_ID/VERCEL_PROJECT_ID). Every value
+# resolves from the env files via get_val — nothing is read from outside the env
+# files, so this script is portable across repos. This is intentionally a SMALL
+# list — see docs/knowledge.md §"Secrets Management Architecture".
+#
+# Two sources, by tier (get_val prefers AGENT_ENV_FILES, then falls back to the
+# web env file):
+#   - .bkit/.env              → agent/CI-tier secrets (GH_MCP_TOKEN, GH_BKIT_TOKEN,
+#                               LINEAR_API_KEY, ANTHROPIC_API_KEY, CURSOR_API_KEY)
+#   - apps/web/.env.preview   → deploy-infra tokens (VERCEL_*, SUPABASE_ACCESS_TOKEN)
+#
+# Mirror semantics within the curated scope:
+#   - GITHUB_KEYS entry present + non-empty in source → upsert on the repo
+#   - GITHUB_KEYS entry empty/absent in source        → deleted in reconcile phase
+#   - PROTECTED_KEYS                                   → never pushed, never deleted
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-REPO="cbartens/bkit"
-ENV_FILE="$REPO_ROOT/.env.local"
-DRY_RUN=false
+# shellcheck source=sync.config.sh
+source "$SCRIPT_DIR/sync.config.sh"
 
-# Strip GH_TOKEN from gh's env: if the caller has a fine-grained PAT exported
-# (e.g. sourced from an env file), gh prefers it over the `gh auth login`
-# session and 403s on actions/secrets/public-key. Use the auth-login user.
-gh_clean() { env -u GH_TOKEN gh "$@"; }
+ENV_FILE="$REPO_ROOT/$PREVIEW_ENV_FILE"
+DRY_RUN=false
 
 for arg in "$@"; do
   [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
@@ -31,50 +41,94 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-GITHUB_KEYS=(
-  "ANTHROPIC_API_KEY"
-  "LINEAR_API_KEY"
-  "GH_BKIT_TOKEN"
-)
+# Strip GH_TOKEN from gh's process env so it falls back to the gh CLI's stored
+# OAuth auth. The shell may have GH_TOKEN set to the fine-grained PAT from
+# .env.preview (we sync it as a secret), and fine-grained PATs 403 on
+# /actions/secrets/public-key — silently breaking secret writes. See KN-41.
+GH="env -u GH_TOKEN gh"
 
+# Target repo — derived from the checkout so this script is repo-portable:
+# copy it + sync.config.sh into any repo, no hardcoded owner/name to edit.
+REPO="$($GH repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+if [ -z "$REPO" ]; then
+  echo "❌ Could not resolve GitHub repo — run from a checkout with gh access."
+  exit 1
+fi
+
+# Resolve a key's value: AGENT_ENV_FILES (in order, first non-empty wins) then
+# this script's $ENV_FILE. Each grep is `2>/dev/null ... || true` so a missing
+# key resolves to empty instead of aborting under `set -euo pipefail`.
 get_val() {
   local search_key="$1"
-  grep "^${search_key}=" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/^[^=]*=//' | sed 's/^"//' | sed 's/"$//' || true
+  local val=""
+  local f
+  for f in "${AGENT_ENV_FILES[@]}"; do
+    local path="$REPO_ROOT/$f"
+    [ -f "$path" ] || continue
+    val=$(grep "^${search_key}=" "$path" 2>/dev/null | head -1 | sed 's/^[^=]*=//' | sed 's/^"//' | sed 's/"$//' || true)
+    [ -n "$val" ] && { printf '%s' "$val"; return; }
+  done
+  if [ -f "$ENV_FILE" ]; then
+    val=$(grep "^${search_key}=" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/^[^=]*=//' | sed 's/^"//' | sed 's/"$//' || true)
+  fi
+  printf '%s' "$val"
 }
 
-echo "📤 GitHub Actions Secrets (from $(basename "$ENV_FILE") → $REPO)"
+is_protected() {
+  local key=$1 p
+  for p in "${PROTECTED_KEYS[@]}"; do
+    [[ "$key" == "$p" ]] && return 0
+  done
+  return 1
+}
+
+echo "📤 GitHub Actions Secrets (from $(basename "$ENV_FILE") + agent env)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-ERRORS=0
+# KEEP set: secrets that must remain on the repo (everything we pushed +
+# the two Vercel ids + PROTECTED_KEYS). Anything live but not in KEEP is deleted
+# in the reconcile phase — this also covers empty/absent GITHUB_KEYS entries,
+# which never get pushed and therefore fall out of KEEP.
+declare -a KEEP=()
+
 for key in "${GITHUB_KEYS[@]}"; do
+  if is_protected "$key"; then
+    echo "  🛡️  $key (protected — never pushed)"
+    continue
+  fi
   val=$(get_val "$key")
   if [ -z "$val" ]; then
-    echo "  ⚠️  $key (EMPTY — skipping)"
-    ERRORS=$((ERRORS + 1))
+    echo "  ⚠️  $key (EMPTY — will reconcile-delete if present remotely)"
     continue
   fi
 
   if [ "$DRY_RUN" = true ]; then
     echo "  🔍 $key = ${val:0:8}..."
   else
-    printf '%s' "$val" | gh_clean secret set "$key" --repo "$REPO"
+    echo -n "$val" | $GH secret set "$key" --repo "$REPO"
     echo "  ✅ $key"
   fi
+  KEEP+=("$key")
+done
+
+# PROTECTED keys are never deleted — keep them.
+for p in "${PROTECTED_KEYS[@]}"; do
+  KEEP+=("$p")
 done
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Cleanup Phase: Remove undocumented Secrets
+# Reconcile Phase: delete any live secret not in KEEP
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo ""
-echo "🧹 Phase 2: Cleaning unused GitHub secrets..."
+echo "🧹 Phase 2: Reconciling GitHub secrets against scope..."
 
-CURRENT_SECRETS=$(gh_clean api "/repos/$REPO/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")
+CURRENT_SECRETS=$($GH api "/repos/$REPO/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")
 CLEANUP_COUNT=0
 
 for secret in $CURRENT_SECRETS; do
   FOUND=false
-  for expected in "${GITHUB_KEYS[@]}"; do
-    if [ "$secret" == "$expected" ]; then
+  for keep in "${KEEP[@]}"; do
+    if [ "$secret" == "$keep" ]; then
       FOUND=true
       break
     fi
@@ -82,9 +136,9 @@ for secret in $CURRENT_SECRETS; do
 
   if [ "$FOUND" = false ]; then
     if [ "$DRY_RUN" = true ]; then
-      echo "  🔍 Would remove: $secret (not in GITHUB_KEYS)"
+      echo "  🗑️  DELETE $secret (not in scope)"
     else
-      gh_clean secret remove "$secret" --repo "$REPO"
+      $GH secret remove "$secret" --repo "$REPO"
       echo "  🗑️  Removed: $secret"
     fi
     CLEANUP_COUNT=$((CLEANUP_COUNT + 1))
@@ -92,14 +146,12 @@ for secret in $CURRENT_SECRETS; do
 done
 
 if [ "$CLEANUP_COUNT" -eq 0 ]; then
-  echo "  ✅ All clean. No unused secrets found."
+  echo "  ✅ All clean. Nothing to delete."
 fi
 
 echo ""
 if [ "$DRY_RUN" = true ]; then
   echo "🔍 DRY RUN complete."
-elif [ $ERRORS -gt 0 ]; then
-  echo "⚠️  $ERRORS secrets were empty."
 else
   echo "✅ GitHub Secrets sync complete!"
 fi

@@ -40,7 +40,7 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 - Anchored marker regex correctly skips prose-fenced fixtures (B1).
 - `detectShellToken` differentiates `unset` from empty-string (B4).
 - Dry-run blocker banner is `LOG_PREFIX`-prefixed (B5).
-- `.npmrc` literal in `.agents/scripts/bkit-modules.ts` uses `${GH_BKIT_TOKEN:-}` fallback iff pnpm supports it; action text instructs `export GH_BKIT_TOKEN=$(gh auth token)` (B6).
+- `.npmrc` literal in `.agents/scripts/bkit-modules.ts` uses `${GH_BKIT_TOKEN_INSTALL:-}` fallback iff pnpm supports it; action text instructs `export GH_BKIT_TOKEN_INSTALL=$(gh auth token)` (B6).
 - Cross-phase dedup in `runPostInstallCheck` is position-stable (B2).
 - Post-install surfaces a changelog version-delta header (A7).
 
@@ -62,7 +62,7 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 | Scenario | Expected Behavior |
 | --- | --- |
 | `bkit doctor` against producer repo | Exits 0; banner printed |
-| `detectShellToken` empty (`GH_BKIT_TOKEN=""`) vs unset | Action text differentiates |
+| `detectShellToken` empty (`GH_BKIT_TOKEN_INSTALL=""`) vs unset | Action text differentiates |
 | pnpm 10 onlyBuiltDependencies missing | Already advised — no change |
 | Prose-fenced `bkit:start` text inside markdown | NOT detected as marker (B1 anchoring) |
 
@@ -133,7 +133,7 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 - [ ] **PII** — N/A.
 - [ ] **Redirect URL** — N/A.
 - [ ] **Webhook** — N/A.
-- [ ] **New secret/env var** — N/A (`GH_BKIT_TOKEN` already documented).
+- [ ] **New secret/env var** — N/A (`GH_BKIT_TOKEN_INSTALL` already documented).
 
 ## 🚨 Pre-Flight / Dependencies 🚨
 
@@ -189,7 +189,7 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 | [MODIFY] | `.agents/scripts/bkit-install.ts` | `main()` dispatch arm for `doctor`; LOG_PREFIX on dry-run banner (B5). |
 | [MODIFY] | `.agents/scripts/bkit-postinstall.ts` | Expose `runPostInstallCheck(modules, cwd, { dryRun: true })` read-only replay; cross-phase dedup position-stable (B2); changelog version-delta header (A7). |
 | [MODIFY] | `.agents/scripts/bkit-preflight.ts` | Anchor `hasBkitMarkers` (B1); `detectShellToken` empty vs unset (B4); update `gh-bkit-token-secret-unknown` action text (B6). |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN:-}` fallback iff pnpm supports it (B6). |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN_INSTALL:-}` fallback iff pnpm supports it (B6). |
 | [NEW] | `.agents/scripts/bkit-doctor.integration.test.ts` | Stale-pin fixture; assert exit 0 + banner content. |
 | [MODIFY] | `.agents/scripts/bkit-cli.test.ts` | Verb parsing for `doctor`. |
 | [MODIFY] | `.agents/scripts/bkit-preflight.test.ts` | New fixtures for B1/B4/B6. |
@@ -277,7 +277,7 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.test.ts`
   - Closes: BAR-142 §B5
-- [ ] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct concrete one-liner: `export GH_BKIT_TOKEN=$(gh auth token)` (test asserts on this exact substring). (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file).
+- [ ] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct concrete one-liner: `export GH_BKIT_TOKEN_INSTALL=$(gh auth token)` (test asserts on this exact substring). (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file).
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P0.T1
   - Effort: M

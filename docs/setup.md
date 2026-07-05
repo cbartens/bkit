@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -15,7 +15,7 @@
 
 <!-- bkit:end -->
 
-> Consumer install + auth (`GH_BKIT_TOKEN`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/cloud.md`](../.bkit/cloud.md).
+> Consumer install + auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/cloud.md`](../.bkit/cloud.md).
 
 ## Required tools
 
@@ -39,11 +39,11 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash users use ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # then fill in GH_BKIT_TOKEN, GH_MCP_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # then fill in GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
 direnv allow                            # trust the .envrc; auto-loads on subsequent cd
 
 # Verify
-echo "len=${#GH_MCP_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
+echo "len=${#GH_BKIT_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
 ```
 
 `LINEAR_ISSUE_ID` is injected per-session by the cloud integration — never put it in `.bkit/.env`. Cloud sessions (Claude on the web, Cursor Background Agents) set the same variable names in their respective dashboards, not via this file.
@@ -68,7 +68,7 @@ pnpm exec bkit doctor                                       # token + advisory s
 
 ## Troubleshooting
 
-- **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — either `GH_BKIT_TOKEN` is unset (`echo "${GH_BKIT_TOKEN:-MISSING}"`), or the token was never written to pnpm's user-level config. pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` and retry (see `docs/knowledge.md` KN-CORE-7).
+- **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — either `GH_BKIT_TOKEN_INSTALL` is unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or the token was never written to pnpm's user-level config. pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` and retry (see `docs/knowledge.md` KN-CORE-7).
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` ran without `pnpm exec bkit install`. Re-run install; commit the resync.
 - **Linear preflight blocks session** — issue missing `Auto` label or in `Done` / `Cancelled`. Add `Auto`, set non-terminal state.
 - **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.

@@ -1,7 +1,14 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
 
-import { ISSUE_TRACKERS, type IssueTracker, parseIssueTracker } from "./bkit-manifest.js";
+import {
+  ISSUE_TRACKERS,
+  type IssueTracker,
+  parseIssueTracker,
+  RENOVATE_RUNNERS,
+  type RenovateRunner,
+  parseRenovateRunner,
+} from "./bkit-manifest.js";
 
 export type ModuleFlag =
   | "core"
@@ -100,6 +107,12 @@ export interface ParsedArgs {
   tracker: IssueTracker | null;
   /** Cloud variant selected via `--auto=claude|cursor`. null = not specified. */
   cloudVariant: CloudVariant | null;
+  /**
+   * Renovate runner selected via `--renovate=mend|self` (#325). null = not specified
+   * (module reads the manifest field or defaults to `mend`). `--renovate=<v>` auto-selects
+   * the renovate module, so it stands alone (no `--dependency=renovate` needed).
+   */
+  renovateRunner: RenovateRunner | null;
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
    * Supported: see OPENCODE_PROVIDERS — strict allowlist (ollama-local, nvidia, groq,
@@ -255,6 +268,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let tracker: IssueTracker | null = null;
   let cloudVariant: CloudVariant | null = null;
   let opencodeProvider: string | null = null;
+  let renovateRunner: RenovateRunner | null = null;
 
   for (const arg of args) {
     // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage instead of
@@ -358,6 +372,26 @@ export function parseArgs(argv: string[]): ParsedArgs {
           process.exit(1);
         }
         moduleFlags.add(value);
+        continue;
+      }
+
+      // Value-bearing flag: --renovate=<mend|self> (#325) — selects the renovate
+      // module AND its runner in ONE flag (mirrors --auto=/--opencode=/--dependency=).
+      // `self` ships a `.github/workflows/renovate.yml` (self-hosted GitHub Actions,
+      // ~16 GB); `mend` (default) uses the hosted App and reclaims a stale workflow.
+      // Auto-adds the renovate module, so it stands alone — like `--typescript` auto-adds
+      // `--ci`. `--dependency=renovate` remains an equivalent way to select renovate (mend).
+      if (flag.startsWith("renovate=")) {
+        const value = flag.slice("renovate=".length);
+        const parsed = parseRenovateRunner(value);
+        if (parsed === null) {
+          console.error(
+            `[bkit] Unknown renovate runner: "${value}". Valid values: ${RENOVATE_RUNNERS.join(", ")}`,
+          );
+          process.exit(1);
+        }
+        renovateRunner = parsed;
+        moduleFlags.add("renovate");
         continue;
       }
 
@@ -508,6 +542,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     tracker,
     cloudVariant,
     opencodeProvider,
+    renovateRunner,
   };
 }
 
@@ -585,6 +620,12 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Dependency updater (opt-in, mutually exclusive — both open PRs against
                   the same packages). renovate is phase-gated against the default branch;
                   dependabot is a first-party GitHub feature (no App / phase gate).
+  --renovate=<mend|self>
+                  Install Renovate + choose WHERE it runs (one flag; auto-selects the
+                  renovate module). mend (default) = the hosted Mend GitHub App. self =
+                  a bkit-managed GitHub Actions workflow on ubuntu-latest (~16 GB) — the
+                  escape hatch for large monorepos that OOM on Mend's 3 GB hosted runner.
+                  Switchable by re-install. (--dependency=renovate also works = mend.)
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
                   tracker=github + ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
@@ -630,6 +671,9 @@ Examples:
   bkit install --opencode=nvidia              add nvidia alongside opencode gateway.
   bkit uninstall --opencode=nvidia            remove nvidia block only; keep opencode.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
+  bkit install --renovate=self
+                                              Renovate via self-hosted GitHub Actions (16 GB;
+                                              for repos that OOM on Mend's hosted runner).
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
@@ -643,14 +687,14 @@ macOS GUI-isolation note (launchctl fallback):
   If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
   make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
   survive reboot — must re-run after each restart):
-    launchctl setenv GH_MCP_TOKEN "$GH_MCP_TOKEN"
+    launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"
     launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"   # etc.
   For a persistent approach, add a RunAtLoad LaunchAgent plist under
   ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
   whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
 Consumer CI auth:
-  Set GH_BKIT_TOKEN in GitHub Actions secrets (classic PAT with read:packages scope —
+  Set GH_BKIT_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
   fine-grained PATs are not currently supported by GitHub Packages npm registry).
   See README.md ## Consumer CI auth for setup steps.
 

@@ -60,7 +60,7 @@ Per the contract in the plan itself (lines 150–151, 218–219), both Gate 1 ch
 **Secondary risks (mitigated):**
 
 - **Dry-run parity**: Phase 3 is skipped in `bkit check` mode to preserve read-only semantics. However, Phase 1 advisories MUST still render via `formatChecklist(ctx.advisories)` to avoid silent regression. Plan explicitly addresses this (lines 366–367, 489) and marks it as an edge case (lines 111–112).
-- **Token value exposure**: Plan specifies token detectors MUST check presence only (never read value). Snapshot tests assert `ACTION` strings reference `${GH_BKIT_TOKEN}` form (line 273). Mitigated via code-review grep for `process.env.GH_BKIT_TOKEN` on read paths.
+- **Token value exposure**: Plan specifies token detectors MUST check presence only (never read value). Snapshot tests assert `ACTION` strings reference `${GH_BKIT_TOKEN_INSTALL}` form (line 273). Mitigated via code-review grep for `process.env.GH_BKIT_TOKEN_INSTALL` on read paths.
 - **Deduplication cross-phase conflict**: If Phase 1 and Phase 3 emit the same `id` with different `detect`/`action` text, Phase 3 wins (re-detection is more accurate). Mitigated via explicit deduplication logic (lines 342) and unit tests (lines 137).
 - **Silent skips on external tool absence**: Vercel and `.npmrc` absence are silent (no findings), while token-surface `unknown` is an advisory. Plan distinguishes these clearly (lines 106–107, 345–347, 349).
 

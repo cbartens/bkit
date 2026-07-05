@@ -192,7 +192,7 @@ As a bkit consumer or bkit maintainer, when CI reports a run green I can trust t
 
 - [x] **CI workflow edits** — human-gated per `.agents/rules.md` L65 ("CI edits: ANY changes to `.github/workflows/*`, ALWAYS require human confirmation"). The two ci.yml changes (bkit's own + the template) are listed as a Build-phase gated step with explicit human-sign-off before commit.
 
-_No new API routes, no DB writes, no secrets, no user input. The only secret implicitly referenced is `GH_BKIT_TOKEN` (already in env)._
+_No new API routes, no DB writes, no secrets, no user input. The only secret implicitly referenced is `GH_BKIT_TOKEN_INSTALL` (already in env)._
 
 ## 🚨 Pre-Flight / Dependencies 🚨
 

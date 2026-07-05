@@ -65,7 +65,7 @@ describe("bkit doctor — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(
@@ -83,7 +83,7 @@ describe("bkit doctor — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.stdout).toContain("[bkit-doctor]");
@@ -98,7 +98,7 @@ describe("bkit doctor — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.stdout).toContain("[bkit-doctor] Templates root:");
@@ -114,7 +114,7 @@ describe("bkit doctor — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     // doctor exits 0 even when advisories are found (read-only)
@@ -137,7 +137,7 @@ describe("bkit doctor — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     const filesAfter = listFilesRecursive(tmpDir);
@@ -165,7 +165,7 @@ describe("bkit status — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(
@@ -186,7 +186,7 @@ describe("bkit status — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     const filesAfter = listFilesRecursive(tmpDir);
@@ -208,7 +208,7 @@ describe("bkit status — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status).toBe(0);
@@ -225,7 +225,7 @@ describe("bkit status — integration", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status).toBe(0);
@@ -312,7 +312,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
   it("mcp-env-missing-dotenv surfaces through runPostInstallCheck when .env.example exists but .env absent", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
     // No .bkit/.env
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
@@ -331,7 +331,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_BKIT_TOKEN=\nGH_BKIT_TOKEN_INSTALL=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -339,8 +339,8 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const ws = { writes: [], reverts: [] };
     const findings = runPostInstallCheck([], ws, modules, tmpDir);
     const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token_install");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
   });
 
@@ -353,7 +353,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_BKIT_TOKEN=\nGH_BKIT_TOKEN_INSTALL=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -361,7 +361,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const ws = { writes: [], reverts: [] };
     const findings = runPostInstallCheck([], ws, modules, tmpDir);
     const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
 
@@ -370,7 +370,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_MCP_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "GH_BKIT_TOKEN=ghp_test\nGH_BKIT_TOKEN_INSTALL=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
 
@@ -413,13 +413,13 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
 
     seedMinimalConsumer(tmpDir);
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token", CI: "true" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", CI: "true" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -461,7 +461,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...envNoMax, GH_BKIT_TOKEN: "test-token" },
+      env: { ...envNoMax, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -478,7 +478,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "1" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_MAX_LOADED_MODELS: "1" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -494,7 +494,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "3" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_MAX_LOADED_MODELS: "3" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -512,7 +512,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...envNoParallel, GH_BKIT_TOKEN: "test-token" },
+      env: { ...envNoParallel, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -529,7 +529,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_NUM_PARALLEL: "1" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_NUM_PARALLEL: "1" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -562,7 +562,7 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -626,7 +626,7 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `status crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -668,7 +668,7 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status).toBe(0);
@@ -689,7 +689,7 @@ describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...envNoMax, GH_BKIT_TOKEN: "test-token" },
+      env: { ...envNoMax, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
@@ -709,7 +709,7 @@ describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);

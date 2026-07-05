@@ -65,7 +65,7 @@ This is a CRITICAL because without this case, the "consumer adds keys nested ins
 
 ### C6 — `ci.yml` partial-marker placement: the plan specifies marker insertion around `setup-auth` step + `pnpm bkit check` step, but the current `ci.yml` template has no `setup-auth` step
 
-Verified from source: `.agents/templates/.github/workflows/ci.yml` (50 lines). The file contains `Install Dependencies` (which uses `pnpm install --frozen-lockfile` with `GH_BKIT_TOKEN` env) and `Run Bkit Check` step. There is no `setup-auth` step in the current template. The plan's Architecture §Phase 2 Group B says:
+Verified from source: `.agents/templates/.github/workflows/ci.yml` (50 lines). The file contains `Install Dependencies` (which uses `pnpm install --frozen-lockfile` with `GH_BKIT_TOKEN_INSTALL` env) and `Run Bkit Check` step. There is no `setup-auth` step in the current template. The plan's Architecture §Phase 2 Group B says:
 
 > Wrap **exactly** the `setup-auth` step + `pnpm bkit check` step in `# bkit:start` / `# bkit:end`
 

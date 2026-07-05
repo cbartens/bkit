@@ -26,7 +26,7 @@ Verdict: CONCERNS
 
 ### Capability 3: Consumer `.npmrc` token interpolation
 
-**What exists:** `.npmrc` `_authToken=${GH_BKIT_TOKEN}` with env-var interpolation at install time is standard npm behavior (works with pnpm, npm, and Vercel's build container).
+**What exists:** `.npmrc` `_authToken=${GH_BKIT_TOKEN_INSTALL}` with env-var interpolation at install time is standard npm behavior (works with pnpm, npm, and Vercel's build container).
 
 **Fit:** Vercel reads `.npmrc` from the repo root before running `pnpm install`. Token interpolation from Vercel env vars is well-established. No `installCommand` shim required for registry auth (only needed for git auth).
 
@@ -34,7 +34,7 @@ Verdict: CONCERNS
 
 ### Capability 4: Installer print constant replacement in bkit-modules.ts
 
-**What exists:** Four named string constants (`GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS`, `CI_YML_MERGE_INSTRUCTIONS`) plus the first-install banner in `runCoreModule`. All are surgical string replacements — no logic changes.
+**What exists:** Four named string constants (`GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS`, `CI_YML_MERGE_INSTRUCTIONS`) plus the first-install banner in `runCoreModule`. All are surgical string replacements — no logic changes.
 
 **Fit:** All four constants are confirmed present in the codebase. `checkBkitTokenSecret` and `detectVercelProject` logic is unchanged. The design's scope is correct.
 
@@ -102,7 +102,7 @@ No bundle size impact (server-side only, no consumer runtime additions).
 1. Apply the three `package.json` field changes (`private: false`, `publishConfig`, `repository.url` cleanup) and create `release.yml` with the design-input snippet (resolving node-version to 20 to match `ci.yml`).
 2. Bump version to `0.4.0-pre.1`, tag, push — observe the GitHub Actions run.
 3. Confirm the package appears at `https://github.com/cbartens/bkit/packages`.
-4. In a scratch repo, add `.npmrc` + `GH_BKIT_TOKEN` env and run `pnpm add -D @cbartens/bkit@0.4.0-pre.1`.
+4. In a scratch repo, add `.npmrc` + `GH_BKIT_TOKEN_INSTALL` env and run `pnpm add -D @cbartens/bkit@0.4.0-pre.1`.
 
 Steps 1-3 validate the entire pipeline-auth surface in isolation before any installer print changes are made. This is exactly the design's `pre.1` gate intent. The PoC surface is minimal (2 files + package.json).
 

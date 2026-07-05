@@ -49,9 +49,12 @@ import {
   type ModuleName,
   type IssueTracker,
   type ManifestEntry,
+  type RenovateRunner,
   DEFAULT_ISSUE_TRACKER,
+  DEFAULT_RENOVATE_RUNNER,
   parseIssueTracker,
   parseCloudAgents,
+  parseRenovateRunner,
   getInstallManifest,
   getModuleManifest,
 } from "./bkit-manifest.js";
@@ -1351,6 +1354,7 @@ export function modulesToCliFlags(
   mods: Set<ModuleFlag>,
   opencodeProvider: string | null,
   cloudVariant: CloudVariant | null,
+  renovateRunner: RenovateRunner | null = null,
 ): string {
   const out: string[] = [];
   if (mods.has("claude")) out.push("--claude");
@@ -1365,7 +1369,11 @@ export function modulesToCliFlags(
   } else if (mods.has("ci")) {
     out.push("--ci");
   }
-  if (mods.has("renovate")) out.push("--dependency=renovate");
+  if (mods.has("renovate")) {
+    // Single flag encodes module + runner (#325); `--renovate=<mend|self>` auto-selects
+    // the renovate module, so the recovery hint reproduces the exact runner in one flag.
+    out.push(`--renovate=${renovateRunner ?? "mend"}`);
+  }
   if (mods.has("dependabot")) out.push("--dependency=dependabot");
   if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
   return out.join(" ");
@@ -1422,6 +1430,53 @@ export function detectOpencodeProvider(cwd: string): string | null {
 }
 
 /**
+ * Detect the Renovate runner a consumer has installed (#325).
+ *
+ * Resolution order:
+ *  1. `package.json` `bkit.renovateRunner` — the authoritative record written by
+ *     runRenovateModule. Validated against the allowlist so a hand-edited value can't
+ *     smuggle in an unsupported mode.
+ *  2. A `.github/workflows/renovate.yml` that is BYTE-EQUAL to bkit's canonical template
+ *     — recovery for a bkit self-hosted install whose field was hand-removed. The
+ *     byte-equal guard is load-bearing: bkit writes the field and the workflow together,
+ *     so a workflow that DIFFERS from the template is a consumer's OWN bespoke file (the
+ *     filename is conventional), NOT bkit-owned — classifying it `self` would let
+ *     the self writeTier1 force-overwrite it on a plain `--dependency=renovate`
+ *     install (#325). The workflow template carries no {{tokens}}, so its raw bytes equal
+ *     what writeTier1 writes — no token resolution needed here.
+ *  3. DEFAULT_RENOVATE_RUNNER ("mend") — fresh install, no signal.
+ *
+ * Never returns null: callers resolve `parsedFlag ?? detectRenovateRunner(cwd)`, so a
+ * plain `bkit install --dependency=renovate` re-install PRESERVES a self-hosted
+ * consumer's runner instead of silently reverting them to Mend.
+ */
+export function detectRenovateRunner(cwd: string): RenovateRunner {
+  const pkgPath = path.join(cwd, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        bkit?: { renovateRunner?: unknown };
+      };
+      const stored = parseRenovateRunner(pkg.bkit?.renovateRunner);
+      if (stored !== null) return stored;
+    } catch {
+      // fall through to file-presence detection
+    }
+  }
+  const workflowDst = path.join(cwd, ".github", "workflows", "renovate.yml");
+  const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml");
+  if (fs.existsSync(workflowDst) && fs.existsSync(templatePath)) {
+    // Byte-equal to the canonical template → bkit-owned self-hosted workflow (the
+    // token-free template renders verbatim). A differing file is a consumer's own
+    // bespoke workflow, NOT bkit-owned (see the doc comment above, #325).
+    if (fs.readFileSync(workflowDst, "utf-8") === fs.readFileSync(templatePath, "utf-8")) {
+      return "self";
+    }
+  }
+  return DEFAULT_RENOVATE_RUNNER;
+}
+
+/**
  * Returns all bkit-installed opencode providers from the consumer package.json.
  * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
  * legacy single-provider installs (migrated on the next install run).
@@ -1464,7 +1519,7 @@ async function resolveLatestPublishedVersion(cwd: string): Promise<string> {
   if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
     console.error(
       `${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
-        `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (GH_BKIT_TOKEN, ` +
+        `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (GH_BKIT_TOKEN_INSTALL, ` +
         `classic PAT, read:packages), or pin a version with --to=<version>.`,
     );
     process.exit(1);
@@ -1526,7 +1581,7 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
   if (add.status !== 0) {
     console.error(
       `${LOG_PREFIX} \`pnpm add @cbartens/bkit@${resolvedPlan.target}\` failed (exit ${add.status ?? "null"}). ` +
-        `Most common cause: GitHub Packages auth — set GH_BKIT_TOKEN (classic PAT, read:packages). Nothing re-rendered.`,
+        `Most common cause: GitHub Packages auth — set GH_BKIT_TOKEN_INSTALL (classic PAT, read:packages). Nothing re-rendered.`,
     );
     process.exit(1);
   }
@@ -1549,6 +1604,7 @@ async function main() {
     tracker,
     cloudVariant,
     opencodeProvider,
+    renovateRunner,
   } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
@@ -1557,7 +1613,7 @@ async function main() {
   }
 
   // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
-  // so that MCP token placeholders (GH_MCP_TOKEN, NVIDIA_API_KEY, …) resolve correctly
+  // so that MCP token placeholders (GH_BKIT_TOKEN, NVIDIA_API_KEY, …) resolve correctly
   // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
   if (verb === "cursor" || verb === "opencode") {
     await launchApp(verb, process.cwd());
@@ -2013,6 +2069,9 @@ async function main() {
       postDispatch: [],
       issueTracker: upgradeTracker,
       cloudVariant: null,
+      // renderManagedOutputs does not drive runRenovateModule; renovate.yml is re-synced
+      // by the dest-presence-gated template walk. Explicit null documents that (#325).
+      renovateRunner: null,
       // Re-stamp every rendered agent + command at the version we are upgrading TO (#256),
       // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
       version: getInstallingVersion(),
@@ -2312,6 +2371,13 @@ async function main() {
     }
   }
 
+  // Resolve the Renovate runner (#325): an explicit --renovate flag wins;
+  // otherwise preserve the consumer's existing choice (package.json field / workflow
+  // presence) so a plain `bkit install --dependency=renovate` re-install (or `bkit
+  // check`) never silently reverts a self-hosted consumer to Mend. "mend" for fresh
+  // installs. Only consumed when the renovate module dispatches.
+  const effectiveRenovateRunner = renovateRunner ?? detectRenovateRunner(process.cwd());
+
   const ctx: ModuleContext = {
     dryRun,
     tokens,
@@ -2324,6 +2390,7 @@ async function main() {
     postDispatch,
     issueTracker,
     cloudVariant,
+    renovateRunner: effectiveRenovateRunner,
     // Stamped into every rendered agent + command as the managed-version marker (#256).
     version: getInstallingVersion(),
   };
@@ -2424,7 +2491,12 @@ async function main() {
   // Advisory findings are informational only and do NOT exit-1.
   const phase3Blockers = postFindings.filter((f) => f.severity === "blocker");
   if (phase3Blockers.length > 0) {
-    const recoveryFlags = modulesToCliFlags(effectiveModules, opencodeProvider, cloudVariant);
+    const recoveryFlags = modulesToCliFlags(
+      effectiveModules,
+      opencodeProvider,
+      cloudVariant,
+      effectiveRenovateRunner,
+    );
     const recoveryLine = `pnpm bkit uninstall ${recoveryFlags} && <fix the issue> && pnpm bkit install ${recoveryFlags}`;
     console.error(
       `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,

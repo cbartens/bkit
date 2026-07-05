@@ -1,15 +1,16 @@
 {
-  "pinnedVersion": "4.1.12",
+  "pinnedVersion": "4.2.0",
   "tier3Hashes": {
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
-    ".github/renovate.json5": "a887928e5f61caa3ddf3f66b4293917af441050492edeeb269b6288e454db47f",
+    ".github/renovate.json5": "46cd79897e65a1be2b91b1a6eb446bb0470176bffbddce8a8427b494b3407ec5",
     ".claude/hooks/gateguard.cjs": "8c4a0a8f1aca77952dc3d015b4ae7212df1fa537d538f167468a342233513968",
     ".opencode/plugin/gateguard.js": "7b88afead57494de4918f5304b89ed797c3253350f40ade20eeeb70f2f67e25d",
-    ".github/workflows/bkit-cloud.yml": "64ead416af070fe866a9f41eed40b629991b258d658406a8149fd059eb79c56a"
+    ".github/workflows/bkit-cloud.yml": "64ead416af070fe866a9f41eed40b629991b258d658406a8149fd059eb79c56a",
+    ".github/workflows/renovate.yml": "c0ec9b35762649fcdec85e745a47837848b1f2db2bd26d5a5de6bcfb0b620402"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "8bd57ed90c42332f1167afa076701355a8e2e9fc0b136dc5e6d0e866cc27ab90",
+    "docs/deployments.md": "212810be4d617c2a1984939cd09492096ed43427d686c078b2b78525162b5919",
     "docs/testing.md": "507d2ad209c97e6722ef77001d199c58f6ab173fa08e222e05aaa4651442b967",
     ".claude/settings.json": "0a10fe01fd6050fc48e3b52357eb2603a2f149ef90efb286f67661b2ab5eeb7c",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -48,12 +49,12 @@
     ".cursor/mcp.json": "8c3736f0032b01c923e38b889db1e9b09be4bd418049948403975865499bed37",
     ".envrc": "dd6b15dcb3c81b78219e66acee10cf4ccce377de40989dc151750248031de41f",
     "docs/security.md": "af17f78635c4a4a3852bdb3bc2de7d242b828621099760747039d6dc47d997b3",
-    ".github/renovate.json5": "a887928e5f61caa3ddf3f66b4293917af441050492edeeb269b6288e454db47f",
+    ".github/renovate.json5": "46cd79897e65a1be2b91b1a6eb446bb0470176bffbddce8a8427b494b3407ec5",
     ".mcp.json": "2f91fe7f830986cee6ab28117684c692686c69568301753892bc787768f205f4",
     "docs/architecture.md": "bce27229f585d0923812239151435b891247ba2fb8047780936a0aa46c962feb",
     "docs/completed.md": "858741e31d97e651a073a97843f3e3a73ff105228e0b086ef92365ec91648e47",
     "docs/decisions.md": "f82dd76871d96ea27c68afcfc85b09d267ac53a3662803aa7deecc9563858a50",
-    "docs/knowledge.md": "44d2f0ea29674177ef59d3181adf611b0aff5c9f2737bbbf089f3720b67e3f98",
+    "docs/knowledge.md": "a97252edeb571bfbdb41f7af2e15647249ba55b15fc0f4790313daba8fe2241d",
     "docs/pending.md": "675f74b75105ddfde96b5a022854fa726516ab756ba3ec32e83f595c81364ba4",
     "docs/technology.md": "ef65b067fb1650138d748ae1235934f9589a7f7007ad0ac6ce2f19327b3c46df",
     ".github/workflows/bkit-cloud.yml": "64ead416af070fe866a9f41eed40b629991b258d658406a8149fd059eb79c56a",
@@ -68,6 +69,7 @@
     ".opencode/plugin/gateguard.js": "2166b100e0a0d11deaaaac8e0d46e542cfd1a2ba793546f2757f33d74c99e666",
     ".bkit/scripts/bkit-protect-main.sh": "30759666aa21a4cdf4a3a8211d3e389ceb79cb390724486906e796a7d6ab3a4f",
     ".bkit/scripts/bkit-slop-delta.sh": "4962c4cbd0421f3debb167450a5f1a39aa836b008bdf66480213400d6499d337",
-    ".bkit/scripts/bkit-slop-type-suppression.mjs": "f9eb65fe10286e59e81950e7f9e980a2b04ebce8b4485344bf3b698eba91934b"
+    ".bkit/scripts/bkit-slop-type-suppression.mjs": "f9eb65fe10286e59e81950e7f9e980a2b04ebce8b4485344bf3b698eba91934b",
+    ".github/workflows/renovate.yml": "c0ec9b35762649fcdec85e745a47837848b1f2db2bd26d5a5de6bcfb0b620402"
   }
 }

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -71,7 +71,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   └─ On any error    → discardAllStaging removes .bkit-staging/ — consumer files untouched
     │
     └─ Phase 3: Post-install re-detection + commit
-        ├─ Token-surface detectors (GH_BKIT_TOKEN at 4 surfaces)
+        ├─ Token-surface detectors (GH_BKIT_TOKEN_INSTALL at 4 surfaces)
         ├─ CI YAML env-var check
         ├─ Vale package sync check
         ├─ devDeps freshness check
@@ -121,4 +121,4 @@ Every rendered agent/command file — and every bkit-managed `docs/*.md` block (
 
 ## Distribution
 
-`@cbartens/bkit` is published to GitHub Packages npm registry on every git tag push via `.github/workflows/release.yml`. Consumers authenticate with a `GH_BKIT_TOKEN` PAT (`read:packages` scope). See `docs/deployments.md` for the four-surface token presence matrix and `docs/decisions.md` DE-3 for the registry choice rationale.
+`@cbartens/bkit` is published to GitHub Packages npm registry on every git tag push via `.github/workflows/release.yml`. Consumers authenticate with a `GH_BKIT_TOKEN_INSTALL` PAT (`read:packages` scope). See `docs/deployments.md` for the four-surface token presence matrix and `docs/decisions.md` DE-3 for the registry choice rationale.

@@ -208,7 +208,7 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 
     // Assert registry-auth env var is present (BAR-138: replaced git auth-shim)
-    expect(onDisk).toContain("GH_BKIT_TOKEN");
+    expect(onDisk).toContain("GH_BKIT_TOKEN_INSTALL");
     // BAR-138: the old git auth-shim has been removed from the template
     expect(onDisk).not.toContain("git config --global url.");
   });
@@ -268,7 +268,7 @@ jobs:
     expect(result.suggested).toBe(true);
     expect(advisories2).toHaveLength(1);
     expect(advisories2[0]!.action).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(advisories2[0]!.action).toContain("GH_BKIT_TOKEN");
+    expect(advisories2[0]!.action).toContain("GH_BKIT_TOKEN_INSTALL");
     expect(advisories2[0]!.action).not.toContain("{{TEMPLATE_CONTENT}}");
   });
 });
@@ -619,7 +619,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     expect(local).toMatch(/matchHost:\s*"npm\.pkg\.github\.com"/);
     // ... but the token line ships COMMENTED so an un-provisioned consumer is
     // non-breaking (a `{{ secrets.* }}` ref errors if the Mend secret is unset).
-    expect(local).toMatch(/\/\/\s*token:\s*"\{\{ secrets\.GH_BKIT_TOKEN \}\}"/);
+    expect(local).toMatch(/\/\/\s*token:\s*"\{\{ secrets\.GH_BKIT_TOKEN_INSTALL \}\}"/);
   });
 
   it("canonical renovate.json5 ships NO hostRules token anchor — it lives only in renovate-local.json5 (#199)", () => {
@@ -634,7 +634,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     // Guard the active config KEY + secret ref — the explanatory comment may
     // still mention `hostRules` in prose.
     expect(renovate).not.toMatch(/^\s*hostRules:/m);
-    expect(renovate).not.toMatch(/secrets\.GH_BKIT_TOKEN/);
+    expect(renovate).not.toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
   });
 
   it("substitutes REPO_SLUG into renovate.json5's local-preset extends entry", () => {
@@ -1266,7 +1266,7 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
 // MED-5 regression — advisories copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
-describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backslash-escape sequences", () => {
+describe("MED-5: first-install advisory GH_BKIT_TOKEN_INSTALL block has no broken backslash-escape sequences", () => {
   it("advisories emitted on first install contain no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
     const versionFile = path.join(tmpDir, ".bkit", "version");
@@ -1279,8 +1279,8 @@ describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backsl
 
     const combined = advisories.map((a) => a.action).join("\n");
 
-    // Must contain the GH_BKIT_TOKEN setup (confirming it's the first-install block)
-    expect(combined).toContain("GH_BKIT_TOKEN");
+    // Must contain the GH_BKIT_TOKEN_INSTALL setup (confirming it's the first-install block)
+    expect(combined).toContain("GH_BKIT_TOKEN_INSTALL");
 
     // Must NOT contain a literal backslash-dollar sequence.
     expect(combined).not.toContain("\\$");
@@ -1297,12 +1297,12 @@ describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backsl
     // The first-install advisory should have structured action text
     const firstInstallAdvisory = advisories.find((a) => a.id === "first-install-postinstall-steps");
     expect(firstInstallAdvisory).toBeDefined();
-    expect(firstInstallAdvisory?.action).toContain("GH_BKIT_TOKEN");
+    expect(firstInstallAdvisory?.action).toContain("GH_BKIT_TOKEN_INSTALL");
   });
 });
 
 describe(".bkit-version first-run signal extra-logging", () => {
-  it("first install (no .bkit-version) emits GH_BKIT_TOKEN setup in advisories", () => {
+  it("first install (no .bkit-version) emits GH_BKIT_TOKEN_INSTALL setup in advisories", () => {
     const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, advisories });
@@ -1314,9 +1314,9 @@ describe(".bkit-version first-run signal extra-logging", () => {
     // dispatchModules flushes postDispatch (where .bkit-version is written)
     dispatchModules(new Set(["core"]), ctx);
 
-    // advisories should contain GH_BKIT_TOKEN setup
+    // advisories should contain GH_BKIT_TOKEN_INSTALL setup
     const combined = advisories.map((a) => a.action).join("\n");
-    expect(combined).toContain("GH_BKIT_TOKEN");
+    expect(combined).toContain("GH_BKIT_TOKEN_INSTALL");
     expect(combined).toContain("package.json");
   });
 
@@ -1338,7 +1338,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     dispatchModules(new Set(["core"]), ctx2);
 
     const combined2 = advisories2.map((a) => a.action).join("\n");
-    expect(combined2).not.toContain("GH_BKIT_TOKEN");
+    expect(combined2).not.toContain("GH_BKIT_TOKEN_INSTALL");
     expect(combined2).not.toContain("First install detected");
   });
 });
@@ -2689,7 +2689,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
     const gh = parsed.mcp?.github;
     expect(gh.type).toBe("remote");
-    expect(gh.headers.Authorization).toBe("Bearer {env:GH_MCP_TOKEN}");
+    expect(gh.headers.Authorization).toBe("Bearer {env:GH_BKIT_TOKEN}");
     expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
     expect(JSON.stringify(parsed.mcp)).not.toContain("${");
   });
@@ -2768,5 +2768,76 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(parsed.permission?.edit).toBe("allow");
     // No leaked sentinels.
     expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runRenovateModule — self-hosted runner axis (#325)
+// ---------------------------------------------------------------------------
+
+describe("runRenovateModule — self-hosted vs mend runner (#325)", () => {
+  const WORKFLOW_REL = path.join(".github", "workflows", "renovate.yml");
+  const CONFIG_REL = path.join(".github", "renovate.json5");
+
+  function readRunner(): string | undefined {
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { renovateRunner?: string };
+    };
+    return pkg.bkit?.renovateRunner;
+  }
+
+  it("self install writes renovate.yml + renovate.json5 and records bkit.renovateRunner", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    expect(fs.existsSync(path.join(tmpDir, WORKFLOW_REL))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, CONFIG_REL))).toBe(true);
+    expect(readRunner()).toBe("self");
+  });
+
+  it("mend install does NOT write renovate.yml and records mend", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "mend" }));
+    expect(fs.existsSync(path.join(tmpDir, WORKFLOW_REL))).toBe(false);
+    expect(readRunner()).toBe("mend");
+  });
+
+  it("unspecified runner (ctx null/absent) behaves as mend — no workflow written", () => {
+    runRenovateModule(makeCtx()); // renovateRunner undefined -> defaults to mend
+    expect(fs.existsSync(path.join(tmpDir, WORKFLOW_REL))).toBe(false);
+    expect(readRunner()).toBe("mend");
+  });
+
+  it("renovate.json5 is byte-identical across mend and self (single-source config)", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    const self = fs.readFileSync(path.join(tmpDir, CONFIG_REL), "utf-8");
+    fs.rmSync(path.join(tmpDir, CONFIG_REL));
+    runRenovateModule(makeCtx({ renovateRunner: "mend" }));
+    const mend = fs.readFileSync(path.join(tmpDir, CONFIG_REL), "utf-8");
+    expect(mend).toBe(self);
+  });
+
+  it("self -> mend reclaims a byte-equal workflow (never double-runs with the App)", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    expect(fs.existsSync(path.join(tmpDir, WORKFLOW_REL))).toBe(true);
+    runRenovateModule(makeCtx({ renovateRunner: "mend" }));
+    expect(fs.existsSync(path.join(tmpDir, WORKFLOW_REL))).toBe(false);
+    expect(readRunner()).toBe("mend");
+  });
+
+  it("self -> mend PRESERVES a consumer-modified workflow and warns instead of deleting", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    const wf = path.join(tmpDir, WORKFLOW_REL);
+    fs.appendFileSync(wf, "\n# consumer edit — must not be clobbered\n");
+    const ctx = makeCtx({ renovateRunner: "mend" });
+    runRenovateModule(ctx);
+    expect(fs.existsSync(wf)).toBe(true); // preserved, not deleted
+    expect(ctx.advisories.some((a) => a.id === "renovate-self-workflow-preserved")).toBe(true);
+  });
+
+  it("self re-install is idempotent (workflow re-written byte-equal, no error)", () => {
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    const first = fs.readFileSync(path.join(tmpDir, WORKFLOW_REL), "utf-8");
+    runRenovateModule(makeCtx({ renovateRunner: "self" }));
+    const second = fs.readFileSync(path.join(tmpDir, WORKFLOW_REL), "utf-8");
+    expect(second).toBe(first);
+    expect(readRunner()).toBe("self");
   });
 });

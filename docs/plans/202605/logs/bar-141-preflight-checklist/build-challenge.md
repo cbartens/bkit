@@ -38,15 +38,15 @@ The diff is large but well-structured. No CRITICAL bugs found that should block 
 
 - **File:** `.agents/scripts/bkit-postinstall.ts:107-130`
 - **Severity:** MEDIUM
-- **Exploit / failure scenario:** The detector matches on the literal substring `"GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"`. A perfectly valid ci.yml with any of:
-  - `GH_BKIT_TOKEN: "${{ secrets.GH_BKIT_TOKEN }}"` (quoted)
-  - `GH_BKIT_TOKEN:${{secrets.GH_BKIT_TOKEN}}` (no spaces)
-  - `GH_BKIT_TOKEN: ${{secrets.GH_BKIT_TOKEN}}` (different inner spacing)
+- **Exploit / failure scenario:** The detector matches on the literal substring `"GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}"`. A perfectly valid ci.yml with any of:
+  - `GH_BKIT_TOKEN_INSTALL: "${{ secrets.GH_BKIT_TOKEN_INSTALL }}"` (quoted)
+  - `GH_BKIT_TOKEN_INSTALL:${{secrets.GH_BKIT_TOKEN_INSTALL}}` (no spaces)
+  - `GH_BKIT_TOKEN_INSTALL: ${{secrets.GH_BKIT_TOKEN_INSTALL}}` (different inner spacing)
   - Multiple-line YAML folded form
 
   …will all FAIL the substring match → false-positive advisory. Worse, a workflow that uses `pnpm install --no-frozen-lockfile` without env (legitimate, e.g. cache-warm step) will trip the `pnpm install` heuristic and emit the advisory even though the actual install step elsewhere has the env block. Plan said "no false positives on bespoke layouts."
 
-- **Suggested fix:** Use a regex like `/GH_BKIT_TOKEN\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}/`. Or parse the YAML properly. Document in the action message that bespoke layouts may need manual verification.
+- **Suggested fix:** Use a regex like `/GH_BKIT_TOKEN_INSTALL\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN_INSTALL\s*\}\}/`. Or parse the YAML properly. Document in the action message that bespoke layouts may need manual verification.
 
 ### MEDIUM-5: Type-safe but runtime-unchecked shell template in detectVercelEnv
 
@@ -76,11 +76,11 @@ The diff is large but well-structured. No CRITICAL bugs found that should block 
 - **Exploit / failure scenario:** `vercel env ls` requires the project to be linked. On a fresh consumer who has `vercel.json` (so `detectVercelProject` returns true) but has never run `vercel link`, the CLI prompts on stdin. With `stdio: ["ignore", "pipe", "ignore"]` stdin is closed, but vercel CLI may try to prompt for project linking and stall until the 10s timeout. This adds 20s to every `bkit install` for a Vercel-but-unlinked consumer (preview + production = 2 timeouts) — once per install. Annoying UX but the timeout protects from hanging indefinitely.
 - **Suggested fix:** Reduce timeout to 3-5s, OR detect "not linked" via short-circuit — e.g. check `.vercel/project.json` exists before invoking `vercel env ls`.
 
-### LOW-4: GH_BKIT_TOKEN is empty-string normalised to "missing" — silent footgun
+### LOW-4: GH_BKIT_TOKEN_INSTALL is empty-string normalised to "missing" — silent footgun
 
 - **File:** `.agents/scripts/bkit-postinstall.ts:22-24`
 - **Severity:** LOW
-- **Exploit / failure scenario:** `Boolean(process.env.GH_BKIT_TOKEN) ? "present" : "missing"` — empty string evaluates as missing (correct). Fine. But this means a consumer who exported `GH_BKIT_TOKEN=""` to debug will see "missing", which is technically correct but the resulting ACTION advisory does not call out the empty-string case (it tells them to export). Not a bug — observation only.
+- **Exploit / failure scenario:** `Boolean(process.env.GH_BKIT_TOKEN_INSTALL) ? "present" : "missing"` — empty string evaluates as missing (correct). Fine. But this means a consumer who exported `GH_BKIT_TOKEN_INSTALL=""` to debug will see "missing", which is technically correct but the resulting ACTION advisory does not call out the empty-string case (it tells them to export). Not a bug — observation only.
 
 ### LOW-5: bkit-install.ts main() — Phase 1 errors are not logged through `[bkit-install]` prefix on dry-run path
 
@@ -97,7 +97,7 @@ The diff is large but well-structured. No CRITICAL bugs found that should block 
 - **Plan DoD: blocker exits before resolveTokens** — verified at `bkit-install.ts:647-652`.
 - **Plan DoD: `formatChecklist([])` returns `""`** — verified.
 - **Plan DoD: `detectNpmrcAuth` silent skip when absent** — verified ("unknown" → no advisory pushed in `runPostInstallCheck`).
-- **Plan DoD: token VALUE never logged** — verified. All token usage is `Boolean(...)` or `.includes("GH_BKIT_TOKEN")` (key-name only); no value reads.
+- **Plan DoD: token VALUE never logged** — verified. All token usage is `Boolean(...)` or `.includes("GH_BKIT_TOKEN_INSTALL")` (key-name only); no value reads.
 - **Plan DoD: `detectVercelEnv` silent short-circuit** — verified.
 - **Plan DoD: `bkit check` skips Phase 3** — verified.
 - **Subprocess spawn test** — `.agents/scripts/bkit-install.integration.test.ts:79-108` uses `--import ${tsxBin}/register` syntax. Confirm tsx supports this — modern tsx 4.x uses `tsx` directly as `--import`, and the `/register` subpath may be tsx 3.x convention. Worth verifying it doesn't silently fail (the `if (!fs.existsSync(tsxBin)) return;` guard means CI without devDeps installed silently skips this assertion entirely → test passes without exercising the subprocess at all). LOW concern: if tsx isn't found, the only assertion that proves end-to-end exit-code behaviour is skipped silently.

@@ -52,7 +52,7 @@ Resolve consumer-friction debt across `bkit install`/`check`/`uninstall` by (a) 
 | Cursor v1 schema differs from bkit's shipped shape | Verification gate in P3.T0 must pass before A1 work |
 | Phase 3 blocker on `--auto-revert` install | uninstall in-process, exit 1 |
 | Concurrent `bkit install` mid-failure (P4) | Staging dir discarded, consumer files untouched |
-| Empty `GH_BKIT_TOKEN=""` vs unset | Action text differentiates (B4) |
+| Empty `GH_BKIT_TOKEN_INSTALL=""` vs unset | Action text differentiates (B4) |
 | pnpm 10 onlyBuiltDependencies missing | Already advised — no change |
 
 **Derived Test Matrix:** see Test strategy summary section below.
@@ -140,13 +140,13 @@ Target version v0.6.x. Independent, low-risk, batchable. A3 leads (Fraser Coast 
 
 ### P1.T6 — `.npmrc` token noise mitigation
 
-- **Scope:** (a) Update `gh-bkit-token-secret-unknown` advisory action text to instruct `export GH_BKIT_TOKEN=…` for local dev. (b) Investigate POSIX `${VAR:-}` fallback in pnpm; if supported, ship `_authToken=${GH_BKIT_TOKEN:-}` template.
+- **Scope:** (a) Update `gh-bkit-token-secret-unknown` advisory action text to instruct `export GH_BKIT_TOKEN_INSTALL=…` for local dev. (b) Investigate POSIX `${VAR:-}` fallback in pnpm; if supported, ship `_authToken=${GH_BKIT_TOKEN_INSTALL:-}` template.
 - **Files touched:**
   - `.agents/scripts/bkit-preflight.ts` (or where advisory lives) — action text.
   - `templates/.npmrc` (or equivalent payload `.npmrc` template) — guarded fallback iff supported.
   - `README.md` — local-dev shell-rc note.
   - `.agents/scripts/bkit-preflight.test.ts` — action text snapshot.
-- **Acceptance criteria:** advisory action text contains `export GH_BKIT_TOKEN`; if pnpm supports `${VAR:-}`, template uses fallback and a no-warning local-dev test passes.
+- **Acceptance criteria:** advisory action text contains `export GH_BKIT_TOKEN_INSTALL`; if pnpm supports `${VAR:-}`, template uses fallback and a no-warning local-dev test passes.
 - **Verification:** `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`; manual `pnpm install` in shell without token (no warning).
 - **Closes:** BAR-142 §B6.
 - **Effort:** S. **Depends on:** none.

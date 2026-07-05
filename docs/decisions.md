@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Decisions
 
@@ -134,7 +134,7 @@
 ## DE-11: BAR-131 — `setup-auth@v1` composite action design (2026-05-07)
 
 - **Category:** infra
-- **Status:** superseded by BAR-164 (PR #13, commit `28f04ec`, 2026-05-09) — composite action, meta-test workflow, and YAML-parse test all deleted; canonical pattern reverted to inline `env: GH_BKIT_TOKEN` block only. Cross-org private consumers cannot resolve `cbartens/bkit/.github/actions/setup-auth@v1` via the runner-scoped `GITHUB_TOKEN`, and both real consumers were on the env-var pattern, so the composite never earned its keep.
+- **Status:** superseded by BAR-164 (PR #13, commit `28f04ec`, 2026-05-09) — composite action, meta-test workflow, and YAML-parse test all deleted; canonical pattern reverted to inline `env: GH_BKIT_TOKEN_INSTALL` block only. Cross-org private consumers cannot resolve `cbartens/bkit/.github/actions/setup-auth@v1` via the runner-scoped `GITHUB_TOKEN`, and both real consumers were on the env-var pattern, so the composite never earned its keep.
 - **Decision:** Ship a GitHub Actions composite action at `.github/actions/setup-auth/action.yml`. Inputs: `token` (required), `registry` (optional, defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up automatically. The multi-line bash PAT-shim in seeded `ci.yml` is RETAINED as a fallback (RETAIN-WITH-REASON, kill-date v1.1.0). Requires a `v1` annotated tag post-merge.
 - **Why:** The composite action encapsulates the PAT-shim boilerplate so consumers can reference a single `uses:` line. The bash fallback is kept because non-Actions CI consumers (e.g. CircleCI, Buildkite) rely on the env var pattern in the seeded workflow — removing it would break them without a migration path.
 - **Discarded:** (1) Bundle action into sub-plan-3 — orthogonal to P3 scope; `setup-auth` depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern. (2) Remove bash fallback — external contract, not safe until v1.1.0 after consumer migration guidance shipped.
@@ -392,8 +392,8 @@
 
 - **Category:** infra
 - **Status:** active
-- **Decision:** The `@cbartens/bkit` registry auth token no longer lives in the committed project `.npmrc` (which now carries ONLY `@cbartens:registry=https://npm.pkg.github.com`). It is written into pnpm's user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), and Vercel (via a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install`).
-- **Why:** pnpm's auth-handling rework (regression boundary between 10.34.1 and 10.34.3, confirmed live) stopped honouring a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution at install fetch time — `pnpm install`/`add` 401s (`ERR_PNPM_FETCH_401`) even with the token set (metadata `pnpm view` still resolves, masking it). Config precedence (project `.npmrc` > user config) means a leftover project auth line would also shadow the user-level token, so the token must be _relocated_, not duplicated. `pnpm config set` is version-aware — it writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x — so the same command is correct across pnpm majors (preferred over a hand-written `~/.npmrc`). Unblocks #273 (pnpm 10.34.3) and the pnpm-11 migration (#176).
+- **Decision:** The `@cbartens/bkit` registry auth token no longer lives in the committed project `.npmrc` (which now carries ONLY `@cbartens:registry=https://npm.pkg.github.com`). It is written into pnpm's user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), and Vercel (via a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install`).
+- **Why:** pnpm's auth-handling rework (regression boundary between 10.34.1 and 10.34.3, confirmed live) stopped honouring a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` env-substitution at install fetch time — `pnpm install`/`add` 401s (`ERR_PNPM_FETCH_401`) even with the token set (metadata `pnpm view` still resolves, masking it). Config precedence (project `.npmrc` > user config) means a leftover project auth line would also shadow the user-level token, so the token must be _relocated_, not duplicated. `pnpm config set` is version-aware — it writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x — so the same command is correct across pnpm majors (preferred over a hand-written `~/.npmrc`). Unblocks #273 (pnpm 10.34.3) and the pnpm-11 migration (#176).
 - **Not a regression of DE-3 / DE-11(BAR-164):** DE-3 removed a _git-auth_ installCommand (`git config --global url."…x-access-token…".insteadOf`), obsolete once bkit left git-dep — no git ceremony returns here. DE-11/BAR-164 removed the `setup-auth@v1` _composite action_ (`uses: cbartens/bkit/.github/actions/setup-auth@v1`), which a cross-org private consumer cannot resolve via the runner-scoped `GITHUB_TOKEN` — this is a plain shell command in `vercel.json`, no `uses:` reference, and does not trip the `scanForeignBkitUses` guard. The new Vercel `installCommand` is a minimal registry-auth shim required only because the env-substitution path DE-3 leaned on broke.
 - **Discarded:** (1) Keep the project `.npmrc` `_authToken` line as belt-and-suspenders — rejected: it shadows the user-level token and still 401s. (2) Hand-write `~/.npmrc` in CI — rejected: misses pnpm 11's `auth.ini`. (3) Pin Vercel to pnpm <10.34.3 — rejected: fragile (Vercel auto-bumps pnpm).
 - **Source:** phase
@@ -427,3 +427,26 @@
 - **Discarded — move the `lint:prose` npm script to `--ci`:** it is a `package.json`/Node convenience and `--ci` must stay package.json-free; only the Vale **config** (stack-agnostic) ships with `--ci`. `--typescript` always co-installs `--ci`, so a TS consumer still gets the config its `lint:prose` references.
 - **Source:** phase
 - **Related:** #265, #263 (type-suppression rule prerequisite), DE-29 (#252 CLI surface redesign), `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-modules.ts` (`deriveCiSkeleton`, `runCiModule`, `runLintModule`), `.bkit/templates/.github/workflows/ci.yml`
+
+## DE-34: #325 — Self-hosted Renovate as a `--renovate=<mend|self>` sub-mode of the renovate module (2026-07-04)
+
+- **Category:** infra
+- **Status:** active
+- **Decision:** Model the self-hosted runner as a `--renovate=<mend|self>` sub-mode of `--dependency=renovate` (default `mend`) — a WHERE axis (which engine runs Renovate) orthogonal to `--dependency`'s WHAT axis (which updater), mirroring the `cloud` module's `--auto=<variant>` axis (DE-29). Mode is recorded in `package.json` `bkit.renovateRunner`, switchable by re-install; a plain `--dependency=renovate` re-install preserves an existing self-hosted mode (detected from the field + `renovate.yml` presence). Config stays single-source — `renovate.json5` is byte-identical for both runners; the mode is expressed purely as the presence/absence of the bkit-managed `.github/workflows/renovate.yml`. Platform auth defaults to a fine-grained PAT `GH_BKIT_TOKEN` (never `GITHUB_TOKEN`, whose PRs do not trigger CI), with a self-managed GitHub App via `actions/create-github-app-token` documented as the no-expiry hardening path.
+- **Why:** `app-gether-life` OOMs on Mend's 3 GB microvm (KN-CORE-10 / KN-41 / #308); `ubuntu-latest` (~16 GB) clears it. A sub-mode (not a new `--dependency` value) keeps one config surface and lets consumers migrate mend ↔ self without config edits.
+- **Discarded — a separate `--dependency=renovate-self` value:** forks the config surface and breaks the WHAT/WHERE separation; duplicates the mutual-exclusion guard, the Dependabot refusal, and the phase flow.
+- **Discarded — probe the Mend App state:** off-repo and undetectable; surfaced as the warn-only `renovate-self-hosted-mend-both-active` advisory instead.
+- **Discarded — GitHub App by default:** heavier setup (stored `APP_ID` + private key) than a PAT; kept as the documented hardening path.
+- **Source:** human
+- **Related:** #325, KN-CORE-10, KN-41, #308, DE-29, `.bkit/src/bkit-manifest.ts` (`RENOVATE_RUNNERS`), `.bkit/src/bkit-modules.ts` (`runRenovateModule`), `.bkit/src/bkit-install.ts` (`detectRenovateRunner`), `.github/workflows/renovate.yml`, `.github/renovate.json5`
+
+## DE-35: Token-scheme split — `GH_BKIT_TOKEN` (general write) vs `GH_BKIT_TOKEN_INSTALL` (read:packages) (2026-07-05)
+
+- **Category:** infra
+- **Status:** active
+- **Decision:** Three GitHub tokens with explicit roles: `GH_TOKEN` (keychain, local `gh` CLI — unchanged); `GH_BKIT_TOKEN_INSTALL` (classic `read:packages` PAT for GitHub Packages install / lockfile auth — the former `GH_BKIT_TOKEN`); and `GH_BKIT_TOKEN` (the general fine-grained WRITE PAT — the former `GH_MCP_TOKEN` — driving the GitHub MCP server and self-hosted Renovate's platform auth). Self-hosted Renovate uses `GH_BKIT_TOKEN` for platform ops and `GH_BKIT_TOKEN_INSTALL` for the private-registry `hostRules` read. Retires the dedicated `RENOVATE_TOKEN` (so #325 mints no 4th token) and the `GH_MCP_TOKEN` name.
+- **Why:** avoid a 4th token for self-hosted Renovate by reusing the already-capable MCP token. Splitting WRITE (fine-grained; MCP + Renovate) from `read:packages` (classic) keeps least privilege on the widely-distributed install token — and is FORCED by GitHub Packages rejecting fine-grained PATs (403), so registry auth must stay on a classic token.
+- **Discarded — keep `GH_BKIT_TOKEN` as the install token and rename only the MCP token:** far lower migration cost (the 1141-reference name stays put), but the full rename was chosen for the cleaner final naming (`GH_BKIT_TOKEN` = the primary/general token). Cost accepted: a breaking secret rename for every consumer (local `.env` + CI + Vercel + Mend), surfaced by the `gh-token-scheme-rename` migration advisory.
+- **Discarded — one over-scoped token for everything:** putting a write token on read-only surfaces (Vercel / `.npmrc`) widens the blast radius, and a fine-grained token cannot authenticate to GitHub Packages anyway.
+- **Source:** human
+- **Related:** DE-34, #325, `.bkit/templates/.bkit/.env.example`, `.bkit/src/bkit-postinstall.ts` (`buildTokenRenameMigrationAdvisory` + token detectors), `docs/deployments.md` § presence matrix

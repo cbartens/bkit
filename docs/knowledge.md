@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Knowledge
 
@@ -40,8 +40,8 @@
 
 - **Category:** integrations
 - **Symptom:** 401 from the GitHub MCP server or `gh` despite a freshly-rotated, valid, correctly-scoped PAT in `.bkit/.env`.
-- **Root cause:** the MCP server captures `GH_MCP_TOKEN` at process launch, so a mid-session rotation leaves it holding the dead token. Non-interactive shells also miss direnv (`.envrc` re-sources only on interactive prompt/cd), so the shell keeps a stale exported value. For `gh` specifically, an exported `GH_TOKEN` (legacy or manual) overrides the keyring — see KN-CORE-8.
-- **Fix or rule:** restart/reload the MCP server after rotating the token; for one-off CLI prefix `direnv exec . gh …`. Confirm the live `GH_MCP_TOKEN` matches `.bkit/.env` before chasing PAT scopes/approval.
+- **Root cause:** the MCP server captures `GH_BKIT_TOKEN` at process launch, so a mid-session rotation leaves it holding the dead token. Non-interactive shells also miss direnv (`.envrc` re-sources only on interactive prompt/cd), so the shell keeps a stale exported value. For `gh` specifically, an exported `GH_TOKEN` (legacy or manual) overrides the keyring — see KN-CORE-8.
+- **Fix or rule:** restart/reload the MCP server after rotating the token; for one-off CLI prefix `direnv exec . gh …`. Confirm the live `GH_BKIT_TOKEN` matches `.bkit/.env` before chasing PAT scopes/approval.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
@@ -52,8 +52,8 @@
 
 - **Category:** infra
 - **Symptom:** `pnpm install` (local, CI, or Vercel build) fails with a generic 401 against `registry.npmjs.org` — NOT against `npm.pkg.github.com`. The error reads as a plain auth failure with no "token missing" wording, and `@cbartens/bkit` is reported as not found.
-- **Root cause:** pnpm v7.20+ silently discards the ENTIRE `.npmrc` the moment any `${VAR}` in it resolves to an unset env var. The `@cbartens:registry=https://npm.pkg.github.com` scope mapping is dropped, pnpm falls back to npmjs.org, which has no `@cbartens/bkit` → 401. The unset variable is almost always `GH_BKIT_TOKEN`. Separately, pnpm does NOT parse POSIX fallback syntax: `${VAR:-default}` sends no auth at all and 401s — use bare `${VAR}` only.
-- **Fix or rule:** `GH_BKIT_TOKEN` must be present on every surface that runs `pnpm install` (shell for local installs, an Actions secret, a Vercel env var on preview + production). Diagnose with `echo "${GH_BKIT_TOKEN:-MISSING}"` immediately before `pnpm install`. **Update (pnpm >=10.34.3):** bkit no longer stores any auth token in the project `.npmrc` — the `${VAR}` env-substitution path 401s on download even when the token is set; the token now goes into pnpm's user-level config via `pnpm config set`. See KN-CORE-7.
+- **Root cause:** pnpm v7.20+ silently discards the ENTIRE `.npmrc` the moment any `${VAR}` in it resolves to an unset env var. The `@cbartens:registry=https://npm.pkg.github.com` scope mapping is dropped, pnpm falls back to npmjs.org, which has no `@cbartens/bkit` → 401. The unset variable is almost always `GH_BKIT_TOKEN_INSTALL`. Separately, pnpm does NOT parse POSIX fallback syntax: `${VAR:-default}` sends no auth at all and 401s — use bare `${VAR}` only.
+- **Fix or rule:** `GH_BKIT_TOKEN_INSTALL` must be present on every surface that runs `pnpm install` (shell for local installs, an Actions secret, a Vercel env var on preview + production). Diagnose with `echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"` immediately before `pnpm install`. **Update (pnpm >=10.34.3):** bkit no longer stores any auth token in the project `.npmrc` — the `${VAR}` env-substitution path 401s on download even when the token is set; the token now goes into pnpm's user-level config via `pnpm config set`. See KN-CORE-7.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
@@ -108,12 +108,12 @@
 - **Source:** human
 - **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/renovate-local.json5`, `package.json` (`pnpm.overrides`)
 
-## KN-CORE-7: pnpm >=10.34.3 auth rework — project `.npmrc` `${GH_BKIT_TOKEN}` 401s on download; use user-level `pnpm config set` (2026-06-15)
+## KN-CORE-7: pnpm >=10.34.3 auth rework — project `.npmrc` `${GH_BKIT_TOKEN_INSTALL}` 401s on download; use user-level `pnpm config set` (2026-06-15)
 
 - **Category:** infra
-- **Symptom:** `pnpm install` / `pnpm add @cbartens/bkit` fails with `ERR_PNPM_FETCH_401` (`GET https://npm.pkg.github.com/@cbartens%2Fbkit: Unauthorized`) on pnpm >=10.34.3 even though `GH_BKIT_TOKEN` is correctly set in the environment. Metadata calls (`pnpm view @cbartens/bkit`) still resolve, so "it works locally" via `view` is misleading — only the actual download 401s. pnpm 10.34.1 is unaffected (the regression boundary is between 10.34.1 and 10.34.3).
-- **Root cause:** pnpm's auth-handling rework stopped honouring a project-level `.npmrc` env-substitution `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` at install fetch time. The token must instead live in pnpm's user-level auth config. Independently, config precedence is project `.npmrc` > user config, so a leftover project auth line also shadows a correct user-level token.
-- **Fix or rule:** Commit ONLY the registry mapping in the project `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com`) — NEVER an `_authToken` line. Write the token into pnpm's user-level config with `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), Vercel (`vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install`). `pnpm config set` stores the shell-expanded literal token (the shell resolves `$GH_BKIT_TOKEN` before pnpm writes it), so the one command is version-proof across pnpm 10.x and 11.x — prefer it over a hand-written `~/.npmrc`. Do NOT "restore" the project `.npmrc` `_authToken` line: it appears to work only on pnpm 10.34.1 (warning + store cache) and 401s again the instant pnpm bumps.
+- **Symptom:** `pnpm install` / `pnpm add @cbartens/bkit` fails with `ERR_PNPM_FETCH_401` (`GET https://npm.pkg.github.com/@cbartens%2Fbkit: Unauthorized`) on pnpm >=10.34.3 even though `GH_BKIT_TOKEN_INSTALL` is correctly set in the environment. Metadata calls (`pnpm view @cbartens/bkit`) still resolve, so "it works locally" via `view` is misleading — only the actual download 401s. pnpm 10.34.1 is unaffected (the regression boundary is between 10.34.1 and 10.34.3).
+- **Root cause:** pnpm's auth-handling rework stopped honouring a project-level `.npmrc` env-substitution `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}` at install fetch time. The token must instead live in pnpm's user-level auth config. Independently, config precedence is project `.npmrc` > user config, so a leftover project auth line also shadows a correct user-level token.
+- **Fix or rule:** Commit ONLY the registry mapping in the project `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com`) — NEVER an `_authToken` line. Write the token into pnpm's user-level config with `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), Vercel (`vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install`). `pnpm config set` stores the shell-expanded literal token (the shell resolves `$GH_BKIT_TOKEN_INSTALL` before pnpm writes it), so the one command is version-proof across pnpm 10.x and 11.x — prefer it over a hand-written `~/.npmrc`. Do NOT "restore" the project `.npmrc` `_authToken` line: it appears to work only on pnpm 10.34.1 (warning + store cache) and 401s again the instant pnpm bumps.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
@@ -125,7 +125,7 @@
 - **Category:** integrations
 - **Symptom:** Agent or human reports "`GH_TOKEN` env var is overriding the keyring token which has proper repo scopes"; `gh` behaves differently from `gh auth status` expectations.
 - **Root cause:** `gh` checks `GH_TOKEN` / `GITHUB_TOKEN` before the OS keyring. bkit historically exported `GH_TOKEN` from `.bkit/.env` for both MCP and CLI — direnv put a fine-grained PAT in the shell and shadowed `gh auth login`.
-- **Fix or rule:** Use `GH_MCP_TOKEN` in `.bkit/.env` for the GitHub MCP server only (`Authorization: Bearer ${GH_MCP_TOKEN}` in `.mcp.json`). Use `gh auth login` for the CLI locally — do not export `GH_TOKEN` from `.bkit/.env`. Cloud dashboards: set `GH_MCP_TOKEN` for MCP; authenticate `gh` via setup/bootstrap (`gh auth login --with-token`) or cloud-only `GH_TOKEN` if headless CLI requires it. CI keeps `GH_TOKEN: ${{ github.token }}` in workflow steps (unchanged).
+- **Fix or rule:** Use `GH_BKIT_TOKEN` in `.bkit/.env` for the GitHub MCP server only (`Authorization: Bearer ${GH_BKIT_TOKEN}` in `.mcp.json`). Use `gh auth login` for the CLI locally — do not export `GH_TOKEN` from `.bkit/.env`. Cloud dashboards: set `GH_BKIT_TOKEN` for MCP; authenticate `gh` via setup/bootstrap (`gh auth login --with-token`) or cloud-only `GH_TOKEN` if headless CLI requires it. CI keeps `GH_TOKEN: ${{ github.token }}` in workflow steps (unchanged).
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
@@ -146,6 +146,20 @@
 - **Source:** agent
 - **Related:** KN-CORE-1, `.envrc`, `.bkit/.env`, `apps/web/.env.local`, `apps/web/.env.preview`, `.bkit/providers.md`, #478, `docs/observability.md`, `SENTRY_AUTH_TOKEN`
 
+## KN-CORE-10: Mend hosted Renovate OOMs on the 3 GB microvm — offer a self-hosted runner on ubuntu-latest via renovatebot/github-action (2026-07-04)
+
+- **Category:** integrations
+- **Symptom:** Every Mend-hosted Renovate job on a large pnpm-11 monorepo fails `kernel-out-of-memory` (3.0/3.0 GB) during `pnpm update --lockfile-only`, blocking all dependency PRs; the worker-cap + Renovate-side `minimumReleaseAge` (KN-41) mitigate but do not guarantee headroom as the graph grows (app-gether-life hit the ceiling 2026-07-04).
+- **Root cause:** Mend Community Cloud runs Renovate in a fixed ~3 GB hosted microvm; pnpm-11 lockfile resolution + release-age metadata for a large graph exceeds physical RAM. The constraint is runner size, not config — CI / Vercel (>> 3 GB) never OOM.
+- **Fix or rule:** Offer a self-hosted alternative — a bkit-managed `.github/workflows/renovate.yml` running `renovatebot/github-action@<pinned-sha>` on `ubuntu-latest` (~16 GB), reusing the SAME backend-agnostic `renovate.json5`. Correctness points: (1) platform auth MUST be a PAT / GitHub App as `GH_BKIT_TOKEN`, NOT `GITHUB_TOKEN` (its PRs don't trigger CI, so `platformAutomerge` never fires); (2) private-registry auth moves from Mend `{{ secrets.GH_BKIT_TOKEN_INSTALL }}` templating to a `RENOVATE_HOST_RULES` env (consumer comments the `token` line in `renovate-local.json5` — an uncommented Mend-style line adds an empty-token rule and 401s); (3) the workflow cron wakes the bot (every 4h) while `renovate.json5`'s own `schedule` gates normal PRs and `osvVulnerabilityAlerts` bypasses both — do NOT narrow the cron to Monday-only; (4) `concurrency: { group: renovate, cancel-in-progress: false }`; (5) the Mend App MUST be suspended for the repo (GitHub UI, no `gh api`) or both open duplicate PRs — surfaced by the `renovate-self-hosted-mend-both-active` advisory (warn-only; App state is off-repo / undetectable); (6) `renovate.yml` goes in `renovate.json5` `ignorePaths` (KN-CORE-5) so consumer Renovate never bumps its own pinned action. OOM mitigations are KEPT, not relaxed. Adopt the existing Dependency Dashboard + open PRs by keeping the default `renovate/` `branchPrefix`.
+- **Type:** post-mortem
+- **Confidence:** high
+- **Last-confirmed:** 2026-07-04
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** human
+- **Related:** KN-41, KN-CORE-3, KN-CORE-5, KN-CORE-8, #308, #123, #325
+
 <!-- bkit:end -->
 
 ## KN-1: pnpm v7.20+ silently ignores entire `.npmrc` when `${VAR}` env-var is unset (2026-05-06)
@@ -153,12 +167,12 @@
 - **Category:** infra
 - **Symptom:** `pnpm install` fails with opaque 401 against npmjs.org (NOT `npm.pkg.github.com`). Error reads as generic auth failure — no "token missing" language. `@cbartens/bkit` not found on npmjs.org.
 - **Root cause:** Any `${VAR}` in `.npmrc` resolving to an unset env-var causes pnpm v7.20+ to silently ignore the entire `.npmrc` and fall back to defaults. `@cbartens:registry=https://npm.pkg.github.com` is dropped; pnpm hits npmjs.org; npmjs.org has no `@cbartens/bkit`; 401.
-- **Fix or rule:** Ensure `GH_BKIT_TOKEN` is: (1) exported in maintainer's shell before local `pnpm install`; (2) set as a GHA secret on the consumer repo; (3) set as a Vercel env var (preview + production) for Vercel-deployed consumers. Verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install` when troubleshooting. **Superseded by KN-CORE-7 (#274):** as of pnpm >=10.34.3 the project-`.npmrc` `${VAR}` auth path is no longer used at all (it 401s on download even with the token set); the token now lives in pnpm's user-level config via `pnpm config set`.
+- **Fix or rule:** Ensure `GH_BKIT_TOKEN_INSTALL` is: (1) exported in maintainer's shell before local `pnpm install`; (2) set as a GHA secret on the consumer repo; (3) set as a Vercel env var (preview + production) for Vercel-deployed consumers. Verify with `echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"` before `pnpm install` when troubleshooting. **Superseded by KN-CORE-7 (#274):** as of pnpm >=10.34.3 the project-`.npmrc` `${VAR}` auth path is no longer used at all (it 401s on download even with the token set); the token now lives in pnpm's user-level config via `pnpm config set`.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
 - **Source:** phase
-- **Related:** BAR-138, DE-3, `.agents/scripts/bkit-modules.ts` (installer print copy enumerates this verbatim in `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` and `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`)
+- **Related:** BAR-138, DE-3, `.agents/scripts/bkit-modules.ts` (installer print copy enumerates this verbatim in `GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS` and `GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS`)
 
 ## KN-2: `.npmignore` still applies inside `files`-listed directories in `package.json` (2026-05-06)
 
@@ -307,8 +321,8 @@
 ## KN-14: Helper-action additions to seeded templates are additive, not replacement (2026-05-07)
 
 - **Category:** agentic
-- **Symptom:** Four assertions in `templates.test.ts` and `bkit-install.test.ts` fail — substring `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` not found in seeded `ci.yml` template.
-- **Root cause:** Sub-plan P4.T8 added `cbartens/bkit/.github/actions/setup-auth@v1` to `.agents/templates/.github/workflows/ci.yml` but simultaneously deleted the inline `env: GH_BKIT_TOKEN` block under `Install Dependencies`. The plan marked that block RETAIN-WITH-REASON (kill-date v1.1.0). The implementer treated the composite action as a replacement, not an addition.
+- **Symptom:** Four assertions in `templates.test.ts` and `bkit-install.test.ts` fail — substring `GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}` not found in seeded `ci.yml` template.
+- **Root cause:** Sub-plan P4.T8 added `cbartens/bkit/.github/actions/setup-auth@v1` to `.agents/templates/.github/workflows/ci.yml` but simultaneously deleted the inline `env: GH_BKIT_TOKEN_INSTALL` block under `Install Dependencies`. The plan marked that block RETAIN-WITH-REASON (kill-date v1.1.0). The implementer treated the composite action as a replacement, not an addition.
 - **Fix or rule:** When a sub-plan adds a composite GitHub Action alongside an existing inline auth pattern marked RETAIN-WITH-REASON in the Supersession Inventory, the inline pattern MUST be preserved verbatim until its declared kill-date. The addition is strictly additive. After editing any seeded `.bkit/templates/.github/workflows/*.yml` file, re-run `pnpm vitest run .bkit/src/bkit-templates.content.test.ts .bkit/src/bkit-install.test.ts` and regenerate the snapshot with `-u`.
 - **Type:** gotcha
 - **Confidence:** high
