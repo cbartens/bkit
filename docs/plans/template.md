@@ -382,7 +382,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # [Plan Title] Implementation Plan
 

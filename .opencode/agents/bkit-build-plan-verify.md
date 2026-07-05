@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior verifier checking that plan deliverables actually exist in the codebase.
 **Scope:** As specified by input and Read/Update/Create section.

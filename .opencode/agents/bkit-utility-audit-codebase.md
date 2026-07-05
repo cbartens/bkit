@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect reviewing a codebase against best practices and project goals.
 **Scope:** As specified by input or session prompt.

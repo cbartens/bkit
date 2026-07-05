@@ -9,7 +9,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 **Scope:** As specified by input or session prompt.
