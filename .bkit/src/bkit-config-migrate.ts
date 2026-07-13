@@ -2,10 +2,12 @@
 // debug-fetch blocks from docs/observability.md → .agents/config.md.
 //
 // Ships in the release that moves the debug-fetch contract into `.agents/config.md`
-// (issue #334). Runs on every `bkit install` / `bkit upgrade` via runCoreModule
-// (AFTER the templates pass writes config.md's managed block), so upgrading
-// consumers need do NOTHING — their copied-down `debug-fetch:*` blocks move on the
-// next install. Modelled on the automatic `.agents/→.bkit/` move + `.envrc`
+// (issue #334). Wired into BOTH version-move paths — `bkit install` via runCoreModule
+// (after its templates pass) AND `bkit upgrade` via the upgrade engine's explicit call
+// (after its render pass), each AFTER config.md's managed block is written — so an
+// upgrading consumer need do NOTHING; their copied-down `debug-fetch:*` blocks move on
+// the next install OR upgrade. (install and upgrade are SEPARATE engines — the migration
+// must be called from both.) Modelled on the automatic `.agents/→.bkit/` move + `.envrc`
 // re-point in bkit-install.ts (content-preserving, dry-run-aware, idempotent).
 //
 // Safety contract:

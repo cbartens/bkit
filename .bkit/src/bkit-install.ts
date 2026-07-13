@@ -34,6 +34,7 @@ import {
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
   runPostInstallCheck,
@@ -2213,6 +2214,14 @@ async function main() {
       }
     }
 
+    // Auto-migrate consumer debug-fetch blocks docs/observability.md → .agents/config.md (#334).
+    // Install runs this in runCoreModule (after ITS templates pass); upgrade is a separate render
+    // engine, so mirror it here — AFTER runUpgrade (re)wrote config.md's managed block, and BEFORE
+    // writeClaudeCloudDoc (so the cloud.md provision injection sees the moved blocks) and the
+    // canonicalHashes refresh (so the moved config.md/observability.md are re-hashed → drift-clean).
+    const migratedDebugFetch = migrateDebugFetchToConfig(process.cwd(), upgradeFlags.dryRun);
+    if (migratedDebugFetch) console.log(`${LOG_PREFIX} ${migratedDebugFetch}`);
+
     // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host
     // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
@@ -2303,7 +2312,16 @@ async function main() {
       );
       updateCanonicalHashesAfterUpgrade(
         {
-          updated: [...result.updated, ...renderedDocPaths],
+          // Include the migrated docs so their post-migration on-disk hashes are
+          // recorded (the debug-fetch move mutates config.md/observability.md AFTER
+          // runUpgrade hashed them) — otherwise the next `bkit check` sees drift.
+          updated: [
+            ...result.updated,
+            ...renderedDocPaths,
+            ...(migratedDebugFetch
+              ? [path.join(".agents", "config.md"), path.join("docs", "observability.md")]
+              : []),
+          ],
           skipped: result.skipped,
           conflicts: result.conflicts,
         },
