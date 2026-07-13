@@ -87,6 +87,7 @@
 - **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
+- **Secrets from direnv:** ALWAYS check direnv first `direnv exec . printenv {VAR}` before asking for secrets / tokens / env vars. ONLY ask when genuinely absent.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 - **Fix code, never gate:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted → ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation.
 - **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.

@@ -21,6 +21,7 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
+| `.agents/config.md` | — | — | — | ● | — | Agent/tooling config bkit PARSES — debug-fetch runtime-log contract (`/bkit-debug`) + cloud CLI provisioning. Not prose. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
 | `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |

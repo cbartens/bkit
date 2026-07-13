@@ -557,10 +557,10 @@ describe("detectPrettierignoreScopeBroadening", () => {
 });
 
 describe("detectObservabilityDebugFetchMissing", () => {
-  function writeObservability(content: string): void {
-    const dir = path.join(tmpDir, "docs");
+  function writeConfig(content: string): void {
+    const dir = path.join(tmpDir, ".agents");
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "observability.md"), content, "utf-8");
+    fs.writeFileSync(path.join(dir, "config.md"), content, "utf-8");
   }
 
   const BKIT_BLOCK_WITH_EXAMPLE =
@@ -572,19 +572,19 @@ describe("detectObservabilityDebugFetchMissing", () => {
     "<!-- bkit:end -->\n";
 
   it("flags when bkit block present but no consumer-section debug-fetch markers after bkit:end", () => {
-    writeObservability(BKIT_BLOCK_WITH_EXAMPLE);
+    writeConfig(BKIT_BLOCK_WITH_EXAMPLE);
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("observability-debug-fetch-missing");
     expect(f?.severity).toBe("advisory");
-    expect(f?.detect).toContain("docs/observability.md");
+    expect(f?.detect).toContain(".agents/config.md");
     expect(f?.detect).toContain("debug-fetch");
     expect(f?.action).toContain("after `<!-- bkit:end -->`");
     expect(f?.action).toContain("log backend");
   });
 
   it("does NOT flag when a customised debug-fetch pair exists after bkit:end", () => {
-    writeObservability(
+    writeConfig(
       BKIT_BLOCK_WITH_EXAMPLE +
         "\n## Consumer\n\n" +
         "<!-- debug-fetch:start -->\n" +
@@ -596,7 +596,7 @@ describe("detectObservabilityDebugFetchMissing", () => {
   });
 
   it("does NOT flag when a NAMED debug-fetch block exists after bkit:end", () => {
-    writeObservability(
+    writeConfig(
       BKIT_BLOCK_WITH_EXAMPLE +
         "\n## Consumer\n\n" +
         "<!-- debug-fetch:start vercel -->\n" +
@@ -607,16 +607,14 @@ describe("detectObservabilityDebugFetchMissing", () => {
     expect(f).toBeNull();
   });
 
-  it("does NOT flag when docs/observability.md has no bkit-managed block (consumer-owned)", () => {
-    writeObservability("# Observability\n\nFully consumer-managed file, no bkit markers here.\n");
+  it("does NOT flag when .agents/config.md has no bkit-managed block (consumer-owned)", () => {
+    writeConfig("# Observability\n\nFully consumer-managed file, no bkit markers here.\n");
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeNull();
   });
 
   it("flags when only debug-fetch:start exists after bkit:end (malformed/missing pair)", () => {
-    writeObservability(
-      BKIT_BLOCK_WITH_EXAMPLE + "\n<!-- debug-fetch:start -->\n```bash\nfoo\n```\n",
-    );
+    writeConfig(BKIT_BLOCK_WITH_EXAMPLE + "\n<!-- debug-fetch:start -->\n```bash\nfoo\n```\n");
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("observability-debug-fetch-missing");
@@ -624,23 +622,23 @@ describe("detectObservabilityDebugFetchMissing", () => {
 
   it("does NOT count debug-fetch markers that appear only INSIDE the bkit-managed block", () => {
     // Markers only inside bkit block — workflow skips these, so detector must flag.
-    writeObservability(BKIT_BLOCK_WITH_EXAMPLE);
+    writeConfig(BKIT_BLOCK_WITH_EXAMPLE);
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("observability-debug-fetch-missing");
   });
 
-  it("returns null when docs/observability.md does not exist", () => {
+  it("returns null when .agents/config.md does not exist", () => {
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeNull();
   });
 });
 
 describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
-  function writeObservability(content: string): void {
-    const dir = path.join(tmpDir, "docs");
+  function writeConfig(content: string): void {
+    const dir = path.join(tmpDir, ".agents");
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "observability.md"), content, "utf-8");
+    fs.writeFileSync(path.join(dir, "config.md"), content, "utf-8");
   }
   function writeSupabaseConfig(): void {
     const dir = path.join(tmpDir, "supabase");
@@ -684,7 +682,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
   it("flags supabase when repo uses supabase but only a legacy vercel block is enabled (visitfrasercoast case)", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
     const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
@@ -698,7 +696,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
 
   it("detects supabase use via an @supabase/* dependency (no config.toml)", () => {
     writePackageJson({ dependencies: { "@supabase/supabase-js": "^2" } });
-    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
     const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
     expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
     expect(f?.detect).toContain("supabase");
@@ -706,7 +704,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
 
   it("does NOT flag a backend the repo does not use (no supabase evidence)", () => {
     writeVercelJson(); // vercel-only repo
-    writeObservability(
+    writeConfig(
       BKIT_NAMED_EXAMPLES +
         "\n<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
     );
@@ -716,7 +714,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
 
   it("does NOT flag when the used backend's block is already enabled", () => {
     writeSupabaseConfig();
-    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + NAMED_SUPABASE_BLOCK);
+    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + NAMED_SUPABASE_BLOCK);
     const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
     expect(f).toBeNull();
   });
@@ -724,7 +722,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
   it("is dismissed by a <!-- debug-fetch:none --> marker", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeObservability(
+    writeConfig(
       BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + "\n<!-- debug-fetch:none intentional -->\n",
     );
     const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
@@ -733,7 +731,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
 
   it("does NOT fire when the consumer section has zero blocks (missing advisory owns that case)", () => {
     writeSupabaseConfig();
-    writeObservability(BKIT_NAMED_EXAMPLES + "\n## Consumer\n\nNo blocks here yet.\n");
+    writeConfig(BKIT_NAMED_EXAMPLES + "\n## Consumer\n\nNo blocks here yet.\n");
     expect(detectObservabilityDebugFetchSourceNotEnabled(tmpDir)).toBeNull();
     // The generic missing advisory still covers it.
     expect(detectObservabilityDebugFetchMissing(tmpDir)?.id).toBe(
@@ -744,7 +742,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
   it("flags both backends (plural) when both are used and neither name appears below bkit:end", () => {
     writeSupabaseConfig();
     writeVercelJson();
-    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_AWS_BLOCK);
+    writeConfig(BKIT_NAMED_EXAMPLES + UNNAMED_AWS_BLOCK);
     const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
     expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
     expect(f?.detect).toContain("vercel");
@@ -752,7 +750,7 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
     expect(f?.detect).toContain("those backends");
   });
 
-  it("returns null when docs/observability.md does not exist", () => {
+  it("returns null when .agents/config.md does not exist", () => {
     expect(detectObservabilityDebugFetchSourceNotEnabled(tmpDir)).toBeNull();
   });
 });

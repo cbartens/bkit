@@ -15,6 +15,7 @@ import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkit
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -251,6 +252,7 @@ const COPY_EXCLUDE = new Set([
     "friction.md",
     "docs.md",
     "skills.md",
+    "config.md",
     // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
     // template at .bkit/templates/.bkit/.env.example). Including it in the
     // payload copy would double-handle the same destination — Tier 3 sees the
@@ -613,6 +615,15 @@ export function runCoreModule(ctx) {
     // they are readable in-repo. Force-overwrite (Tier 1); no-op in dogfood.
     console.log(`${logPrefix} ${tag}Running bkit docs pass`);
     runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
+    // 3c. Auto-migrate consumer debug-fetch blocks docs/observability.md → .agents/config.md (#334).
+    // Runs AFTER the templates pass has (re)written config.md's managed block, so moved blocks land
+    // below a header that already exists. Content-preserving, idempotent no-op once nothing remains.
+    // Consumers do nothing — the upgrade moves their copied-down blocks for them.
+    {
+        const moved = migrateDebugFetchToConfig(cwd, dryRun);
+        if (moved)
+            console.log(`${logPrefix} ${tag}${moved}`);
+    }
     // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).

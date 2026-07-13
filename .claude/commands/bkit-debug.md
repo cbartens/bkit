@@ -458,9 +458,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      fi
    fi
    ```
-6. List every observability `debug-fetch` block name after `<!-- bkit:end -->`:
+6. List every `debug-fetch` block name after `<!-- bkit:end -->` in `.agents/config.md`:
    ```bash
-   SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null)
+   SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
 7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`:

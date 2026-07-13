@@ -67,6 +67,8 @@ fi
 
 @@CLOUD_COREPACK@@
 
+@@CLOUD_DEBUG_FETCH_PROVISION@@
+
 echo "cloud env ready: $(vale --version), $(gh --version | head -1), pnpm $(pnpm -v)"
 ```
 

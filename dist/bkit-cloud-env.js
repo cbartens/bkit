@@ -220,6 +220,63 @@ export function renderCorepackLine(cwd) {
         : `corepack enable  # pnpm resolved from package.json "packageManager" in-repo`;
 }
 /**
+ * Extract the bash body of every `debug-fetch:provision <name>` block the consumer
+ * enabled below `<!-- bkit:end -->` in `.agents/config.md`. Stack-agnostic: bkit
+ * hardcodes no CLI names — the install recipe lives in the consumer's config.md,
+ * co-located with the fetch block that needs the CLI. Mirrors the awk parser in
+ * `.claude/hooks/cloud-bootstrap.sh` so the web setup-script snapshot and the
+ * per-session hook provision the same CLIs. Returns one string per block (bash body).
+ */
+export function extractDebugFetchProvisionRecipes(cwd) {
+    const filePath = path.join(cwd, ".agents", "config.md");
+    if (!fs.existsSync(filePath))
+        return [];
+    const content = fs.readFileSync(filePath, "utf-8");
+    const endIdx = content.search(/^<!-- bkit:end -->$/m);
+    if (endIdx === -1)
+        return [];
+    const consumer = content.slice(endIdx);
+    const recipes = [];
+    let cur = null;
+    let inProv = false;
+    let inFence = false;
+    for (const line of consumer.split("\n")) {
+        if (/^<!-- debug-fetch:provision/.test(line)) {
+            inProv = true;
+            inFence = false;
+            cur = [];
+            continue;
+        }
+        if (/^<!-- debug-fetch:(start|end|none)/.test(line)) {
+            if (inProv && cur && cur.length > 0)
+                recipes.push(cur.join("\n"));
+            inProv = false;
+            inFence = false;
+            cur = null;
+            continue;
+        }
+        if (inProv && /^```/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (inProv && inFence && cur)
+            cur.push(line);
+    }
+    return recipes;
+}
+/**
+ * Render the `@@CLOUD_DEBUG_FETCH_PROVISION@@` setup-script region: the consumer's
+ * `debug-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
+ * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
+ */
+export function renderCloudDebugFetchProvision(cwd) {
+    const recipes = extractDebugFetchProvisionRecipes(cwd);
+    if (recipes.length === 0)
+        return "";
+    return ("# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, install-once.\n" +
+        recipes.join("\n"));
+}
+/**
  * Generate `.claude/cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
  *
@@ -241,6 +298,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
         .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
+        .replace(/@@CLOUD_DEBUG_FETCH_PROVISION@@/g, () => renderCloudDebugFetchProvision(cwd))
         .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
         .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res));
     const dst = path.join(cwd, CLAUDE_CLOUD_RELPATH);

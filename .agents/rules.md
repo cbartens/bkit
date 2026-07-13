@@ -87,6 +87,7 @@
 - **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
+- **Secrets from direnv:** ALWAYS check direnv first `direnv exec . printenv {VAR}` before asking for secrets / tokens / env vars. ONLY ask when genuinely absent.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 - **Fix code, never gate:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted → ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation.
 - **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
@@ -123,5 +124,6 @@
 - **Workflow edits:** Any `.bkit/workflows/*.md` edits → ALWAYS follow `.bkit/workflows.md` § Workflow Authoring Rules.
 - **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/prompts.md` § Prompt Authoring Rules.
 - **Keep documentation updated:** When editing `.bkit/workflows/*.md` → update `.bkit/workflows.md`. When editing `.bkit/prompts/*.md` → update `.bkit/prompts.md`. Index drift = regression.
+- **Docs describe state, not change:** Reference docs in `docs/*.md` or `.agents/*.md` and advisories describe the CURRENT state only. NEVER narrate what changed; narrative lives in `CHANGELOG.md`; changes themselves are migrate scripts.
 - **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command, key params, and decisive context). NEVER link out to `docs/*.md`.
 - **Verify before complete:** Done = BOTH full suite (`pnpm vitest run`, never scoped) AND real dogfood (`pnpm build` → `node dist/bkit-install.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.

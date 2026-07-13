@@ -10,6 +10,8 @@ import {
   resolveCloudEnvVars,
   renderCloudEnvBlock,
   renderCloudEnvNotes,
+  extractDebugFetchProvisionRecipes,
+  renderCloudDebugFetchProvision,
 } from "./bkit-cloud-env";
 
 let tmpDir: string;
@@ -199,6 +201,55 @@ describe("template ↔ .bkit/cloud.md parity", () => {
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
+    expect(template).toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
     expect(template).toContain("{{PROJECT_NAME}}");
+  });
+});
+
+describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", () => {
+  const MANAGED =
+    "<!-- bkit:start -->\n# Config\n\n" +
+    // A provision example INSIDE the managed block must be ignored (reference-only).
+    "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n\n" +
+    "<!-- bkit:end -->\n";
+
+  it("returns [] when .agents/config.md is absent", () => {
+    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
+    expect(renderCloudDebugFetchProvision(tmpDir)).toBe("");
+  });
+
+  it("ignores provision blocks inside the managed block (only consumer-section counts)", () => {
+    write(".agents/config.md", MANAGED);
+    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
+    expect(renderCloudDebugFetchProvision(tmpDir)).toBe("");
+  });
+
+  it("extracts the bash body of each consumer-section provision block", () => {
+    write(
+      ".agents/config.md",
+      MANAGED +
+        "## Enabled\n\n" +
+        "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel >/dev/null 2>&1 || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n\n" +
+        "<!-- debug-fetch:provision supabase -->\n```bash\ncommand -v supabase >/dev/null 2>&1 || pnpm add -g supabase\n```\n<!-- debug-fetch:end -->\n",
+    );
+    const recipes = extractDebugFetchProvisionRecipes(tmpDir);
+    expect(recipes).toEqual([
+      "command -v vercel >/dev/null 2>&1 || pnpm add -g vercel",
+      "command -v supabase >/dev/null 2>&1 || pnpm add -g supabase",
+    ]);
+    const rendered = renderCloudDebugFetchProvision(tmpDir);
+    expect(rendered).toContain("pnpm add -g vercel");
+    expect(rendered).toContain("pnpm add -g supabase");
+    expect(rendered).toContain(".agents/config.md provision blocks");
+  });
+
+  it("does not treat a fetch (debug-fetch:start) block as a provision recipe", () => {
+    write(
+      ".agents/config.md",
+      MANAGED +
+        "## Enabled\n\n" +
+        "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
+    );
+    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
   });
 });
