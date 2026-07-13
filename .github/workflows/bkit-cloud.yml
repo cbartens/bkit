@@ -133,6 +133,21 @@ jobs:
           # Do not swap in GH_BKIT_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
+      # Tool parity with the copy-paste cloud.md web env (which installs vale in its
+      # setup script): provide the vale binary so cloud-bootstrap.sh's `vale sync` and
+      # the dispatched phase's lint:prose run instead of no-op'ing. vale is not on the
+      # runner and .vale/styles is gitignored. Pinned tarball + SHA mirror ci.yml.
+      - name: Install vale
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          VALE_VERSION: "3.9.1"
+          VALE_SHA256: "fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Configure git user
         if: steps.gate.outputs.enabled == 'true'
         run: |

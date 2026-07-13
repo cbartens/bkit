@@ -6,7 +6,7 @@
     ".github/renovate.json5": "5d248e5945c9b4ddfb1860c2e204320797345ef81394825b03b2ca7fadad91ab",
     ".claude/hooks/gateguard.cjs": "da35b669c307dd6a9e8484a901e7f39cf006c25ffd96a9e439e6d433cde80815",
     ".opencode/plugin/gateguard.js": "2166b100e0a0d11deaaaac8e0d46e542cfd1a2ba793546f2757f33d74c99e666",
-    ".github/workflows/bkit-cloud.yml": "f5f4af3c4ec40b2d552510d261bac3321e2172c65c9477b0b7355e53c27c371d",
+    ".github/workflows/bkit-cloud.yml": "97a0630191f21d9ff9a409213a155f31a5f0b8d3bcb8740fa45dd8e8bd00cefa",
     ".github/workflows/renovate.yml": "b7ae6892521643844ad0d69d4f337b8853d97bf803d73d346fabd4867c6d55e4"
   },
   "canonicalHashes": {
