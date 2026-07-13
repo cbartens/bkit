@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-security
 description: Senior security engineer auditing auth, secrets, validation, and data exposure.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

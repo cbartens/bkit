@@ -30,7 +30,7 @@
 <!-- prettier-ignore -->
 | Technology | Version | Usage |
 | --- | --- | --- |
-| pnpm | `10.34.1` (`packageManager` field — single SoT) | Monorepo / consumer package management |
+| pnpm | tracks `package.json#packageManager` (single SoT; Corepack-resolved) | Monorepo / consumer package management |
 | GitHub Packages npm registry | `npm.pkg.github.com` | Distribution target for `@cbartens/bkit` (see `docs/decisions.jsonl` DE-3) |
 
 ## Build & Output
@@ -79,7 +79,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs typecheck and unit tests and `pnpm bkit check` before push. Source-repo copy additionally runs `pnpm check:dist` (dist freshness gate); consumer template does not include it. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs typecheck + `pnpm test` (unit + in-process integration) + `pnpm bkit check` before push. Source-repo copy additionally runs `pnpm check:dist` (dist freshness gate); consumer template does not include it. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 

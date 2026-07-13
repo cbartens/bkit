@@ -12,7 +12,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
-> - Pre-push runs typecheck + unit tests + `bkit check`; integration, E2E, and @live excluded (they run in CI — see below). NEVER `--no-verify`.
+> - Pre-push runs typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, and service-backed integration excluded (they run in CI — see below). NEVER `--no-verify`.
 
 ## CI test tiers (the bkit scaffold)
 
@@ -223,20 +223,20 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 <!-- prettier-ignore -->
 | Tier | Suffix | Scope | Where it runs |
 | --- | --- | --- | --- |
-| Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push and CI |
-| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` and `process.chdir()`. May spawn `bkit` via `tsx`. | CI — `bkit-tests-integration` lane (excluded from pre-push) |
+| Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
+| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | Pre-push (in-process, via `pnpm test`) + CI `bkit-tests-integration` lane; service/DB-backed integration is CI-only |
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
 | @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
 ## Live-test gates in the agent workflows
 
-`/bkit-build` and `/bkit-debug` gate on the declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when a consumer declares one — appended to the Run-Tests command (opt-out via `[live=off]`); what actually ran is recorded in `TEST_SCOPE` (no separate capability flag).
+`/bkit-debug` gates on the declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when a consumer declares one — appended to its Run-Tests command (opt-out via `[live=off]`); what actually ran is recorded in `TEST_SCOPE` (no separate capability flag). **`/bkit-build` does not run the live tier**: the @live boundary needs a deployed URL, so it is validated post-merge by the push-only `bkit-tests-live` CI canary and reproduced against that deployed boundary on demand via `/bkit-debug` (never a purely local run) — build gates on local tiers only.
 
-- **Build** appends the curated `test:live` LAST in its pre-PR run and will not raise a PR if it fails (`scope` records the verbatim test command).
+- **Build** runs local tiers only (unit + in-process integration via `test`). It never appends `test:live`; the @live boundary is a push-only canary, not a pre-PR gate.
 - **Debug** runs the live boundary as iteration 1 of its Run-Tests loop (the reproduce), anchors diagnosis on the live-tier failure (treating infra/credential failures as environment, not feature-broken), and requires the live tier to flip fail -> pass before close (the empirical fail-then-pass gate).
 - **Soak** (`DEBUG_MODE = SOAK`, entered at invocation start when `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]` is set, mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts all three strategies) replaces diagnose+remediate with one accumulating-context instrument-or-fix step per loop iteration against the live boundary, bounded by `MAX_SOAK_ATTEMPT`.
 
-When no live tier is declared (or `[live=off]`), these gates degrade to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own runs degrade to CONCERNS by design.
+When no live tier is declared (or `[live=off]`), **Debug's** live gate degrades to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own debug runs degrade to CONCERNS by design. Build records no `testsLiveSkipped` — the @live tier is out of build's scope by design, not skipped.
 
 ## Consumer-runtime parity rule
 

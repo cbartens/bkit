@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-scope-check-1
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

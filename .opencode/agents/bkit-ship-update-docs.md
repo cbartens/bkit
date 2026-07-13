@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle and appending the cycle entry.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

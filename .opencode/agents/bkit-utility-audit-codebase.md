@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-codebase
 description: Senior architect reviewing a codebase against best practices and project goals.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

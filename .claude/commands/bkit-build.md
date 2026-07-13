@@ -750,18 +750,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 1. Increment `TEST_ATTEMPT` + 1.
 2. Run verbatim — do NOT modify quoting, filter, or glob:
    ```bash
-   TESTS_LIVE=0
-   if ! grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/build-input.md" 2>/dev/null \
-      && { jq -e '.scripts["test:live"]' package.json >/dev/null 2>&1 || { [ -f turbo.json ] && pnpm turbo run test:live --dry-run >/dev/null 2>&1; }; }; then
-     TESTS_LIVE=1
-   fi
    COV_UNIT=0
    jq -e '.scripts["test:coverage:unit"]' package.json >/dev/null 2>&1 && COV_UNIT=1
    if [ -f turbo.json ]; then
-     TEST_SCOPE="pnpm turbo lint typecheck test$([ "$TESTS_LIVE" = 1 ] && printf ' test:live') --filter='...[origin/dev]' --continue"
+     TEST_SCOPE="pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue"
    else
      TEST_SCOPE=""
-     for s in typecheck test format:check lint:slop lint:prose $([ "$TESTS_LIVE" = 1 ] && printf 'test:live'); do
+     for s in typecheck test format:check lint:slop lint:prose; do
        jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm $s"
      done
    fi
@@ -970,11 +965,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ---
 
-## 🤖 Step 17 — Create PR
+## 🤖 Step 17 — Close Workflow & Create PR
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. `git fetch origin dev`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+2. `git fetch origin dev`.
    **EC-1 pre-flight** — detect a pre-existing open PR on this branch before attempting `gh pr create` (a blind `gh pr create` on a branch with an existing open PR errors, triggers retry, then Failure Path):
    ```bash
    # TODO(#261-ec1): future: idempotent-resume — detect and reuse existing PR instead of Failure Path.
@@ -986,74 +982,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    # Probe failed (empty/error) → fall through to gh pr create.
    ```
    **If** EC-1 pre-flight exits non-zero → **Failure Path**.
-2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
-3. Create PR:
-   ```bash
-   gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
-   <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
-   <!-- bkit:start -->
-   https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-plan.md
-   <!-- bkit:end -->
-   EOF
-   )"
-   ```
-4. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
-5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
-6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
-7. Run HEAD-Subject Assertion:
-   ```bash
-   PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
-   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
-     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
-     echo "Fix: remove the suppressing tag from the PR title." >&2
-     exit 1
-   fi
-   ```
-   **If** assertion fails → **Failure Path**.
-8. Update status and commit:
-   ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
-     '{type:"step-done", workflow:"build", step:"build-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr bkit [skip ci]"
-   ```
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ### Step 17 — Create PR
-   [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
-   ```
-
-### 🔒 Gate 17 — Create PR
-
-- [ ] EC-1 pre-flight ran (no pre-existing open PR, or probe fell through)
-- [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] PR base verified (`PR_BASE` = dev)
-- [ ] HEAD-Subject Assertion passed
-- [ ] Workflow status updated (step `build-create-pr` recorded with `parentSha`)
-
-
-- [ ] Issue comment attempted (`Step 17` section)
-
-
----
-
-## 🤖 Step 18 — Close Workflow
-
-1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
+3. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
+4. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell). No PR exists yet, so this push does not trigger CI:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
-   # Auto-route marker from labels (this-block scope; empty when tracker unwired or bkit:auto absent).
    AUTO_ROUTE_SUFFIX=""
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   BKIT_AUTO_ROUTE_FILE=$(mktemp)
+   printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
+   echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   TESTS_LIVE_SKIPPED=""
-   echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
@@ -1065,12 +1004,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      --arg counterName "BUILD_ATTEMPT" \
      --argjson counterValue 1 \
      --arg counterSource "model-self-report" \
-     --arg parentSha "$PARENT_SHA" \
+     --arg parentSha "$(git rev-parse HEAD)" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
-   # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
-   # reads the whole commit message for skip tokens. Runs after commit, before the CI-triggering push.
    HEAD_MSG=$(git log -1 --pretty=%B)
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "HEAD-Subject Assertion FAILED: close-workflow HEAD message contains a CI-suppressing token." >&2; exit 1
@@ -1079,7 +1016,40 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
-   # CI-Dispatch Gate — confirm bkit-decide run dispatched for pushed HEAD; self-heal once if suppressed.
+   ```
+5. Create PR — `gh pr create` opens the PR on the pushed HEAD; this is the single CI-triggering event:
+   ```bash
+   gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
+   <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
+   <!-- bkit:start -->
+   https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-plan.md
+   <!-- bkit:end -->
+   EOF
+   )"
+   ```
+6. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
+7. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
+8. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
+9. Run PR-title Assertion, record `build-create-pr`, run the CI-Dispatch Gate, and record `build-close-workflow` in one block:
+   ```bash
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PARENT_SHA=$(git rev-parse HEAD)
+   AUTO_ROUTE_SUFFIX=""
+   if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
+     AUTO_ROUTE_SUFFIX=$(cat "$BKIT_AUTO_ROUTE_FILE")
+     rm -f "$BKIT_AUTO_ROUTE_FILE"
+   else
+     echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   fi
+   PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+     echo "Fix: remove the suppressing tag from the PR title." >&2
+     exit 1
+   fi
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
+     '{type:"step-done", workflow:"build", step:"build-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}' \
+     >> "$STATUS"
    PR_NUMBER=$(gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
    RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
    PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
@@ -1139,66 +1109,94 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    fi
    echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
    # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
-   PARENT_SHA_CLOSE=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA_CLOSE" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
      --arg r "$CI_REASON" --argjson rt "$CI_RETRIGGER" \
      '{type:"step-done", workflow:"build", step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[],
-       ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))} +
-       (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
+       ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
    ```
-3. 
-   No issue changes.
+10. 
+`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    
-   **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
+`{BODY}` = fenced block below:
+
+```comment
+### Step 17 — Create PR
+[{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
+```
 
 
-4. Re-read issue labels post-push:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
-5. Build `{ARTIFACTS}` link list:
-   ```bash
-   RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=$(git branch --show-current)
-   ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/build-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
-   printf '%s\n' "$ARTIFACTS"
-   ```
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ### Step 18 — Close Workflow
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   Artifacts:
-   {ARTIFACTS}
-   ```
-7. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
-   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+11. 
+No issue changes.
+   
+**If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
 
-### 🔒 Gate 18 — Close Workflow
 
-- [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
+12. Re-read issue labels post-push:
+
+   
+`mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   
+After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
+
+13. 
+Build `{ARTIFACTS}` link list:
+
+```bash
+RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=$(git branch --show-current)
+ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/build-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
+printf '%s\n' "$ARTIFACTS"
+```
+
+
+14. 
+`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   
+`{BODY}` = fenced block below:
+
+```comment
+### Step 17 — Artifacts
+[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+Artifacts:
+{ARTIFACTS}
+```
+
+
+15. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+
+   
+Append issue link [{ISSUE_ID} {TITLE}]({URL})
+
+### 🔒 Gate 17 — Close Workflow & Create PR
+
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 
 
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
 
 
-- [ ] HEAD-Subject Assertion passed
+- [ ] HEAD-Subject Assertion passed (close-workflow commit is the CI-triggering HEAD)
+- [ ] Lock removed
+- [ ] Close-workflow commit pushed to `feat/{FID}` (no PR yet → no CI)
+- [ ] EC-1 pre-flight ran (no pre-existing open PR, or probe fell through)
+- [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
+- [ ] PR base verified (`PR_BASE` = dev)
+- [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 
 
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
 
 
-- [ ] CI-Dispatch gate ran; ciDispatch verdict recorded on step-done (dispatched|self-healed|no-ci)
-- [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test, `ciDispatch` verdict)
-- [ ] Changes pushed to `feat/{FID}`
-- [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
+- [ ] PR-title Assertion passed
+- [ ] CI-Dispatch gate ran on the PR-create event (the single CI-triggering event); ciDispatch verdict recorded on `build-close-workflow` step-done (dispatched|self-healed|no-ci)
+- [ ] Workflow status updated (`build` `DONE`, step `build-create-pr` recorded with `PR_URL` artifact + step `build-close-workflow` recorded with `parentSha` and `ciDispatch` verdict)
 - [ ] Final return displayed (`build-summary.md` content verbatim)
 
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
-- [ ] Artifact link list embedded in `Step 18` comment
-- [ ] Issue comment attempted (`Step 18` section)
+- [ ] Artifact link list embedded in `Step 17` comment
+- [ ] Issue comment attempted (`Step 17` sections)
 

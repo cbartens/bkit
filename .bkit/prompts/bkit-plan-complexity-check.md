@@ -37,8 +37,8 @@ maxTurns: 25
 3. Count tasks via `grep -cE '^- \[ \] **Task'` or equivalent task markers. Count 🔒 Gates and domain areas (API, DB, web UI, mobile, infra).
 4. Estimate total agent tokens required to execute the plan.
 5. Verdict mapping:
-   - `SINGLE` = estimated tokens <= 100K and task count <= 15.
-   - `SPLIT` = estimated tokens > 100K or task count > 15.
+   - `SINGLE` = estimated tokens <= 85K and task count <= 12.
+   - `SPLIT` = estimated tokens > 85K or task count > 12.
 6. Produce **Create** output.
 
 **Output format:**
@@ -56,7 +56,7 @@ Verdict: SINGLE | SPLIT
 
 ## Session Fit Estimate
 
-[Rough token estimate vs ~100K threshold]
+[Rough token estimate vs ~85K threshold]
 
 ## Rationale
 
