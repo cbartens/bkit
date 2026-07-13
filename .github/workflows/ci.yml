@@ -494,6 +494,13 @@ jobs:
           echo "ran=$UNIT_RAN" >> "$GITHUB_OUTPUT"
           echo "::notice::vitest executed $UNIT_RAN unit test(s)."
 
+      # Shell-level tests (bats) for the counter-bus retry-gating helpers and the telemetry
+      # fail-open contract — logic vitest can't reach (they source .bkit/scripts/*.sh). jq is
+      # preinstalled on ubuntu-latest; bats-core comes from npm via npx.
+      - name: Run Shell Tests (bats)
+        if: steps.cache.outputs.skip != 'true'
+        run: npx --yes bats tests/*.bats
+
       # Unit coverage comment on PRs (the COMMENT step never fails the lane; the unit RUN above gates
       # branches via --coverage.thresholds.branches). A distinct name: keys the sticky comment so the
       # unit / integration comments don't collide. The head.repo == repo guard skips fork PRs, where

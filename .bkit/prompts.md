@@ -237,7 +237,7 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 | `bkit-design-brainstorm-ideate-1` | Independent design exploration — pragmatic lens; effort slot 1 (`high`). Runs parallel with `-2` and `-3`; writes `design-brainstorm-ideate-1.md`. Never references sibling output (circular reasoning guard). |
 | `bkit-design-brainstorm-ideate-2` | Same as `-1` — optimal-tradeoff lens; effort slot 2 (`medium`). Effort-diversity within the parallel triplet (Sonnet on Claude, GPT on Cursor). |
 | `bkit-design-brainstorm-ideate-3` | Same as `-1` — risk-premortem lens; effort slot 3 (`high`). Restores Opus depth for the failure-mode side of the brainstorm triplet. |
-| `bkit-design-generate` | Generate unified design draft from brainstorms; append `pending.md` if applicable. Does NOT write `docs/decisions.md` — the design phase reads ADRs but never authors them (decisions land via debug remediation or build/ship doc-integration). |
+| `bkit-design-generate` | Generate unified design draft from brainstorms; append `docs/deferrals.jsonl` if applicable. Does NOT write `docs/decisions.jsonl` — the design phase reads ADRs but never authors them (decisions land via debug remediation or build/ship doc-integration). |
 | `bkit-design-review-1` | Feasibility research with `WebFetch`/`WebSearch`; ecosystem search per capability; writes review log. |
 | `bkit-design-review-2` | Same as `-1`; runs in parallel with cross-tier model diversity. |
 | `bkit-design-update` | Apply CRITICAL + merit-OPTIONAL items from both reviews; whole-doc rewrite of design. |
@@ -283,10 +283,10 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 <!-- prettier-ignore -->
 | Agent | Scope |
 | --- | --- |
-| `bkit-debug-failure-diagnose` | Investigate test/CI failure → diagnosis log; no fixes. Standard/Pivot/Final by attempt. Reads `docs/knowledge.md` fully → cites matching entries in `## Prior Knowledge` section → uses them to seed hypotheses. Output uses append-only ReAct `Hypothesis {N}` blocks; refuted hypotheses must remain. |
-| `bkit-debug-failure-remediate` | Apply diagnosis fix; lint/typecheck/test gate; may append `knowledge.md`/`decisions.md`. |
+| `bkit-debug-failure-diagnose` | Investigate test/CI failure → diagnosis log; no fixes. Standard/Pivot/Final by attempt. Reads `docs/knowledge.jsonl` fully → cites matching entries in `## Prior Knowledge` section → uses them to seed hypotheses. Output uses append-only ReAct `Hypothesis {N}` blocks; refuted hypotheses must remain. |
+| `bkit-debug-failure-remediate` | Apply diagnosis fix; lint/typecheck/test gate; may append `knowledge.jsonl`/`decisions.jsonl`. |
 | `bkit-debug-failure-soak` | One accumulating context across iterations (reads its prior `debug-failure-soak-*-log.md`); applies the single next instrument-or-fix step against the failing boundary; refuses to theorise; adds `[DEBUG-OBSERVE]` scaffolding and strips every marker before declaring a fix (no-leak). Wired into `/bkit-debug` § Step 7 (`DEBUG_MODE` = SOAK); the orchestrator re-runs the tests and loops it within `SOAK_ATTEMPT` (`MAX_SOAK_ATTEMPT`, reset to 0 on each SOAK entry). Flat append-only `DONE`/`BLOCKED` log. |
-| `bkit-debug-abort-handover` | Read all prior diagnose/remediate/verify logs → handover doc + `pending.md` append. Called from build/debug/ship Failure Paths. |
+| `bkit-debug-abort-handover` | Read all prior diagnose/remediate/verify logs → handover doc + `deferrals.jsonl` append. Called from build/debug/ship Failure Paths. |
 | `bkit-debug-summary` | Read-only verdict on debug loop outcome. |
 
 ## Ship Phase
@@ -297,7 +297,7 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 | `bkit-ship-update-docs` | Cross-reference changed files against every doc in `docs.md`; update stale; append `completed.md`. Runs parallel with `bkit-ship-summary`. |
 | `bkit-ship-summary` | Read-only verdict on ship outcome. Runs parallel with `bkit-ship-update-docs` (no cross-reference — circular reasoning guard). |
 | `bkit-ship-conflict-resolve` | Mid-rebase mechanical conflict resolver. Invoked from `/bkit-ship` Step 2 after the in-bash `pnpm-lock.yaml`-only fast path fails to clear the sentinel. Allowed: non-overlapping additive edits, formatting drift, dep-version supersedes, additive JSON entries. Refused: same-function edits, semantic overlaps, ambiguous intent — `FAIL` aborts the rebase cleanly and routes to `bkit-debug-abort-handover`. Verifies via `pnpm install` / `typecheck` / `test` / `build` before `PASS`. |
-| `bkit-ship-deferred-sweep` | Pre-merge completeness gate. Builds the intended-delivery set from plan `Done when` + `ship-input.md` acceptance + design scope and asserts each against the codebase; an unmet/unplanned gap (mid-build `TODO`/`FIXME`, silently skipped test) → `FAIL` → Failure Path (merge never happens). Declared deferrals (out-of-scope / future-work / non-goals across design, plan, `docs/pending.md`, summaries) form the exempt set — never block, resurfaced verbatim in the ship summary's `Deferred & Out-of-Scope (Resurfaced)` section. Invoked from `/bkit-ship` Step 5 (after Conflict Resolve, before Merge). |
+| `bkit-ship-deferred-sweep` | Pre-merge completeness gate. Builds the intended-delivery set from plan `Done when` + `ship-input.md` acceptance + design scope and asserts each against the codebase; an unmet/unplanned gap (mid-build `TODO`/`FIXME`, silently skipped test) → `FAIL` → Failure Path (merge never happens). Declared deferrals (out-of-scope / future-work / non-goals across design, plan, `docs/deferrals.jsonl`, summaries) form the exempt set — never block, resurfaced verbatim in the ship summary's `Deferred & Out-of-Scope (Resurfaced)` section. Invoked from `/bkit-ship` Step 5 (after Conflict Resolve, before Merge). |
 
 ## Utility (Ad-hoc)
 

@@ -1077,7 +1077,6 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
 
 import { runClaudeModule, getPkgRoot } from "./bkit-modules";
 import type { ModuleContext } from "./bkit-modules";
-import type { WriteSet } from "./bkit-tiers";
 import type { PreflightFinding } from "./bkit-preflight";
 
 function makeClaudeContext(dryRun: boolean): ModuleContext {

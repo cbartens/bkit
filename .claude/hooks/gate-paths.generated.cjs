@@ -1,0 +1,44 @@
+// gate-paths.generated.cjs — AUTO-GENERATED from .bkit/src/bkit-paths-policy.ts
+// DO NOT EDIT BY HAND — regenerate via `generateGatePathsCjs()` then commit.
+// Drift is detected by bkit-paths-policy.test.ts (Vitest).
+"use strict";
+
+/** Prefixes for bkit-managed IDE mirror directories. */
+const MIRROR_PATH_PREFIXES = [
+  ".claude/agents/",
+  ".claude/commands/",
+  ".cursor/agents/",
+  ".cursor/commands/",
+  ".opencode/agents/",
+  ".opencode/commands/",
+];
+
+/** Returns true if the POSIX path is inside a bkit-managed mirror directory. */
+function isMirrorPath(posixPath) {
+  return MIRROR_PATH_PREFIXES.some((prefix) => posixPath.startsWith(prefix));
+}
+
+/** Basename patterns for quality-gate configs. */
+const GATE_CONFIG_PATTERNS = [
+  /^tsconfig(\..+)?\.json$/,
+  /^vitest\.config\.[mc]?[jt]s$/,
+  /^vite\.config\.[mc]?[jt]s$/,
+  /^eslint\.config\.[mc]?[jt]s$/,
+  /^\.eslintrc(\.(json|js|cjs|ya?ml))?$/,
+  /^\.prettierrc(\.(json|js|cjs|mjs|ya?ml|toml))?$/,
+  /^prettier\.config\.[mc]?js$/,
+  /^\.prettierignore$/,
+  /^biome\.jsonc?$/,
+  /^\.vale\.ini$/,
+  /^slop-scan\.config\.json$/,
+  /^\.lintstagedrc(\.(json|js|cjs|mjs|ya?ml))?$/,
+  /^lint-staged\.config\.[mc]?js$/,
+];
+
+/** Returns true if the file basename matches any gate-config pattern. */
+function isGateConfig(posixPath) {
+  const base = posixPath.split("/").pop() || posixPath;
+  return GATE_CONFIG_PATTERNS.some((re) => re.test(base));
+}
+
+module.exports = { MIRROR_PATH_PREFIXES, isMirrorPath, GATE_CONFIG_PATTERNS, isGateConfig };

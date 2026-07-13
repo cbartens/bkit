@@ -1,7 +1,7 @@
 # Notes
 
 > [!CAUTION]
-> **Purpose:** Human scratchpad — pre-formalized workflow/process gap observations; promote to `docs/pending.md` or a plan.
+> **Purpose:** Human scratchpad — pre-formalized workflow/process gap observations; promote to `docs/deferrals.jsonl` or a plan.
 >
 > **Rules:**
 >

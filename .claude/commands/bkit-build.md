@@ -17,7 +17,9 @@ description: "Build Feature — Autonomous implementation"
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.jsonl`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Never-drop:** NEVER silently drop deferred work → APPEND a `kind:"deferral"` row to `docs/deferrals.jsonl` instead.
+> - **Found-bug:** NEVER silently drop a discovered bug → APPEND a `kind:"failure"` row to `docs/failures.jsonl` immediately.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -36,7 +38,7 @@ description: "Build Feature — Autonomous implementation"
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** Reference constants `MAX_VERIFY_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
+> - **Limits:** `MAX_VERIFY_ATTEMPT` and `MAX_TEST_ATTEMPT` are defined in `.bkit/scripts/bkit-counter-bus-config.sh` (sourced by fenced shell routing blocks below).
 > - **Large Diff Guard:** When Read line passes `git diff origin/dev..HEAD` to subagents, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -189,7 +191,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
@@ -445,9 +447,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 14. **If** `VERIFY_VERDICT` = PASS:
     - **If** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → next `SUB_PLAN` → Step 5.
     - **Else** → Step 8.
-15. **If** `VERIFY_VERDICT` = CONCERNS or FAIL:
-    - **If** `VERIFY_ATTEMPT` <= `MAX_VERIFY_ATTEMPT` → Step 7.
-    - **Else** → **Failure Path**.
+15. **If** `VERIFY_VERDICT` = CONCERNS or FAIL — run counter-bus routing:
+
+    ```bash
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+    decide_next VERIFY_ATTEMPT "$VERIFY_ATTEMPT" "$MAX_VERIFY_ATTEMPT" step-7 failure-path 2>/dev/null
+    ```
+
+    - **If** exit 0 (printed `step-7`) → Step 7.
+    - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+
 16. **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Plan Verify
@@ -778,8 +789,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 7. Route:
    - **If** all tests PASS → Step 16.
-   - **If** some tests FAIL **and** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 14.
-   - **If** some tests FAIL **and** `TEST_ATTEMPT` > `MAX_TEST_ATTEMPT` → **Failure Path**.
+   - **If** some tests FAIL — run counter-bus routing:
+
+     ```bash
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     decide_next TEST_ATTEMPT "$TEST_ATTEMPT" "$MAX_TEST_ATTEMPT" step-14 failure-path 2>/dev/null
+     ```
+
+     - **If** exit 0 (printed `step-14`) → Step 14.
+     - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 13 — Run Tests
@@ -897,7 +918,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-4. Update status and commit:
+4. Emit telemetry summary read:
+   ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   if [ -f "$STATS" ]; then
+     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
+     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
+     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
+     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
+     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
+     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
+   else
+     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
+   fi
+   ```
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -906,15 +942,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
-5. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push -u origin "$B" ;; *) git push -u --force-with-lease origin "$B" ;; esac`.
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push -u origin "$B" ;; *) git push -u --force-with-lease origin "$B" ;; esac`.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 16 — Summary - Verdict: {SUMMARY_VERDICT}
    [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
    ```
-7. Route:
+8. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
    - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -1006,7 +1042,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🤖 Step 18 — Close Workflow
 
-1. Sweep `.bkit/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
@@ -1019,6 +1055,19 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "build-close-workflow" \
+     --arg counterName "BUILD_ATTEMPT" \
+     --argjson counterValue 1 \
+     --arg counterSource "model-self-report" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
    # reads the whole commit message for skip tokens. Runs after commit, before the CI-triggering push.

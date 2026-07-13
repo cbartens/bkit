@@ -411,6 +411,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([]);
 // artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
 export const BKIT_CANONICAL_DOCS = [
   "cloud.md",
+  "jsonl.md",
   "providers.md",
   "prompts.md",
   "trackers.md",

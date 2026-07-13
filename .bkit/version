@@ -10,8 +10,8 @@
     ".github/workflows/renovate.yml": "75e5412307bc3c7e5100ed0f696086e4c42232e55b5d8920af6d05c5785aaf35"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "461a51ba7ab7d4a37476869295b6638f3276f025c79dc9737f83bfc75eac8cf6",
-    "docs/testing.md": "54975d7327eaea037dcf58450013bb4bebdb4b61028190214959ee68e807dd92",
+    "docs/deployments.md": "66c5c1fbaee153aafbf00b1ee1f55d4c3ac21618a51f0b9b4ccf212135115ad0",
+    "docs/testing.md": "7fb376087dcbad3a13f094adcfb7d8a8bc44655a0d791ebdbf98466e5c3a9447",
     ".claude/settings.json": "0a10fe01fd6050fc48e3b52357eb2603a2f149ef90efb286f67661b2ab5eeb7c",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",
@@ -43,7 +43,7 @@
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "79a169555d3df0069a8c1c1d3061f9fba3862b11292daa3ef38f092a002680a6",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
-    "docs/observability.md": "92996e503417eea9aedaf26c3d653d020fb79941728c56cfaa75d521826e2b91",
+    "docs/observability.md": "70311dcbf72bdc85558ccee51b58b6260ab5d54f41098a8d3d1ef41fc6c3f4fb",
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
     ".gitignore": "652256134b04da7a69a0c592eb5c333198be308df4c05bf0f3c931c230d01fe8",
     ".cursor/mcp.json": "dd07b8eb46eff755655fff7b114d4347487764fa7a6894caaa635eba4dc5b2f5",
@@ -56,7 +56,7 @@
     "docs/decisions.md": "cc2cc592f98fde3b6344407c843e0e898b29b8c2057bf198794068f91636feea",
     "docs/knowledge.md": "ee23605a6b9ae147c3989ebfa2fbfc5b9cc2499d0302c9a5a97984dc74690683",
     "docs/pending.md": "5cbf7e71a14287d9fcb54a69dda5d5d6f9e8fa29360fa9a8bf2207a434325b21",
-    "docs/technology.md": "1c28874c6c263af51dbe51d924f2d4e9ada804204aa01ee0eb3d7bad427ac4a6",
+    "docs/technology.md": "2a4f5bedd3a566dee5d6e0141410157e89e3af199b7bd6bc41b773f7515219c0",
     ".github/workflows/bkit-cloud.yml": "f5f4af3c4ec40b2d552510d261bac3321e2172c65c9477b0b7355e53c27c371d",
     ".github/renovate-local.json5": "544dfe7090ac2a93d497f69aca729d6a599f25c82a4254e1cb4474dcd33a91b6",
     ".claude/hooks/gateguard.cjs": "da35b669c307dd6a9e8484a901e7f39cf006c25ffd96a9e439e6d433cde80815",
