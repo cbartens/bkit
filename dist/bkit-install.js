@@ -3,10 +3,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpencodeProvider, } from "./bkit-cli.js";
+import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
+import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
 import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
@@ -1411,9 +1413,170 @@ async function runSelfBump(flags, cwd) {
     process.exit(re.status ?? 1);
 }
 async function main() {
-    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, renovateRunner, } = parseArgs(process.argv.slice(2));
+    const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, renovateRunner, complyPhase, telemetrySubverb, telemetryMigrateFlags, } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
         printUsage();
+        return;
+    }
+    // comply — compliance grader (advisory, never gating, fail-open).
+    // Runs `runGrader` over `git diff parentSha..HEAD`, appends `kind:"compliance"`
+    // rows to `.bkit/stats.jsonl`, and logs violations.  Always exits 0 (fail-open);
+    // callers MUST use the pinned idiom:
+    //   `pnpm bkit comply --phase <phase> || echo "[bkit-comply] grader unavailable, skipping"`
+    // See DE-34 for the shared-entrypoint + crash-isolation contract.
+    if (verb === "comply") {
+        try {
+            const cwd = process.cwd();
+            const phase = complyPhase ?? "unknown";
+            const logPrefix = "[bkit-comply]";
+            // Resolve parentSha from the workflow status ledger (.bkit/stats.jsonl) — look
+            // for the most recent workflow-started row that carried a parentSha. Falls back
+            // to HEAD~1 when none is recorded (keeps grader advisory, not blocking).
+            let parentSha = "HEAD~1";
+            const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
+            if (fs.existsSync(statsPath)) {
+                const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n").filter(Boolean);
+                for (let i = lines.length - 1; i >= 0; i--) {
+                    try {
+                        const row = JSON.parse(lines[i]);
+                        // Exclude self-emitted rows (compliance/counter) so they cannot be
+                        // picked up as a resolved parentSha (RC-1 kind filter).
+                        if (row.kind === "compliance" || row.kind === "counter")
+                            continue;
+                        if (typeof row.parentSha === "string" && row.parentSha.length > 0) {
+                            parentSha = row.parentSha;
+                            break;
+                        }
+                    }
+                    catch {
+                        // skip unparseable rows
+                    }
+                }
+            }
+            console.log(`${logPrefix} Running compliance grader (phase=${phase}, parentSha=${parentSha})`);
+            const violations = runGrader({ parentSha, phase, cwd });
+            // Resolve repo slug from package.json (best-effort).
+            let repo = "unknown";
+            try {
+                const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8"));
+                repo = pkg.bkit?.repoSlug ?? pkg.name ?? "unknown";
+            }
+            catch {
+                // package.json absent/unparseable
+            }
+            const bkitVersion = readBkitVersion(cwd);
+            const rows = buildComplianceRows({ violations, phase, parentSha, repo, bkitVersion });
+            appendComplianceRows(rows, statsPath);
+            if (violations.length > 0) {
+                const summary = formatComplianceSummary(violations);
+                console.log(`${logPrefix} Compliance violations found:\n${summary}`);
+            }
+            else {
+                console.log(`${logPrefix} All rules pass.`);
+            }
+            console.log(`${logPrefix} Appended ${rows.length} compliance row(s) to .bkit/stats.jsonl (advisory — not gating).`);
+        }
+        catch (err) {
+            // Fail-open: any unexpected error in the dispatch body must not gate the workflow.
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[bkit-comply] grader error (fail-open): ${msg}`);
+        }
+        // Always exit 0 — the comply verb is advisory and must never block.
+        return;
+    }
+    // harvest — cross-repo harvest CLI (WS-4, #234 #233).
+    // Copies consumer .bkit/{stats,friction}.jsonl into .bkit/harvest/; COUNT-ONLY for
+    // docs/{deferrals,failures}.jsonl. Never writes to consumer repos. Fail-open: exits 0.
+    // See DE-34 for the shared-entrypoint + crash-isolation contract.
+    if (verb === "harvest") {
+        try {
+            const { runHarvest } = await import("./bkit-harvest.js");
+            const cwd = process.cwd();
+            console.log("[bkit-harvest] Starting cross-repo harvest...");
+            const result = runHarvest(cwd);
+            console.log(`[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}`);
+            const countOnlyEntries = Object.entries(result.totalCountOnly);
+            if (countOnlyEntries.length > 0) {
+                for (const [file, count] of countOnlyEntries) {
+                    console.log(`[bkit-harvest] count-only ${file}: ${count} rows (not copied)`);
+                }
+            }
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[bkit-harvest] harvest error (fail-open): ${msg}`);
+        }
+        return;
+    }
+    // analysis — cross-repo analysis CLI (WS-4, #234 #183).
+    // Reports counts/rates/elapsed-time, #183 size↔outcome regression, per-rule compliance
+    // rate, dispatch-size threshold, counterSource trust labelling. Advisory + inform-only.
+    // See DE-34 for the shared-entrypoint + crash-isolation contract.
+    if (verb === "analysis") {
+        try {
+            const { runAnalysis } = await import("./bkit-analysis.js");
+            const cwd = process.cwd();
+            // Analyse: bkit's own stats.jsonl + harvested consumer rows
+            const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
+            const harvestStatsPath = path.join(cwd, ".bkit", "harvest", "stats.jsonl");
+            const harvestFrictionPath = path.join(cwd, ".bkit", "harvest", "friction.jsonl");
+            const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
+            const paths = [statsPath, harvestStatsPath, harvestFrictionPath, frictionPath].filter((p) => fs.existsSync(p));
+            if (paths.length === 0) {
+                console.log("[bkit-analysis] No telemetry files found. Run `bkit harvest` first, or accumulate telemetry via bkit workflows.");
+                return;
+            }
+            const report = runAnalysis(paths);
+            for (const line of report.reportLines) {
+                console.log(line);
+            }
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[bkit-analysis] analysis error (fail-open): ${msg}`);
+        }
+        return;
+    }
+    // telemetry — sub-verb dispatcher (WS-5, #234).
+    // `bkit telemetry migrate` ports docs/knowledge.md + docs/decisions.md to .jsonl.
+    // Destructive (parity-gated) and NEVER reachable from `bkit upgrade` — see DE-39.
+    // Advisory: exits 0 on failure after printing error (fail-open pattern).
+    if (verb === "telemetry") {
+        try {
+            const { runMigrate } = await import("./bkit-telemetry-migrate.js");
+            if (telemetrySubverb === "migrate") {
+                const pkgPath = path.join(process.cwd(), "package.json");
+                let bkitVersion = "unknown";
+                if (fs.existsSync(pkgPath)) {
+                    try {
+                        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+                        if (typeof pkg["version"] === "string")
+                            bkitVersion = pkg["version"];
+                    }
+                    catch {
+                        // ignore
+                    }
+                }
+                const result = await runMigrate({
+                    cwd: process.cwd(),
+                    bkitVersion,
+                    dryRun: telemetryMigrateFlags.dryRun,
+                });
+                for (const line of result.lines) {
+                    console.log(line);
+                }
+                if (!result.ok && result.error) {
+                    console.error(`[bkit-telemetry] migrate failed: ${result.error}`);
+                }
+            }
+            else {
+                console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate`);
+            }
+        }
+        catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[bkit-telemetry] internal error (fail-open): ${msg}`);
+        }
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
@@ -1680,6 +1843,13 @@ async function main() {
                     else if (ent.isFile()) {
                         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
                         const relPath = remapTemplateDest(entRel);
+                        // `.claude/cloud.md` is a GENERATED output file (writeClaudeCloudDoc),
+                        // not a template to reconcile: install/upgrade regenerate it with
+                        // resolved secret values, so the raw template is never a byte-match and
+                        // the walk must never drift-flag or overwrite it. Regenerated explicitly
+                        // in the runUpgrade block below (claude-host-gated, non-dry-run).
+                        if (relPath === CLAUDE_CLOUD_RELPATH)
+                            continue;
                         // Skip opt-in-module files the consumer hasn't opted into (dest absent).
                         if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
                             continue;
@@ -1822,6 +1992,16 @@ async function main() {
             version: getInstallingVersion(),
         };
         const rendered = renderManagedOutputs(renderModules, renderCtx);
+        // Regenerate `.claude/cloud.md` (excluded from the template walk above — it is a
+        // generated, untracked, secret-bearing OUTPUT file). Claude-host-gated so upgrade
+        // never force-creates it for a non-claude repo; non-dry-run so `bkit check` never
+        // writes resolved secrets. Rotated secrets / version bumps reach the paste doc via
+        // the same helper install uses (runClaudeModule). Untracked → not in canonicalHashes.
+        if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
+            if (writeClaudeCloudDoc(process.cwd(), tokens)) {
+                console.log(`${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            }
+        }
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
         // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing

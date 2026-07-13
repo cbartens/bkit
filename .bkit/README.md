@@ -319,7 +319,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup is `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts above are not affected. |
 | `docs/audits/` | Audit reports written/updated by `bkit-utility-audit-*` agents |
 | `docs/completed.md` | Shipped features index |
-| `docs/pending.md` | Deferred items |
+| `docs/deferrals.jsonl` | Deferred items |
 
 ---
 

@@ -14,7 +14,9 @@
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.jsonl`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Never-drop:** NEVER silently drop deferred work → APPEND a `kind:"deferral"` row to `docs/deferrals.jsonl` instead.
+> - **Found-bug:** NEVER silently drop a discovered bug → APPEND a `kind:"failure"` row to `docs/failures.jsonl` immediately.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -33,7 +35,7 @@
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** Reference constant `MAX_MERGE_ATTEMPT` = 3 in retry checks below.
+> - **Limits:** `MAX_MERGE_ATTEMPT` is defined in `.bkit/scripts/bkit-counter-bus-config.sh` (sourced by fenced shell routing block below).
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -160,7 +162,7 @@
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
    fi
    ```
@@ -371,7 +373,7 @@
 
 1. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Task` tool:
    Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/pending.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+   Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 2. Assert subagent Create file exists and is non-empty. **If** file empty → **Failure Path**.
 3. Read `ship-deferred-sweep.md` until `<!-- verdict:end -->` → extract `Verdict` as `SWEEP_VERDICT`.
@@ -464,8 +466,18 @@
    ```
 9. Route:
    - **If** `state` = MERGED → Step 9.
-   - **If** `state` != MERGED **and** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 7.
-   - **If** `state` != MERGED **and** `MERGE_ATTEMPT` > `MAX_MERGE_ATTEMPT` → **Failure Path**.
+   - **If** `state` != MERGED — run counter-bus routing:
+
+     ```bash
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path 2>/dev/null
+     ```
+
+     - **If** exit 0 (printed `step-7`) → Step 7.
+     - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Merge PR
@@ -650,7 +662,23 @@
    if [ "$COMPLETED_HIT" -gt 0 ]; then UPDATE_DOCS_VERDICT=PASS; else UPDATE_DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-6. Update status and commit:
+6. Emit telemetry summary read (includes chain-wide rollup for ship):
+   ```bash
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   if [ -f "$STATS" ]; then
+     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
+     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
+     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
+     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
+     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
+     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
+     SHIP_ROWS=$(grep -c '"workflow":"ship"' "$STATS" 2>/dev/null || echo 0)
+     echo "[bkit-telemetry] ship rows: $SHIP_ROWS | design→ship chain total: $ROW_COUNT"
+   else
+     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
+   fi
+   ```
+7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -662,14 +690,14 @@
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "docs({FID}): update-docs-summary"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-8. Route:
+9. Route:
    - **If** `UPDATE_DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
    - **If** `UPDATE_DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -782,8 +810,12 @@
 
 ## 🤖 Step 13 — Close Workflow
 
-1. Sweep `.bkit/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Assert squash-merge CI run completed `bkit-tests`:
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+2. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
+   ```bash
+   pnpm bkit comply --phase ship || echo "[bkit-comply] grader unavailable, skipping"
+   ```
+3. Assert squash-merge CI run completed `bkit-tests`:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
@@ -797,7 +829,7 @@
    [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "bkit-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
-3. Update status, batch-commit, and push:
+4. Update status, batch-commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -806,6 +838,60 @@
      '{type:"step-done", workflow:"ship", step:"ship-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"ship", at:$t}' >> "$STATUS"
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "ship-close-workflow" \
+     --arg counterName "SHIP_ATTEMPT" \
+     --argjson counterValue 1 \
+     --arg counterSource "model-self-report" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
+   SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid 2>/dev/null || echo "")
+   PR_DIFF_STAT=$(git -C "$REPO_ROOT" diff --shortstat "${SQUASH_SHA}^..${SQUASH_SHA}" 2>/dev/null || echo "")
+   LINES_ADDED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
+   LINES_DELETED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
+   FILES_CHANGED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || echo "0")
+   LINES_ADDED=${LINES_ADDED:-0}; LINES_DELETED=${LINES_DELETED:-0}; FILES_CHANGED=${FILES_CHANGED:-0}
+   LINES_CHANGED=$((LINES_ADDED + LINES_DELETED))
+   DEFERRALS_COUNT=$(wc -l < "$REPO_ROOT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_COUNT=$((DEFERRALS_COUNT + 0))
+   FAILURES_COUNT=$(wc -l < "$REPO_ROOT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_COUNT=$((FAILURES_COUNT + 0))
+   TASK_COUNT=$(grep -c '^\- \[' "$REPO_ROOT/docs/plans/{YYYYMM}/{FID}-plan"*.md 2>/dev/null || echo "0"); TASK_COUNT=$((TASK_COUNT + 0))
+   SHIP_START=$(jq -rs '[.[] | select(.type=="workflow-started" and .workflow=="ship")] | last | .at // ""' "$STATUS" 2>/dev/null || echo "")
+   if [ -n "$SHIP_START" ]; then
+     START_S=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$SHIP_START" +%s 2>/dev/null || date -d "$SHIP_START" +%s 2>/dev/null || echo "0")
+     DURATION_S=$(( $(date +%s) - START_S )); [ "$DURATION_S" -lt 0 ] && DURATION_S=0
+   else
+     DURATION_S=0
+   fi
+   COVERAGE=null
+   for COV_TIER in unit integration e2e; do
+     COV_SUMMARY="$REPO_ROOT/coverage/$COV_TIER/coverage-summary.json"
+     [ -f "$COV_SUMMARY" ] || continue
+     COV_STATS=$(jq -c 'if (.total.lines.pct|type)=="number" then {lines:.total.lines.pct,branches:.total.branches.pct,functions:.total.functions.pct,statements:.total.statements.pct} else empty end' "$COV_SUMMARY" 2>/dev/null) || continue
+     [ -n "$COV_STATS" ] || continue
+     COVERAGE=$(jq -nc --argjson cov "$COVERAGE" --arg tier "$COV_TIER" --argjson stats "$COV_STATS" '($cov // {}) + {($tier): $stats}')
+   done
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "ship-close-workflow" \
+     --argjson prNumber "{PR_NUMBER}" \
+     --argjson linesAdded "$LINES_ADDED" \
+     --argjson linesDeleted "$LINES_DELETED" \
+     --argjson linesChanged "$LINES_CHANGED" \
+     --argjson filesChanged "$FILES_CHANGED" \
+     --argjson taskCount "$TASK_COUNT" \
+     --argjson durationSeconds "$DURATION_S" \
+     --argjson deferrals "$DEFERRALS_COUNT" \
+     --argjson failures "$FAILURES_COUNT" \
+     --argjson coverage "$COVERAGE" \
+     '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | (if $coverage != null then .coverage = $coverage else . end)' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git -C "$REPO_ROOT" add -A
    git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
@@ -813,13 +899,13 @@
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-4. 
+5. 
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
 
 
-5. 
+6. 
    Build `{ARTIFACTS}` link list:
 
    ```bash
@@ -829,7 +915,7 @@
    ```
 
 
-6. 
+7. 
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    
    `{BODY}` = fenced block below:
@@ -841,7 +927,7 @@
    ```
 
 
-7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+8. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
 ### 🔒 Gate 13 — Close Workflow

@@ -53,7 +53,7 @@ RUN cd /tmp \
     && rm -f "vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
 
 # pnpm — corepack-pinned to match `packageManager` in package.json.
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.3 --activate
 # <!-- bkit:end -->
 
 # --- Consumer extensions ---------------------------------------------------

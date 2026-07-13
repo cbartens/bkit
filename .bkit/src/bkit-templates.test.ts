@@ -40,7 +40,8 @@ const GROUP_A_MD_FILES = [
   "CLAUDE.md",
   ".agents/rules.md",
   ".agents/docs.md",
-  ".bkit/friction.md",
+  // NOTE: .bkit/friction.md was intentionally deleted in #234 WS-1 (friction.md → friction.jsonl).
+  // The template no longer exists; friction entries are appended to .bkit/friction.jsonl.
   ".agents/skills.md",
   "docs/plans/template.md",
 ];

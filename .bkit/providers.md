@@ -280,11 +280,11 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 | Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
 | Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
 | Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
-| Reusable across repos | Yes — one env, many repos (snapshot is generic; per-repo install via bootstrap hook) | No — Dockerfile per repo (bkit Tier 3 keeps content byte-identical) |
+| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (bkit Tier 3 keeps content byte-identical) |
 | Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
 | Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
 
-**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.34.1 (corepack-pinned), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing-across-repos pattern.
+**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm (corepack-pinned to `package.json#packageManager`), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing-across-repos pattern.
 
 ---
 
@@ -307,7 +307,7 @@ The installed provider's model catalog changes over time. Look up available mode
 | Ollama (Cloud) | `curl https://ollama.com/v1/models -H "Authorization: Bearer $OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3-coder:480b-cloud`). Distinct from `ollama-local`. |
 | OpenCode (opencode-native gateway) | `curl https://opencode.ai/zen/v1/models` | **Public — no key for the catalog.** Returns bare ids (`kimi-k2.6`); opencode references them as `opencode/<id>`. bkit provider key `opencode`, opencode provider id `opencode`. The docs page (`/docs/zen`) can run ahead of the live endpoint — trust the curl (it dropped `qwen3.7-plus` → `qwen3.6-plus`). Running requires `OPENCODE_API_KEY` (the catalog itself is public). |
 
-**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen3-coder:30b`, `nvidia/moonshotai/kimi-k2.6`). The per-agent pins are the single source of truth in `prompts.md` § Models — **one column per provider** (`Nvidia`, `Ollama (Local)`, `Groq`, `Cerebras`, `OpenRouter`, `Ollama (Cloud)`, `OpenCode`). The `opencode` gateway uses the opencode-side prefix `opencode/<id>` (e.g. `opencode/kimi-k2.6`).
+**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen3-coder:30b`, `nvidia/moonshotai/kimi-k2.6`). The per-agent pins are the single source of truth in `prompts.md` § Models — **one column per provider** (`Nvidia`, `Ollama (Local)`, `Groq`, `Cerebras`, `OpenRouter`, `Ollama (Cloud)`, `OpenCode`). The `opencode` gateway uses the opencode-side prefix `opencode/<id>` (e.g. `opencode/kimi-k2.7-code`).
 
 **Lookup mechanic (how a pin is resolved at install).** `bkit install --opencode=<provider>` calls `buildOpencodeModelLookup(promptsMdPath, provider)` (`.bkit/src/bkit-install.ts`), which:
 
@@ -328,7 +328,7 @@ The installed provider's model catalog changes over time. Look up available mode
 | `ollama` (cloud) | `kimi-k2.6` | `qwen3-coder:480b` | `gpt-oss:20b` | `deepseek-v4-pro` | Identical identities to nvidia. **opus+convergent (`kimi-k2.6`/`deepseek-v4-pro`) need a paid Ollama plan; sonnet+haiku validated free.** |
 | `groq` | `openai/gpt-oss-120b` | `qwen/qwen3-32b` | `openai/gpt-oss-20b` | `openai/gpt-oss-120b` | No Kimi/Qwen3-Coder in catalog → opus+convergent collapse onto `gpt-oss-120b`. |
 | `cerebras` | `zai-glm-4.7` | `gpt-oss-120b` | `gpt-oss-120b` | `zai-glm-4.7` | Two-model catalog → opus+convergent `glm-4.7`, sonnet+haiku `gpt-oss-120b`. |
-| `opencode` | `opencode/kimi-k2.6` | `opencode/qwen3.6-plus` | `opencode/deepseek-v4-flash` | `opencode/deepseek-v4-pro` | opencode-native gateway; opus+convergent reuse the cross-platform identities. No Qwen3-Coder/gpt-oss in the gateway → sonnet uses the top Qwen (`qwen3.6-plus`), haiku a fast open model (`deepseek-v4-flash`, chosen so the column also resolves on the budget **OpenCode Go** plan — open-weight models only, no proprietary `gemini-*`). **Existence-validated** vs the live endpoint; tool-call smoke pending a consumer `OPENCODE_API_KEY`. |
+| `opencode` | `opencode/kimi-k2.7-code` | `opencode/qwen3.6-plus` | `opencode/deepseek-v4-flash` | `opencode/deepseek-v4-pro` | opencode-native gateway; convergent reuses the cross-platform identity, opus pins the gateway's newer `kimi-k2.7-code` (Moonshot K2.7 coding successor, re-pinned from `kimi-k2.6` 2026-07-12; other providers stay on shared K2.6 pending their own probe). No Qwen3-Coder/gpt-oss in the gateway → sonnet uses the top Qwen (`qwen3.6-plus`), haiku a fast open model (`deepseek-v4-flash`, chosen so the column also resolves on the budget **OpenCode Go** plan — open-weight models only, no proprietary `gemini-*`). **Existence-validated** vs the live endpoint; tool-call smoke pending a consumer `OPENCODE_API_KEY`. |
 
 The cloud OpenAI-compatible cells were tool-call-smoked (a real `tools:` chat/completions round-trip emitting `tool_calls`) — `/models` existence is **not** proof a model tool-calls in the agent loop (validate-with-real-tool). The `opencode` gateway cells are existence-validated only (bkit holds no key to smoke them; a consumer `OPENCODE_API_KEY` enables the smoke). To re-pin: edit the agent's `model:` field, add a row to `prompts.md` § Model Overrides, or change the `prompts.md` column and run `bkit check`. Probe the live catalog first (table above) — provider model IDs churn.
 
