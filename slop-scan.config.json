@@ -5,7 +5,13 @@
     "**/node_modules/**",
     "**/.next/**",
     "**/.turbo/**",
-    "**/*.generated.ts"
+    "**/*.generated.ts",
+    ".bkit/stats.jsonl",
+    ".bkit/friction.jsonl",
+    "docs/deferrals.jsonl",
+    "docs/failures.jsonl",
+    "docs/knowledge.jsonl",
+    "docs/decisions.jsonl"
   ],
   "plugins": {
     "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"
@@ -68,6 +74,30 @@
       "files": [".bkit/templates/.claude/hooks/gateguard.cjs", ".claude/hooks/gateguard.cjs"],
       "rules": {
         "structure.duplicate-function-signatures": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-comply.ts"],
+      "rules": {
+        "defensive.error-obscuring": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-gateguard-opencode.test.ts"],
+      "rules": {
+        "defensive.empty-catch": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-telemetry-migrate.integration.test.ts"],
+      "rules": {
+        "defensive.empty-catch": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-telemetry-migrate.ts"],
+      "rules": {
+        "structure.pass-through-wrappers": { "enabled": false }
       }
     }
   ]

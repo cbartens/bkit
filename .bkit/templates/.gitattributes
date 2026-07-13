@@ -1,14 +1,12 @@
 # <!-- bkit:start -->
 
-# Append-only doc ledgers: union merge auto-concatenates both sides on conflict.
-# Safe iff the file is strictly append-only-at-EOF (no post-write edits to existing entries).
-# Trade-off: silent duplicate KN-N / DE-N IDs if both branches allocate the same number
-# (renumbering already deferred separately, not a regression).
-docs/pending.md     merge=union
-docs/knowledge.md   merge=union
-docs/decisions.md   merge=union
+# Append-only ledgers: union merge auto-concatenates both sides on conflict.
+# Safe iff strictly append-only-at-EOF (no post-write edits to existing entries).
+# JSONL rows dedupe by identity tuple (kind, repo, key); union may interleave or
+# duplicate lines, resolved by the reader — never a blocking merge conflict.
+docs/knowledge.jsonl merge=union
+docs/decisions.jsonl merge=union
 docs/completed.md   merge=union
-.bkit/friction.md merge=union
 
 # Append-only NDJSON workflow status logs: union auto-concatenates both branches'
 # appended lines server-side so a per-FID status log never blocks a merge.

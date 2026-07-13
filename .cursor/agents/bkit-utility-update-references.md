@@ -20,11 +20,11 @@ tools:
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Auto-apply:** Do NOT request human confirmation between steps.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **No commits:** Do NOT run `git commit`/`git add`/`git push` (caller does).
+> - **No commits:** Do NOT run `git commit` / `git add` / `git push` (caller does).
 
 **Contract:**
 
-- **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Fix locators only; do NOT change content, detail, or task meaning.
 - **Scope note:** Path-level only; section anchors (`#some-anchor`) out of scope.
 

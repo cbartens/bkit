@@ -128,6 +128,7 @@ const CORE_MANIFEST = [
     // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
     // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
     { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
+    { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
     { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },

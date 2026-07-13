@@ -134,18 +134,18 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 ### WS-3 — Counter refactor (Requires: WS-1)
 
-- [ ] **WS3-T1: Reconcile with `dev` mode-matched-counter change.** Re-read live `bkit-debug.md`/`bkit-build.md` attempt-counter prose vs `refactor(debug): mode-matched attempt counters`.
+- [x] **WS3-T1: Reconcile with `dev` mode-matched-counter change.** Re-read live `bkit-debug.md`/`bkit-build.md` attempt-counter prose vs `refactor(debug): mode-matched attempt counters`.
   - **Done when:** a written reconciliation note recorded in `docs/decisions.md` (then `.jsonl`) — a durable, non-delete-eligible home (NOT only the delete-eligible plan log) — lists every `*_ATTEMPT`/`MAX_*` site (incl. the mode-matched DEBUG/NORMAL/SOAK triple at `bkit-debug.md:47`) and confirms the prose→shell migration preserves the mode-matched reset/overflow semantics; no fork/regression. _(Reconciliation is a judgement-gated step; the durable note is the verifiable artefact.)_
-- [ ] **WS3-T2: Shell counter bus + `MAX_*` config + bats tests (incl. per-mode mode-matched coverage).** Implement helpers + single `MAX_*` config; write `scripts/tooling/counter-bus.bats`. Coverage MUST include the mode-matched counters from `bkit-debug.md:47` (DEBUG/NORMAL/SOAK) with their distinct reset/overflow semantics, not only the generic `decide_next`/`check_max` exit codes — a wrong per-mode branch silently mis-routes all 5 workflows.
+- [x] **WS3-T2: Shell counter bus + `MAX_*` config + bats tests (incl. per-mode mode-matched coverage).** Implement helpers + single `MAX_*` config; write `scripts/tooling/counter-bus.bats`. Coverage MUST include the mode-matched counters from `bkit-debug.md:47` (DEBUG/NORMAL/SOAK) with their distinct reset/overflow semantics, not only the generic `decide_next`/`check_max` exit codes — a wrong per-mode branch silently mis-routes all 5 workflows.
   - **Done when (boundary: shell exit codes):** `counter-bus.bats` asserts `decide_next` exit code == intended branch for each scenario and `check_max` cannot return "continue" past `MAX_*`; AND a PER-MODE scenario for each mode-matched counter (DEBUG/NORMAL/SOAK) asserts the reset semantics (e.g. SOAK reset-to-0 on entry, DEBUG cross-invocation index) and the overflow-routing match what the prose at `bkit-debug.md:47` specified; bats run green.
-- [ ] **WS3-T3: Staged prose→shell migration (build → debug → plan/design).** Move every `*_ATTEMPT`/`MAX_*` comparison into fenced shell; counters emit `counterSource:"shell-bus"`. The mode-matched DEBUG/NORMAL/SOAK sites (`bkit-debug.md:47`) migrate to the per-mode bus helpers proven in WS3-T2.
+- [x] **WS3-T3: Staged prose→shell migration (build → debug → plan/design).** Move every `*_ATTEMPT`/`MAX_*` comparison into fenced shell; counters emit `counterSource:"shell-bus"`. The mode-matched DEBUG/NORMAL/SOAK sites (`bkit-debug.md:47`) migrate to the per-mode bus helpers proven in WS3-T2.
   - **Done when:** `.bkit/src/bkit-counter-prose-audit.test.ts` (grep) finds no `*_ATTEMPT`/`MAX_*` comparison outside fenced shell and all `MAX_*` in one config; AND each migrated mode-matched DEBUG/NORMAL/SOAK site routes through the WS3-T2 per-mode bats-covered helpers (reset/overflow semantics preserved per the WS3-T1 reconciliation note); test passes.
-- [ ] **WS3-T4: Invariant check.** Write `.bkit/src/bkit-telemetry-invariant.test.ts`.
+- [x] **WS3-T4: Invariant check.** Write `.bkit/src/bkit-telemetry-invariant.test.ts`.
   - **Done when:** test asserts `counters.verifyAttempt` == count of `plan-verify` rows via the folded readers over a fixture log; passes.
 
 ### 🔒 Gate 2 (WS-3): Code Implementation Check
 
-- [ ] **Gate 2 (WS-3) - Verified:** Every WS-3 task verified and checked off.
+- [x] **Gate 2 (WS-3) - Verified:** Every WS-3 task verified and checked off.
 
 ## Testing & Documentation (WS-3 scope)
 
