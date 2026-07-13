@@ -44,7 +44,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick the row for the a
 
 - Same vale version (3.9.1) pre-installed on both clouds.
 - pnpm via corepack on both. Pastes pre-warm bkit's pin (`10.34.3`), but corepack resolves **each repo's own `packageManager`** in-repo — one setup script serves any pnpm pin; the pre-warm version is not load-bearing.
-- Same gh CLI install path (apt repo on Ubuntu 24.04).
+- gh CLI on both: the web setup script installs the latest binary (same `github.com` release-download style as vale); the GitHub-Actions runner ships it pre-installed. Auth is shared via `cloud-bootstrap.sh` (`gh auth login --with-token` with `GH_BKIT_TOKEN`, skipped when `GITHUB_TOKEN` already auths on the runner).
 - Same opt-in-guard pattern — an opt-in label `bkit:auto` — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` so it stays bkit-managed in consumer repos. The label is `bkit:auto` on both trackers (Linear's bare `Auto` migrates to `bkit:auto`).
 
 ## Background
@@ -232,7 +232,7 @@ bkit wires two MCP servers into `.mcp.json` at the repo root (project-shared, re
 - **Linear:** Claude Code prompts a browser authorize on first use; token stored in Claude's local secret store. No further action.
 - **GitHub:** Claude Code substitutes `${GH_BKIT_TOKEN}` from the environment at session start. If `GH_BKIT_TOKEN` is unset, the server fails to connect. Set it in the shell (`export GH_BKIT_TOKEN=...`) or, for cloud sessions, in the dashboard env vars.
 
-**`gh auth login` is required for the gh CLI surface** (PR creation, branch ops, git push). Locally, use the keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: authenticate once per session with `printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token` (same PAT value is fine; different env var name keeps local `gh` on the keyring).
+**`gh auth login` is required for the gh CLI surface** (PR creation, branch ops, git push). Locally, use the keyring — do not export `GH_TOKEN` from `.bkit/.env`. Cloud/headless: `cloud-bootstrap.sh` runs `printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token` automatically at SessionStart (guarded by `gh auth status`, so it no-ops on the Actions runner where `GITHUB_TOKEN` already auths) — no manual step. Same PAT value is fine; the different env-var name keeps local `gh` on the keyring.
 
 **Cloud sessions** (Claude on the web, Cursor Background Agents): Linear MCP runs its OAuth flow on first touch, same as local. GitHub MCP reads `GH_BKIT_TOKEN` from the dashboard env vars — make sure it's set there alongside `LINEAR_API_KEY` and `GH_BKIT_TOKEN_INSTALL`.
 

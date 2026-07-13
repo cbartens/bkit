@@ -53,7 +53,17 @@ if ! command -v vale >/dev/null 2>&1; then
   chmod +x /usr/local/bin/vale
 fi
 
-apt-get update -qq && apt-get install -y --no-install-recommends gh
+if ! command -v gh >/dev/null 2>&1; then
+  cd /tmp
+  # Resolve the latest gh tag via the /releases/latest redirect, then download the
+  # binary — same github.com host + install style as vale above (a setup script is
+  # snapshotted once, so "latest" is fine and needs no pin). Reliable regardless of
+  # the base image's apt repos; `apt install gh` is not (gh isn't in default repos).
+  GH_VERSION=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/cli/cli/releases/latest" | sed -E 's#.*/tag/v##')
+  curl -fsSLO --retry 3 --retry-all-errors "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+  tar -xzf "gh_${GH_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin --strip-components=2 "gh_${GH_VERSION}_linux_amd64/bin/gh"
+  chmod +x /usr/local/bin/gh
+fi
 
 @@CLOUD_COREPACK@@
 

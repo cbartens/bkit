@@ -51,6 +51,16 @@ if [ -f .vale.ini ] && command -v vale >/dev/null 2>&1; then
     vale sync || log "vale sync failed (non-blocking)"
   fi
 fi
+
+# Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
+# On GitHub Actions runners gh is already authed via GITHUB_TOKEN (env wins over
+# stored creds), so the `gh auth status` guard no-ops there; it fires only where gh
+# isn't yet authed — e.g. Claude Code on the web. GH_BKIT_TOKEN comes from the
+# dashboard env vars (see cloud.md § Environment variables).
+if command -v gh >/dev/null 2>&1 && [ -n "${GH_BKIT_TOKEN:-}" ] && ! gh auth status >/dev/null 2>&1; then
+  log "gh auth login --with-token"
+  printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+fi
 # <!-- bkit:end -->
 
 # --- Consumer extensions ---------------------------------------------------

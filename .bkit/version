@@ -38,7 +38,7 @@
     ".gitattributes": "69f2eb0952af97d30bbecbad5c64cab79f321e6d7bd6e7da359f88b5ea4f2692",
     "docs/plans/template.md": "45e659d27bcecbe42ddc80dc5a4d68c73abf687001f59e9b72e4671e5523fbf2",
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
-    ".claude/hooks/cloud-bootstrap.sh": "79a169555d3df0069a8c1c1d3061f9fba3862b11292daa3ef38f092a002680a6",
+    ".claude/hooks/cloud-bootstrap.sh": "ff1376dba35270647ba4f29427d9433b1b27865cc686de67d6f4a2dc6a0e1954",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
     "docs/observability.md": "70311dcbf72bdc85558ccee51b58b6260ab5d54f41098a8d3d1ef41fc6c3f4fb",
     ".gitignore": "652256134b04da7a69a0c592eb5c333198be308df4c05bf0f3c931c230d01fe8",
