@@ -40,6 +40,7 @@
     "build": "tsc && chmod +x dist/bkit-install.js",
     "bkit": "node dist/bkit-install.js",
     "test": "vitest run",
+    "test:bats": "bats tests/*.bats",
     "test:watch": "vitest",
     "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=65",
     "typecheck": "tsc --noEmit",

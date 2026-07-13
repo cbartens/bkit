@@ -1,0 +1,4 @@
+{"ts":1781677293568,"kind":"compliance","repo":"@cbartens/bkit","bkitVersion":"4.1.4","workflow":"ship","step":"close-gate","rule":"no-mirror-edit","result":"pass","phase":"ship","parentSha":"HEAD~1"}
+{"ts":1781677293569,"kind":"compliance","repo":"@cbartens/bkit","bkitVersion":"4.1.4","workflow":"ship","step":"close-gate","rule":"skip-ci-not-head","result":"pass","phase":"ship","parentSha":"HEAD~1"}
+{"ts":1781677404031,"kind":"compliance","repo":"@cbartens/bkit","bkitVersion":"4.1.4","workflow":"ship","step":"close-gate","rule":"no-mirror-edit","result":"pass","phase":"ship","parentSha":"HEAD~1"}
+{"ts":1781677404032,"kind":"compliance","repo":"@cbartens/bkit","bkitVersion":"4.1.4","workflow":"ship","step":"close-gate","rule":"skip-ci-not-head","result":"pass","phase":"ship","parentSha":"HEAD~1"}

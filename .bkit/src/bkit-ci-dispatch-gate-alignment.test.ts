@@ -2,7 +2,7 @@
 // the CI-Dispatch Gate (#261).
 //
 // The gate is authored inline at two sites:
-//   - .bkit/workflows/bkit-build.md   (Step 18 close-workflow push block)
+//   - .bkit/workflows/bkit-build.md   (Step 17 "Close Workflow & Create PR" gate block)
 //   - .bkit/workflows/bkit-debug.md   (Step 10 close-workflow PR-mode sub-step 3
 //                                      and create-pr LOCAL-mode sub-step 9)
 //

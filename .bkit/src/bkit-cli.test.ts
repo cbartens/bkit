@@ -1,9 +1,20 @@
-// bkit-cli.test.ts — CLI dispatch surface (#252 redesign).
+// bkit-cli.test.ts — CLI dispatch surface (#252 redesign + #234 comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
 // core implicit; --tooling expands to ci/lint/git-hooks; --auto replaces --cloud;
 // --dependency= replaces bare --renovate/--dependabot; --full/--core dropped.
+// comply verb: --phase=<design|plan|build|debug|ship> (WS2-T5, #234).
+// telemetry verb: `bkit telemetry migrate [--dry-run]` (WS5-T2, #234).
 import { describe, expect, it, vi } from "vitest";
-import { parseArgs, printUsage, resolveModules, type ModuleFlag } from "./bkit-cli";
+import {
+  parseArgs,
+  printUsage,
+  resolveModules,
+  parseComplyPhase,
+  COMPLY_PHASES,
+  parseTelemetrySubverb,
+  TELEMETRY_SUBVERBS,
+  type ModuleFlag,
+} from "./bkit-cli";
 
 /** Run `fn`, asserting it triggers process.exit(1); returns the joined console.error text. */
 function expectExit(fn: () => void): string {
@@ -789,5 +800,270 @@ describe("parseArgs — upgrade --to/--latest", () => {
   it("rejects an empty --to= value", () => {
     const msg = expectExit(() => parseArgs(["upgrade", "--to="]));
     expect(msg).toContain("requires a version value");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — comply verb + --phase flag (#234 WS2-T5)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — comply verb", () => {
+  it("comply verb is parsed correctly", () => {
+    expect(parseArgs(["comply", "--phase=ship"]).verb).toBe("comply");
+  });
+
+  it("comply --phase=ship parses to {verb:'comply', complyPhase:'ship'}", () => {
+    const result = parseArgs(["comply", "--phase=ship"]);
+    expect(result.verb).toBe("comply");
+    expect(result.complyPhase).toBe("ship");
+  });
+
+  it("comply --phase=design parses correctly", () => {
+    const result = parseArgs(["comply", "--phase=design"]);
+    expect(result.complyPhase).toBe("design");
+  });
+
+  it("comply --phase=plan parses correctly", () => {
+    expect(parseArgs(["comply", "--phase=plan"]).complyPhase).toBe("plan");
+  });
+
+  it("comply --phase=build parses correctly", () => {
+    expect(parseArgs(["comply", "--phase=build"]).complyPhase).toBe("build");
+  });
+
+  it("comply --phase=debug parses correctly", () => {
+    expect(parseArgs(["comply", "--phase=debug"]).complyPhase).toBe("debug");
+  });
+
+  it("comply --phase=<unknown> exits cleanly with exit 1", () => {
+    const msg = expectExit(() => parseArgs(["comply", "--phase=deploy"]));
+    expect(msg).toMatch(/Unknown phase/);
+  });
+
+  it("bare --phase (no value) exits with error", () => {
+    const msg = expectExit(() => parseArgs(["comply", "--phase"]));
+    expect(msg).toMatch(/--phase requires a value/);
+  });
+
+  it("--phase on non-comply verb exits with error", () => {
+    const msg = expectExit(() => parseArgs(["install", "--claude", "--phase=ship"]));
+    expect(msg).toMatch(/--phase is only valid with the .comply. verb/);
+  });
+
+  it("complyPhase is null for non-comply verbs", () => {
+    expect(parseArgs(["install", "--claude"]).complyPhase).toBeNull();
+    expect(parseArgs(["check"]).complyPhase).toBeNull();
+  });
+
+  it("complyPhase is null for comply with no --phase (missing phase)", () => {
+    // parseArgs itself does not require --phase on comply (main() can enforce that).
+    expect(parseArgs(["comply"]).complyPhase).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseComplyPhase helper
+// ---------------------------------------------------------------------------
+
+describe("parseComplyPhase", () => {
+  it("accepts all valid phases", () => {
+    for (const phase of COMPLY_PHASES) {
+      expect(parseComplyPhase(phase)).toBe(phase);
+    }
+  });
+
+  it("returns null for unknown phase", () => {
+    expect(parseComplyPhase("deploy")).toBeNull();
+  });
+
+  it("returns null for non-string input", () => {
+    expect(parseComplyPhase(null)).toBeNull();
+    expect(parseComplyPhase(undefined)).toBeNull();
+    expect(parseComplyPhase(42)).toBeNull();
+  });
+
+  it("COMPLY_PHASES contains exactly 5 phases", () => {
+    expect(COMPLY_PHASES).toHaveLength(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — comply verb in help text
+// ---------------------------------------------------------------------------
+
+describe("printUsage — comply verb in help text", () => {
+  function usage(): string {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      return logSpy.mock.calls[0]?.[0] as string;
+    } finally {
+      logSpy.mockRestore();
+    }
+  }
+
+  it("documents bkit comply --phase=<phase>", () => {
+    expect(usage()).toContain("comply");
+  });
+
+  it("documents --phase= in help output", () => {
+    expect(usage()).toContain("--phase");
+  });
+
+  it("documents that comply is advisory / never gates", () => {
+    const output = usage();
+    expect(output).toMatch(/[Aa]dvisory|never gate/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — harvest verb (#234 WS4-T5)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — harvest verb (WS4-T5)", () => {
+  it("harvest verb is parsed correctly", () => {
+    expect(parseArgs(["harvest"]).verb).toBe("harvest");
+  });
+
+  it("harvest verb sets no module flags", () => {
+    const result = parseArgs(["harvest"]);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("harvest verb sets complyPhase to null", () => {
+    expect(parseArgs(["harvest"]).complyPhase).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — analysis verb (#234 WS4-T5)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — analysis verb (WS4-T5)", () => {
+  it("analysis verb is parsed correctly", () => {
+    expect(parseArgs(["analysis"]).verb).toBe("analysis");
+  });
+
+  it("analysis verb sets no module flags", () => {
+    const result = parseArgs(["analysis"]);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("analysis verb sets complyPhase to null", () => {
+    expect(parseArgs(["analysis"]).complyPhase).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — harvest + analysis verbs in help text (WS4-T5)
+// ---------------------------------------------------------------------------
+
+describe("printUsage — harvest + analysis verbs in help text (WS4-T5)", () => {
+  function usage(): string {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      return logSpy.mock.calls[0]?.[0] as string;
+    } finally {
+      logSpy.mockRestore();
+    }
+  }
+
+  it("documents bkit harvest", () => {
+    expect(usage()).toContain("harvest");
+  });
+
+  it("documents bkit analysis", () => {
+    expect(usage()).toContain("analysis");
+  });
+
+  it("documents that harvest never writes to consumer repos", () => {
+    // The help text may span lines; use a combined check for key terms
+    const text = usage();
+    expect(text).toMatch(/harvest/);
+    expect(text).toMatch(/[Nn]ever/);
+    expect(text).toMatch(/consumer/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// telemetry verb — `bkit telemetry migrate [--dry-run]` (WS5-T2, #234)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — telemetry verb", () => {
+  it("telemetry migrate → verb=telemetry, telemetrySubverb=migrate", () => {
+    const result = parseArgs(["telemetry", "migrate"]);
+    expect(result.verb).toBe("telemetry");
+    expect(result.telemetrySubverb).toBe("migrate");
+  });
+
+  it("telemetry migrate --dry-run → dryRun=true", () => {
+    const result = parseArgs(["telemetry", "migrate", "--dry-run"]);
+    expect(result.verb).toBe("telemetry");
+    expect(result.telemetrySubverb).toBe("migrate");
+    expect(result.telemetryMigrateFlags.dryRun).toBe(true);
+  });
+
+  it("telemetry migrate (no --dry-run) → dryRun=false", () => {
+    const result = parseArgs(["telemetry", "migrate"]);
+    expect(result.telemetryMigrateFlags.dryRun).toBe(false);
+  });
+
+  it("telemetry with no sub-verb → exit(1)", () => {
+    expectExit(() => parseArgs(["telemetry"]));
+  });
+
+  it("telemetry with unknown sub-verb → exit(1)", () => {
+    const errText = expectExit(() => parseArgs(["telemetry", "unknown-verb"]));
+    expect(errText).toMatch(/unknown telemetry sub-verb/i);
+  });
+});
+
+describe("parseTelemetrySubverb", () => {
+  it("migrate → TelemetrySubverb", () => {
+    expect(parseTelemetrySubverb("migrate")).toBe("migrate");
+  });
+
+  it("unknown → null", () => {
+    expect(parseTelemetrySubverb("unknown")).toBeNull();
+  });
+
+  it("null → null", () => {
+    expect(parseTelemetrySubverb(null)).toBeNull();
+  });
+
+  it("TELEMETRY_SUBVERBS contains migrate", () => {
+    expect(TELEMETRY_SUBVERBS).toContain("migrate");
+  });
+});
+
+describe("printUsage — telemetry migrate in help text (WS5-T2)", () => {
+  function usage(): string {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      return logSpy.mock.calls[0]?.[0] as string;
+    } finally {
+      logSpy.mockRestore();
+    }
+  }
+
+  it("documents bkit telemetry migrate", () => {
+    expect(usage()).toContain("telemetry migrate");
+  });
+
+  it("documents that migrate is destructive (parity-gated)", () => {
+    const text = usage();
+    expect(text).toMatch(/parity/i);
+  });
+
+  it("documents that migrate is NOT called from bkit upgrade", () => {
+    const text = usage();
+    // "NEVER called" and "from bkit upgrade" may be on separate lines in the help template
+    expect(text).toMatch(/NEVER called[\s\S]*?from bkit upgrade|never.*?upgrade/is);
+  });
+
+  it("documents --dry-run flag", () => {
+    expect(usage()).toContain("--dry-run");
   });
 });

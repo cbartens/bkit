@@ -30,13 +30,13 @@ on:
         default: "null"
         type: string
   schedule:
-    # Wake the bot every 4h, all week. Renovate's OWN schedule in renovate.json5
+    # Wake the bot once a day. Renovate's OWN schedule in renovate.json5
     # ("before 6am on Monday") gates when normal update PRs open; this cron only
     # wakes the bot. Do NOT narrow it to Monday-only: osvVulnerabilityAlerts CVE PRs
-    # bypass the internal schedule and must be able to fire within hours, not once a
-    # week. Off-hour minute avoids top-of-hour congestion; each wake is a fast no-op
-    # when nothing is due (Renovate exits in seconds outside its window).
-    - cron: "17 */4 * * *"
+    # bypass the internal schedule and must be able to fire on the next daily wake,
+    # not once a week. Off-hour minute avoids top-of-hour congestion; each wake is a
+    # fast no-op when nothing is due (Renovate exits in seconds outside its window).
+    - cron: "17 6 * * *"
 
 # Least privilege: Renovate authenticates EVERY GitHub operation with GH_BKIT_TOKEN
 # below (a fine-grained PAT or App token — NOT GITHUB_TOKEN, whose PRs do not trigger

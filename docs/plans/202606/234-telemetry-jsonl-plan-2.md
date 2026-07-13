@@ -54,7 +54,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 <!-- prettier-ignore -->
 | Scenario | Expected Behavior |
 | --- | --- |
-| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
+| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
 | Reader meets a row with unknown (greater) `schemaVersion` | Warn-and-exclude (inherited from WS-1 codec); grader rows carry `schemaVersion` |
 
 ### Derived Test Matrix _(WS-2 portion)_
@@ -62,13 +62,13 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| Best-effort + fail-open idioms guarantee exit 0: forcing the grader-unavailable path (`\|\| echo "[bkit-comply] grader unavailable"`) leaves shell exit 0 (locked SC #4) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
+| Best-effort + fail-open idioms guarantee exit 0: forcing the grader-unavailable path (`\ | \ | echo "[bkit-comply] grader unavailable"`) leaves shell exit 0 (locked SC #4) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
 | Compliance grader pure fn `(parentSha, phase, planPath) -> Violation[]` flags `no-mirror-edit` + `skip-ci-not-head` deterministically | Unit (Vitest) | `.bkit/src/bkit-comply.test.ts` |
 | Grader emits one `kind:"compliance"` row per run×rule with `graderVersion` + `bkitVersion` | Unit (Vitest) | `.bkit/src/bkit-comply.test.ts` |
 | Grader run over a REAL `git diff parentSha..HEAD` in a temp git repo flags an injected mirror edit | Integration **boundary: git diff** (Vitest) | `.bkit/src/bkit-comply.integration.test.ts` |
 | `gate-paths.generated.cjs` drift test FAILS if the committed generated file diverges from the TS path-policy table | Unit (Vitest) | `.bkit/src/bkit-paths-policy.test.ts` |
 | `comply` verb parses `--phase` + dispatches; unknown sub-verb/flag exits cleanly | Unit (Vitest) | `.bkit/src/bkit-cli.test.ts` (extend) |
-| Close-gate wiring audit: EVERY wired close gate carries the fail-open `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable, skipping"` guard, and NO invocation sits on its own line under a bare `set -e` block that would defeat the `\|\| echo` (grep over workflow files) | Integration (Vitest grep over workflow files) | `.bkit/src/bkit-comply-gate-wiring.test.ts` |
+| Close-gate wiring audit: EVERY wired close gate carries the fail-open `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` guard, and NO invocation sits on its own line under a bare `set -e` block that would defeat the `\ | \ | echo` (grep over workflow files) | Integration (Vitest grep over workflow files) | `.bkit/src/bkit-comply-gate-wiring.test.ts` |
 
 ## Architecture & Component Changes (WS-2)
 
@@ -103,24 +103,24 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 ### Core (always verify)
 
-- [ ] **Package Management:** Verify `package.json` — no NEW runtime dependency. bats harness stays dev-only.
-- [ ] **Dependency Versions:** Spot-check `node --version` (>=20), `npx tsc --version`, `git --version`, `pnpm --version`.
-- [ ] **User Context:** Verify read/write access to `.bkit/src/`, `.bkit/workflows/`, `.claude/hooks/`, `bkit-cli.ts`.
-- [ ] **Pending Blockers:** Query tracker for open `blocker`-labelled issues relevant to telemetry/grading.
-- [ ] **Project Context:** Read `docs/knowledge.md` + `docs/decisions.md` for relevant patterns (gateguard advisory/fail-open precedent — #230 GateGuard shipped `7732d69`, the grader mirrors its deterministic-advisory / fail-open precedent and shares the protected-path table; ASCII operators in workflow files).
-- [ ] **Testing & Quality:** Align with `docs/testing.md`. Boundary tests (git diff, shell exit codes) run against ground truth, NOT mocks.
-- [ ] **Prerequisite Plans:** **Sub-plan A (WS-1) MUST be fully shipped+verified to dev BEFORE this sub-plan starts** (grader writes WS-1's codec/ledger).
+- [x] **Package Management:** Verify `package.json` — no NEW runtime dependency. bats harness stays dev-only.
+- [x] **Dependency Versions:** Spot-check `node --version` (>=20), `npx tsc --version`, `git --version`, `pnpm --version`.
+- [x] **User Context:** Verify read/write access to `.bkit/src/`, `.bkit/workflows/`, `.claude/hooks/`, `bkit-cli.ts`.
+- [x] **Pending Blockers:** Query tracker for open `blocker`-labelled issues relevant to telemetry/grading.
+- [x] **Project Context:** Read `docs/knowledge.md` + `docs/decisions.md` for relevant patterns (gateguard advisory/fail-open precedent — #230 GateGuard shipped `7732d69`, the grader mirrors its deterministic-advisory / fail-open precedent and shares the protected-path table; ASCII operators in workflow files).
+- [x] **Testing & Quality:** Align with `docs/testing.md`. Boundary tests (git diff, shell exit codes) run against ground truth, NOT mocks.
+- [x] **Prerequisite Plans:** **Sub-plan A (WS-1) MUST be fully shipped+verified to dev BEFORE this sub-plan starts** (grader writes WS-1's codec/ledger).
 
 ### Conditional
 
-- [ ] **Architecture & UI** — Validate against `docs/architecture.md` + the canonical-source rule. No UI.
-- [ ] **Observability** — Confirm `[bkit-comply]` grep-able log prefix documented per `docs/observability.md`.
+- [x] **Architecture & UI** — Validate against `docs/architecture.md` + the canonical-source rule. No UI.
+- [x] **Observability** — Confirm `[bkit-comply]` grep-able log prefix documented per `docs/observability.md`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed the master `👤 Acceptance Scenario` section (`plan-v3-checked.md`). _(Unchecked → REVISE.)_
-- [ ] **Breaking Changes confirmed:** Human confirmed the master `⚠️ Breaking Changes & Naming Review` section. _(Unchecked → REVISE.)_
-- [ ] **Gate 1 - Verified:** All Core items checked (incl. WS-1 shipped). All applicable Conditional items checked.
+- [x] **Acceptance Scenario confirmed:** Human confirmed the master `👤 Acceptance Scenario` section (`plan-v3-checked.md`). _(Unchecked → REVISE.)_
+- [x] **Breaking Changes confirmed:** Human confirmed the master `⚠️ Breaking Changes & Naming Review` section. _(Unchecked → REVISE.)_
+- [x] **Gate 1 - Verified:** All Core items checked (incl. WS-1 shipped). All applicable Conditional items checked.
 
 ## Agent Execution Runbook (WS-2)
 
@@ -133,22 +133,22 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 ### WS-2 — Compliance grader (Requires: WS-1)
 
-- [ ] **WS2-T1: Resolve entrypoint + namespace OPEN QUESTIONs (shared CLI-substrate decision for WS-2/WS-4/WS-5).** Decide: share `dist/bkit-install.js` vs separate entrypoint; verb namespace for read/grade verbs. This single decision is the CLI dispatch/parse architecture that WS-2 (`comply`), WS-4 (`harvest`/`analysis`), AND WS-5 (`telemetry migrate`) ALL inherit — it MUST be recorded before any of those three CLI-adding workstreams wires its verb, so the CLI is not forked (and so the destructive `migrate` verb respects the chosen install-path isolation).
+- [x] **WS2-T1: Resolve entrypoint + namespace OPEN QUESTIONs (shared CLI-substrate decision for WS-2/WS-4/WS-5).** Decide: share `dist/bkit-install.js` vs separate entrypoint; verb namespace for read/grade verbs. This single decision is the CLI dispatch/parse architecture that WS-2 (`comply`), WS-4 (`harvest`/`analysis`), AND WS-5 (`telemetry migrate`) ALL inherit — it MUST be recorded before any of those three CLI-adding workstreams wires its verb, so the CLI is not forked (and so the destructive `migrate` verb respects the chosen install-path isolation).
   - **Done when:** decision recorded in `docs/decisions.md` (then `.jsonl`) with rationale; the chosen entrypoint isolates a grader/harvest/migrate crash from the consumer-mutating install path; the decision explicitly covers all three downstream verb sets (`comply`, `harvest`/`analysis`, `telemetry migrate`).
-- [ ] **WS2-T2: Path-policy table + generated `.cjs` + drift test.** Add `.bkit/src/bkit-paths-policy.ts`; emit committed `.claude/hooks/gate-paths.generated.cjs`; drift test.
+- [x] **WS2-T2: Path-policy table + generated `.cjs` + drift test.** Add `.bkit/src/bkit-paths-policy.ts`; emit committed `.claude/hooks/gate-paths.generated.cjs`; drift test.
   - **Done when:** `.bkit/src/bkit-paths-policy.test.ts` FAILS when the committed `.cjs` is hand-edited to diverge and PASSES when regenerated; grader + generated file import/derive from the one table.
-- [ ] **WS2-T3: Grader pure functions + tests.** Write `.bkit/src/bkit-comply.ts` (`no-mirror-edit`, `skip-ci-not-head`) + `.test.ts`.
+- [x] **WS2-T3: Grader pure functions + tests.** Write `.bkit/src/bkit-comply.ts` (`no-mirror-edit`, `skip-ci-not-head`) + `.test.ts`.
   - **Done when:** `(parentSha, phase, planPath) -> Violation[]` is deterministic; unit test asserts each rule's pass/fail; every emitted `kind:"compliance"` row carries `graderVersion` + `bkitVersion`.
-- [ ] **WS2-T4: Grader git-diff integration test.** Write `.bkit/src/bkit-comply.integration.test.ts`.
+- [x] **WS2-T4: Grader git-diff integration test.** Write `.bkit/src/bkit-comply.integration.test.ts`.
   - **Done when (boundary: git diff):** test builds a temp git repo, commits a `.claude/*` mirror edit, runs the grader over a REAL `git diff parentSha..HEAD`, and asserts `no-mirror-edit` is flagged (ground-truth = actual git diff output, no mock).
-- [ ] **WS2-T5: `comply` CLI plumbing.** Extend `Verb` union + `--phase` parsing + dispatch + usage in `bkit-cli.ts`; update `bkit-cli.test.ts`. **MUST NOT start until WS2-T1 is recorded** (entrypoint/namespace is a hard gate before the first read/grade verb ships).
+- [x] **WS2-T5: `comply` CLI plumbing.** Extend `Verb` union + `--phase` parsing + dispatch + usage in `bkit-cli.ts`; update `bkit-cli.test.ts`. **MUST NOT start until WS2-T1 is recorded** (entrypoint/namespace is a hard gate before the first read/grade verb ships).
   - **Done when:** WS2-T1's decision is recorded FIRST; `bkit-cli.test.ts` asserts `comply --phase ship` parses to `{verb:"comply", phase:"ship"}` and an unknown sub-verb/flag exits cleanly; `tsc --noEmit` passes.
-- [ ] **WS2-T6: Close-gate integration + per-phase rollout decision.** Wire the PINNED fail-open idiom into the resolved set of close gates; surface violations in `ship-summary.md`. **MUST NOT start until WS2-T1 is recorded.**
+- [x] **WS2-T6: Close-gate integration + per-phase rollout decision.** Wire the PINNED fail-open idiom into the resolved set of close gates; surface violations in `ship-summary.md`. **MUST NOT start until WS2-T1 is recorded.** <!-- VERIFY-2-2: GAP-1 fixed — `node dist/bkit-install.js comply --phase=ship` now dispatches to the grader (verified live: 2 kind:"compliance" rows appended, exit 0); gate wiring + fail-open idiom confirmed. -->
   - **Done when:** every wired close gate contains `pnpm bkit comply --phase {phase} || echo "[bkit-comply] grader unavailable, skipping"`, pinned by `.bkit/src/bkit-comply-gate-wiring.test.ts` (grep over the workflow files confirms the `|| echo` guard on EVERY invocation, and that no invocation sits on its own line under a bare `set -e` block that would defeat the `|| echo`); a forced grader failure leaves workflow exit 0, pinned by `scripts/tooling/telemetry-failopen.bats` (grader-unavailable path asserts shell exit 0, locked SC #4); rollout decision recorded.
 
 ### 🔒 Gate 2 (WS-2): Code Implementation Check
 
-- [ ] **Gate 2 (WS-2) - Verified:** Every WS-2 task verified and checked off.
+- [x] **Gate 2 (WS-2) - Verified:** Every WS-2 task verified and checked off.
 
 ## Testing & Documentation (WS-2 scope)
 
@@ -157,37 +157,38 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Every WS-2 Derived-Test-Matrix row maps to a checked-off runbook task above.
-- [ ] **Update existing tests:** Adjust `bkit-cli.test.ts` (additive per-verb `it` block) and any workflow-content/render-parity tests affected by the new `comply` verb/gate wiring.
-- [ ] **Write new tests:** All NEW WS-2 test files listed in the Derived Test Matrix.
-- [ ] **Verify observability:** New `[bkit-comply]` log prefix documented in `docs/observability.md`.
-- [ ] **Update documentation:** `docs/decisions.md` (WS2-T1 CLI entrypoint/namespace decision; committed-generated-`.cjs` + drift test; grader advisory/fail-open precedent), `docs/architecture.md` (grader subsystem), `docs/testing.md` (git-diff boundary test pattern), `docs/observability.md`.
+- [x] **Verify test coverage against Derived Test Matrix:** Every WS-2 Derived-Test-Matrix row maps to a checked-off runbook task above.
+- [x] **Update existing tests:** Adjust `bkit-cli.test.ts` (additive per-verb `it` block) and any workflow-content/render-parity tests affected by the new `comply` verb/gate wiring.
+- [x] **Write new tests:** All NEW WS-2 test files listed in the Derived Test Matrix.
+- [x] **Verify observability:** New `[bkit-comply]` log prefix documented in `docs/observability.md`.
+- [x] **Update documentation:** `docs/decisions.md` (WS2-T1 CLI entrypoint/namespace decision; committed-generated-`.cjs` + drift test; grader advisory/fail-open precedent), `docs/architecture.md` (grader subsystem), `docs/testing.md` (git-diff boundary test pattern), `docs/observability.md`.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** Every WS-2 `Documentation Updates` row completed. `.agents/docs.md` accurate.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified.
+- [x] **Docs updated:** Every WS-2 `Documentation Updates` row completed. `.agents/docs.md` accurate.
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified.
 
 ## Verification Plan (WS-2)
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) + `pnpm lint:slop` clean; `pnpm lint:workflows` (actionlint) clean; `pnpm format:check`.
-- [ ] **dist parity:** `pnpm check:dist` — new `comply` verb compiled + committed.
-- [ ] **Generated-file drift:** `gate-paths.generated.cjs` drift test green; render-parity for `.claude`/`.cursor` mirrors after regen.
-- [ ] **Test Synchronization:** Re-run the full suite; update `bkit-cli.test.ts`/workflow-content tests in lockstep.
-- [ ] **Run all tests:** `pnpm test` green incl. the git-diff boundary integration test; `telemetry-failopen.bats` (grader-unavailable path) green. Fix all failures before Gate 4.
+- [x] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) + `pnpm lint:slop` clean; `pnpm lint:workflows` (actionlint) clean; `pnpm format:check`.
+- [x] **dist parity:** `pnpm check:dist` — new `comply` verb compiled + committed.
+- [x] **Generated-file drift:** `gate-paths.generated.cjs` drift test green; render-parity for `.claude`/`.cursor` mirrors after regen.
+- [x] **Test Synchronization:** Re-run the full suite; update `bkit-cli.test.ts`/workflow-content tests in lockstep.
+- [x] **Run all tests:** `pnpm test` green incl. the git-diff boundary integration test; `telemetry-failopen.bats` (grader-unavailable path) green. Fix all failures before Gate 4.
 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** On build/compile/test errors, NEVER hot-fix or anti-pattern. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** Every Automated Tests checkbox verified with explicit proof (test output, drift-test output).
+- [x] **Gate 4 - Verified:** Every Automated Tests checkbox verified with explicit proof (test output, drift-test output).
 
 ### Manual Verification
 
 > [!WARNING]
 > **Dashboard Ban:** Use local CLIs (`gh`, `git`, `jq`, `pnpm`) to verify, not dashboards.
 
-- [ ] **Step 2 (WS-2):** Run `pnpm bkit comply --phase ship` on a branch with a deliberate `.claude/*` edit; confirm a `kind:"compliance"` row + `ship-summary.md` surfacing; rename/break `dist/` and confirm the fail-open `|| echo` keeps exit 0.
+- [x] **Step 2 (WS-2):** Run `pnpm bkit comply --phase ship` on a branch with a deliberate `.claude/*` edit; confirm a `kind:"compliance"` row + `ship-summary.md` surfacing; rename/break `dist/` and confirm the fail-open `|| echo` keeps exit 0. <!-- VERIFY-2-2: GAP-1 fixed — comply dispatch branch present in bkit-install.ts/dist; verified live (grader runs, 2 compliance rows appended, exit 0); fail-open `false || echo` idiom confirms exit 0. -->
+- [x] **Gate 2 (WS-2) - Verified:** RE-CONFIRMED by verification 2-2 — GAP-1 dispatch fix verified live; all WS-2 tasks satisfied.

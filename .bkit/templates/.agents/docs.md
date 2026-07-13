@@ -23,19 +23,20 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
-| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.md`. |
+| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
 | `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — tables, columns, RLS, indices, triggers. |
 | `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling. |
-| `docs/styles.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
 | `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI execution. |
 | `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / environment config / CI/CD pipeline rules — secrets sync, branch protection, run-level tiers. |
 | `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
 | `docs/warnings.md` | — | — | ○ | ● | — | Registry of intentional log-level downgrades with rationale. |
-| `docs/decisions.md` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
-| `docs/knowledge.md` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
+| `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
+| `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
 | `docs/completed.md` | — | — | — | — | ● | Ledger of shipped plans — one entry per merged feature. Append-only. |
-| `docs/pending.md` | ● | ● | ● | ● | — | Ledger of deferred issues and future feature ideas. Append-only. |
+| `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
+| `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
+| `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
 | `docs/audits/*.md` | ○ | ○ | — | — | — | Audit reports written by `bkit` — list actual audits in `Project Documents`. |
 | `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
 

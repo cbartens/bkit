@@ -143,20 +143,20 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 ### WS-4 — Harvest + analysis (Requires: WS-1, WS-2, WS-3)
 
-- [ ] **WS4-T1: Harvest CLI + copy-only boundary test.** Implement `bkit harvest` (COPY `.bkit/{stats,friction}.jsonl`; COUNT-ONLY `docs/{deferrals,failures}.jsonl`; dedup by per-`kind` composite; never write consumer repos).
+- [x] **WS4-T1: Harvest CLI + copy-only boundary test.** Implement `bkit harvest` (COPY `.bkit/{stats,friction}.jsonl`; COUNT-ONLY `docs/{deferrals,failures}.jsonl`; dedup by per-`kind` composite; never write consumer repos).
   - **Done when (boundary: filesystem/consumer repo):** `.bkit/src/bkit-harvest.integration.test.ts` creates a temp consumer worktree, records each consumer file's content hash + mtime, runs harvest, and asserts consumer files are byte-identical + mtime-unchanged (ground-truth = real filesystem stat, no mock) while bkit's central store gained the copied rows.
-- [ ] **WS4-T2: Harvest dedup + tolerant-tail unit test.** Write `bkit-harvest.test.ts`.
+- [x] **WS4-T2: Harvest dedup + tolerant-tail unit test.** Write `bkit-harvest.test.ts`.
   - **Done when:** repeat harvest of the same rows does not duplicate (per-`kind` composite dedup) and a half-written tail line is skipped+counted, not thrown.
-- [ ] **WS4-T3: Analysis CLI + #183 regression + per-rule compliance rate.** Implement `bkit analysis` (counts/rates/elapsed; logistic size↔outcome regression; dispatch-size threshold; `counterSource` trust labelling; `bkitVersion`→CHANGELOG; per-rule compliance rate over `kind:"compliance"` rows). Resolve backfill-scope OQ. **Requires WS-2** — the per-rule compliance-rate analysis is the artefact that makes the declared WS-2→WS-4 edge real (it consumes WS-2's `kind:"compliance"` rows).
+- [x] **WS4-T3: Analysis CLI + #183 regression + per-rule compliance rate.** Implement `bkit analysis` (counts/rates/elapsed; logistic size↔outcome regression; dispatch-size threshold; `counterSource` trust labelling; `bkitVersion`→CHANGELOG; per-rule compliance rate over `kind:"compliance"` rows). Resolve backfill-scope OQ. **Requires WS-2** — the per-rule compliance-rate analysis is the artefact that makes the declared WS-2→WS-4 edge real (it consumes WS-2's `kind:"compliance"` rows).
   - **Done when:** `bkit-analysis.test.ts` asserts the regression + dispatch-size threshold over a `run-outcome` fixture; that pre-P3 `model-self-report` counters are labelled untrusted; AND that the CLI computes a per-rule compliance rate over a `kind:"compliance"` fixture (the WS-2-consuming assertion — exercises the WS-2→WS-4 edge); backfill scope recorded in decisions.
-- [ ] **WS4-T4: Ship-chain rollup + rollup writer.** Wire `bkit-ship.md` summary chain rollup; implement the archive rollup writer at `ARCHIVE_SHARD_TEMPLATE`. Resolve rollup-trigger-value + commit-vs-ignore OQ.
+- [x] **WS4-T4: Ship-chain rollup + rollup writer.** Wire `bkit-ship.md` summary chain rollup; implement the archive rollup writer at `ARCHIVE_SHARD_TEMPLATE`. Resolve rollup-trigger-value + commit-vs-ignore OQ.
   - **Done when:** `bkit-ship.md` summary reports the full design→ship chain from folded telemetry; rollup writer writes to `.bkit/archive/{basename}.{YYYYMM}.jsonl` and `foldFrom` reads it back with row count preserved (writer↔reader round-trip asserted in `.bkit/src/bkit-analysis.test.ts`, distinct from WS1-T2's synthetic-shard reader test); decision recorded.
-- [ ] **WS4-T5: Harvest/analysis CLI plumbing + Supersession of friction-utility agent.** Add verbs using the WS2-T1-resolved namespace/entrypoint; DELETE the `utility-harvest-friction` agent prompt at its TWO git-tracked paths `.claude/agents/utility-harvest-friction.md` + `.cursor/agents/utility-harvest-friction.md` (project-managed, non-`bkit-`-prefix; there is NO `.bkit/prompts/` source to delete). **MUST NOT start until WS2-T1 is recorded.** Because WS-2/WS-4/WS-5 all `[MODIFY] bkit-cli.ts` + `bkit-cli.test.ts`, rebase onto whichever CLI-touching workstream lands first and keep `bkit-cli.test.ts` assertions additive (one `it` block per verb) to minimise merge conflict.
+- [x] **WS4-T5: Harvest/analysis CLI plumbing + Supersession of friction-utility agent.** Add verbs using the WS2-T1-resolved namespace/entrypoint; DELETE the `utility-harvest-friction` agent prompt at its TWO git-tracked paths `.claude/agents/utility-harvest-friction.md` + `.cursor/agents/utility-harvest-friction.md` (project-managed, non-`bkit-`-prefix; there is NO `.bkit/prompts/` source to delete). **MUST NOT start until WS2-T1 is recorded.** Because WS-2/WS-4/WS-5 all `[MODIFY] bkit-cli.ts` + `bkit-cli.test.ts`, rebase onto whichever CLI-touching workstream lands first and keep `bkit-cli.test.ts` assertions additive (one `it` block per verb) to minimise merge conflict.
   - **Done when:** WS2-T1's decision is recorded FIRST; `bkit-cli.test.ts` parses the new verbs (additive per-verb `it` blocks); `Grep` over `.bkit/workflows/`, `.bkit/prompts/`, `.agents/` finds no live invocation of `utility-harvest-friction`; BOTH `.claude/agents/utility-harvest-friction.md` AND `.cursor/agents/utility-harvest-friction.md` are removed (`git status` shows both deletions) and no other path references the agent.
 
 ### 🔒 Gate 2 (WS-4): Code Implementation Check
 
-- [ ] **Gate 2 (WS-4) - Verified:** Every WS-4 task verified and checked off.
+- [x] **Gate 2 (WS-4) - Verified:** Every WS-4 task verified and checked off.
 
 ## Testing & Documentation (WS-4 scope)
 
@@ -165,33 +165,33 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Every WS-4 Derived-Test-Matrix row maps to a checked-off runbook task above.
-- [ ] **Update existing tests:** Adjust `bkit-cli.test.ts` (additive per-verb `it` blocks) and any workflow-content/render-parity tests affected by the new verbs/ship-chain rollup/agent delete.
-- [ ] **Write new tests:** All NEW WS-4 test files listed in the Derived Test Matrix.
-- [ ] **Verify observability:** New `[bkit-harvest]` log prefix documented in `docs/observability.md`.
-- [ ] **Update documentation:** `docs/decisions.md` (copy-only harvest; rollup-trigger value; #183 backfill scope), `docs/knowledge.md` (harvest copy-only invariant), `docs/architecture.md` (harvest/analysis/rollup subsystem), `docs/testing.md` (filesystem consumer-repo boundary pattern), `docs/observability.md`.
+- [x] **Verify test coverage against Derived Test Matrix:** Every WS-4 Derived-Test-Matrix row maps to a checked-off runbook task above.
+- [x] **Update existing tests:** Adjust `bkit-cli.test.ts` (additive per-verb `it` blocks) and any workflow-content/render-parity tests affected by the new verbs/ship-chain rollup/agent delete.
+- [x] **Write new tests:** All NEW WS-4 test files listed in the Derived Test Matrix.
+- [x] **Verify observability:** New `[bkit-harvest]` log prefix documented in `docs/observability.md`.
+- [x] **Update documentation:** `docs/decisions.md` (copy-only harvest; rollup-trigger value; #183 backfill scope), `docs/knowledge.md` (harvest copy-only invariant), `docs/architecture.md` (harvest/analysis/rollup subsystem), `docs/testing.md` (filesystem consumer-repo boundary pattern), `docs/observability.md`.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** Every WS-4 `Documentation Updates` row completed. `.agents/docs.md` accurate.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified.
+- [x] **Docs updated:** Every WS-4 `Documentation Updates` row completed. `.agents/docs.md` accurate.
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified.
 
 ## Verification Plan (WS-4)
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) + `pnpm lint:slop` clean; `pnpm lint:workflows` (actionlint) clean; `pnpm format:check`.
-- [ ] **dist parity:** `pnpm check:dist` — new `harvest`/`analysis` verbs compiled + committed.
-- [ ] **Generated-file drift:** render-parity / catalog-parity tests green for `.claude`/`.cursor` mirrors after regen (incl. the agent-prompt deletion).
-- [ ] **Test Synchronization:** Re-run the full suite; update `bkit-cli.test.ts`/workflow-content tests in lockstep.
-- [ ] **Run all tests:** `pnpm test` green incl. the filesystem/consumer-repo boundary integration test. Fix all failures before Gate 4.
+- [x] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) + `pnpm lint:slop` clean; `pnpm lint:workflows` (actionlint) clean; `pnpm format:check`.
+- [x] **dist parity:** `pnpm check:dist` — new `harvest`/`analysis` verbs compiled + committed.
+- [x] **Generated-file drift:** render-parity / catalog-parity tests green for `.claude`/`.cursor` mirrors after regen (incl. the agent-prompt deletion).
+- [x] **Test Synchronization:** Re-run the full suite; update `bkit-cli.test.ts`/workflow-content tests in lockstep.
+- [x] **Run all tests:** `pnpm test` green incl. the filesystem/consumer-repo boundary integration test. Fix all failures before Gate 4.
 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** On build/compile/test errors, NEVER hot-fix or anti-pattern. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** Every Automated Tests checkbox verified with explicit proof (test output, harvest mtime/content diffs).
+- [x] **Gate 4 - Verified:** Every Automated Tests checkbox verified with explicit proof (test output, harvest mtime/content diffs).
 
 ### Manual Verification
 

@@ -132,7 +132,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 **Managed-version marker:** the renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(one blank line below) after the frontmatter for claude commands, or at the top for cursor/opencode commands whose transforms strip the frontmatter. Stamped at`bkit install`/`upgrade`render time by`stampManagedVersion`— NEVER add a version line to a source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when a rendered marker drifts from the installed version — a hard-failing blocker on`main`/`dev` (or a PR into them), a non-blocking advisory on feature branches (the drift is inherited from the base, not created by the branch) — so consumers cannot silently run outdated workflows on a protected branch.
 
-**Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md` only (FID-scoped — NEVER the whole `docs/plans/` tree, which sweeps a concurrent run's untracked status under another `{FID}`); guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
+**Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl` only (FID-scoped — NEVER the whole `docs/plans/` tree, which sweeps a concurrent run's untracked status under another `{FID}`); guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
 
 **Worktree isolation (no Step 1 dev sync gate):** ALL phase workflows (`design`, `plan`, `build`, `debug`, `ship`) Step 1 makes ZERO commits on `dev` and does NOT assert local `dev` is in sync with `origin/dev`. Step 1 only `git fetch origin dev`; workflow work runs in `.worktrees/{FID}` on `feat/{FID}` (or `fix/{FID}` for debug), rebased against `origin/dev` in Step 2. Local `dev` ahead-of-`origin/dev` is irrelevant at start — Close Workflow reconciles with `origin/dev` at merge time (`git pull --ff-only origin dev` before squash-merge for design/plan; ship Step 9 re-checks only when switching to `dev` post-merge). Rationale: blocking start on unpushed local `dev` commits forces manual intervention before any isolated work can begin; those commits do not affect the worktree branch until Close merges back.
 
@@ -517,11 +517,11 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 <!-- prettier-ignore -->
 | Tier | Conflict shape | Recovery | Mechanism |
 | --- | --- | --- | --- |
-| 1 | Append-only doc ledgers (`docs/{pending,knowledge,decisions,completed}.md`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
+| 1 | Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/completed.md`, `.bkit/stats.jsonl`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
 | 2 | `pnpm-lock.yaml` only | Inline `git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only` + `git add` + `git rebase --continue` | Bash block in Step 2 of all three workflows |
 | 3 | Code, configs, anything else | Touch sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
 
-**Why Tier 1 is `merge=union` and not a workflow step:** the trade-off is silent duplicate `KN-N` / `DE-N` IDs if both branches allocate the same number — same renumbering hazard already deferred separately, not a regression. `.gitattributes` is the standard git mechanism; pre-empts the conflict at the git layer for all callers without workflow surface area. Excludes `.bkit/friction.md` (post-write edits to `Recovery` / `Status` fields break the strict-append contract that union-safety requires).
+**Why Tier 1 is `merge=union` and not a workflow step:** the trade-off is interleaved or duplicated rows when both branches append — resolved by the reader's identity-tuple dedup (`(kind, repo, key)`), not a regression. `.gitattributes` is the standard git mechanism; pre-empts the conflict at the git layer for all callers without workflow surface area. Excludes `.bkit/friction.jsonl` (post-write edits to `Recovery` / `Status` fields break the strict-append contract that union-safety requires).
 
 **Why Tier 2 is inline bash and not a subagent:** mechanical recovery, deterministic git plumbing, no judgement call. A subagent or new Step would add status.jsonl / gate / Linear-comment overhead for what is a 4-line shell idiom.
 
@@ -610,7 +610,7 @@ Each subsection below documents what command actually does — step list, subage
 | 4 — Review Plan | `@bkit-plan-review-1` ‖ `-2` ‖ `-3` (parallel triplet) | Tightness / dependency-correctness / regression-risk lenses. All three write critique logs. Missing or vague `**Done when:**` on any task → CRITICAL. |
 | 5 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. Preserves every task's `**Done when:**` line (may tighten, never remove/weaken). |
 | 6 — Check Scope | `@bkit-plan-scope-check-1` ‖ `@bkit-plan-scope-check-2` (parallel) | Scope completeness audit. `**Done when:**` is the literal criteria slot; missing on any task → FAIL. |
-| 7 — Apply Scope | `@bkit-plan-update` | In-place edits; scope expansions → APPEND `docs/pending.md`. |
+| 7 — Apply Scope | `@bkit-plan-update` | In-place edits; scope expansions → APPEND `docs/deferrals.jsonl`. |
 | 8 — Check Complexity | `@bkit-plan-complexity-check` | `COMPLEXITY_VERDICT` ∈ {single, split}. |
 | 9 — Split Plan | `@bkit-plan-complexity-split` _(only if `split`)_ | Writes `{FID}-plan-N.md` sub-plans + `plan-split.md` log; self-verifies losslessness (`SPLIT_VERDICT` ∈ {PASS, FAIL}; `FAIL` → Failure Path). |
 | 10 — Summary | `@bkit-plan-summary` | Commit `chore({FID}): summary bkit [skip ci]` → push. |
@@ -689,7 +689,7 @@ Each subsection below documents what command actually does — step list, subage
 | 2 — Worktree Setup | — | Rebase against `origin/dev` with tiered conflict recovery (see § Rebase Conflict Tiering): `merge=union` for append-only docs auto-resolves at git layer; `pnpm-lock.yaml`-only conflicts handled by inline regen-and-continue; everything else touches `.rebase-failed` sentinel for Step 4. Branch eligibility check (same as debug). Resolve `PR_NUMBER` and `PR_BASE` for current branch via `gh pr list --json number,baseRefName` (no open PR → Failure Path; `PR_BASE` != dev → Failure Path — blocks accidental squash-merge into `main`). Reject if PR has any failing CI checks (`gh pr view --json statusCheckRollup`). Init `MERGE_ATTEMPT` = 0. |
 | 3 — Regression Guard | — | No CI run found for PR HEAD SHA → `REGRESSION_VERDICT=FAIL` immediately. Otherwise find the most recent prior failed CI run on the branch; for each step that failed in that prior run, assert the same-named step in the run on PR HEAD has `conclusion=success` (not `skipped`/`cancelled`/missing). Catches Vercel-ignore rules and `decide`-step partial-tier demotion masking a never-fired regression gate; fails loudly into Failure Path so a human can re-run via `/bkit-debug` or push a `bkit [force build]` commit. Universal — applies to both router-dispatched and manual `/bkit-ship` invocations. |
 | 4 — Conflict Resolve | `@bkit-ship-conflict-resolve` _(only if rebase sentinel set)_ | Writes `ship-conflict-resolve.md`. `RESOLVE_VERDICT` = PASS clears the `.rebase-failed` sentinel and the workflow continues; FAIL leaves sentinel and routes to Failure Path → `@bkit-debug-abort-handover`. |
-| 5 — Deferred Sweep | `@bkit-ship-deferred-sweep` | Pre-merge completeness gate. Builds the intended-delivery set from plan `Done when` + `ship-input.md` acceptance + design scope and asserts each against the codebase; an unplanned gap (mid-build `TODO`/`FIXME`, silent test skip) → `SWEEP_VERDICT` = FAIL → touch `.deferred-blocked` → Failure Path (merge never happens). Declared deferrals (out-of-scope across design / plan / `docs/pending.md` / summaries) are exempt — never block, resurfaced in `ship-summary.md`'s `Deferred & Out-of-Scope (Resurfaced)` section. `PASS` → Step 6. |
+| 5 — Deferred Sweep | `@bkit-ship-deferred-sweep` | Pre-merge completeness gate. Builds the intended-delivery set from plan `Done when` + `ship-input.md` acceptance + design scope and asserts each against the codebase; an unplanned gap (mid-build `TODO`/`FIXME`, silent test skip) → `SWEEP_VERDICT` = FAIL → touch `.deferred-blocked` → Failure Path (merge never happens). Declared deferrals (out-of-scope across design / plan / `docs/deferrals.jsonl` / summaries) are exempt — never block, resurfaced in `ship-summary.md`'s `Deferred & Out-of-Scope (Resurfaced)` section. `PASS` → Step 6. |
 | 6 — Merge PR | — | `gh pr merge {PR_NUMBER} --squash --delete-branch --subject "<title> (#{PR_NUMBER})" --body ""` (empty body — feature commits embed `bkit [skip ci]` which would suppress post-merge CI on `dev`). `state` = MERGED → Step 9. Else if `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 7. Else Failure Path. |
 | 7 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if not merged)_ | Writes `ship-failure-diagnose-{MERGE_ATTEMPT}.md`. |
 | 8 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if not merged)_ | Writes `ship-failure-remediate-{MERGE_ATTEMPT}-log.md`. Increment `MERGE_ATTEMPT`; re-run Step 6. |
@@ -1140,19 +1140,41 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 
 ## Structured Docs Writer Map
 
-Pipeline writes to five structured docs at `docs/` root. Each has strict sole-writer policy.
+Pipeline writes to the structured ledgers at `docs/` root. Each has strict sole-writer policy.
 
 <!-- prettier-ignore -->
-| Doc | ID prefix | Sole writer(s) | Source step |
+| Doc | Dedup id | Sole writer(s) | Source step |
 | --- | --- | --- | --- |
-| `docs/knowledge.md` | `KN-` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
-| `docs/decisions.md` | `DE-` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs but no longer authors them |
+| `docs/knowledge.jsonl` | `key` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
+| `docs/decisions.jsonl` | `key` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs but no longer authors them |
 | `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
-| `docs/pending.md` | — | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 7), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 7, Failure Path handover |
+| `docs/deferrals.jsonl` | `key` | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 7), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 7, Failure Path handover |
 
 All other agents document blockers and out-of-scope items in their own log file (Plan Execution / Challenge Remediation / etc — see each subagent's H1 for the canonical output name) — workflow reads those at step boundaries and decides what (if anything) to mirror to the issue tracker.
 
-Append-only. Cross-doc grep by ID: `grep -rE 'KN-\d+|DE-\d+' docs/`. See `.agents/docs.md` for doc index and read-by-phase matrix.
+Append-only. Row format: `.bkit/jsonl.md`. See `.agents/docs.md` for doc index and read-by-phase matrix.
+
+## Telemetry Ledgers
+
+bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope + per-kind fields, dedup tuples, write idiom): `.bkit/jsonl.md`.
+
+<!-- prettier-ignore -->
+| File | Kind(s) | Scope |
+| --- | --- | --- |
+| `.bkit/stats.jsonl` | `compliance`, `outcome`, `counter` | Per-run/per-workflow stats, compliance grades, counters |
+| `.bkit/friction.jsonl` | `friction` | Friction entries from workflow runs |
+| `docs/deferrals.jsonl` | `deferral` | Deferred work items and scope-expansions |
+| `docs/failures.jsonl` | `failure` | Discovered bugs and failures |
+| `docs/knowledge.jsonl` | `knowledge` | Gotchas, post-mortems, and fix rules |
+| `docs/decisions.jsonl` | `decision` | Architecture and technology decisions |
+
+Orchestrator behavior:
+
+- **Never-drop:** NEVER silently drop deferred work → append a `kind:"deferral"` row to `docs/deferrals.jsonl`.
+- **Found-bug:** NEVER silently drop a discovered bug → append a `kind:"failure"` row to `docs/failures.jsonl` immediately.
+- **Friction/stats:** workflows write `friction` rows to `.bkit/friction.jsonl` and `counter`/`compliance`/`outcome` rows to `.bkit/stats.jsonl` at close/summary steps.
+- **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates a workflow.
+- **Summary read:** close steps emit a `[bkit-telemetry]` summary line (rows / size / malformed / per-`bkitVersion` counts); `> 5000` rows → grep-able `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
 
 ## Authoring Checklist for New / Refined Workflows
 

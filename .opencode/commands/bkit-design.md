@@ -20,7 +20,9 @@ $ARGUMENTS
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.jsonl`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Never-drop:** NEVER silently drop deferred work → APPEND a `kind:"deferral"` row to `docs/deferrals.jsonl` instead.
+> - **Found-bug:** NEVER silently drop a discovered bug → APPEND a `kind:"failure"` row to `docs/failures.jsonl` immediately.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -141,7 +143,7 @@ $ARGUMENTS
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
@@ -435,7 +437,25 @@ $ARGUMENTS
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-5. Update status and commit:
+5. Emit telemetry summary read (count/size/fold-time + signal lines):
+   ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   if [ -f "$STATS" ]; then
+     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
+     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
+     FOLD_START=$(date +%s%N 2>/dev/null || echo 0)
+     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
+     FOLD_END=$(date +%s%N 2>/dev/null || echo 0)
+     FOLD_MS=$(( (FOLD_END - FOLD_START) / 1000000 )) 2>/dev/null || FOLD_MS=0
+     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
+     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | fold-time: ~${FOLD_MS}ms | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
+     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
+   else
+     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
+   fi
+   ```
+6. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -444,18 +464,18 @@ $ARGUMENTS
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip ci]"
    ```
-6. Assert `{BRANCH}` non-empty and push (force-with-lease on the personal branch, plain on `dev`/`main`):
+7. Assert `{BRANCH}` non-empty and push (force-with-lease on the personal branch, plain on `dev`/`main`):
    ```bash
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
    {design-summary.md content verbatim}
    ```
-8. Route:
+9. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
    - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -578,7 +598,7 @@ $ARGUMENTS
    cp "$DESIGN_FINAL" "$CANONICAL"
    [ -s "$CANONICAL" ] || { echo "Canonical empty: $CANONICAL" >&2; exit 1; }
    ```
-2. Sweep `.bkit/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+2. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -588,6 +608,19 @@ $ARGUMENTS
      '{type:"step-done", workflow:"design", step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "design-close-workflow" \
+     --arg counterName "DESIGN_ATTEMPT" \
+     --argjson counterValue 1 \
+     --arg counterSource "model-self-report" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
 4. Squash-merge to dev and clean up:

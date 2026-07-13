@@ -203,7 +203,14 @@ describe("getInstallManifest", () => {
     const entries = getInstallManifest(["core"]);
     // prompts.md is markered-text (carries the consumer-owned `## Model Overrides`
     // section below `bkit:end`); the rest are whole-file byte-equal.
-    const byteEqualDocs = ["cloud.md", "providers.md", "trackers.md", "workflows.md", "README.md"];
+    const byteEqualDocs = [
+      "cloud.md",
+      "jsonl.md",
+      "providers.md",
+      "trackers.md",
+      "workflows.md",
+      "README.md",
+    ];
     for (const doc of byteEqualDocs) {
       const entry = entries.find((e) => e.path === `.bkit/${doc}`);
       expect(entry, `core manifest must list .bkit/${doc}`).toBeDefined();
@@ -602,6 +609,28 @@ describe("getManagedPackageJsonKeys", () => {
     const expected = ["typecheck", "format:check", "lint:prose", "lint:slop", "prepare"];
     for (const s of expected) {
       expect(Object.keys(scripts)).toContain(s);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Telemetry data files — MUST be absent from manifest format entries (#234 WS1-T3)
+// These are git-tracked runtime ledgers, NOT install-engine payload.
+// ---------------------------------------------------------------------------
+
+describe("telemetry data files — absent from manifest format entries", () => {
+  const DATA_FILES = [
+    ".bkit/stats.jsonl",
+    ".bkit/friction.jsonl",
+    "docs/deferrals.jsonl",
+    "docs/failures.jsonl",
+  ];
+
+  it("none of the four telemetry data files appear as manifest format entries", () => {
+    const manifest = getInstallManifest();
+    for (const dataFile of DATA_FILES) {
+      const entry = manifest.find((e) => e.path === dataFile);
+      expect(entry, `${dataFile} must NOT be a manifest format entry`).toBeUndefined();
     }
   });
 });
