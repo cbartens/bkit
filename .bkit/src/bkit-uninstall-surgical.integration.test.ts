@@ -1,4 +1,4 @@
-// bkit-uninstall.surgical.integration.test.ts — P2.T8a
+// bkit-uninstall-surgical.integration.test.ts — P2.T8a
 //
 // Heavily-customised consumer fixture → surgical uninstall → consumer files byte-identical.
 //

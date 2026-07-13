@@ -1,9 +1,9 @@
-// bkit-challenge-tests-160.test.ts — Regression tests for FID-160 challenge findings.
+// bkit-templates-root.test.ts — Templates-root resolution + orphan-cleanup regression tests.
 //
 // Coverage targets:
-//   F1 MEDIUM — removeOrphanTemplatesDir sentinel guard
+//   removeOrphanTemplatesDir sentinel guard (consumer-owned dir must survive)
 //   getTemplatesRoot() three-context resolution
-//   guardTemplatesRoot() empty-string edge case (gap in existing coverage)
+//   guardTemplatesRoot() empty-string / falsy-root edge case
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -21,7 +21,7 @@ import { guardTemplatesRoot } from "./bkit-modules";
 let tmpDir: string;
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-160-tests-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-templates-root-tests-"));
 });
 
 afterEach(() => {
@@ -294,7 +294,7 @@ describe("guardTemplatesRoot — additional edge cases", () => {
   it("includes the provided logPrefix in the error message", () => {
     const customPrefix = "[bkit-custom-prefix]";
     try {
-      guardTemplatesRoot("/tmp/bkit-160-nonexistent-xyz", customPrefix);
+      guardTemplatesRoot("/tmp/bkit-templates-root-nonexistent-xyz", customPrefix);
     } catch {
       // expected
     }

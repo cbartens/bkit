@@ -1,4 +1,4 @@
-// bkit-modules.upgrade.integration.test.ts — Upgrade-survival regression (BAR-167 Phase 1)
+// bkit-modules-upgrade.integration.test.ts — Upgrade-survival regression (BAR-167 Phase 1)
 //
 // Tests that consumer-added keys in .claude/settings.json and .cursor/hooks.json
 // survive a simulated bkit upgrade chain:
