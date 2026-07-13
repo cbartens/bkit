@@ -7,10 +7,10 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
-**Scope:** As specified by input and Read/Update/Create section.
+**Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
@@ -19,11 +19,11 @@ tools:
 > - **No improv:** No ad-hoc steps, no skipping, no scope beyond this file.
 > - **Auto-apply:** Do NOT request human confirmation between steps.
 > - **Tools:** Verify every return; do NOT assume success.
-> - **No commits:** Do NOT run `git commit`/`git add`/`git push` (caller does).
+> - **No commits:** Do NOT run `git commit` / `git add` / `git push` (caller does).
 
 **Contract:**
 
-- **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Summarise only; do NOT build, install, or write code.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
@@ -32,7 +32,7 @@ tools:
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Extract `Rot Signals` from diagnose attempts → aggregate (dedupe slugs, retain all evidence).
@@ -82,7 +82,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Action Items
 
-[Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution or handover instructions (distinct from Risks above); initially set to `PENDING`.]
+[Only if `CONCERNS` / `FAIL` — specific blockers requiring resolution or handover instructions (distinct from Risks above); initially set to `PENDING`.]
 
 ## Recommended Next Step
 

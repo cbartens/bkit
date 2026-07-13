@@ -1,0 +1,531 @@
+// bkit-analysis.test.ts — Unit tests for analysis CLI (WS4-T3) and rollup writer (WS4-T4).
+//
+// WS4-T3 Derived Test Matrix rows:
+//   - "Analysis CLI computes #183 size↔outcome regression + dispatch-size threshold over
+//     `outcome` rows; labels `counterSource` trust tier"
+//   - "Analysis CLI computes per-rule compliance rate over `kind:"compliance"` rows"
+//
+// WS4-T4 Derived Test Matrix row:
+//   - "Rollup WRITER produces a shard at ARCHIVE_SHARD_TEMPLATE that `foldFrom` reads
+//     back with row count preserved (writer↔reader round-trip)"
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import {
+  ARCHIVE_SHARD_TEMPLATE,
+  MAX_ROWS_BEFORE_ROLLUP,
+  computeComplianceRates,
+  computeCounts,
+  computeElapsedStats,
+  computeRegression,
+  computeVersionCompliance,
+  foldWithArchive,
+  runAnalysis,
+  writeRollupShard,
+  type ComplianceRow,
+  type OutcomeRow,
+} from "./bkit-analysis";
+import { foldFrom, type TelemetryEvent } from "./bkit-telemetry";
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+function baseEnvelope(kind: string): Record<string, unknown> {
+  return {
+    ts: Date.now(),
+    kind,
+    repo: "cbartens/bkit",
+    bkitVersion: "4.1.4",
+    workflow: "ship",
+    step: "ship-close-workflow",
+  };
+}
+
+function outcomeRow(
+  ts: number,
+  linesAdded: number,
+  filesChanged: number,
+  errorFields: Partial<OutcomeRow> = {},
+  trustTier: "shell-bus" | "model-self-report" = "shell-bus",
+): OutcomeRow {
+  return {
+    ts,
+    repo: "cbartens/bkit",
+    bkitVersion: "4.1.4",
+    prNumber: ts % 10000,
+    linesAdded: linesAdded,
+    linesDeleted: Math.floor(linesAdded * 0.2),
+    linesChanged: linesAdded + Math.floor(linesAdded * 0.2),
+    filesChanged: filesChanged,
+    taskCount: 5,
+    durationSeconds: 3600,
+    deferrals: 0,
+    failures: 0,
+    counterSource: trustTier,
+    ...errorFields,
+  };
+}
+
+function complianceRow(
+  ts: number,
+  rule: string,
+  result: "pass" | "fail" | "n/a",
+  bkitVersion = "4.1.4",
+): ComplianceRow {
+  return {
+    ts,
+    repo: "cbartens/bkit",
+    bkitVersion,
+    rule,
+    result,
+    phase: "ship",
+    parentSha: "abc123",
+  };
+}
+
+function telemetryRow(
+  kind: string,
+  ts: number,
+  extra: Record<string, unknown> = {},
+): TelemetryEvent {
+  return { ...baseEnvelope(kind), ts, ...extra } as TelemetryEvent;
+}
+
+// ---------------------------------------------------------------------------
+// Temp dir helpers
+// ---------------------------------------------------------------------------
+
+let tmpDir: string;
+
+beforeEach(() => {
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-analysis-"));
+});
+
+afterEach(() => {
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// WS4-T3: #183 size↔outcome regression + dispatch-size threshold + counterSource
+// ---------------------------------------------------------------------------
+
+describe("computeRegression — #183 size↔outcome (WS4-T3)", () => {
+  it("computes error rate per size bucket", () => {
+    const rows: OutcomeRow[] = [
+      // XS (0–49): 2 runs, 0 errors
+      outcomeRow(1001, 10, 2),
+      outcomeRow(1002, 20, 3),
+      // M (200–499): 2 runs, 1 error (failures > 0)
+      outcomeRow(1003, 300, 10, { failures: 1 }),
+      outcomeRow(1004, 400, 12),
+      // XL (1000+): 2 runs, 2 errors
+      outcomeRow(1005, 1500, 30, { ciTrySuccess: 2 }),
+      outcomeRow(1006, 2000, 40, { correctiveCommits: 1 }),
+    ];
+
+    const result = computeRegression(rows);
+
+    const xs = result.buckets.find((b) => b.label.startsWith("XS"))!;
+    const m = result.buckets.find((b) => b.label.startsWith("M"))!;
+    const xl = result.buckets.find((b) => b.label.startsWith("XL"))!;
+
+    expect(xs.count).toBe(2);
+    expect(xs.errorCount).toBe(0);
+    expect(xs.errorRate).toBe(0);
+
+    expect(m.count).toBe(2);
+    expect(m.errorCount).toBe(1);
+    expect(m.errorRate).toBe(0.5);
+
+    expect(xl.count).toBe(2);
+    expect(xl.errorCount).toBe(2);
+    expect(xl.errorRate).toBe(1.0);
+  });
+
+  it("dispatch-size threshold is the first bucket with errorRate > 50%", () => {
+    const rows: OutcomeRow[] = [
+      // S (50–199): 2 runs, 1 error (50%) — borderline
+      outcomeRow(1001, 100, 5, { failures: 1 }),
+      outcomeRow(1002, 150, 6),
+      // M (200–499): 2 runs, 2 errors (100%)
+      outcomeRow(1003, 250, 8, { failures: 2 }),
+      outcomeRow(1004, 300, 9, { ciTrySuccess: 3 }),
+    ];
+
+    const result = computeRegression(rows);
+
+    // M is first bucket with errorRate > 0.5 (S is exactly 0.5 = NOT strictly > 0.5)
+    expect(result.dispatchSizeThreshold).toBe(200); // M bucket min
+  });
+
+  it("defaults dispatch-size threshold to 1000 when no bucket exceeds 50%", () => {
+    const rows: OutcomeRow[] = [outcomeRow(1001, 10, 2), outcomeRow(1002, 300, 5)];
+
+    const result = computeRegression(rows);
+    expect(result.dispatchSizeThreshold).toBe(1000);
+  });
+
+  it("labels counterSource trust tier correctly", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 10, 2, {}, "shell-bus"),
+      outcomeRow(1002, 20, 3, {}, "shell-bus"),
+      outcomeRow(1003, 30, 4, {}, "model-self-report"),
+    ];
+
+    const result = computeRegression(rows);
+    expect(result.shellBusCount).toBe(2);
+    expect(result.modelSelfReportCount).toBe(1);
+    expect(result.totalRows).toBe(3);
+  });
+
+  it("model-self-report rows are labelled untrusted (pre-P3)", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 100, 5, {}, "model-self-report"),
+      outcomeRow(1002, 200, 6, {}, "model-self-report"),
+    ];
+
+    const result = computeRegression(rows);
+    expect(result.modelSelfReportCount).toBe(2);
+    expect(result.shellBusCount).toBe(0);
+    // Still computes regression — just labels them untrusted
+    expect(result.totalRows).toBe(2);
+  });
+
+  it("handles empty input", () => {
+    const result = computeRegression([]);
+    expect(result.totalRows).toBe(0);
+    expect(result.shellBusCount).toBe(0);
+    expect(result.modelSelfReportCount).toBe(0);
+    expect(result.dispatchSizeThreshold).toBe(1000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WS4-T3: per-rule compliance rate (WS-2→WS-4 edge artefact)
+// ---------------------------------------------------------------------------
+
+describe("computeComplianceRates — per-rule compliance (WS4-T3, WS-2→WS-4 edge)", () => {
+  it("computes pass rate per rule from kind:compliance rows", () => {
+    const rows: ComplianceRow[] = [
+      complianceRow(1001, "no-mirror-edit", "pass"),
+      complianceRow(1002, "no-mirror-edit", "pass"),
+      complianceRow(1003, "no-mirror-edit", "fail"),
+      complianceRow(1004, "skip-ci-not-head", "pass"),
+      complianceRow(1005, "skip-ci-not-head", "n/a"),
+    ];
+
+    const rates = computeComplianceRates(rows);
+    const mirrorRate = rates.find((r) => r.rule === "no-mirror-edit")!;
+    const skipRate = rates.find((r) => r.rule === "skip-ci-not-head")!;
+
+    expect(mirrorRate.passCount).toBe(2);
+    expect(mirrorRate.failCount).toBe(1);
+    expect(mirrorRate.totalCount).toBe(3);
+    expect(mirrorRate.passRate).toBeCloseTo(2 / 3);
+
+    expect(skipRate.passCount).toBe(1);
+    expect(skipRate.naCount).toBe(1);
+    expect(skipRate.totalCount).toBe(2);
+    expect(skipRate.passRate).toBe(0.5);
+  });
+
+  it("returns empty array for no compliance rows", () => {
+    expect(computeComplianceRates([])).toHaveLength(0);
+  });
+
+  it("handles all-fail rule", () => {
+    const rows: ComplianceRow[] = [
+      complianceRow(1001, "no-mirror-edit", "fail"),
+      complianceRow(1002, "no-mirror-edit", "fail"),
+    ];
+    const rates = computeComplianceRates(rows);
+    expect(rates[0]!.passRate).toBe(0);
+    expect(rates[0]!.failCount).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeVersionCompliance
+// ---------------------------------------------------------------------------
+
+describe("computeVersionCompliance", () => {
+  it("computes per-bkitVersion compliance trend", () => {
+    const rows: ComplianceRow[] = [
+      complianceRow(1001, "no-mirror-edit", "pass", "4.1.3"),
+      complianceRow(1002, "no-mirror-edit", "fail", "4.1.3"),
+      complianceRow(1003, "no-mirror-edit", "pass", "4.1.4"),
+      complianceRow(1004, "no-mirror-edit", "pass", "4.1.4"),
+    ];
+
+    const result = computeVersionCompliance(rows);
+    const v413 = result.find((v) => v.bkitVersion === "4.1.3")!;
+    const v414 = result.find((v) => v.bkitVersion === "4.1.4")!;
+
+    expect(v413.passRate).toBe(0.5);
+    expect(v413.totalRuns).toBe(2);
+    expect(v414.passRate).toBe(1.0);
+    expect(v414.totalRuns).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeElapsedStats
+// ---------------------------------------------------------------------------
+
+describe("computeElapsedStats", () => {
+  it("computes mean/p50/min/max over durationSeconds", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 10, 2, { durationSeconds: 1000 }),
+      outcomeRow(1002, 20, 3, { durationSeconds: 2000 }),
+      outcomeRow(1003, 30, 4, { durationSeconds: 3000 }),
+    ];
+
+    const stats = computeElapsedStats(rows);
+    expect(stats.count).toBe(3);
+    expect(stats.totalSeconds).toBe(6000);
+    expect(stats.meanSeconds).toBeCloseTo(2000);
+    expect(stats.p50Seconds).toBe(2000);
+    expect(stats.minSeconds).toBe(1000);
+    expect(stats.maxSeconds).toBe(3000);
+  });
+
+  it("handles empty input", () => {
+    const stats = computeElapsedStats([]);
+    expect(stats.count).toBe(0);
+    expect(stats.totalSeconds).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeCounts
+// ---------------------------------------------------------------------------
+
+describe("computeCounts", () => {
+  it("counts by kind, workflow, repo", () => {
+    const events: TelemetryEvent[] = [
+      telemetryRow("compliance", 1001),
+      telemetryRow("compliance", 1002),
+      telemetryRow("outcome", 1003, {
+        prNumber: 1,
+        linesAdded: 0,
+        linesDeleted: 0,
+        linesChanged: 0,
+        filesChanged: 0,
+        taskCount: 0,
+        durationSeconds: 0,
+        deferrals: 0,
+        failures: 0,
+      }),
+    ];
+
+    const counts = computeCounts(events);
+    expect(counts.total).toBe(3);
+    expect(counts.byKind["compliance"]).toBe(2);
+    expect(counts.byKind["outcome"]).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runAnalysis — full report
+// ---------------------------------------------------------------------------
+
+describe("runAnalysis — full report (WS4-T3)", () => {
+  it("produces a report from JSONL files on disk", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    const rows = [
+      {
+        ...baseEnvelope("outcome"),
+        ts: 1_700_000_001_000,
+        prNumber: 1,
+        linesAdded: 50,
+        linesDeleted: 10,
+        linesChanged: 60,
+        filesChanged: 5,
+        taskCount: 5,
+        durationSeconds: 3600,
+        deferrals: 0,
+        failures: 0,
+        counterSource: "shell-bus",
+      },
+      {
+        ...baseEnvelope("compliance"),
+        ts: 1_700_000_001_001,
+        rule: "no-mirror-edit",
+        result: "pass",
+        phase: "ship",
+        parentSha: "abc123",
+      },
+      {
+        ...baseEnvelope("compliance"),
+        ts: 1_700_000_001_002,
+        rule: "no-mirror-edit",
+        result: "fail",
+        phase: "build",
+        parentSha: "def456",
+      },
+    ];
+    fs.writeFileSync(statsPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const report = runAnalysis([statsPath]);
+
+    // Report lines should describe counts, regression, compliance
+    const joined = report.reportLines.join("\n");
+    expect(joined).toMatch(/rows: 3/);
+    expect(joined).toMatch(/compliance.*2/i);
+    expect(joined).toMatch(/no-mirror-edit/);
+    expect(report.complianceRates).toHaveLength(1);
+    expect(report.complianceRates[0]!.rule).toBe("no-mirror-edit");
+    expect(report.regression.totalRows).toBe(1);
+    expect(report.regression.shellBusCount).toBe(1);
+  });
+
+  it("handles missing files gracefully", () => {
+    const report = runAnalysis([path.join(tmpDir, "does-not-exist.jsonl")]);
+    expect(report.counts.total).toBe(0);
+    expect(report.regression.totalRows).toBe(0);
+    expect(report.complianceRates).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WS4-T4: Rollup writer + writer↔reader round-trip
+// ---------------------------------------------------------------------------
+
+describe("writeRollupShard — rollup writer (WS4-T4)", () => {
+  it("writes a shard at ARCHIVE_SHARD_TEMPLATE when threshold exceeded", () => {
+    const bkitRoot = path.join(tmpDir, "bkitroot");
+    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
+
+    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
+
+    // Write MAX_ROWS_BEFORE_ROLLUP + 1 rows
+    const rows: unknown[] = [];
+    for (let i = 0; i <= MAX_ROWS_BEFORE_ROLLUP; i++) {
+      rows.push({
+        ts: 1_700_000_000_000 + i,
+        kind: "counter",
+        repo: "cbartens/bkit",
+        bkitVersion: "4.1.4",
+        workflow: "build",
+        step: "build-close-workflow",
+        counterName: `counter-${i}`,
+        counterValue: i,
+        parentSha: "abc123",
+        counterSource: "shell-bus",
+      });
+    }
+    fs.writeFileSync(hotPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const shardPath = writeRollupShard(hotPath, bkitRoot);
+
+    // Shard was written
+    expect(shardPath).not.toBeNull();
+    expect(shardPath).toBeDefined();
+    expect(fs.existsSync(shardPath!)).toBe(true);
+
+    // Shard filename follows ARCHIVE_SHARD_TEMPLATE pattern
+    expect(path.basename(shardPath!)).toMatch(/^stats\.\d{6}\.jsonl$/);
+
+    // Hot file is now empty (rolled over)
+    const hotContent = fs.readFileSync(hotPath, "utf-8");
+    expect(hotContent).toBe("");
+
+    // Archive shard has all rows
+    const shardContent = fs.readFileSync(shardPath!, "utf-8");
+    const shardRows = shardContent.trim().split("\n").filter(Boolean);
+    expect(shardRows.length).toBe(MAX_ROWS_BEFORE_ROLLUP + 1);
+  });
+
+  it("returns null when threshold is not exceeded", () => {
+    const bkitRoot = path.join(tmpDir, "bkitroot");
+    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
+
+    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
+    fs.writeFileSync(
+      hotPath,
+      JSON.stringify({
+        ts: 1_700_000_000_000,
+        kind: "counter",
+        repo: "cbartens/bkit",
+        bkitVersion: "4.1.4",
+        workflow: "build",
+        step: "build-close-workflow",
+        counterName: "SHIP_ATTEMPT",
+        counterValue: 1,
+        parentSha: "abc123",
+        counterSource: "shell-bus",
+      }) + "\n",
+      "utf-8",
+    );
+
+    const shardPath = writeRollupShard(hotPath, bkitRoot);
+    expect(shardPath).toBeNull();
+  });
+
+  it("foldFrom reads hot + archive shards with row count preserved (round-trip)", () => {
+    const bkitRoot = path.join(tmpDir, "bkitroot");
+    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
+    fs.mkdirSync(path.join(bkitRoot, ".bkit", "archive"), { recursive: true });
+
+    const hotPath = path.join(bkitRoot, ".bkit", "stats.jsonl");
+
+    // Write MAX_ROWS_BEFORE_ROLLUP + 1 rows (each with unique ts for unique identity)
+    const totalRows = MAX_ROWS_BEFORE_ROLLUP + 1;
+    const allRows: unknown[] = [];
+    for (let i = 0; i < totalRows; i++) {
+      allRows.push({
+        ts: 1_700_000_000_000 + i,
+        kind: "counter",
+        repo: "cbartens/bkit",
+        bkitVersion: "4.1.4",
+        workflow: "build",
+        step: "build-close-workflow",
+        counterName: `counter-${i}`,
+        counterValue: i,
+        parentSha: "abc123",
+        counterSource: "shell-bus",
+      });
+    }
+    fs.writeFileSync(hotPath, allRows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    // Write rollup shard — hot file is now empty
+    const shardPath = writeRollupShard(hotPath, bkitRoot)!;
+    expect(shardPath).not.toBeNull();
+
+    // Add 5 NEW rows to the now-empty hot file
+    const newRows: unknown[] = [];
+    for (let i = 0; i < 5; i++) {
+      newRows.push({
+        ts: 1_700_000_000_000 + totalRows + i,
+        kind: "counter",
+        repo: "cbartens/bkit",
+        bkitVersion: "4.1.4",
+        workflow: "ship",
+        step: "ship-close-workflow",
+        counterName: `new-counter-${i}`,
+        counterValue: i,
+        parentSha: "xyz999",
+        counterSource: "shell-bus",
+      });
+    }
+    fs.writeFileSync(hotPath, newRows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    // foldWithArchive should read hot + shard = totalRows + 5 unique rows
+    const folded = foldWithArchive(hotPath, bkitRoot);
+    expect(folded.rowCount).toBe(totalRows + 5);
+    expect(folded.state.size).toBe(totalRows + 5); // All unique by (counterName)
+    expect(folded.malformedLineCount).toBe(0);
+  });
+
+  it("returns null for non-existent hot file", () => {
+    const bkitRoot = path.join(tmpDir, "bkitroot");
+    fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
+
+    const shardPath = writeRollupShard(path.join(bkitRoot, ".bkit", "nonexistent.jsonl"), bkitRoot);
+    expect(shardPath).toBeNull();
+  });
+});

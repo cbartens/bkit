@@ -693,3 +693,69 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     expect(check.status, `bkit check failed:\n${check.stdout}\n${check.stderr}`).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #334 — `bkit upgrade` auto-migrates debug-fetch blocks observability.md → config.md
+//
+// install and upgrade are SEPARATE engines. The migration is wired into runCoreModule
+// (install) AND the upgrade dispatch; without the upgrade wiring an upgrading consumer's
+// debug-fetch blocks stay stranded in docs/observability.md while /bkit-debug reads only
+// .agents/config.md. End-to-end via a real `bkit upgrade --auto-apply`, not a unit stub.
+// ---------------------------------------------------------------------------
+
+describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md → .agents/config.md", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runBkitUpgrade() {
+    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+  }
+
+  it("moves a consumer debug-fetch block out of observability.md into .agents/config.md", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    writeVersionFile();
+
+    // Old layout: consumer copied a debug-fetch block into observability.md's consumer
+    // section (after bkit:end), alongside unrelated project prose.
+    const obs =
+      "<!-- bkit:start -->\n# Observability\n\n<!-- bkit:end -->\n\n" +
+      "## Our runtime notes — MUST SURVIVE\n\n" +
+      "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n";
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "docs", "observability.md"), obs, "utf-8");
+
+    const result = runBkitUpgrade();
+    expect(result.status, `upgrade failed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+
+    // Block moved OUT of observability.md; unrelated consumer prose kept.
+    const obsAfter = fs.readFileSync(path.join(tmpDir, "docs", "observability.md"), "utf-8");
+    expect(obsAfter).not.toContain("debug-fetch:start vercel");
+    expect(obsAfter).toContain("## Our runtime notes — MUST SURVIVE");
+
+    // Block moved INTO .agents/config.md (created by the upgrade render, then appended to).
+    const configAfter = fs.readFileSync(path.join(tmpDir, ".agents", "config.md"), "utf-8");
+    expect(configAfter).toContain("debug-fetch:start vercel");
+    expect(configAfter).toContain("vercel logs --json");
+
+    // The migration surfaced its log line.
+    expect(result.stdout + result.stderr).toContain(
+      "migrated 1 debug-fetch block(s) docs/observability.md → .agents/config.md",
+    );
+  });
+});

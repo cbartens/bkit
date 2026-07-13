@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -15,7 +15,7 @@
 
 <!-- bkit:end -->
 
-> Consumer install + auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/cloud.md`](../.bkit/cloud.md).
+> Consumer install and auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/cloud.md`](../.bkit/cloud.md).
 
 ## Required tools
 
@@ -23,7 +23,7 @@
 | Tool | Version | Used for |
 | --- | --- | --- |
 | `node` | `>=20` (matches `engines.node` / `.nvmrc`) | Runtime. |
-| `pnpm` | matches `package.json#packageManager` (`10.34.1`) — install via `corepack enable && corepack prepare pnpm@10.34.1 --activate` | Workspace install, lint/typecheck/test gates, bkit CLI. |
+| `pnpm` | tracks `package.json#packageManager` (single SoT) — `corepack enable`, then `pnpm install` (Corepack resolves the pinned version) | Workspace install, lint/typecheck/test gates, bkit CLI. |
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | `status.jsonl` append operations inside workflows. |
@@ -68,8 +68,8 @@ pnpm exec bkit doctor                                       # token + advisory s
 
 ## Troubleshooting
 
-- **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — either `GH_BKIT_TOKEN_INSTALL` is unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or the token was never written to pnpm's user-level config. pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` and retry (see `docs/knowledge.md` KN-CORE-7).
+- **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — either `GH_BKIT_TOKEN_INSTALL` is unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or the token was never written to pnpm's user-level config. pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` and retry (see `docs/knowledge.jsonl` KN-CORE-7).
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` ran without `pnpm exec bkit install`. Re-run install; commit the resync.
 - **Linear preflight blocks session** — issue missing `Auto` label or in `Done` / `Cancelled`. Add `Auto`, set non-terminal state.
-- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
+- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` and `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
 - **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` comment in setup script to force rebuild.

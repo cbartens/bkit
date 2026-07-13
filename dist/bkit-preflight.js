@@ -374,7 +374,7 @@ function readDependencyNames(cwd) {
     return names;
 }
 /**
- * Advisory: consumer's `docs/observability.md` has the bkit-managed block (which
+ * Advisory: consumer's `.agents/config.md` has the bkit-managed block (which
  * ships inert `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->`
  * examples inside it) but no `debug-fetch` block AFTER `<!-- bkit:end -->`.
  *
@@ -386,11 +386,11 @@ function readDependencyNames(cwd) {
  *
  * Markers may be named (`debug-fetch:start vercel`) or unnamed (legacy). Only
  * fires when the consumer has the bkit-managed block at all; consumers who fully
- * own `docs/observability.md` (no markers) are not nagged. Dismissable with a
+ * own `.agents/config.md` (no markers) are not nagged. Dismissable with a
  * `<!-- debug-fetch:none ... -->` marker below `<!-- bkit:end -->`.
  */
 export function detectObservabilityDebugFetchMissing(cwd) {
-    const filePath = path.join(cwd, "docs", "observability.md");
+    const filePath = path.join(cwd, ".agents", "config.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -413,12 +413,12 @@ export function detectObservabilityDebugFetchMissing(cwd) {
     return {
         id: "observability-debug-fetch-missing",
         severity: "advisory",
-        detect: "docs/observability.md has the bkit-managed block but no `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
+        detect: "`.agents/config.md` has the bkit-managed block but no `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
         action: "Copy one of the named `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. REQUIRED: set the block's non-secret selector (e.g. `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) by uncommenting the assignment line at the top of the copied block — committing it there is what makes the block run in headless cloud agents, which never read `.bkit/.env`. For cloud `/bkit-debug`, also set the secret tokens (`VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN`) in your Claude/Cursor dashboard (or GitHub Actions secrets) and authenticate non-interactively (env tokens, never `vercel login`). Each block self-gates (missing CLI / token => a `[debug-fetch:<name>] skipped — …` stderr breadcrumb, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit / target environment (e.g. Vercel preview vs production) at run-time.",
     };
 }
 /**
- * Advisory: `docs/observability.md` ships a NAMED debug-fetch example (e.g.
+ * Advisory: `.agents/config.md` ships a NAMED debug-fetch example (e.g.
  * `supabase`) in the bkit-managed region, this repo demonstrably runs that
  * backend, yet the consumer section after `<!-- bkit:end -->` enables no block
  * for it — so `/bkit-debug` fetches no runtime logs for a source the repo uses.
@@ -438,7 +438,7 @@ export function detectObservabilityDebugFetchMissing(cwd) {
  * `<!-- bkit:end -->`.
  */
 export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
-    const filePath = path.join(cwd, "docs", "observability.md");
+    const filePath = path.join(cwd, ".agents", "config.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -478,7 +478,7 @@ export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
     return {
         id: "observability-debug-fetch-source-not-enabled",
         severity: "advisory",
-        detect: `docs/observability.md ships ${plural ? "" : "a "}debug-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
+        detect: `\`.agents/config.md\` ships ${plural ? "" : "a "}debug-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
         action: `Copy the \`<!-- debug-fetch:start ${missing[0]} --> ... <!-- debug-fetch:end -->\` block${plural ? "s" : ""} (${names}) out of the bkit-managed section to after \`<!-- bkit:end -->\`, then set each block's env vars — including committing each block's non-secret selector (e.g. \`VERCEL_SCOPE\` / \`SUPABASE_PROJECT_ID\`) by uncommenting the assignment line at the top of the block, so it runs in headless cloud agents too (they never read \`.bkit/.env\`). Each block self-gates (missing CLI / token => a \`[debug-fetch:<name>] skipped — …\` stderr breadcrumb, not an error). If you do not use ${slash} for runtime logs, add \`<!-- debug-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (drift-gated).`,
     };
 }

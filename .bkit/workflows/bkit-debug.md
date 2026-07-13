@@ -16,7 +16,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.jsonl`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Never-drop:** NEVER silently drop deferred work → APPEND a `kind:"deferral"` row to `docs/deferrals.jsonl` instead.
+> - **Found-bug:** NEVER silently drop a discovered bug → APPEND a `kind:"failure"` row to `docs/failures.jsonl` immediately.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -44,7 +46,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 <!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** Three attempt counters, each capped at 3 (mode-matched pairs): `DEBUG_ATTEMPT` / `MAX_DEBUG_ATTEMPT` (cross-invocation index; `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` starts a fresh run in `SOAK`), `NORMAL_ATTEMPT` / `MAX_NORMAL_ATTEMPT` (bounds the NORMAL diagnose → remediate loop), `SOAK_ATTEMPT` / `MAX_SOAK_ATTEMPT` (bounds the SOAK loop; resets to 0 each time `SOAK` is entered).
+> - **Limits:** Three attempt counters (mode-matched pairs — DE-25, DE-36): `DEBUG_ATTEMPT` / `MAX_DEBUG_ATTEMPT` (cross-invocation index; `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` starts a fresh run in `SOAK`), `NORMAL_ATTEMPT` / `MAX_NORMAL_ATTEMPT` (bounds the NORMAL diagnose → remediate loop), `SOAK_ATTEMPT` / `MAX_SOAK_ATTEMPT` (bounds the SOAK loop; resets to 0 each time `SOAK` is entered). All `MAX_*` constants defined in `.bkit/scripts/bkit-counter-bus-config.sh` (sourced by fenced shell routing blocks below).
 > - **Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects fix step: `NORMAL` → Diagnose (5) + Remediate (6); `SOAK` → Failure Remediate Soak (7). Entry: `[soak]` / soak criteria / `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` → `SOAK`. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts `MAX_NORMAL_ATTEMPT`; either switch resets `SOAK_ATTEMPT` = 0 (fresh budget). `SOAK` is terminal.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
@@ -180,8 +182,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 8. Decide `DEBUG_MODE`:
    - Default `DEBUG_MODE` = NORMAL.
-   - **If** `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` **or** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
-   - On resume, **if** any `debug-failure-soak` step is recorded for the current `DEBUG_ATTEMPT` → `DEBUG_MODE` = SOAK.
+   - **If** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
+   - **If** any `debug-failure-soak` step recorded for the current `DEBUG_ATTEMPT` → `DEBUG_MODE` = SOAK.
+   - Otherwise run counter-bus routing for `DEBUG_ATTEMPT >= MAX_DEBUG_ATTEMPT` check:
+
+     ```bash
+     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     # Use MAX_DEBUG_ATTEMPT - 1 as threshold: exits 1 when DEBUG_ATTEMPT >= MAX_DEBUG_ATTEMPT
+     THRESHOLD=$((MAX_DEBUG_ATTEMPT - 1))
+     decide_next DEBUG_ATTEMPT "$DEBUG_ATTEMPT" "$THRESHOLD" NORMAL SOAK 2>/dev/null
+     ```
+
+     - **If** exit 0 (printed `NORMAL`) → `DEBUG_MODE` = NORMAL.
+     - **If** exit 1 (printed `SOAK`) → `DEBUG_MODE` = SOAK.
+
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
     <!-- bkit:tracker github start -->
@@ -409,9 +425,37 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. Route:
    - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` > 1 → Step 8.
    - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` = 1 → Step 9.
-   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL **and** `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4.
-   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL **and** `NORMAL_ATTEMPT` > `MAX_NORMAL_ATTEMPT` → set `DEBUG_MODE` = SOAK, reset `SOAK_ATTEMPT` = 0 → Step 4 (NORMAL exhausted; final SOAK escalation).
-   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK **and** `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4.
+   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL — run counter-bus routing:
+
+     ```bash
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     decide_next NORMAL_ATTEMPT "$NORMAL_ATTEMPT" "$MAX_NORMAL_ATTEMPT" step-4 soak-escalation 2>/dev/null
+     ```
+
+     - **If** exit 0 (printed `step-4`) → Step 4.
+     - **If** exit 1 (printed `soak-escalation`) — NORMAL exhausted; final SOAK escalation:
+       ```bash
+       REPO_ROOT=$(git rev-parse --show-toplevel)
+       . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+       DEBUG_MODE=SOAK
+       counter_reset SOAK_ATTEMPT
+       ```
+       → set `DEBUG_MODE` = SOAK, `SOAK_ATTEMPT` reset to 0 → Step 4.
+
+   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK — run counter-bus routing:
+
+     ```bash
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     check_max SOAK_ATTEMPT "$SOAK_ATTEMPT" "$MAX_SOAK_ATTEMPT" 2>/dev/null
+     ```
+
+     - **If** exit 0 (within budget) → Step 4.
+     - **If** exit 1 (SOAK exhausted) → **Failure Path**.
+
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Run Tests
@@ -504,9 +548,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      fi
    fi
    ```
-6. List every observability `debug-fetch` block name after `<!-- bkit:end -->`:
+6. List every `debug-fetch` block name after `<!-- bkit:end -->` in `.agents/config.md`:
    ```bash
-   SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null)
+   SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
 7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`:
@@ -828,7 +872,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-4. Update status and commit:
+4. Emit telemetry summary read:
+   ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   if [ -f "$STATS" ]; then
+     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
+     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
+     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
+     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
+     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
+     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
+   else
+     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
+   fi
+   ```
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -838,8 +897,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
-5. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
-6. <!-- bkit:tracker github start -->
+6. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
+7. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -853,7 +912,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    {FID-debug-summary.md content verbatim}
    ```
    <!-- bkit:tracker true end -->
-7. Route:
+8. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
    - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -878,7 +937,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `TEST_VERDICT` = PASS.
 
-1. Sweep `.bkit/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. **If** `PUSH_MODE` = PR **and** `[verbose ci]` in PR title → strip the marker (with optional `bkit ` attribution prefix) from PR title:
    ```bash
    if [ "$PUSH_MODE" = "PR" ] && [ -n "$PR_NUMBER" ]; then
@@ -906,6 +965,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"debug", at:$t}' >> "$STATUS"
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "debug-close-workflow" \
+     --arg counterName "DEBUG_ATTEMPT" \
+     --argjson counterValue 1 \
+     --arg counterSource "model-self-report" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "debug" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    PR_MODE_AUTO_SUFFIX=""; [ "$PUSH_MODE" = "PR" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    if git diff origin/dev..HEAD -- . ':(exclude)docs/plans' | grep -qE '^\+.*\[DEBUG-OBSERVE\]'; then

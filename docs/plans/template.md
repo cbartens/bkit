@@ -188,7 +188,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 - [ ] **Secrets & Env Vars** _(new API keys / third-party credentials)_: Verify GCP Secret Manager. Fallback to Vercel env vars. Check GCP Service Account IAM roles.
 - [ ] **Schema State** _(any DB reads/writes)_: Confirm exact database state (`docs/data-schema.md`) before finalizing ORM logic.
-- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (monorepo topology). For UI: `docs/styles.md`; for mobile: `docs/setup.md` §6. Reference repos at `/Users/christian/Documents/GitHub/create-t3-turbo` and `/Users/christian/Documents/GitHub/next-hono-drizzle`.
+- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (monorepo topology). For UI: `docs/design.md`; for mobile: `docs/setup.md` §6. Reference repos at `/Users/christian/Documents/GitHub/create-t3-turbo` and `/Users/christian/Documents/GitHub/next-hono-drizzle`.
 - [ ] **Observability** _(new log points, CDC tables, or OTel spans)_: Verify logging, tracing, and audit conventions align with `docs/observability.md`. Ensure `console.error` structured format, correlation IDs, and CDC/OTel patterns are followed.
 - [ ] **Notifications** _(user-facing alerts or toasts)_: Check `docs/notifications.md` for tier classification (1=inline, 2=toast, 3=persistent bell).
 
@@ -224,7 +224,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers.]
 **CRITICAL:** Justify new file locations using `docs/architecture.md` monorepo topology.
-**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/styles.md` and `docs/setup.md` §6.
+**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/design.md` and `docs/setup.md` §6.
 **CRITICAL:** Use file search to verify `[MODIFY]` files exist. Otherwise list as `[NEW]`.
 **CRITICAL:** Explicitly include backend actions to execute newly created Zod schema validations (`schema.parse`).
 **CRITICAL:** Observability is automated via Log Drains/CDC (`docs/data-pipeline.md`). You **MUST** mandate `console.error("[Context] Message", payload)` for edge cases escaping auto-capture (orphaned records, fallbacks, API aborts). See `docs/observability.md` for naming conventions, severity mapping, correlation IDs, and vendor label taxonomy.
@@ -382,7 +382,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # [Plan Title] Implementation Plan
 
@@ -572,7 +572,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 - [ ] **Secrets & Env Vars** _(new API keys / third-party credentials)_: Verify GCP Secret Manager. Fallback to Vercel env vars. Check GCP Service Account IAM roles.
 - [ ] **Schema State** _(any DB reads/writes)_: Confirm exact database state (`docs/data-schema.md`) before finalizing ORM logic.
-- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (monorepo topology). For UI: `docs/styles.md`; for mobile: `docs/setup.md` §6. Reference repos at `/Users/christian/Documents/GitHub/create-t3-turbo` and `/Users/christian/Documents/GitHub/next-hono-drizzle`.
+- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (monorepo topology). For UI: `docs/design.md`; for mobile: `docs/setup.md` §6. Reference repos at `/Users/christian/Documents/GitHub/create-t3-turbo` and `/Users/christian/Documents/GitHub/next-hono-drizzle`.
 - [ ] **Observability** _(new log points, CDC tables, or OTel spans)_: Verify logging, tracing, and audit conventions align with `docs/observability.md`. Ensure `console.error` structured format, correlation IDs, and CDC/OTel patterns are followed.
 - [ ] **Notifications** _(user-facing alerts or toasts)_: Check `docs/notifications.md` for tier classification (1=inline, 2=toast, 3=persistent bell).
 
@@ -608,7 +608,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers.]
 **CRITICAL:** Justify new file locations using `docs/architecture.md` monorepo topology.
-**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/styles.md` and `docs/setup.md` §6.
+**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/design.md` and `docs/setup.md` §6.
 **CRITICAL:** Use file search to verify `[MODIFY]` files exist. Otherwise list as `[NEW]`.
 **CRITICAL:** Explicitly include backend actions to execute newly created Zod schema validations (`schema.parse`).
 **CRITICAL:** Observability is automated via Log Drains/CDC (`docs/data-pipeline.md`). You **MUST** mandate `console.error("[Context] Message", payload)` for edge cases escaping auto-capture (orphaned records, fallbacks, API aborts). See `docs/observability.md` for naming conventions, severity mapping, correlation IDs, and vendor label taxonomy.

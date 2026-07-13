@@ -466,3 +466,29 @@ describe("stripTier2JsonScope", () => {
     expect(consumer).toEqual(consumerCopy);
   });
 });
+
+// ---------------------------------------------------------------------------
+// runUninstall — generated .claude/cloud.md cleanup (untracked secret-bearing file)
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — .claude/cloud.md cleanup", () => {
+  it("deletes .claude/cloud.md when the claude host is uninstalled", async () => {
+    writeFile(".claude/cloud.md", "# generated cloud doc\nGH_BKIT_TOKEN=secret\n");
+    const result = await runUninstall(["claude"], makeCtx());
+    expect(fileExists(".claude/cloud.md")).toBe(false);
+    expect(result.deleted).toContain(path.join(".claude", "cloud.md"));
+  });
+
+  it("dry-run reports the deletion but leaves the file on disk", async () => {
+    writeFile(".claude/cloud.md", "GH_BKIT_TOKEN=secret\n");
+    const result = await runUninstall(["claude"], makeCtx({ dryRun: true }));
+    expect(fileExists(".claude/cloud.md")).toBe(true);
+    expect(result.deleted).toContain(path.join(".claude", "cloud.md"));
+  });
+
+  it("leaves .claude/cloud.md untouched when claude is NOT in the uninstall set", async () => {
+    writeFile(".claude/cloud.md", "GH_BKIT_TOKEN=secret\n");
+    await runUninstall(["core"], makeCtx());
+    expect(fileExists(".claude/cloud.md")).toBe(true);
+  });
+});

@@ -83,7 +83,47 @@ export type Verb =
   | "upgrade"
   | "cursor"
   | "opencode"
+  | "comply"
+  | "harvest"
+  | "analysis"
+  | "telemetry"
   | "help";
+
+// ---------------------------------------------------------------------------
+// telemetry — sub-verb for bkit telemetry <subverb>
+// ---------------------------------------------------------------------------
+
+/** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
+export const TELEMETRY_SUBVERBS = ["migrate"] as const;
+export type TelemetrySubverb = (typeof TELEMETRY_SUBVERBS)[number];
+
+/** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
+export function parseTelemetrySubverb(value: unknown): TelemetrySubverb | null {
+  return typeof value === "string" && (TELEMETRY_SUBVERBS as readonly string[]).includes(value)
+    ? (value as TelemetrySubverb)
+    : null;
+}
+
+/** Flags for the `telemetry migrate` sub-verb. */
+export interface TelemetryMigrateFlags {
+  /** Dry-run: show what would be migrated without writing. */
+  dryRun: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// comply — compliance grader phases
+// ---------------------------------------------------------------------------
+
+/** Valid workflow phases accepted by `bkit comply --phase <phase>`. */
+export const COMPLY_PHASES = ["design", "plan", "build", "debug", "ship"] as const;
+export type ComplyPhase = (typeof COMPLY_PHASES)[number];
+
+/** Narrow an unknown string to `ComplyPhase` or return null if invalid. */
+export function parseComplyPhase(value: unknown): ComplyPhase | null {
+  return typeof value === "string" && (COMPLY_PHASES as readonly string[]).includes(value)
+    ? (value as ComplyPhase)
+    : null;
+}
 
 export interface ParsedArgs {
   verb: Verb;
@@ -120,6 +160,19 @@ export interface ParsedArgs {
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
+  /**
+   * Compliance-grader phase selected via `--phase=<phase>`.
+   * Only populated when verb === "comply". null = not specified / not applicable.
+   * Valid values: design | plan | build | debug | ship.
+   */
+  complyPhase: ComplyPhase | null;
+  /**
+   * Sub-verb for the `telemetry` verb (e.g. "migrate").
+   * Only populated when verb === "telemetry". null = not specified / not applicable.
+   */
+  telemetrySubverb: TelemetrySubverb | null;
+  /** Flags for `bkit telemetry migrate`. Only populated when verb === "telemetry" + subverb === "migrate". */
+  telemetryMigrateFlags: TelemetryMigrateFlags;
 }
 
 export interface UninstallFlags {
@@ -241,6 +294,32 @@ export function parseArgs(argv: string[]): ParsedArgs {
   ) {
     verb = firstArg as Verb;
     args.shift();
+  } else if (firstArg === "comply") {
+    verb = "comply";
+    args.shift();
+  } else if (firstArg === "harvest") {
+    verb = "harvest";
+    args.shift();
+    // harvest takes no flags — reject any remaining args
+    if (args.length > 0 && !args[0]?.startsWith("-")) {
+      console.error(
+        `[bkit] \`bkit harvest\` takes no positional args. Run \`bkit help\` for usage.`,
+      );
+      process.exit(1);
+    }
+  } else if (firstArg === "analysis") {
+    verb = "analysis";
+    args.shift();
+    // analysis takes no flags — reject any remaining positional args
+    if (args.length > 0 && !args[0]?.startsWith("-")) {
+      console.error(
+        `[bkit] \`bkit analysis\` takes no positional args. Run \`bkit help\` for usage.`,
+      );
+      process.exit(1);
+    }
+  } else if (firstArg === "telemetry") {
+    verb = "telemetry";
+    args.shift();
   } else if (firstArg === "cursor" || firstArg === "opencode") {
     verb = firstArg as Verb;
     args.shift();
@@ -269,6 +348,30 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let cloudVariant: CloudVariant | null = null;
   let opencodeProvider: string | null = null;
   let renovateRunner: RenovateRunner | null = null;
+  let complyPhase: ComplyPhase | null = null;
+  let telemetrySubverb: TelemetrySubverb | null = null;
+  const telemetryMigrateFlags: TelemetryMigrateFlags = { dryRun: false };
+
+  // For `telemetry` verb: extract the sub-verb from the first remaining positional arg
+  if (verb === "telemetry") {
+    const subVerbArg = args[0];
+    if (subVerbArg !== undefined && !subVerbArg.startsWith("-")) {
+      const parsed = parseTelemetrySubverb(subVerbArg);
+      if (parsed === null) {
+        console.error(
+          `[bkit] Unknown telemetry sub-verb: "${subVerbArg}". Valid values: ${TELEMETRY_SUBVERBS.join(", ")}`,
+        );
+        process.exit(1);
+      }
+      telemetrySubverb = parsed;
+      args.shift();
+    } else if (subVerbArg === undefined) {
+      console.error(
+        `[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: ${TELEMETRY_SUBVERBS.join(", ")}`,
+      );
+      process.exit(1);
+    }
+  }
 
   for (const arg of args) {
     // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage instead of
@@ -292,6 +395,34 @@ export function parseArgs(argv: string[]): ParsedArgs {
         }
         tracker = parsed;
         continue;
+      }
+
+      // Value-bearing flag: --phase=<design|plan|build|debug|ship>
+      // Used by `bkit comply` to identify the workflow phase being graded.
+      // Rejected for all other verbs.
+      if (flag.startsWith("phase=")) {
+        if (verb !== "comply") {
+          console.error(
+            `[bkit] --phase is only valid with the \`comply\` verb. Run \`bkit help\` for usage.`,
+          );
+          process.exit(1);
+        }
+        const value = flag.slice("phase=".length);
+        const parsed = parseComplyPhase(value);
+        if (parsed === null) {
+          console.error(
+            `[bkit] Unknown phase: "${value}". Valid values: ${COMPLY_PHASES.join(", ")}`,
+          );
+          process.exit(1);
+        }
+        complyPhase = parsed;
+        continue;
+      }
+      if (flag === "phase") {
+        console.error(
+          `[bkit] --phase requires a value: --phase=<${COMPLY_PHASES.join("|")}>. Run \`bkit help\` for usage.`,
+        );
+        process.exit(1);
       }
 
       // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
@@ -399,6 +530,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       if (flag === "dry-run") {
         uninstallFlags.dryRun = true;
         upgradeFlags.dryRun = true;
+        telemetryMigrateFlags.dryRun = true;
         continue;
       }
       if (flag === "force") {
@@ -543,6 +675,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     cloudVariant,
     opencodeProvider,
     renovateRunner,
+    complyPhase,
+    telemetrySubverb,
+    telemetryMigrateFlags,
   };
 }
 
@@ -588,6 +723,35 @@ Usage:
                                  Override binary path via BKIT_CURSOR_BIN=<path>.
   bkit opencode                 Same as \`bkit cursor\` but for the opencode desktop app.
                                  Override binary path via BKIT_OPENCODE_BIN=<path>.
+  bkit comply --phase=<phase>   Run the compliance grader advisory step.
+                                 Checks the diff since parentSha for violations
+                                 (no-mirror-edit, skip-ci-not-head). Advisory only —
+                                 never gates a workflow. Appends kind:"compliance"
+                                 rows to .bkit/stats.jsonl. Fail-open: always exits 0.
+                                 Valid phases: design, plan, build, debug, ship.
+  bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
+                                 and .bkit/friction.jsonl into .bkit/harvest/ (COUNT-ONLY
+                                 for docs/deferrals.jsonl and docs/failures.jsonl).
+                                 Reads consumer paths from .bkit/consumers.md. Never
+                                 writes to any consumer repo. Deduplicates by per-kind
+                                 composite identity. Advisory + fail-open: exits 0.
+  bkit telemetry migrate [--dry-run]
+                                 Migrate docs/knowledge.md + docs/decisions.md to
+                                 docs/knowledge.jsonl + docs/decisions.jsonl (kind:"knowledge"
+                                 and kind:"decision" rows). Parity-gated + destructive: ports
+                                 each entry with its KN-N/DE-N id in aliases[], verifies
+                                 row-count parity against a transient .md.bak, then DELETES
+                                 the .md ONLY after parity is confirmed (idempotent: re-run
+                                 is a no-op if migration already completed). A parity mismatch
+                                 or absent .md.bak ABORTS with ZERO .md deleted. NEVER called
+                                 from bkit upgrade — only via this explicit invocation.
+                                 --dry-run: show what would be migrated without writing.
+  bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
+                                 #183 size↔outcome regression, dispatch-size threshold,
+                                 counterSource trust labelling, and per-rule compliance
+                                 rate over kind:"compliance" rows. Reads from
+                                 .bkit/harvest/ and .bkit/stats.jsonl. Advisory +
+                                 inform-only: exits 0.
   bkit help                     Print this message.
 
 Core (implicit — no flag; installed/upgraded on every install):

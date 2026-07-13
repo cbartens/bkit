@@ -14,6 +14,8 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencod
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
+import { writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -250,6 +252,7 @@ const COPY_EXCLUDE = new Set([
     "friction.md",
     "docs.md",
     "skills.md",
+    "config.md",
     // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
     // template at .bkit/templates/.bkit/.env.example). Including it in the
     // payload copy would double-handle the same destination — Tier 3 sees the
@@ -281,6 +284,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set([]);
 // artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
 export const BKIT_CANONICAL_DOCS = [
     "cloud.md",
+    "jsonl.md",
     "providers.md",
     "prompts.md",
     "trackers.md",
@@ -611,6 +615,15 @@ export function runCoreModule(ctx) {
     // they are readable in-repo. Force-overwrite (Tier 1); no-op in dogfood.
     console.log(`${logPrefix} ${tag}Running bkit docs pass`);
     runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
+    // 3c. Auto-migrate consumer debug-fetch blocks docs/observability.md → .agents/config.md (#334).
+    // Runs AFTER the templates pass has (re)written config.md's managed block, so moved blocks land
+    // below a header that already exists. Content-preserving, idempotent no-op once nothing remains.
+    // Consumers do nothing — the upgrade moves their copied-down blocks for them.
+    {
+        const moved = migrateDebugFetchToConfig(cwd, dryRun);
+        if (moved)
+            console.log(`${logPrefix} ${tag}${moved}`);
+    }
     // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).
@@ -888,6 +901,17 @@ export function runClaudeModule(ctx) {
                     "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
             });
         }
+    }
+    // Generated copy-paste-ready Claude-on-web setup doc — `.claude/cloud.md`.
+    // UNTRACKED + gitignored (see .bkit/templates/gitignore): writeClaudeCloudDoc
+    // inlines REAL secret values resolved from the consumer's `.envrc` (dotenv
+    // sources minus its unsets minus session-hijack keys, per bkit-cloud-env.ts), so
+    // it must never be committed and deliberately does NOT enter ws.writes /
+    // canonicalHashes / `bkit check` drift — values are machine-local and expected to
+    // differ. Skipped on dry-run (`bkit check`) so a read-only check never writes
+    // secrets. Upgrade regenerates it via the same helper (see runUpgrade caller).
+    if (!dryRun && writeClaudeCloudDoc(process.cwd(), tokens)) {
+        console.log(`${logPrefix} ${tag}claude: .claude/cloud.md (generated — gitignored, holds resolved secrets)`);
     }
 }
 // ---------------------------------------------------------------------------
@@ -2542,11 +2566,11 @@ export function runCloudModule(ctx) {
                 "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
                 "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n\n" +
                 "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
-                "  - Name: `bkit-shared` (or per-repo).\n" +
-                "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
+                "  - Name: the repo name (e.g. `app-gether-life`; bkit's own is `bkit`) — one environment per repo, since secrets are per-repo.\n" +
+                "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
                 "  - Environment variables: `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP), `GH_BKIT_TOKEN_INSTALL` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
                 "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
-                "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
+                "  - Network access: `Trusted` (default). One environment per repo (secrets differ per repo); the setup script + variable *names* are identical across repos, only the values change. See cloud.md § Sharing across repos → Claude.",
         });
     }
     else if (variant === "opencode") {

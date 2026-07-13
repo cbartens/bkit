@@ -13,10 +13,10 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
-**Scope:** As specified by input and Read/Update/Create section.
+**Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
@@ -29,7 +29,7 @@ maxTurns: 100
 
 **Contract:**
 
-- **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts only. On any ambiguity, abort cleanly and emit `FAIL`.
 - **Allowed resolutions:**
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
@@ -48,7 +48,7 @@ maxTurns: 100
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
 4. Update **Create** output after each substep — append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
 5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass → append log entry.
 6. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry.
@@ -78,4 +78,4 @@ Verdict: PASS | FAIL [Initially set to `PENDING`.]
 [Append-only flat log. Each entry one line: `STEP {N} — {description} — {outcome}`. Order = event order. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after producing verdict + log. Do NOT clear the sentinel; caller does.**
+> ⛔ **STOP after producing verdict and log. Do NOT clear the sentinel; caller does.**

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Testing
 
@@ -12,7 +12,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
-> - Pre-push runs typecheck + unit tests + `bkit check`; integration, E2E, and @live excluded (they run in CI — see below). NEVER `--no-verify`.
+> - Pre-push runs typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, and service-backed integration excluded (they run in CI — see below). NEVER `--no-verify`.
 
 ## CI test tiers (the bkit scaffold)
 
@@ -224,19 +224,19 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 | Tier | Suffix | Scope | Where it runs |
 | --- | --- | --- | --- |
 | Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
-| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI — `bkit-tests-integration` lane (excluded from pre-push) |
+| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | Pre-push (in-process, via `pnpm test`) + CI `bkit-tests-integration` lane; service/DB-backed integration is CI-only |
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
 | @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
 ## Live-test gates in the agent workflows
 
-`/bkit-build` and `/bkit-debug` gate on the declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when a consumer declares one — appended to the Run-Tests command (opt-out via `[live=off]`); what actually ran is recorded in `TEST_SCOPE` (no separate capability flag).
+`/bkit-debug` gates on the declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when a consumer declares one — appended to its Run-Tests command (opt-out via `[live=off]`); what actually ran is recorded in `TEST_SCOPE` (no separate capability flag). **`/bkit-build` does not run the live tier**: the @live boundary needs a deployed URL, so it is validated post-merge by the push-only `bkit-tests-live` CI canary and reproduced against that deployed boundary on demand via `/bkit-debug` (never a purely local run) — build gates on local tiers only.
 
-- **Build** appends the curated `test:live` LAST in its pre-PR run and will not raise a PR if it fails (`scope` records the verbatim test command).
+- **Build** runs local tiers only (unit + in-process integration via `test`). It never appends `test:live`; the @live boundary is a push-only canary, not a pre-PR gate.
 - **Debug** runs the live boundary as iteration 1 of its Run-Tests loop (the reproduce), anchors diagnosis on the live-tier failure (treating infra/credential failures as environment, not feature-broken), and requires the live tier to flip fail -> pass before close (the empirical fail-then-pass gate).
 - **Soak** (`DEBUG_MODE = SOAK`, entered at invocation start when `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]` is set, mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts all three strategies) replaces diagnose+remediate with one accumulating-context instrument-or-fix step per loop iteration against the live boundary, bounded by `MAX_SOAK_ATTEMPT`.
 
-When no live tier is declared (or `[live=off]`), these gates degrade to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own runs degrade to CONCERNS by design.
+When no live tier is declared (or `[live=off]`), **Debug's** live gate degrades to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own debug runs degrade to CONCERNS by design. Build records no `testsLiveSkipped` — the @live tier is out of build's scope by design, not skipped.
 
 ## Consumer-runtime parity rule
 
@@ -247,15 +247,15 @@ bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit
 1. **Unit test** of the failure branch (positive: bad input → exit). Cheap regression guard.
 2. **Smoke spawn test** of `bkit install --claude --cursor --tooling` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.bkit/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
-4. **Phase 3 blocker exit-1 + recovery test** — Scenario 6 (exit 1 with recovery line) + Scenario 7 (`--auto-revert` calls `runUninstall` in-process before exit). v0.7.0+.
+4. **Phase 3 blocker exit-1 and recovery test** — Scenario 6 (exit 1 with recovery line) and Scenario 7 (`--auto-revert` calls `runUninstall` in-process before exit). v0.7.0+.
 5. **Mid-failure rollback test** — Scenario 9: simulate failure after first module commit; assert consumer files byte-identical to pre-install state via `discardAllStaging` (KN-12). v0.9.0+.
 
 ## Heavy-customised consumer fixture
 
 `tests/fixtures/heavy-customised-consumer/` is committed and consumed by:
 
-- `bkit-uninstall.surgical.integration.test.ts` — round-trip uninstall preserves consumer content byte-identically.
-- `bkit-modules.upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook + `failClosed` + `loop_limit` keys survive deep-containment merge.
+- `bkit-uninstall-surgical.integration.test.ts` — round-trip uninstall preserves consumer content byte-identically.
+- `bkit-modules-upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook and `failClosed` and `loop_limit` keys survive deep-containment merge.
 - `bkit-upgrade.integration.test.ts` — drift detection against `canonicalHashes`; `--non-interactive` exits non-zero on conflicts.
 
 When adding new bkit-managed file types or new managed-scope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
@@ -265,16 +265,46 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
-| `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay. |
+| `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 and Phase 1 and Phase 3 advisory replay. |
 | `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
-| `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
-| `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
+| `bkit-uninstall-surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
+| `bkit-bkitignore.test.ts` and `bkit-bkitignore.integration.test.ts` | Unit and Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
-| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge + seeded `bkit-mode.sh` deletion advisory. |
-| `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
+| `bkit-modules-upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge and seeded `bkit-mode.sh` deletion advisory. |
+| `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
+| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
 | `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
+
+## Compliance grader test coverage (#234 WS-2)
+
+**Boundary: git diff** — Integration tests (`bkit-comply.integration.test.ts`) build a real temp git repo and run the grader over actual `git diff parentSha..HEAD` output. No mocks at the git-diff boundary. This is the canonical pattern for any test that must validate against real git diff output.
+
+**Pattern:**
+
+```typescript
+gitInit(tmpDir);
+// Parent commit
+const parentSha = commit(tmpDir, "init");
+// Introduce the change to flag
+fs.writeFileSync(path.join(tmpDir, ".claude/agents/x.md"), "# edited\n");
+commit(tmpDir, "feat: mirror edit");
+// Run with realGitAdapter (the production git adapter — no mocks)
+const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdapter, cwd: tmpDir });
+```
+
+**Fail-open shell gate** — `tests/telemetry-failopen.bats` SC #4 tests prove `false || echo "[bkit-comply] grader unavailable, skipping"` exits 0 at the shell level (same idiom as the wired close gate).
+
+**Gate-wiring audit** — `bkit-comply-gate-wiring.test.ts` greps workflow files to confirm every `pnpm bkit comply` invocation carries `|| echo` on the same line, and no invocation is on its own line under a bare `set -e` block.
+
+<!-- prettier-ignore -->
+| File | Tier | Scope |
+| --- | --- | --- |
+| `bkit-paths-policy.test.ts` | Unit | Drift test: committed `.cjs` === `generateGatePathsCjs()` output; `isMirrorPath` / `isGateConfig` correctness. |
+| `bkit-comply.test.ts` | Unit | `ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`, `formatComplianceSummary` — determinism, pass/fail, row shape (`bkitVersion` on every row). |
+| `bkit-comply.integration.test.ts` | Integration (boundary: git diff) | Temp git repo and `realGitAdapter`; asserts `no-mirror-edit` flagged on actual diff output. |
+| `bkit-comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: every wired close gate has `|| echo`, no bare invocation under `set -e`. |
+| `tests/telemetry-failopen.bats` SC #4 | Shell (boundary: exit codes) | `|| echo "[bkit-comply] grader unavailable, skipping"` exits 0 when command fails. |
 
 ## opencode host test coverage (sub-plan 4)
 
@@ -282,10 +312,10 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 | Matrix row | Test location | Signal |
 | --- | --- | --- |
 | install-flag CLI selection | `bkit-cli.test.ts` (plan-v4-2 Task 2.3) | `--opencode=<provider>` sets provider correctly |
-| install-flag selection + `bkit doctor`/`bkit status` | `bkit-cli.test.ts` (plan-v4-3 Task 4.1) | additive install; doctor/status verbs |
-| `bkit-mode.sh` removal + deletion advisory | `bkit-modules.upgrade.integration.test.ts` | seeded copy → `bkit-mode-sh-deletion-required` advisory, NOT silent preservation |
-| opencode manifest round-trip | `bkit-uninstall.surgical.integration.test.ts` | install → zero drift → uninstall → zero `.opencode/` footprint |
-| opencode reconverge on upgrade | `bkit-modules.upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
+| install-flag selection and `bkit doctor` / `bkit status` | `bkit-cli.test.ts` (plan-v4-3 Task 4.1) | additive install; doctor/status verbs |
+| `bkit-mode.sh` removal and deletion advisory | `bkit-modules-upgrade.integration.test.ts` | seeded copy → `bkit-mode-sh-deletion-required` advisory, NOT silent preservation |
+| opencode manifest round-trip | `bkit-uninstall-surgical.integration.test.ts` | install → zero drift → uninstall → zero `.opencode/` footprint |
+| opencode reconverge on upgrade | `bkit-modules-upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
 | GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagent-exempt, dedup |
 | end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | deferred — provider offline during session |
 
@@ -295,8 +325,8 @@ Run once a live provider (Ollama or NVIDIA) is available:
 
 1. `bkit install --opencode=ollama-local` (or `--opencode=nvidia`) in a clean consumer repo. (Provider key is `ollama-local`, not bare `ollama` — npm custom-provider format.)
 2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`. Seeded agents share a single local model pin (`qwen3-coder:30b`); consumer tunes per-agent.
-3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host + provider. For `ollama-local`, `bkit doctor` surfaces the server-side memory-safety check (`OLLAMA_MAX_LOADED_MODELS=1` / `OLLAMA_NUM_PARALLEL=1` / `OLLAMA_KEEP_ALIVE=2m`).
-4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch + verdicts collected (on `ollama-local` with `OLLAMA_NUM_PARALLEL=1` the fan-out serializes — one model, no parallel speedup).
+3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host and provider. For `ollama-local`, `bkit doctor` surfaces the server-side memory-safety check (`OLLAMA_MAX_LOADED_MODELS=1` / `OLLAMA_NUM_PARALLEL=1` / `OLLAMA_KEEP_ALIVE=2m`).
+4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch and verdicts collected (on `ollama-local` with `OLLAMA_NUM_PARALLEL=1` the fan-out serializes — one model, no parallel speedup).
 5. Confirm provider served the subagents (opencode logs/provider dashboard — not model identity self-report).
 6. Edit a `tsconfig.json` in the opencode session; confirm GateGuard plugin injects advisory.
 7. Run `bkit upgrade` over a consumer dir seeded with `.bkit/scripts/bkit-mode.sh`; confirm deletion advisory fires (NOT silent preservation).
@@ -321,20 +351,60 @@ expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).to
 
 Always assert at least one positive signal (a known log prefix like `[bkit-install]`, an exit code 0 with reason in the failure message, or a written-file existence) — otherwise a binary-not-found exit-1 would pass vacuously.
 
+## Filesystem consumer-repo boundary pattern (#234 WS-4)
+
+Integration tests that verify the harvest copy-only invariant use a real temporary directory (`os.tmpdir()`) with actual `fs.stat` and `fs.readFileSync` ground-truth — NO mocks. Pattern:
+
+1. `fs.mkdtempSync` → create a temp consumer repo tree.
+2. Write known JSONL content to `consumerPath/.bkit/stats.jsonl` (the test fixture).
+3. `snapshotFile(srcPath)` → record `{ content, mtimeMs, size }` BEFORE harvest.
+4. Run `runHarvest(bkitRoot)`.
+5. `snapshotFile(srcPath)` → record AFTER harvest.
+6. Assert `fileUnchanged(before, after)` — content and size must be byte-identical; this is the ground-truth boundary assertion.
+7. Assert the bkit central store (`.bkit/harvest/stats.jsonl`) gained the expected rows.
+
+This pattern applies to ANY test that verifies a read-only invariant against a real filesystem object. The assertions in step 6 MUST be `fileUnchanged` (content and size) — "mtime did not change" is weaker (filesystem can preserve mtime on read) and is captured by the content check. The test MUST use `afterEach(() => fs.rmSync(tmpDir, { recursive: true }))` to clean up. See `bkit-harvest.integration.test.ts` for the canonical example.
+
 ## What not to test
 
-- `.claude/` and `.cursor/` mirror file contents — generated from `.bkit/workflows/` + `.bkit/prompts/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
-- Token resolution against the real `gh`/`vercel` CLIs. Stub via `process.env` overrides.
+- `.claude/` and `.cursor/` mirror file contents — generated from `.bkit/workflows/` and `.bkit/prompts/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
+- Token resolution against the real `gh` / `vercel` CLIs. Stub via `process.env` overrides.
 - Network calls. `bkit-tokens.ts` is the only network-adjacent surface; isolate behind injectable resolvers.
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev`/`main` and PRs into them — **one parallel lane per tier**, dogfooding the separate-lane shape consumers run. bkit has no browser/DB/deploy, so there is no `bkit-tests-e2e`/`-migrate`/`-live`:
+`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev` / `main` and PRs into them — **one parallel lane per tier**, dogfooding the separate-lane shape consumers run. bkit has no browser/DB/deploy, so there is no `bkit-tests-e2e` / `-migrate` / `-live`:
 
-1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON + a `$GITHUB_STEP_SUMMARY` table.
+1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON and a `$GITHUB_STEP_SUMMARY` table.
 2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane: `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
-3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): `vitest run --coverage` over the unit suite (`--exclude '**/*.integration.test.ts'`), **scoped per tier** via `--coverage.include` to the logic surface (all `.bkit/src` except the `bkit-modules` data registry), with a JSON reporter emitting `tests_ran`. **Gated on branch coverage** via a per-run `--coverage.thresholds.branches` flag (currently `65`, set just below current and ratcheted up; the flag lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action`. Needs the job-level `permissions:` block (`actions: read` + `contents: read` + `pull-requests: write`). Same SHA-cache short-circuit as static.
-4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules`/`install`/`upgrade`/`uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold — a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumers (gether/fraser) run it and dogfoods the shipped scaffold. Own job-level `permissions:` + SHA-cache.
-5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests-static` + `bkit-tests-unit` + `bkit-tests-integration` all succeeded **and unit + integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
+3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): `vitest run --coverage` over the unit suite (`--exclude '**/*.integration.test.ts'`), **scoped per tier** via `--coverage.include` to the logic surface (all `.bkit/src` except the `bkit-modules` data registry), with a JSON reporter emitting `tests_ran`. **Gated on branch coverage** via a per-run `--coverage.thresholds.branches` flag (currently `65`, set just below current and ratcheted up; the flag lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action`. Needs the job-level `permissions:` block (`actions: read` and `contents: read` and `pull-requests: write`). Same SHA-cache short-circuit as static.
+4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules` / `install` / `upgrade` / `uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold — a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumers (gether/fraser) run it and dogfoods the shipped scaffold. Own job-level `permissions:` and SHA-cache.
+5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests-static` and `bkit-tests-unit` and `bkit-tests-integration` all succeeded **and unit and integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.
+Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static and test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.
+
+## Packed-tarball migration validation pattern (#234 WS-5)
+
+Validating `bkit telemetry migrate` via a packed tarball in a clean consumer dir (the "dogfood via packed tarball" pattern from MEMORY):
+
+```bash
+# In the bkit repo:
+pnpm pack
+# → @cbartens-bkit-X.Y.Z.tgz
+
+# In a fresh empty dir:
+mkdir /tmp/migrate-test && cd /tmp/migrate-test
+mkdir docs
+cp /path/to/knowledge.md docs/
+cp /path/to/decisions.md docs/
+echo '{}' > package.json
+echo '{}' > docs/knowledge.jsonl
+echo '{}' > docs/decisions.jsonl
+npm install --save-dev /path/to/@cbartens-bkit-X.Y.Z.tgz
+node node_modules/@cbartens/bkit/dist/bkit-install.js telemetry migrate --dry-run
+# verify expected row count; then run without --dry-run
+node node_modules/@cbartens/bkit/dist/bkit-install.js telemetry migrate
+# verify docs/knowledge.jsonl + docs/decisions.jsonl populated, .md deleted, lookup table written
+```
+
+**Why:** `pnpm pack` → fresh install catches runtime-dep mis-classification (e.g. a dep in `devDependencies` that should be in `dependencies`). `bkit check` does NOT validate this — only a real pack/install does. Mirrors the `docs/knowledge.jsonl:120` dogfood discipline ("Dogfood via packed tarball, not the repo").

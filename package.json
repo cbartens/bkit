@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.2.2",
+  "version": "4.3.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -40,6 +40,7 @@
     "build": "tsc && chmod +x dist/bkit-install.js",
     "bkit": "node dist/bkit-install.js",
     "test": "vitest run",
+    "test:bats": "bats tests/*.bats",
     "test:watch": "vitest",
     "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=65",
     "typecheck": "tsc --noEmit",
@@ -64,7 +65,7 @@
     "prettier": "^3.5.3",
     "slop-scan": "^0.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^6.0.0",
+    "typescript": "^7.0.0",
     "vite": "^6.4.2",
     "vitest": "^4.1.7"
   },

@@ -51,6 +51,36 @@ if [ -f .vale.ini ] && command -v vale >/dev/null 2>&1; then
     vale sync || log "vale sync failed (non-blocking)"
   fi
 fi
+
+# Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
+# On GitHub Actions runners gh is already authed via GITHUB_TOKEN (env wins over
+# stored creds), so the `gh auth status` guard no-ops there; it fires only where gh
+# isn't yet authed — e.g. Claude Code on the web. GH_BKIT_TOKEN comes from the
+# dashboard env vars (see cloud.md § Environment variables).
+if command -v gh >/dev/null 2>&1 && [ -n "${GH_BKIT_TOKEN:-}" ] && ! gh auth status >/dev/null 2>&1; then
+  log "gh auth login --with-token"
+  printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+fi
+
+# Provision debug-fetch CLIs the consumer declared in .agents/config.md. Stack-agnostic:
+# bkit runs whatever `debug-fetch:provision` recipe each block carries (self-guarded with
+# `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
+# (a no-op once the CLI is present); the web setup script bakes the same recipes into its
+# snapshot, so this is the gh-runner + resumed-session path. See .agents/config.md.
+if [ -f .agents/config.md ]; then
+  PROVISION=$(awk '
+    /^<!-- bkit:end -->$/ { consumer=1; next }
+    !consumer { next }
+    /^<!-- debug-fetch:provision/ { inprov=1; next }
+    /^<!-- debug-fetch:(start|end|none)/ { inprov=0; infence=0; next }
+    inprov && /^```/ { infence=!infence; next }
+    inprov && infence { print }
+  ' .agents/config.md)
+  if [ -n "$PROVISION" ]; then
+    log "provisioning debug-fetch CLIs from .agents/config.md"
+    printf '%s\n' "$PROVISION" | bash || log "debug-fetch CLI provisioning failed (non-blocking)"
+  fi
+fi
 # <!-- bkit:end -->
 
 # --- Consumer extensions ---------------------------------------------------

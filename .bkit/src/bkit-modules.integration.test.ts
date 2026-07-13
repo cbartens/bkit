@@ -99,6 +99,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   );
   const DOCS = [
     "cloud.md",
+    "jsonl.md",
     "providers.md",
     "prompts.md",
     "trackers.md",
@@ -106,7 +107,7 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     "README.md",
   ];
 
-  it("force-overwrites the six package .bkit/*.md docs into the consumer's .bkit/, byte-equal", () => {
+  it("force-overwrites the seven package .bkit/*.md docs into the consumer's .bkit/, byte-equal", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -1691,7 +1692,6 @@ import {
   detectTier2JsonDrift,
   detectPreEnvelopeBkitVersion,
 } from "./bkit-preflight";
-import { writeBkitVersion } from "./bkit-version";
 
 describe("detectLegacyBkitEnvelope advisory", () => {
   it("returns advisory when __bkit__ present at top-level of settings.json", () => {
@@ -1921,7 +1921,7 @@ describe.skip("bkit uninstall --cursor consumer-key survival (PREREQ: Task 19 re
 // (PREREQ was Task 19 reclassification — now complete)
 // ---------------------------------------------------------------------------
 
-import { detectTier2JsonDrift, detectTier2TextDrift } from "./bkit-preflight";
+import { detectTier2TextDrift } from "./bkit-preflight";
 
 describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked)", () => {
   it("advisory surfaces when consumer slop-scan.config.json is missing a required rules key", () => {
