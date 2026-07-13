@@ -33,6 +33,7 @@ import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock } from "./bkit-modules.js";
+import { CLAUDE_CLOUD_RELPATH } from "./bkit-cloud-env.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -573,6 +574,21 @@ export async function runUninstall(
         }
       } catch (err) {
         console.error(`${ctx.logPrefix} error cleaning up ${dir}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  // Remove the generated `.claude/cloud.md` (untracked, gitignored — holds resolved
+  // secrets). It is not in the manifest, so the table-driven pass never sees it;
+  // delete it explicitly when the claude host is uninstalled so a live-secrets file
+  // is never left behind. Pushed to result.deleted so a dry-run reports it too.
+  if (moduleList.includes("claude")) {
+    const cloudAbs = path.join(ctx.cwd, CLAUDE_CLOUD_RELPATH);
+    if (fs.existsSync(cloudAbs)) {
+      result.deleted.push(CLAUDE_CLOUD_RELPATH);
+      if (!ctx.dryRun) {
+        fs.rmSync(cloudAbs, { force: true });
+        console.log(`${ctx.logPrefix} delete: ${CLAUDE_CLOUD_RELPATH} (generated cloud setup doc)`);
       }
     }
   }

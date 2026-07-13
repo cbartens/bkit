@@ -71,6 +71,9 @@ The two halves of customisation:
 
 # Claude Code on the web
 
+> [!TIP]
+> **No manual copy needed.** `bkit install --claude` writes `.claude/cloud.md` — this recipe with your repo's env-var **values resolved from `.envrc`** (its `unset`s dropped, `ANTHROPIC_API_KEY` omitted to protect subscription billing). Open that file and paste each block into the Claude app. It is gitignored (holds real secrets) and regenerates on every install and upgrade. The reference below documents each field it fills.
+
 ## Where config lives
 
 Open `claude.ai/code` → environment selector → **+ Add environment**. The three configurable surfaces are setup script (bash, runs as root once, snapshotted), environment variables (`.env` format, plaintext, visible to anyone with edit access), and network access (`None` / `Trusted` / `Full` / `Custom`).

@@ -14,6 +14,7 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencod
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
+import { writeClaudeCloudDoc } from "./bkit-cloud-env.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -889,6 +890,17 @@ export function runClaudeModule(ctx) {
                     "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
             });
         }
+    }
+    // Generated copy-paste-ready Claude-on-web setup doc — `.claude/cloud.md`.
+    // UNTRACKED + gitignored (see .bkit/templates/gitignore): writeClaudeCloudDoc
+    // inlines REAL secret values resolved from the consumer's `.envrc` (dotenv
+    // sources minus its unsets minus session-hijack keys, per bkit-cloud-env.ts), so
+    // it must never be committed and deliberately does NOT enter ws.writes /
+    // canonicalHashes / `bkit check` drift — values are machine-local and expected to
+    // differ. Skipped on dry-run (`bkit check`) so a read-only check never writes
+    // secrets. Upgrade regenerates it via the same helper (see runUpgrade caller).
+    if (!dryRun && writeClaudeCloudDoc(process.cwd(), tokens)) {
+        console.log(`${logPrefix} ${tag}claude: .claude/cloud.md (generated — gitignored, holds resolved secrets)`);
     }
 }
 // ---------------------------------------------------------------------------

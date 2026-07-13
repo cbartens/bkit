@@ -8,6 +8,7 @@ import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
+import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
 import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
@@ -1842,6 +1843,13 @@ async function main() {
                     else if (ent.isFile()) {
                         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
                         const relPath = remapTemplateDest(entRel);
+                        // `.claude/cloud.md` is a GENERATED output file (writeClaudeCloudDoc),
+                        // not a template to reconcile: install/upgrade regenerate it with
+                        // resolved secret values, so the raw template is never a byte-match and
+                        // the walk must never drift-flag or overwrite it. Regenerated explicitly
+                        // in the runUpgrade block below (claude-host-gated, non-dry-run).
+                        if (relPath === CLAUDE_CLOUD_RELPATH)
+                            continue;
                         // Skip opt-in-module files the consumer hasn't opted into (dest absent).
                         if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
                             continue;
@@ -1984,6 +1992,16 @@ async function main() {
             version: getInstallingVersion(),
         };
         const rendered = renderManagedOutputs(renderModules, renderCtx);
+        // Regenerate `.claude/cloud.md` (excluded from the template walk above — it is a
+        // generated, untracked, secret-bearing OUTPUT file). Claude-host-gated so upgrade
+        // never force-creates it for a non-claude repo; non-dry-run so `bkit check` never
+        // writes resolved secrets. Rotated secrets / version bumps reach the paste doc via
+        // the same helper install uses (runClaudeModule). Untracked → not in canonicalHashes.
+        if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
+            if (writeClaudeCloudDoc(process.cwd(), tokens)) {
+                console.log(`${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            }
+        }
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
         // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
