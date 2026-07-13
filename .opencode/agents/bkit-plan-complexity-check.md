@@ -10,7 +10,7 @@ tools:
   write: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.2.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether a plan fits a single high-quality execution session.
 **Scope:** As specified by input and Read / Update / Create section.

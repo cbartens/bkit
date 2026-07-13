@@ -6,6 +6,21 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.3.0] — 2026-07-13
+
+Move the debug-fetch runtime-log contract out of `docs/observability.md` (logging doctrine) into a new tooling-parsed config doc `.agents/config.md`, and add stack-agnostic cloud CLI auto-provisioning so a headless `/bkit-debug` produces runtime logs without bkit ever naming a stack. Existing consumers' debug-fetch blocks migrate automatically on `bkit install` / `bkit upgrade` — nothing to do.
+
+### Added
+
+- **`.agents/config.md` — the debug-fetch runtime-log contract as tooling-parsed config.** The `debug-fetch:*` blocks `/bkit-debug` runs (plus the provisioning below) moved out of `docs/observability.md` into a dedicated Tier-2 managed doc that bkit tooling parses, keeping `observability.md` pure logging _doctrine_. Seeded on install, drift-gated, indexed in `.agents/docs.md`; `observability.md` keeps a one-line pointer. `/bkit-debug` and the two `observability-debug-fetch-*` preflight advisories read the new location.
+- **`debug-fetch:provision` — stack-agnostic cloud CLI provisioning.** A cloud `/bkit-debug` only produces runtime logs when the block's CLI (`vercel` / `supabase` / …) is present, but bkit cannot hardcode a stack CLI without breaking stack-independence. Consumers now declare each block's install recipe in a self-guarded `<!-- debug-fetch:provision <name> -->` sibling; bkit runs it in both cloud paths — `.claude/hooks/cloud-bootstrap.sh` on session start (gh-runner + resumed web) and injected into the generated `.claude/cloud.md` setup script via `@@CLOUD_DEBUG_FETCH_PROVISION@@` (web snapshot). bkit ships only the parser; the CLI name and recipe stay consumer-side. An MCP-based fetch block needs no provision block.
+
+### Changed
+
+- **Debug-fetch config auto-migrates `docs/observability.md` → `.agents/config.md` on install AND upgrade.** Consumer `debug-fetch:*` blocks copied into `observability.md`'s consumer section relocate to `.agents/config.md` automatically — content-preserving, idempotent, dedup-safe — so an upgrading consumer does nothing. Wired into both the install path (`runCoreModule`) and the separate `bkit upgrade` engine, so the canonical Renovate `bump → bkit upgrade --auto-apply` flow migrates too. (#334)
+
+---
+
 ## [4.2.2] — 2026-07-05
 
 Modernize the shipped `renovate.json5` to Renovate 41+ config keys and document the `Commit statuses` token permission — both surfaced by bkit's own self-hosted Renovate opening its first live PRs.
