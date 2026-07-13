@@ -104,6 +104,19 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
       // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
       expect(step).not.toMatch(/exit [1-9]/);
     });
+
+    it("is self-contained — references no step id defined outside the managed block", () => {
+      // The block is byte-compared across ALL consumers (tier2-text-drift) and must be
+      // valid standalone. Referencing `steps.cache.outputs.skip` — a step id that lives
+      // OUTSIDE the block (freely-editable Tier-3 territory, not guaranteed to exist) —
+      // meant a consumer without a `Check SHA Cache` step drifted, and re-syncing per the
+      // advisory injected an undefined-step reference that reds actionlint. Keep the guard
+      // OUT so the block stands alone in any job shape.
+      const block =
+        content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
+        "";
+      expect(block).not.toContain("steps.cache");
+    });
   });
 
   it("ships the bkit-stub:coverage block commented, per-tier (unit + integration reports)", () => {
