@@ -6,6 +6,17 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.3.1] — 2026-07-13
+
+Two consumer-facing fixes surfaced by real workspace consumers on 4.3.0: the self-bump upgrade path aborted on pnpm workspaces, and the `main-lag-warning` drift advisory pointed cache-less consumers at a CI-breaking edit.
+
+### Fixed
+
+- **`bkit upgrade --latest` / `--to=<v>` aborted on pnpm-workspace consumers with `ERR_PNPM_ADDING_TO_ROOT`.** The atomic self-bump shelled out to `pnpm add -D @cbartens/bkit@<v>` with no `-w`, so in a workspace **root** — where bkit is conventionally a root devDependency — pnpm refused and the bump never happened (nothing re-rendered). The documented "supported way to move bkit versions" was broken for every workspace consumer; bkit's own repo is single-package, so self-dogfood never hit it. Now detects the workspace root (`pnpm-workspace.yaml` at cwd) and passes `-w`; a single-package repo is unaffected (a bare `-w` there would itself error).
+- **The `main-lag-warning` drift advisory told cache-less consumers to inject an undefined step reference that reds actionlint.** The bkit-owned, byte-compared `main-lag-warning` block hard-coded `steps.cache.outputs.skip != 'true'` on the `Check Main Lags Dev` step — a reference to a `Check SHA Cache` step (`id: cache`) that lives OUTSIDE the managed block and is not present in every consumer. A consumer whose `ci.yml` has no cache step correctly adapted the block without that guard, so `bkit check` raised `tier2-text-drift`, and re-syncing per the advisory injected a reference to a nonexistent step id → the Run Actionlint gate rejected it. The block is now self-contained (guard dropped), so it is valid standalone in any job shape and the drift clears for cache-less consumers with no CI-breaking edit.
+
+---
+
 ## [4.3.0] — 2026-07-13
 
 Move the debug-fetch runtime-log contract out of `docs/observability.md` (logging doctrine) into a new tooling-parsed config doc `.agents/config.md`, and add stack-agnostic cloud CLI auto-provisioning so a headless `/bkit-debug` produces runtime logs without bkit ever naming a stack. Existing consumers' debug-fetch blocks migrate automatically on `bkit install` / `bkit upgrade` — nothing to do.

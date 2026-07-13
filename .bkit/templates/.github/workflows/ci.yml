@@ -135,7 +135,7 @@ jobs:
       # bkit-owned: edit it in the bkit template, not here. `bkit check` raises a (non-blocking)
       # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
       - name: Check Main Lags Dev
-        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |

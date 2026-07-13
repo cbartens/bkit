@@ -1572,10 +1572,25 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
   }
 
   // resolvedPlan.kind === "bump"
+  //
+  // In a pnpm workspace ROOT, `pnpm add` refuses without -w/--workspace-root
+  // (ERR_PNPM_ADDING_TO_ROOT) when bkit is a root devDependency — the standard
+  // layout for a workspace consumer. Detect the workspace (pnpm-workspace.yaml at
+  // cwd) and pass -w so the documented upgrade path works there. A single-package
+  // repo has no pnpm-workspace.yaml and must NOT get -w (pnpm errors that -w may
+  // only be used inside a workspace).
+  const inWorkspaceRoot = fs.existsSync(path.join(cwd, "pnpm-workspace.yaml"));
+  const addArgs = [
+    "add",
+    "-D",
+    ...(inWorkspaceRoot ? ["-w"] : []),
+    `@cbartens/bkit@${resolvedPlan.target}`,
+  ];
+  const addCmd = `pnpm ${addArgs.join(" ")}`;
   if (flags.dryRun) {
     console.log(
       `${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
-        `(pnpm add -D @cbartens/bkit@${resolvedPlan.target}), then re-render + re-pin via the ` +
+        `(${addCmd}), then re-render + re-pin via the ` +
         `freshly-installed binary. No changes made.`,
     );
     return true;
@@ -1583,13 +1598,13 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
 
   const { spawnSync } = await import("node:child_process");
   console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
-  const add = spawnSync("pnpm", ["add", "-D", `@cbartens/bkit@${resolvedPlan.target}`], {
+  const add = spawnSync("pnpm", addArgs, {
     cwd,
     stdio: "inherit",
   });
   if (add.status !== 0) {
     console.error(
-      `${LOG_PREFIX} \`pnpm add @cbartens/bkit@${resolvedPlan.target}\` failed (exit ${add.status ?? "null"}). ` +
+      `${LOG_PREFIX} \`${addCmd}\` failed (exit ${add.status ?? "null"}). ` +
         `Most common cause: GitHub Packages auth — set GH_BKIT_TOKEN_INSTALL (classic PAT, read:packages). Nothing re-rendered.`,
     );
     process.exit(1);

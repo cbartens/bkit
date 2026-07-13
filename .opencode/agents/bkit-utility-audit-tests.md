@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.3.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.3.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
 **Scope:** As specified by input or session prompt.
