@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating a ship on intended-vs-actual completeness and resurfacing declared deferred work.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

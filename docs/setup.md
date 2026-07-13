@@ -23,7 +23,7 @@
 | Tool | Version | Used for |
 | --- | --- | --- |
 | `node` | `>=20` (matches `engines.node` / `.nvmrc`) | Runtime. |
-| `pnpm` | matches `package.json#packageManager` (`10.34.1`) — install via `corepack enable && corepack prepare pnpm@10.34.1 --activate` | Workspace install, lint / typecheck / test gates, bkit CLI. |
+| `pnpm` | tracks `package.json#packageManager` (single SoT) — `corepack enable`, then `pnpm install` (Corepack resolves the pinned version) | Workspace install, lint/typecheck/test gates, bkit CLI. |
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | `status.jsonl` append operations inside workflows. |

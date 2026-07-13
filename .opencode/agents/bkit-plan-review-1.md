@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
-model: opencode/kimi-k2.6
+model: opencode/kimi-k2.7-code
 tools:
   read: true
   grep: true

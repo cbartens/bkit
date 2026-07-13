@@ -80,8 +80,10 @@
 
 > Tier rules / framework boundaries / file inventory: `docs/testing.md`. Logs / tracing: `docs/observability.md`. Debugging gotchas: `docs/knowledge.jsonl`.
 
-- **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
-- **Integration and E2E:** Debug workflow only (post-PR).
+- **Local (pre-push / husky):** lint, typecheck, format:check, `pnpm test` (unit and in-process integration), prose, slop:delta, `bkit check`. NO tests requiring deployed boundary / backing service.
+- **CI on PR (to `dev` / `main`):** static, unit, integration (incl. service / DB-backed), E2E, migration replay — one affected-gated parallel lane per tier plus `bkit-tests-check` capstone. NO `@live` tests.
+- **CI on push (to `dev` / `main`):** PR lanes plus `@live` canary tests against deployed URL.
+- **Debug (on demand):** Re-runs failing E2E / `@live` tier tests against deployed boundary. NO local tests.
 - **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.

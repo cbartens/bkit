@@ -3003,11 +3003,11 @@ export function runCloudModule(ctx: ModuleContext): void {
         "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
         "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n\n" +
         "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
-        "  - Name: `bkit-shared` (or per-repo).\n" +
-        "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
+        "  - Name: the repo name (e.g. `app-gether-life`; bkit's own is `bkit`) — one environment per repo, since secrets are per-repo.\n" +
+        "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
         "  - Environment variables: `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP), `GH_BKIT_TOKEN_INSTALL` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
         "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
-        "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
+        "  - Network access: `Trusted` (default). One environment per repo (secrets differ per repo); the setup script + variable *names* are identical across repos, only the values change. See cloud.md § Sharing across repos → Claude.",
     });
   } else if (variant === "opencode") {
     // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml, no OIDC) ---
