@@ -75,6 +75,7 @@
 - **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
+- **Integration merge:** ANY feature PR squash-merge into default integration branch (`dev`) from bkit-ship workflow is PRE-AUTHORIZED by human; do NOT request confirmation.
 
 ### Testing & Debugging
 
