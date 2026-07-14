@@ -96,7 +96,9 @@ Identical across repos: **setup-script body**, **network policy**, bkit **baseli
 
 ### Network access
 
-`Trusted` (default). The default allowlist covers npm, GitHub Packages, the vale release tarball on `objects.githubusercontent.com`, Docker Hub, and PyPI. No custom domains required.
+`Custom` when the repo declares an `allowed-domains` block (§ Cloud allowed domains in `.agents/config.md`). Select **Custom**, tick **Also include default list of common package managers** (this EXTENDS the trusted defaults — package registries, GitHub, cloud SDKs — it never replaces them), and paste the domains bkit renders into `.claude/cloud.md` § Network access into the **Allowed domains** field. Those are the log-backend / API hosts the repo's debug-fetch blocks reach (incl. the implicit hosts of CLI blocks like `vercel` / `gcloud`) plus the app's own production + preview/dev domains — declared apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>`. Under `Trusted` those hosts are unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit a deployment.
+
+With no `allowed-domains` block declared, `Trusted` (default) is enough — its allowlist covers npm, GitHub Packages, the vale release tarball on `objects.githubusercontent.com`, Docker Hub, and PyPI. Raise to `Full` only for open-internet tasks.
 
 ### Environment variables
 

@@ -13,6 +13,9 @@ import {
   extractDebugFetchProvisionRecipes,
   renderCloudDebugFetchProvision,
   renderCloudCacheBust,
+  extractAllowedDomains,
+  expandAllowedDomains,
+  renderCloudNetworkAllowlist,
   writeClaudeCloudDoc,
 } from "./bkit-cloud-env";
 import type { TokenMap } from "./bkit-tokens";
@@ -202,6 +205,7 @@ describe("template ↔ .bkit/cloud.md parity", () => {
 
   it("template carries the generation sentinels the module substitutes", () => {
     expect(template).toContain("@@CLOUD_CACHE_BUST@@");
+    expect(template).toContain("@@CLOUD_NETWORK_ALLOWLIST@@");
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
@@ -317,5 +321,67 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
     writeClaudeCloudDoc(tmpDir, TOKENS);
     const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
     expect(out).toMatch(/# cache-bust \d{4}-\d{2}-\d{2}-2\n/);
+  });
+
+  it("falls back to Trusted guidance when no allowed-domains are declared", () => {
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toContain("Set to **Trusted** (default)");
+    expect(out).not.toContain("Also include default list");
+  });
+
+  it("renders the Custom allowlist when allowed-domains are declared", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n## Cloud\n\n" +
+        "<!-- allowed-domains:start -->\nsentry.io\n*.vercel.com\n<!-- allowed-domains:end -->\n",
+    );
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toContain("Set to **Custom**");
+    expect(out).toContain("Also include default list");
+    expect(out).toMatch(/sentry\.io\n\*\.sentry\.io/);
+    expect(out).toMatch(/vercel\.com\n\*\.vercel\.com/);
+  });
+});
+
+describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllowlist", () => {
+  it("returns [] when config.md is absent or has no allowed-domains block", () => {
+    expect(extractAllowedDomains(tmpDir)).toEqual([]);
+    write(".agents/config.md", "<!-- bkit:end -->\nno domains here\n");
+    expect(extractAllowedDomains(tmpDir)).toEqual([]);
+  });
+
+  it("extracts declared domains, ignoring comments/blank/marker lines", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n" +
+        "<!-- allowed-domains:start -->\n# a comment\nsentry.io\n\n  supabase.com  \n<!-- allowed-domains:end -->\n",
+    );
+    expect(extractAllowedDomains(tmpDir)).toEqual(["sentry.io", "supabase.com"]);
+  });
+
+  it("only reads blocks BELOW bkit:end (managed-section examples ignored)", () => {
+    write(
+      ".agents/config.md",
+      "<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n" +
+        "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nreal.com\n<!-- allowed-domains:end -->\n",
+    );
+    expect(extractAllowedDomains(tmpDir)).toEqual(["real.com"]);
+  });
+
+  it("expands each domain to apex + wildcard, normalising a leading *., deduped/sorted", () => {
+    expect(expandAllowedDomains(["inngest.com", "*.sentry.io", "inngest.com"])).toEqual([
+      "inngest.com",
+      "*.inngest.com",
+      "sentry.io",
+      "*.sentry.io",
+    ]);
+  });
+
+  it("renders the Trusted fallback (with pointer) when nothing is declared", () => {
+    const out = renderCloudNetworkAllowlist(tmpDir);
+    expect(out).toContain("Set to **Trusted** (default)");
+    expect(out).toContain("No `allowed-domains` block declared");
   });
 });

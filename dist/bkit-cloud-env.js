@@ -324,6 +324,85 @@ export function renderCloudDebugFetchProvision(cwd) {
         ') || echo "[cloud-setup] a debug-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2');
 }
 /**
+ * Extract the cloud network-allowlist domains the consumer declared in
+ * `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` blocks BELOW
+ * `<!-- bkit:end -->` in `.agents/config.md` (one registrable domain per line;
+ * blank / `#` comment / marker lines ignored). Stack-agnostic: bkit hardcodes no
+ * domains — the consumer declares which log-backend / API / app hosts their cloud
+ * sessions must reach. Returns declared entries verbatim (pre-expansion), in order.
+ */
+export function extractAllowedDomains(cwd) {
+    const filePath = path.join(cwd, ".agents", "config.md");
+    if (!fs.existsSync(filePath))
+        return [];
+    const content = fs.readFileSync(filePath, "utf-8");
+    const endIdx = content.search(/^<!-- bkit:end -->$/m);
+    if (endIdx === -1)
+        return [];
+    const consumer = content.slice(endIdx);
+    const domains = [];
+    let inBlock = false;
+    for (const line of consumer.split("\n")) {
+        if (/^<!-- allowed-domains:start/.test(line)) {
+            inBlock = true;
+            continue;
+        }
+        if (/^<!-- allowed-domains:(end|none)/.test(line)) {
+            inBlock = false;
+            continue;
+        }
+        if (!inBlock)
+            continue;
+        const t = line.trim();
+        if (!t || t.startsWith("#") || t.startsWith("<!--"))
+            continue;
+        domains.push(t);
+    }
+    return domains;
+}
+/**
+ * Expand each declared registrable domain to BOTH the apex and a `*.` wildcard so the
+ * WHOLE domain is allowlisted — the egress proxy matches apex and subdomains
+ * separately, so `inngest.com` alone misses `api.inngest.com` and vice-versa. A
+ * consumer entry already written as `*.x` is normalised to its apex `x` first, then
+ * both forms are emitted. Grouped apex-then-wildcard per domain, domains sorted.
+ */
+export function expandAllowedDomains(declared) {
+    const bases = [
+        ...new Set(declared.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean)),
+    ].sort();
+    return bases.flatMap((b) => [b, `*.${b}`]);
+}
+/**
+ * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
+ * body. With declared `allowed-domains`, emits the **Custom** + "also include defaults"
+ * (extends, never replaces) instruction plus the expanded paste block. With none,
+ * falls back to the **Trusted** default guidance and points at the declaration.
+ */
+export function renderCloudNetworkAllowlist(cwd) {
+    const declared = extractAllowedDomains(cwd);
+    if (declared.length === 0) {
+        return ("Set to **Trusted** (default) — covers package registries, GitHub, and common\n" +
+            "cloud SDK hosts. Only raise to **Full** if a task must reach the open internet.\n\n" +
+            "_No `allowed-domains` block declared in `.agents/config.md`. If you run cloud\n" +
+            "`/bkit-debug` or e2e against a deployment, declare your log-backend + app\n" +
+            "domains there (apex per line) and this section will list them for a **Custom** allowlist._");
+    }
+    const domains = expandAllowedDomains(declared);
+    return ("Set to **Custom** and tick **Also include default list of common package\n" +
+        "managers** — this EXTENDS the trusted defaults (package registries, GitHub,\n" +
+        "cloud SDKs), it does not replace them. Paste into the **Allowed domains** field\n" +
+        "(one per line):\n\n" +
+        "```text\n" +
+        domains.join("\n") +
+        "\n```\n\n" +
+        `_${domains.length} entries expanded from ${declared.length} \`allowed-domains\` ` +
+        "declaration(s) in `.agents/config.md` (apex + `*.` wildcard each)._\n\n" +
+        "Under **Trusted**, your app domains and most observability / API hosts are\n" +
+        "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
+        "deployment. **Full** works too but opens all egress.");
+}
+/**
  * Generate `.claude/cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
  *
@@ -348,6 +427,7 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
         .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
+        .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
         .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
         .replace(/@@CLOUD_DEBUG_FETCH_PROVISION@@/g, () => renderCloudDebugFetchProvision(cwd))
         .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
