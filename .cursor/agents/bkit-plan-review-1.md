@@ -9,7 +9,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.4.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
 **Scope:** As specified by input and Read / Update / Create section.

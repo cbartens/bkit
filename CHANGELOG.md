@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.5.0] — 2026-07-14
+
+Makes 4.4.0's cloud debug-fetch provisioning reachable end-to-end. Dogfooding a live Claude-on-web session against a workspace consumer surfaced three blockers between "provision block declared" and "runtime logs fetched": `pnpm add -g` aborting the snapshot, one failing provision recipe killing the whole build, and the egress proxy denying every observability / API host under the default `Trusted` network policy. Adds a generated per-repo `Custom` allowlist, hardens provisioning to best-effort, and stamps a cache-bust so a re-pasted setup script actually rebuilds.
+
+### Added
+
+- **Generated `Custom` network allowlist (`allowed-domains`).** `.agents/config.md` gains a `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` block where the consumer declares — apex-only, one host per line — the log-backend / API hosts their debug-fetch blocks reach (including the implicit hosts of CLI blocks like `vercel` / `gcloud`) plus the app's own production + preview/dev domains. `bkit install` expands each to `<domain>` + `*.<domain>` (the egress proxy matches apex and subdomains separately) and renders a copy-paste block into `.claude/cloud.md` § Network access with the exact Claude-on-web steps: set **Custom**, tick **Also include default list of common package managers** (this EXTENDS the trusted defaults, never replaces them), paste into **Allowed domains**. Under `Trusted`, those hosts are unreachable, so cloud `/bkit-debug` silently gets no runtime logs and e2e can't hit a deployment; the allowlist closes that. Pure-declare (no URL-scraping) — the consumer owns the list, so bkit names no stack. Falls back to the `Trusted` guidance when no block is declared.
+- **Cache-bust line atop the generated setup script.** `.claude/cloud.md`'s setup script now leads with a `# cache-bust YYYY-MM-DD-N` comment, re-stamped on every install / upgrade (new date, or a same-day counter read back from the prior doc). Claude-on-web snapshots the setup script by exact text and reuses it; the changing line forces a fresh snapshot on re-paste, so "latest"-resolved installs (gh, cloud SDKs) re-pull instead of serving a stale snapshot.
+
+### Fixed
+
+- **`pnpm add -g` no longer aborts the cloud snapshot build.** corepack-activated pnpm never runs `pnpm setup`, so its global-bin dir isn't on PATH and `pnpm add -g <cli>` failed with "The configured global bin directory … is not in PATH", killing the `set -euo pipefail` setup script. The provision region (and the per-session `cloud-bootstrap.sh` hook) now export `PNPM_HOME` and prepend it + `$PNPM_HOME/bin` to PATH before any provision recipe runs.
+- **A failing provision recipe no longer discards the whole snapshot.** Provision recipes ran inline under the setup script's `set -euo pipefail`, so one failing recipe (e.g. a heavy `curl | bash` installer tripping a missing base-image dep, exit 127) aborted the build and threw away every CLI installed before it. They now run in a best-effort `( set +e … ) || echo <breadcrumb>` subshell — a failing recipe degrades to "that CLI absent", matching the already non-blocking per-session hook.
+
 ## [4.4.0] — 2026-07-14
 
 Harden 4.3.0's debug-fetch cloud-provisioning after dogfooding two workspace consumers surfaced the exact silent-no-logs footgun the provision mechanism set out to prevent — a fetch block enabled without its provision sibling — with no advisory to catch it. Adds the missing guardrail, provisions `jq` as a base tool so `curl`-driven blocks work headless, and makes the shipped examples consistently demonstrate the jq projection pattern.
