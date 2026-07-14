@@ -65,11 +65,20 @@ if ! command -v gh >/dev/null 2>&1; then
   chmod +x /usr/local/bin/gh
 fi
 
+if ! command -v jq >/dev/null 2>&1; then
+  # jq is a single static binary — fetch it from the jqlang release (same github.com
+  # host + snapshot-once rationale as vale/gh above). debug-fetch blocks that post-process
+  # curl output with `| jq …` need it present, and the base image may not ship it; the
+  # bkit-managed reference blocks avoid jq for that reason, but consumer blocks often use it.
+  curl -fsSL --retry 3 --retry-all-errors "https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64" -o /usr/local/bin/jq
+  chmod +x /usr/local/bin/jq
+fi
+
 @@CLOUD_COREPACK@@
 
 @@CLOUD_DEBUG_FETCH_PROVISION@@
 
-echo "cloud env ready: $(vale --version), $(gh --version | head -1), pnpm $(pnpm -v)"
+echo "cloud env ready: $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`
@@ -79,7 +88,7 @@ and `vale sync` are **not** here — they belong in `.claude/hooks/cloud-bootstr
 ## 5 · Verify (first session)
 
 ```bash
-vale --version && gh --version && pnpm -v
+vale --version && gh --version && jq --version && pnpm -v
 ```
 
 Your `/bkit-*` skills and bkit subagents load automatically from the committed

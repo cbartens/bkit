@@ -14,7 +14,7 @@
     "docs/testing.md": "937c740739b56856fd81066d7b809b7a891c55712275f88fe54a46610cec7d29",
     ".claude/settings.json": "0a10fe01fd6050fc48e3b52357eb2603a2f149ef90efb286f67661b2ab5eeb7c",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
-    ".agents/config.md": "080781a2ed327184468d47d820d445bedf98d14969ba12737f6aa65244adf509",
+    ".agents/config.md": "a2baf6bbf3abad625366575d0cd372b38033c7788e7c600ccc0bcc8c0f5b061d",
     ".agents/docs.md": "8e9855814fbaba91cad7504f53cf86214b4ed416d6587411e8dc9b0015c9942e",
     ".agents/skills.md": "3b44a3cb2fc9b9db0124db81b18010d458a86ca1c9e0947bd2322a2b40568daf",
     ".claude/hooks/preflight.sh": "f158e5eac74d180613771559d2b24e6aa23dcfa0a42a3bbaa50bd0489d86c049",
