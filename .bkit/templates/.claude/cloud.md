@@ -20,9 +20,7 @@ per-repo) → fill the fields below → **Save**.
 
 ## 2 · Network access
 
-Set to **Trusted** (default) — covers npm, GitHub Packages, the vale release
-tarball, Docker Hub, and PyPI. Only raise to **Full** if a task must reach the
-open internet.
+@@CLOUD_NETWORK_ALLOWLIST@@
 
 ## 3 · Environment variables
 
@@ -43,6 +41,7 @@ start fast.
 
 ```bash
 #!/bin/bash
+@@CLOUD_CACHE_BUST@@
 set -euo pipefail
 
 VALE_VERSION="3.9.1"

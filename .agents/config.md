@@ -105,6 +105,26 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
      nothing to install. Contrast the vercel example above, which shells out to the
      `vercel` CLI and therefore ships a matching provision block. -->
 
+## Cloud allowed domains
+
+Cloud sessions (Claude Code on the web, Cursor background agents) run behind an egress proxy. Under **Trusted** network access only package registries + common SDK hosts are reachable — your log-backend / observability API hosts and your app's own domains are **not**, so cloud `/bkit-debug` gets no runtime logs and e2e can't reach a deployment. Declare the domains those flows need in a `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` block **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>` and renders a copy-paste **Custom** allowlist into `.claude/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — this EXTENDS the defaults, never replaces them).
+
+Declare **apex domains only**, one per line — bkit adds the `*.` wildcard so the WHOLE domain is allowed and you never list specific subdomains. Include every host your debug-fetch blocks reach (incl. the implicit hosts of CLI blocks like `vercel` / `gcloud`) plus your app's production + preview/dev domains. To intentionally declare none, add `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
+
+**Example (reference only — copy below `<!-- bkit:end -->` and edit):**
+
+<!-- allowed-domains:start -->
+
+# observability / API hosts your debug-fetch blocks call
+
+sentry.io
+supabase.com
+
+# app production + preview/dev domains
+
+your-app.com
+<!-- allowed-domains:end -->
+
 <!-- bkit:end -->
 
 ## Enabled blocks

@@ -265,16 +265,142 @@ export function extractDebugFetchProvisionRecipes(cwd) {
     return recipes;
 }
 /**
+ * Render the `@@CLOUD_CACHE_BUST@@` line — a `# cache-bust YYYY-MM-DD-N` comment at
+ * the top of the setup script. claude.ai/code snapshots the setup script keyed on its
+ * exact text and reuses that snapshot; a changing cache-bust line forces a fresh
+ * snapshot on the next paste, so "latest"-resolved downloads (gh, gcloud SDK) and
+ * base-image drift get re-pulled even when the rest of the script is byte-identical.
+ * The counter increments per regeneration WITHIN a day (read back from the prior doc)
+ * and resets to 1 on a new date, so every regeneration yields a distinct value —
+ * guaranteeing a re-paste always busts. `today` (YYYY-MM-DD) is injected so the caller
+ * owns the clock and this stays deterministic under test.
+ */
+export function renderCloudCacheBust(cwd, today) {
+    const dst = path.join(cwd, CLAUDE_CLOUD_RELPATH);
+    let counter = 1;
+    if (fs.existsSync(dst)) {
+        const prev = fs.readFileSync(dst, "utf-8");
+        const m = prev.match(/^# cache-bust (\d{4}-\d{2}-\d{2})-(\d+)$/m);
+        if (m && m[1] === today)
+            counter = Number.parseInt(m[2], 10) + 1;
+    }
+    return `# cache-bust ${today}-${counter}`;
+}
+/**
+ * `pnpm add -g` aborts ("The configured global bin directory … is not in PATH")
+ * unless pnpm's global-bin dir is on PATH. corepack-activated pnpm never runs
+ * `pnpm setup`, so under the setup script's `set -euo pipefail` a single `pnpm add
+ * -g <cli>` provision block kills the whole snapshot build (observed in cloud with
+ * `pnpm@11`). Prepend an explicit `PNPM_HOME` + PATH export so every provision
+ * recipe runs in a shell where `pnpm add -g` succeeds. `$PNPM_HOME` and
+ * `$PNPM_HOME/bin` are both added — pnpm's global-bin dir has differed by version.
+ */
+const CLOUD_PNPM_GLOBAL_PATH_SETUP = "# pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips `pnpm setup`).\n" +
+    'export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"\n' +
+    'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"';
+/**
  * Render the `@@CLOUD_DEBUG_FETCH_PROVISION@@` setup-script region: the consumer's
  * `debug-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
  * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
+ *
+ * Recipes run in a best-effort `( set +e … ) || …` subshell: the setup script is
+ * `set -euo pipefail`, so without this a single failing recipe (e.g. a heavy `curl |
+ * bash` CLI installer that trips over a missing base-image dep) aborts the whole
+ * snapshot build and discards every CLI provisioned before it. `set +e` also lets a
+ * later recipe run after an earlier one fails. Mirrors the non-blocking per-session
+ * hook (`… | bash || log`), keeping the two cloud provision paths behaviourally equal.
  */
 export function renderCloudDebugFetchProvision(cwd) {
     const recipes = extractDebugFetchProvisionRecipes(cwd);
     if (recipes.length === 0)
         return "";
-    return ("# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, install-once.\n" +
-        recipes.join("\n"));
+    return ("# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, best-effort.\n" +
+        CLOUD_PNPM_GLOBAL_PATH_SETUP +
+        "\n" +
+        "(\n" +
+        "  set +e\n" +
+        recipes.join("\n") +
+        "\n" +
+        ') || echo "[cloud-setup] a debug-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2');
+}
+/**
+ * Extract the cloud network-allowlist domains the consumer declared in
+ * `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` blocks BELOW
+ * `<!-- bkit:end -->` in `.agents/config.md` (one registrable domain per line;
+ * blank / `#` comment / marker lines ignored). Stack-agnostic: bkit hardcodes no
+ * domains — the consumer declares which log-backend / API / app hosts their cloud
+ * sessions must reach. Returns declared entries verbatim (pre-expansion), in order.
+ */
+export function extractAllowedDomains(cwd) {
+    const filePath = path.join(cwd, ".agents", "config.md");
+    if (!fs.existsSync(filePath))
+        return [];
+    const content = fs.readFileSync(filePath, "utf-8");
+    const endIdx = content.search(/^<!-- bkit:end -->$/m);
+    if (endIdx === -1)
+        return [];
+    const consumer = content.slice(endIdx);
+    const domains = [];
+    let inBlock = false;
+    for (const line of consumer.split("\n")) {
+        if (/^<!-- allowed-domains:start/.test(line)) {
+            inBlock = true;
+            continue;
+        }
+        if (/^<!-- allowed-domains:(end|none)/.test(line)) {
+            inBlock = false;
+            continue;
+        }
+        if (!inBlock)
+            continue;
+        const t = line.trim();
+        if (!t || t.startsWith("#") || t.startsWith("<!--"))
+            continue;
+        domains.push(t);
+    }
+    return domains;
+}
+/**
+ * Expand each declared registrable domain to BOTH the apex and a `*.` wildcard so the
+ * WHOLE domain is allowlisted — the egress proxy matches apex and subdomains
+ * separately, so `inngest.com` alone misses `api.inngest.com` and vice-versa. A
+ * consumer entry already written as `*.x` is normalised to its apex `x` first, then
+ * both forms are emitted. Grouped apex-then-wildcard per domain, domains sorted.
+ */
+export function expandAllowedDomains(declared) {
+    const bases = [
+        ...new Set(declared.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean)),
+    ].sort();
+    return bases.flatMap((b) => [b, `*.${b}`]);
+}
+/**
+ * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
+ * body. With declared `allowed-domains`, emits the **Custom** + "also include defaults"
+ * (extends, never replaces) instruction plus the expanded paste block. With none,
+ * falls back to the **Trusted** default guidance and points at the declaration.
+ */
+export function renderCloudNetworkAllowlist(cwd) {
+    const declared = extractAllowedDomains(cwd);
+    if (declared.length === 0) {
+        return ("Set to **Trusted** (default) — covers package registries, GitHub, and common\n" +
+            "cloud SDK hosts. Only raise to **Full** if a task must reach the open internet.\n\n" +
+            "_No `allowed-domains` block declared in `.agents/config.md`. If you run cloud\n" +
+            "`/bkit-debug` or e2e against a deployment, declare your log-backend + app\n" +
+            "domains there (apex per line) and this section will list them for a **Custom** allowlist._");
+    }
+    const domains = expandAllowedDomains(declared);
+    return ("Set to **Custom** and tick **Also include default list of common package\n" +
+        "managers** — this EXTENDS the trusted defaults (package registries, GitHub,\n" +
+        "cloud SDKs), it does not replace them. Paste into the **Allowed domains** field\n" +
+        "(one per line):\n\n" +
+        "```text\n" +
+        domains.join("\n") +
+        "\n```\n\n" +
+        `_${domains.length} entries — ${domains.length / 2} domain(s) from \`allowed-domains\` ` +
+        "in `.agents/config.md`, each as apex + `*.` wildcard._\n\n" +
+        "Under **Trusted**, your app domains and most observability / API hosts are\n" +
+        "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
+        "deployment. **Full** works too but opens all egress.");
 }
 /**
  * Generate `.claude/cloud.md` — a copy-paste-ready Claude Code on the web setup doc
@@ -294,9 +420,14 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     if (!fs.existsSync(src))
         return false;
     const res = resolveCloudEnvVars(cwd);
+    // UTC day drives the cache-bust; renderCloudCacheBust reads the PRIOR dst below to
+    // continue the per-day counter, which is safe because we overwrite dst afterwards.
+    const today = new Date().toISOString().slice(0, 10);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
+        .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
         .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
         .replace(/@@CLOUD_DEBUG_FETCH_PROVISION@@/g, () => renderCloudDebugFetchProvision(cwd))
         .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))

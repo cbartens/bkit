@@ -12,7 +12,13 @@ import {
   renderCloudEnvNotes,
   extractDebugFetchProvisionRecipes,
   renderCloudDebugFetchProvision,
+  renderCloudCacheBust,
+  extractAllowedDomains,
+  expandAllowedDomains,
+  renderCloudNetworkAllowlist,
+  writeClaudeCloudDoc,
 } from "./bkit-cloud-env";
+import type { TokenMap } from "./bkit-tokens";
 
 let tmpDir: string;
 
@@ -178,31 +184,29 @@ describe("renderCloudEnvNotes", () => {
   });
 });
 
-// Drift guard: the generated .claude/cloud.md template duplicates the vale-install
-// block from the canonical .bkit/cloud.md. Keep the version literal in lockstep.
-describe("template ↔ .bkit/cloud.md parity", () => {
+// The generated .claude/cloud.md template carries the sentinels the module
+// substitutes at install/upgrade time. (The canonical .bkit/cloud.md no longer
+// duplicates the setup-script body — it points at the generated doc — so there is
+// no vale-version literal to keep in lockstep with the template anymore.)
+describe("template generation sentinels", () => {
   const pkgRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const template = fs.readFileSync(
     path.join(pkgRoot, ".bkit", "templates", ".claude", "cloud.md"),
     "utf-8",
   );
 
-  it("vale version in the template matches the canonical .bkit/cloud.md", () => {
-    const cloudMd = fs.readFileSync(path.join(pkgRoot, ".bkit", "cloud.md"), "utf-8");
-    const re = /VALE_VERSION="(\d+\.\d+\.\d+)"/;
-    const tplVale = template.match(re)?.[1];
-    const canonVale = cloudMd.match(re)?.[1];
-    expect(tplVale).toBeDefined();
-    expect(canonVale).toBeDefined();
-    expect(tplVale).toBe(canonVale);
-  });
-
   it("template carries the generation sentinels the module substitutes", () => {
+    expect(template).toContain("@@CLOUD_CACHE_BUST@@");
+    expect(template).toContain("@@CLOUD_NETWORK_ALLOWLIST@@");
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
     expect(template).toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
     expect(template).toContain("{{PROJECT_NAME}}");
+  });
+
+  it("cache-bust sentinel sits at the top of the setup script (after the shebang)", () => {
+    expect(template).toContain("#!/bin/bash\n@@CLOUD_CACHE_BUST@@\n");
   });
 });
 
@@ -241,6 +245,18 @@ describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", (
     expect(rendered).toContain("pnpm add -g vercel");
     expect(rendered).toContain("pnpm add -g supabase");
     expect(rendered).toContain(".agents/config.md provision blocks");
+    // pnpm's global-bin dir must be on PATH before any `pnpm add -g` recipe, else it
+    // aborts the setup script ("global bin directory … is not in PATH").
+    expect(rendered).toContain('export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"');
+    expect(rendered).toContain('export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"');
+    // The PATH export must come BEFORE the first pnpm-add recipe.
+    expect(rendered.indexOf("PNPM_HOME")).toBeLessThan(rendered.indexOf("pnpm add -g"));
+    // Recipes run best-effort so one failing recipe can't abort the `set -e` snapshot
+    // build: a `set +e` subshell wraps them and its non-zero exit is swallowed.
+    expect(rendered).toContain("(\n  set +e\n");
+    expect(rendered).toMatch(/\) \|\| echo "\[cloud-setup\] a debug-fetch provision recipe failed/);
+    // Both the PATH export and set +e must precede the recipes.
+    expect(rendered.indexOf("set +e")).toBeLessThan(rendered.indexOf("pnpm add -g"));
   });
 
   it("does not treat a fetch (debug-fetch:start) block as a provision recipe", () => {
@@ -251,5 +267,113 @@ describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", (
         "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
     );
     expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
+  });
+});
+
+describe("renderCloudCacheBust", () => {
+  it("starts the counter at 1 when no prior doc exists", () => {
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+
+  it("increments the counter when the prior doc has today's date", () => {
+    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-14-1\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-2");
+  });
+
+  it("resets the counter to 1 when the prior doc is from an earlier date", () => {
+    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-13-5\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+
+  it("starts at 1 when the prior doc has no cache-bust line (pre-feature doc)", () => {
+    write(".claude/cloud.md", "#!/bin/bash\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+});
+
+describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
+  const TOKENS: TokenMap = {
+    NODE_VERSION: "22",
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "test-repo",
+    REPO_SLUG: "acme/test-repo",
+  };
+
+  it("emits a cache-bust line and leaves NO unreplaced @@CLOUD_ sentinels", () => {
+    expect(writeClaudeCloudDoc(tmpDir, TOKENS)).toBe(true);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    // Cache-bust comment sits directly after the shebang, dated today, counter 1.
+    expect(out).toMatch(/#!\/bin\/bash\n# cache-bust \d{4}-\d{2}-\d{2}-1\nset -euo pipefail\n/);
+    // No sentinel leaks into the shipped paste doc.
+    expect(out).not.toMatch(/@@CLOUD_/);
+  });
+
+  it("advances the counter on a same-day regeneration", () => {
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toMatch(/# cache-bust \d{4}-\d{2}-\d{2}-2\n/);
+  });
+
+  it("falls back to Trusted guidance when no allowed-domains are declared", () => {
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toContain("Set to **Trusted** (default)");
+    expect(out).not.toContain("Also include default list");
+  });
+
+  it("renders the Custom allowlist when allowed-domains are declared", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n## Cloud\n\n" +
+        "<!-- allowed-domains:start -->\nsentry.io\n*.vercel.com\n<!-- allowed-domains:end -->\n",
+    );
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toContain("Set to **Custom**");
+    expect(out).toContain("Also include default list");
+    expect(out).toMatch(/sentry\.io\n\*\.sentry\.io/);
+    expect(out).toMatch(/vercel\.com\n\*\.vercel\.com/);
+  });
+});
+
+describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllowlist", () => {
+  it("returns [] when config.md is absent or has no allowed-domains block", () => {
+    expect(extractAllowedDomains(tmpDir)).toEqual([]);
+    write(".agents/config.md", "<!-- bkit:end -->\nno domains here\n");
+    expect(extractAllowedDomains(tmpDir)).toEqual([]);
+  });
+
+  it("extracts declared domains, ignoring comments/blank/marker lines", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n" +
+        "<!-- allowed-domains:start -->\n# a comment\nsentry.io\n\n  supabase.com  \n<!-- allowed-domains:end -->\n",
+    );
+    expect(extractAllowedDomains(tmpDir)).toEqual(["sentry.io", "supabase.com"]);
+  });
+
+  it("only reads blocks BELOW bkit:end (managed-section examples ignored)", () => {
+    write(
+      ".agents/config.md",
+      "<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n" +
+        "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nreal.com\n<!-- allowed-domains:end -->\n",
+    );
+    expect(extractAllowedDomains(tmpDir)).toEqual(["real.com"]);
+  });
+
+  it("expands each domain to apex + wildcard, normalising a leading *., deduped/sorted", () => {
+    expect(expandAllowedDomains(["inngest.com", "*.sentry.io", "inngest.com"])).toEqual([
+      "inngest.com",
+      "*.inngest.com",
+      "sentry.io",
+      "*.sentry.io",
+    ]);
+  });
+
+  it("renders the Trusted fallback (with pointer) when nothing is declared", () => {
+    const out = renderCloudNetworkAllowlist(tmpDir);
+    expect(out).toContain("Set to **Trusted** (default)");
+    expect(out).toContain("No `allowed-domains` block declared");
   });
 });
