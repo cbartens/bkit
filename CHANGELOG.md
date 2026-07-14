@@ -6,6 +6,25 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.4.0] — 2026-07-14
+
+Harden 4.3.0's debug-fetch cloud-provisioning after dogfooding two workspace consumers surfaced the exact silent-no-logs footgun the provision mechanism set out to prevent — a fetch block enabled without its provision sibling — with no advisory to catch it. Adds the missing guardrail, provisions `jq` as a base tool so `curl`-driven blocks work headless, and makes the shipped examples consistently demonstrate the jq projection pattern.
+
+### Added
+
+- **`observability-debug-fetch-provision-missing` preflight advisory.** Flags an enabled `<!-- debug-fetch:start <name> -->` block whose body self-guards on a stack CLI (`command -v <cli>`) but ships no matching `<!-- debug-fetch:provision <name> -->` block below `<!-- bkit:end -->`. That gap is invisible: with the CLI absent the block self-skips (`exit 0`) in cloud, so `/bkit-debug` fetches no runtime logs and it reads as "clean" rather than "not wired up". Keyed on the block's own `command -v` guard, so curl/jq/API blocks never false-positive; base tools (`curl`, `jq`, `date`, …) are allowlisted; NAMED blocks only; dismissable via `<!-- debug-fetch:none -->`. Runs on `bkit check` / `install` / `doctor`.
+- **`jq` provisioned as a cloud base tool.** The generated `.claude/cloud.md` setup script now installs `jq` (self-guarded jqlang static binary, same snapshot-once pattern as vale/gh) alongside vale/gh/corepack. debug-fetch blocks that post-process `curl` output with `| jq …` need it and the Claude-web base image may not ship it — bkit's reference blocks avoided jq for that reason, but consumer blocks routinely use it. Cursor already installs jq via its Dockerfile; gh-runners ship it.
+
+### Changed
+
+- **Reference debug-fetch examples now consistently use `jq`.** The `vercel` (`--json` piped to `jq`) and `supabase` (`curl` piped to `jq`) examples in `.agents/config.md` both project to a PII-safe field subset, rather than one emitting `--json` and the other dumping raw `curl`. Field shapes were verified against the live Vercel + Supabase APIs. `.agents/config.md` gains a "Formatting output (`jq`)" note: why jq (filter + PII-safe projection, never raw rows), that a block may assume jq is present (base tool, no self-gate), and the without-`jq` fallback (`node -e` / `python3 -c`, or raw emit with the PII caveat).
+
+### Fixed
+
+- **Removed the stale `debug-fetch:provision supabase` example.** It installed the `supabase` CLI that the curl/Management-API `supabase` fetch block never calls — contradicting the doc's own "an MCP or curl/API block needs no CLI" rule. The provision doctrine is sharpened accordingly: only a block that shells out to a stack CLI ships a provision block (the `vercel` example does; the curl-based `supabase` example does not).
+
+---
+
 ## [4.3.1] — 2026-07-13
 
 Two consumer-facing fixes surfaced by real workspace consumers on 4.3.0: the self-bump upgrade path aborted on pnpm workspaces, and the `main-lag-warning` drift advisory pointed cache-less consumers at a CI-breaking edit.
