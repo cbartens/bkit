@@ -79,6 +79,11 @@ if [ -f .agents/config.md ]; then
   ' .agents/config.md)
   if [ -n "$PROVISION" ]; then
     log "provisioning debug-fetch CLIs from .agents/config.md"
+    # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips
+    # `pnpm setup`); export it so `pnpm add -g` provision recipes don't self-skip. Mirrors
+    # the web setup script's provision region (bkit-cloud-env.ts).
+    export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+    export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
     printf '%s\n' "$PROVISION" | bash || log "debug-fetch CLI provisioning failed (non-blocking)"
   fi
 fi

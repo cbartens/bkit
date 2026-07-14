@@ -326,16 +326,43 @@ export function renderCloudCacheBust(cwd: string, today: string): string {
 }
 
 /**
+ * `pnpm add -g` aborts ("The configured global bin directory … is not in PATH")
+ * unless pnpm's global-bin dir is on PATH. corepack-activated pnpm never runs
+ * `pnpm setup`, so under the setup script's `set -euo pipefail` a single `pnpm add
+ * -g <cli>` provision block kills the whole snapshot build (observed in cloud with
+ * `pnpm@11`). Prepend an explicit `PNPM_HOME` + PATH export so every provision
+ * recipe runs in a shell where `pnpm add -g` succeeds. `$PNPM_HOME` and
+ * `$PNPM_HOME/bin` are both added — pnpm's global-bin dir has differed by version.
+ */
+const CLOUD_PNPM_GLOBAL_PATH_SETUP =
+  "# pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips `pnpm setup`).\n" +
+  'export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"\n' +
+  'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"';
+
+/**
  * Render the `@@CLOUD_DEBUG_FETCH_PROVISION@@` setup-script region: the consumer's
  * `debug-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
  * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
+ *
+ * Recipes run in a best-effort `( set +e … ) || …` subshell: the setup script is
+ * `set -euo pipefail`, so without this a single failing recipe (e.g. a heavy `curl |
+ * bash` CLI installer that trips over a missing base-image dep) aborts the whole
+ * snapshot build and discards every CLI provisioned before it. `set +e` also lets a
+ * later recipe run after an earlier one fails. Mirrors the non-blocking per-session
+ * hook (`… | bash || log`), keeping the two cloud provision paths behaviourally equal.
  */
 export function renderCloudDebugFetchProvision(cwd: string): string {
   const recipes = extractDebugFetchProvisionRecipes(cwd);
   if (recipes.length === 0) return "";
   return (
-    "# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, install-once.\n" +
-    recipes.join("\n")
+    "# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, best-effort.\n" +
+    CLOUD_PNPM_GLOBAL_PATH_SETUP +
+    "\n" +
+    "(\n" +
+    "  set +e\n" +
+    recipes.join("\n") +
+    "\n" +
+    ') || echo "[cloud-setup] a debug-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2'
   );
 }
 

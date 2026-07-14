@@ -249,6 +249,18 @@ describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", (
     expect(rendered).toContain("pnpm add -g vercel");
     expect(rendered).toContain("pnpm add -g supabase");
     expect(rendered).toContain(".agents/config.md provision blocks");
+    // pnpm's global-bin dir must be on PATH before any `pnpm add -g` recipe, else it
+    // aborts the setup script ("global bin directory … is not in PATH").
+    expect(rendered).toContain('export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"');
+    expect(rendered).toContain('export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"');
+    // The PATH export must come BEFORE the first pnpm-add recipe.
+    expect(rendered.indexOf("PNPM_HOME")).toBeLessThan(rendered.indexOf("pnpm add -g"));
+    // Recipes run best-effort so one failing recipe can't abort the `set -e` snapshot
+    // build: a `set +e` subshell wraps them and its non-zero exit is swallowed.
+    expect(rendered).toContain("(\n  set +e\n");
+    expect(rendered).toMatch(/\) \|\| echo "\[cloud-setup\] a debug-fetch provision recipe failed/);
+    // Both the PATH export and set +e must precede the recipes.
+    expect(rendered.indexOf("set +e")).toBeLessThan(rendered.indexOf("pnpm add -g"));
   });
 
   it("does not treat a fetch (debug-fetch:start) block as a provision recipe", () => {
