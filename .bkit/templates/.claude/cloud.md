@@ -43,6 +43,7 @@ start fast.
 
 ```bash
 #!/bin/bash
+@@CLOUD_CACHE_BUST@@
 set -euo pipefail
 
 VALE_VERSION="3.9.1"

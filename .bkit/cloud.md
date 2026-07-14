@@ -160,6 +160,7 @@ Paste verbatim:
 
 ```bash
 #!/bin/bash
+# cache-bust 2026-07-14-1
 set -euo pipefail
 
 VALE_VERSION="3.9.1"
@@ -179,6 +180,7 @@ echo "cloud env ready: $(vale --version), $(gh --version | head -1), pnpm $(pnpm
 
 What this does and why it's split from the in-repo hook:
 
+- **`# cache-bust <date>-<n>`** is the first line the generator writes (`bkit install` / `bkit upgrade` re-stamp it). The snapshot is keyed on the setup script's exact text, so this line's only job is to change: a new date (or a bumped same-day counter) forces a fresh snapshot on the next paste, re-pulling the "latest"-resolved `gh` / `gcloud` binaries and any base-image drift even when the rest of the script is byte-identical. Leave it in place — do not hand-edit it.
 - **Vale + gh** install once into the snapshot — they are binaries the cloud lacks but your laptop already has, so they do not belong in a repo-level hook.
 - **pnpm corepack pre-warm** seeds one pnpm into the snapshot. In-repo, corepack resolves that repo's own `packageManager` (fetching if it differs) — so one setup script serves any pnpm pin; the pre-warm is just a warm cache.
 - `pnpm install` and `vale sync` are **not** here — they belong in `.claude/hooks/cloud-bootstrap.sh` so they re-run on resumed sessions when the lockfile or styles have drifted, and so each repo can install its own deps.

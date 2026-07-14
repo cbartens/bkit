@@ -265,6 +265,28 @@ export function extractDebugFetchProvisionRecipes(cwd) {
     return recipes;
 }
 /**
+ * Render the `@@CLOUD_CACHE_BUST@@` line — a `# cache-bust YYYY-MM-DD-N` comment at
+ * the top of the setup script. claude.ai/code snapshots the setup script keyed on its
+ * exact text and reuses that snapshot; a changing cache-bust line forces a fresh
+ * snapshot on the next paste, so "latest"-resolved downloads (gh, gcloud SDK) and
+ * base-image drift get re-pulled even when the rest of the script is byte-identical.
+ * The counter increments per regeneration WITHIN a day (read back from the prior doc)
+ * and resets to 1 on a new date, so every regeneration yields a distinct value —
+ * guaranteeing a re-paste always busts. `today` (YYYY-MM-DD) is injected so the caller
+ * owns the clock and this stays deterministic under test.
+ */
+export function renderCloudCacheBust(cwd, today) {
+    const dst = path.join(cwd, CLAUDE_CLOUD_RELPATH);
+    let counter = 1;
+    if (fs.existsSync(dst)) {
+        const prev = fs.readFileSync(dst, "utf-8");
+        const m = prev.match(/^# cache-bust (\d{4}-\d{2}-\d{2})-(\d+)$/m);
+        if (m && m[1] === today)
+            counter = Number.parseInt(m[2], 10) + 1;
+    }
+    return `# cache-bust ${today}-${counter}`;
+}
+/**
  * Render the `@@CLOUD_DEBUG_FETCH_PROVISION@@` setup-script region: the consumer's
  * `debug-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
  * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
@@ -294,9 +316,13 @@ export function writeClaudeCloudDoc(cwd, tokens) {
     if (!fs.existsSync(src))
         return false;
     const res = resolveCloudEnvVars(cwd);
+    // UTC day drives the cache-bust; renderCloudCacheBust reads the PRIOR dst below to
+    // continue the per-day counter, which is safe because we overwrite dst afterwards.
+    const today = new Date().toISOString().slice(0, 10);
     // Function-form replacers: resolved secret values may contain `$`, which a string
     // replacement would interpret ($&, $1, …).
     const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+        .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
         .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
         .replace(/@@CLOUD_DEBUG_FETCH_PROVISION@@/g, () => renderCloudDebugFetchProvision(cwd))
         .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))

@@ -12,7 +12,10 @@ import {
   renderCloudEnvNotes,
   extractDebugFetchProvisionRecipes,
   renderCloudDebugFetchProvision,
+  renderCloudCacheBust,
+  writeClaudeCloudDoc,
 } from "./bkit-cloud-env";
+import type { TokenMap } from "./bkit-tokens";
 
 let tmpDir: string;
 
@@ -198,11 +201,16 @@ describe("template ↔ .bkit/cloud.md parity", () => {
   });
 
   it("template carries the generation sentinels the module substitutes", () => {
+    expect(template).toContain("@@CLOUD_CACHE_BUST@@");
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
     expect(template).toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
     expect(template).toContain("{{PROJECT_NAME}}");
+  });
+
+  it("cache-bust sentinel sits at the top of the setup script (after the shebang)", () => {
+    expect(template).toContain("#!/bin/bash\n@@CLOUD_CACHE_BUST@@\n");
   });
 });
 
@@ -251,5 +259,51 @@ describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", (
         "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
     );
     expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
+  });
+});
+
+describe("renderCloudCacheBust", () => {
+  it("starts the counter at 1 when no prior doc exists", () => {
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+
+  it("increments the counter when the prior doc has today's date", () => {
+    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-14-1\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-2");
+  });
+
+  it("resets the counter to 1 when the prior doc is from an earlier date", () => {
+    write(".claude/cloud.md", "#!/bin/bash\n# cache-bust 2026-07-13-5\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+
+  it("starts at 1 when the prior doc has no cache-bust line (pre-feature doc)", () => {
+    write(".claude/cloud.md", "#!/bin/bash\nset -euo pipefail\n");
+    expect(renderCloudCacheBust(tmpDir, "2026-07-14")).toBe("# cache-bust 2026-07-14-1");
+  });
+});
+
+describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
+  const TOKENS: TokenMap = {
+    NODE_VERSION: "22",
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "test-repo",
+    REPO_SLUG: "acme/test-repo",
+  };
+
+  it("emits a cache-bust line and leaves NO unreplaced @@CLOUD_ sentinels", () => {
+    expect(writeClaudeCloudDoc(tmpDir, TOKENS)).toBe(true);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    // Cache-bust comment sits directly after the shebang, dated today, counter 1.
+    expect(out).toMatch(/#!\/bin\/bash\n# cache-bust \d{4}-\d{2}-\d{2}-1\nset -euo pipefail\n/);
+    // No sentinel leaks into the shipped paste doc.
+    expect(out).not.toMatch(/@@CLOUD_/);
+  });
+
+  it("advances the counter on a same-day regeneration", () => {
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    writeClaudeCloudDoc(tmpDir, TOKENS);
+    const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
+    expect(out).toMatch(/# cache-bust \d{4}-\d{2}-\d{2}-2\n/);
   });
 });
