@@ -158,33 +158,13 @@ Use a **fine-grained** PAT scoped to the repo you'll work on (or each consumer r
 
 ### Setup script
 
-Paste verbatim:
+`bkit install` generates the real, copy-paste-ready setup script into `.claude/cloud.md` § Setup script — resolved for this repo, with the cache-bust line, the base-tool installs, and any `debug-fetch:provision` recipes. **Paste that**, not a hand-copied snippet: a stale copy drifts (a hard-pinned pnpm can seed a version known to break `bkit` download, and `apt install gh` is unreliable — gh isn't in the default repos).
 
-```bash
-#!/bin/bash
-# cache-bust 2026-07-14-1
-set -euo pipefail
-
-VALE_VERSION="3.9.1"
-if ! command -v vale >/dev/null 2>&1; then
-  cd /tmp
-  curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
-  tar -xzf "vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -C /usr/local/bin vale
-  chmod +x /usr/local/bin/vale
-fi
-
-apt-get update -qq && apt-get install -y --no-install-recommends gh
-
-corepack enable && corepack prepare pnpm@10.34.3 --activate
-
-echo "cloud env ready: $(vale --version), $(gh --version | head -1), pnpm $(pnpm -v)"
-```
-
-What this does and why it's split from the in-repo hook:
+What it does and why it's split from the in-repo hook:
 
 - **`# cache-bust <date>-<n>`** is the first line the generator writes (`bkit install` / `bkit upgrade` re-stamp it). The snapshot is keyed on the setup script's exact text, so this line's only job is to change: a new date (or a bumped same-day counter) forces a fresh snapshot on the next paste, re-pulling the "latest"-resolved `gh` / `gcloud` binaries and any base-image drift even when the rest of the script is byte-identical. Leave it in place — do not hand-edit it.
-- **Vale + gh** install once into the snapshot — they are binaries the cloud lacks but your laptop already has, so they do not belong in a repo-level hook.
-- **pnpm corepack pre-warm** seeds one pnpm into the snapshot. In-repo, corepack resolves that repo's own `packageManager` (fetching if it differs) — so one setup script serves any pnpm pin; the pre-warm is just a warm cache.
+- **Base tools (vale, gh, jq)** install once into the snapshot from their upstream releases — `gh` from the `cli/cli` releases redirect (not `apt`), `jq` because `curl`-based debug-fetch blocks pipe through it. They are binaries the cloud lacks but your laptop already has, so they do not belong in a repo-level hook.
+- **pnpm corepack pre-warm** seeds one pnpm into the snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves that repo's own `packageManager` (fetching if it differs) — so one setup script serves any pnpm pin; the pre-warm is just a warm cache.
 - `pnpm install` and `vale sync` are **not** here — they belong in `.claude/hooks/cloud-bootstrap.sh` so they re-run on resumed sessions when the lockfile or styles have drifted, and so each repo can install its own deps.
 
 Keep total runtime under ~5 minutes or the snapshot won't build.

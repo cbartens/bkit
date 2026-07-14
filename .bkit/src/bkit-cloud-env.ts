@@ -440,8 +440,8 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
     "```text\n" +
     domains.join("\n") +
     "\n```\n\n" +
-    `_${domains.length} entries expanded from ${declared.length} \`allowed-domains\` ` +
-    "declaration(s) in `.agents/config.md` (apex + `*.` wildcard each)._\n\n" +
+    `_${domains.length} entries — ${domains.length / 2} domain(s) from \`allowed-domains\` ` +
+    "in `.agents/config.md`, each as apex + `*.` wildcard._\n\n" +
     "Under **Trusted**, your app domains and most observability / API hosts are\n" +
     "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
     "deployment. **Full** works too but opens all egress."

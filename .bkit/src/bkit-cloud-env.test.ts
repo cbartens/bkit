@@ -184,24 +184,16 @@ describe("renderCloudEnvNotes", () => {
   });
 });
 
-// Drift guard: the generated .claude/cloud.md template duplicates the vale-install
-// block from the canonical .bkit/cloud.md. Keep the version literal in lockstep.
-describe("template ↔ .bkit/cloud.md parity", () => {
+// The generated .claude/cloud.md template carries the sentinels the module
+// substitutes at install/upgrade time. (The canonical .bkit/cloud.md no longer
+// duplicates the setup-script body — it points at the generated doc — so there is
+// no vale-version literal to keep in lockstep with the template anymore.)
+describe("template generation sentinels", () => {
   const pkgRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const template = fs.readFileSync(
     path.join(pkgRoot, ".bkit", "templates", ".claude", "cloud.md"),
     "utf-8",
   );
-
-  it("vale version in the template matches the canonical .bkit/cloud.md", () => {
-    const cloudMd = fs.readFileSync(path.join(pkgRoot, ".bkit", "cloud.md"), "utf-8");
-    const re = /VALE_VERSION="(\d+\.\d+\.\d+)"/;
-    const tplVale = template.match(re)?.[1];
-    const canonVale = cloudMd.match(re)?.[1];
-    expect(tplVale).toBeDefined();
-    expect(canonVale).toBeDefined();
-    expect(tplVale).toBe(canonVale);
-  });
 
   it("template carries the generation sentinels the module substitutes", () => {
     expect(template).toContain("@@CLOUD_CACHE_BUST@@");
