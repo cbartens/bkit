@@ -21,6 +21,8 @@
 
 **Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on the credential/tool you need (`command -v <tool>` + token check; on a miss, emit one `[debug-fetch:<name>] skipped — …` line to stderr, then `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
 
+**Formatting output (`jq`):** every example pipes JSON through `jq` to filter to failures and project a **PII-safe** field subset (never dump raw rows — the projection is what keeps PII out of the run artifact). bkit provisions `jq` as a base tool (macOS dev, Cursor container, and the Claude-web cloud setup script), so a block may assume it is present and does **not** self-gate on it. **Without `jq`** on your stack: substitute an already-present interpreter (`… | node -e '…'` or `… | python3 -c '…'` — same filter/project, no new dependency), or emit the source's own `--json` / raw response unfiltered — but raw output writes whatever the source returns (possibly PII) into the artifact, so prefer in-block projection.
+
 ### CLI provisioning (cloud)
 
 A fetch block only _runs_ in the cloud if its CLI is present — otherwise it self-skips and the cloud `/bkit-debug` gets **no** runtime logs (a silent `exit 0`, not an error). bkit installs no stack CLIs itself (that would name a stack); instead you **declare** each block's install recipe in a sibling `<!-- debug-fetch:provision <name> --> … <!-- debug-fetch:end -->` block, and bkit's stack-agnostic tooling runs it in both cloud paths:
@@ -28,7 +30,7 @@ A fetch block only _runs_ in the cloud if its CLI is present — otherwise it se
 - `.claude/hooks/cloud-bootstrap.sh` runs every `debug-fetch:provision` block on session start (gh-runner + resumed web sessions),
 - `bkit install` injects the same recipes into the generated `.claude/cloud.md` setup script (web snapshot — fast, install-once).
 
-Rules for a provision block: **self-guard** it (`command -v <cli> >/dev/null 2>&1 || <install>`) so a re-run is a no-op, keep it install-only (no fetching), and give it the **same name** as its fetch block. A block that fetches via an **MCP** tool needs no CLI — omit its provision block entirely.
+Rules for a provision block: **self-guard** it (`command -v <cli> >/dev/null 2>&1 || <install>`) so a re-run is a no-op, keep it install-only (no fetching), and give it the **same name** as its fetch block. A block that fetches via an **MCP** tool or a plain `curl`/API call needs no CLI — omit its provision block entirely. Only a block that shells out to a stack CLI needs one: the `vercel` example below ships a provision block (it calls the `vercel` CLI); the curl-based `supabase` example does not.
 
 **Examples (reference only — copy below `<!-- bkit:end -->` to enable):**
 
@@ -51,7 +53,8 @@ vercel logs \
   --source serverless --source edge-function \
   --since "${SINCE:-4h}" \
   --limit "${VERCEL_N:-100}" \
-  --json
+  --json \
+  | jq -c '{timestamp, level, source, requestPath, responseStatusCode, traceId, message}'  # PII-safe projection; traceId stitches to the sentry block, message is free-text — adjust keys to your log shape
 ```
 
 <!-- debug-fetch:end -->
@@ -92,19 +95,15 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
   -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
   --data-urlencode "sql=${SQL}" \
   --data-urlencode "iso_timestamp_start=${START}" \
-  --data-urlencode "iso_timestamp_end=${END}"
+  --data-urlencode "iso_timestamp_end=${END}" \
+  | jq '[.result[] | {timestamp, error_severity, event_message}]'
 ```
 
 <!-- debug-fetch:end -->
 
-<!-- debug-fetch:provision supabase -->
-
-```bash
-# Install the supabase CLI in cloud if absent (self-guarded; no-op when present).
-command -v supabase >/dev/null 2>&1 || pnpm add -g supabase
-```
-
-<!-- debug-fetch:end -->
+<!-- No debug-fetch:provision block: this is a curl/API fetch (no stack CLI), so
+     nothing to install. Contrast the vercel example above, which shells out to the
+     `vercel` CLI and therefore ships a matching provision block. -->
 
 <!-- bkit:end -->
 

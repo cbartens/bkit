@@ -1,7 +1,7 @@
 ---
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
-<!-- bkit:managed v4.3.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.4.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Debug Feature (Workflow 4/6)
 

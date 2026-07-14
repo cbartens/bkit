@@ -19,6 +19,7 @@ import {
   detectPrettierignoreScopeBroadening,
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
+  detectObservabilityDebugFetchProvisionMissing,
   detectObservabilityDebugFetchSourceNotEnabled,
   detectMissingMcpServers,
   detectExtraMcpServers,
@@ -752,6 +753,101 @@ describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
 
   it("returns null when .agents/config.md does not exist", () => {
     expect(detectObservabilityDebugFetchSourceNotEnabled(tmpDir)).toBeNull();
+  });
+});
+
+describe("detectObservabilityDebugFetchProvisionMissing", () => {
+  function writeConfig(content: string): void {
+    const dir = path.join(tmpDir, ".agents");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "config.md"), content, "utf-8");
+  }
+
+  const MANAGED = "<!-- bkit:start -->\n# Config\n<!-- bkit:end -->\n";
+
+  // A vercel fetch block that self-guards on the `vercel` CLI (stack CLI).
+  const VERCEL_FETCH =
+    "\n<!-- debug-fetch:start vercel -->\n" +
+    "```bash\n" +
+    'command -v vercel >/dev/null && [ -n "${VERCEL_TOKEN:-}" ] || { echo skipped >&2; exit 0; }\n' +
+    "vercel logs --json\n" +
+    "```\n" +
+    "<!-- debug-fetch:end -->\n";
+  const VERCEL_PROVISION =
+    "\n<!-- debug-fetch:provision vercel -->\n" +
+    "```bash\ncommand -v vercel >/dev/null 2>&1 || pnpm add -g vercel\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+  // A curl+jq block — no stack-CLI self-guard, so it must NEVER be flagged.
+  const SENTRY_FETCH =
+    "\n<!-- debug-fetch:start sentry -->\n" +
+    "```bash\n" +
+    '[ -n "${SENTRY_AUTH_TOKEN:-}" ] || { echo skipped >&2; exit 0; }\n' +
+    "curl -s https://de.sentry.io/api/0/... | jq '.[]'\n" +
+    "```\n" +
+    "<!-- debug-fetch:end -->\n";
+
+  it("flags a stack-CLI fetch block with no matching provision block", () => {
+    writeConfig(MANAGED + VERCEL_FETCH);
+    const f = detectObservabilityDebugFetchProvisionMissing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("observability-debug-fetch-provision-missing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("vercel");
+    expect(f?.detect).toContain("`vercel`");
+    expect(f?.action).toContain("debug-fetch:provision");
+    expect(f?.action).toContain("bkit install");
+  });
+
+  it("does NOT flag when the matching provision block is present", () => {
+    writeConfig(MANAGED + VERCEL_FETCH + VERCEL_PROVISION);
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("does NOT flag curl/jq blocks that self-guard only on tokens (no stack CLI)", () => {
+    writeConfig(MANAGED + SENTRY_FETCH);
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("does NOT flag a block whose only command -v guard is a base tool (jq)", () => {
+    writeConfig(
+      MANAGED +
+        "\n<!-- debug-fetch:start foo -->\n" +
+        "```bash\ncommand -v jq >/dev/null || exit 0\ncurl -s x | jq .\n```\n" +
+        "<!-- debug-fetch:end -->\n",
+    );
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("accepts a provision recipe matched by CLI name even under a different block name", () => {
+    writeConfig(
+      MANAGED +
+        VERCEL_FETCH +
+        "\n<!-- debug-fetch:provision clis -->\n" +
+        "```bash\ncommand -v vercel >/dev/null 2>&1 || pnpm add -g vercel\n```\n" +
+        "<!-- debug-fetch:end -->\n",
+    );
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("flags only the unprovisioned block when mixed with provisioned + curl blocks", () => {
+    writeConfig(MANAGED + SENTRY_FETCH + VERCEL_FETCH);
+    const f = detectObservabilityDebugFetchProvisionMissing(tmpDir);
+    expect(f?.detect).toContain("vercel");
+    expect(f?.detect).not.toContain("sentry");
+  });
+
+  it("does NOT flag when the debug-fetch:none opt-out marker is present", () => {
+    writeConfig(MANAGED + "\n<!-- debug-fetch:none intentional -->\n" + VERCEL_FETCH);
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when no bkit-managed block is present (consumer-owned)", () => {
+    writeConfig("# Config\nfully consumer-owned\n" + VERCEL_FETCH);
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when .agents/config.md does not exist", () => {
+    expect(detectObservabilityDebugFetchProvisionMissing(tmpDir)).toBeNull();
   });
 });
 

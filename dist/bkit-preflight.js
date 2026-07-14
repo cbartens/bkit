@@ -483,6 +483,147 @@ export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
     };
 }
 /**
+ * Non-stack base tools assumed present in every cloud/CI environment: POSIX
+ * utilities plus the binaries bkit's own cloud setup installs (vale, gh, jq,
+ * pnpm/corepack, node, git, python3). A debug-fetch block that self-guards on one
+ * of these needs NO `debug-fetch:provision` block — only a STACK CLI (vercel,
+ * supabase, gcloud, aws, wrangler, …) does, because bkit installs no stack CLIs
+ * itself (that would name a stack). Keep `jq` here: it is provisioned as a base
+ * tool by the cloud setup script, not per-block.
+ */
+const DEBUG_FETCH_BASE_TOOLS = new Set([
+    "curl",
+    "jq",
+    "date",
+    "sed",
+    "awk",
+    "grep",
+    "egrep",
+    "fgrep",
+    "bash",
+    "sh",
+    "cat",
+    "printf",
+    "echo",
+    "tr",
+    "cut",
+    "head",
+    "tail",
+    "sort",
+    "uniq",
+    "wc",
+    "xargs",
+    "tee",
+    "node",
+    "npm",
+    "npx",
+    "pnpm",
+    "corepack",
+    "git",
+    "python3",
+    "gh",
+    "vale",
+]);
+/**
+ * Advisory: an enabled `<!-- debug-fetch:start <name> -->` block self-guards on a
+ * stack CLI (`command -v <cli>`) but ships no matching `<!-- debug-fetch:provision
+ * <name> -->` block below `<!-- bkit:end -->`. bkit installs no stack CLIs itself,
+ * so in cloud that CLI is absent, the block's own guard trips, and it self-skips
+ * with a silent `exit 0` — `/bkit-debug` fetches NO runtime logs for that source
+ * (which reads as "clean", not "not wired up"). Both the `.claude/cloud.md` web
+ * setup-script snapshot and `.claude/hooks/cloud-bootstrap.sh` provision from the
+ * SAME `debug-fetch:provision` recipes, so a missing recipe breaks both cloud paths.
+ *
+ * Precise-signal: keyed on the block's OWN `command -v <cli>` self-guard, so a
+ * curl/jq/API block (no stack-CLI guard) never false-positives; base tools
+ * (`DEBUG_FETCH_BASE_TOOLS`) are ignored. Only NAMED start blocks are checked (a
+ * provision block is matched by name). Dismissable via `<!-- debug-fetch:none ...
+ * -->` below `<!-- bkit:end -->`.
+ */
+export function detectObservabilityDebugFetchProvisionMissing(cwd) {
+    const filePath = path.join(cwd, ".agents", "config.md");
+    if (!fs.existsSync(filePath))
+        return null;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const endIdx = content.search(/^<!-- bkit:end -->$/m);
+    if (endIdx === -1)
+        return null;
+    const consumer = content.slice(endIdx);
+    if (DEBUG_FETCH_NONE_RE.test(consumer))
+        return null;
+    const blocks = [];
+    let cur = null;
+    let inFence = false;
+    for (const line of consumer.split("\n")) {
+        const startM = /^<!-- debug-fetch:start ([\w.-]+) -->$/.exec(line);
+        const provM = /^<!-- debug-fetch:provision ([\w.-]+) -->$/.exec(line);
+        if (startM) {
+            cur = { kind: "start", name: startM[1], body: [] };
+            inFence = false;
+            blocks.push(cur);
+            continue;
+        }
+        if (provM) {
+            cur = { kind: "provision", name: provM[1], body: [] };
+            inFence = false;
+            blocks.push(cur);
+            continue;
+        }
+        if (/^<!-- debug-fetch:(end|none|start|provision)/.test(line)) {
+            cur = null;
+            inFence = false;
+            continue;
+        }
+        if (cur && /^```/.test(line)) {
+            inFence = !inFence;
+            continue;
+        }
+        if (cur && inFence)
+            cur.body.push(line);
+    }
+    const provisionNames = new Set(blocks.filter((b) => b.kind === "provision").map((b) => b.name));
+    const provisionBody = blocks
+        .filter((b) => b.kind === "provision")
+        .map((b) => b.body.join("\n"))
+        .join("\n");
+    // For each enabled named start block, collect the stack CLIs it self-guards on
+    // that have no provisioner (matched by same-name block OR a provision body that
+    // installs that CLI). First-seen order; one entry per block name.
+    const seen = new Set();
+    const items = [];
+    let firstName = "";
+    let firstCli = "";
+    for (const b of blocks) {
+        if (b.kind !== "start" || seen.has(b.name))
+            continue;
+        const body = b.body.join("\n");
+        for (const m of body.matchAll(/command -v ([\w.-]+)/g)) {
+            const cli = m[1];
+            if (DEBUG_FETCH_BASE_TOOLS.has(cli))
+                continue;
+            if (provisionNames.has(b.name) || provisionBody.includes(cli))
+                continue;
+            seen.add(b.name);
+            items.push(`${b.name} (\`${cli}\`)`);
+            if (!firstName) {
+                firstName = b.name;
+                firstCli = cli;
+            }
+            break;
+        }
+    }
+    if (items.length === 0)
+        return null;
+    const list = items.join(", ");
+    const plural = items.length > 1;
+    return {
+        id: "observability-debug-fetch-provision-missing",
+        severity: "advisory",
+        detect: `\`.agents/config.md\` enable${plural ? "" : "s"} debug-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- debug-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
+        action: `For each flagged block, add a sibling \`<!-- debug-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If the bkit-managed section above \`<!-- bkit:end -->\` ships a ready-made \`debug-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
+    };
+}
+/**
  * Advisory: detect __bkit__ envelope at top-level of a JSON file.
  * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
  * Action: run `pnpm bkit upgrade`.
@@ -1125,6 +1266,9 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const observabilityDebugFetchSource = detectObservabilityDebugFetchSourceNotEnabled(cwd);
     if (observabilityDebugFetchSource)
         advisories.push(observabilityDebugFetchSource);
+    const observabilityDebugFetchProvision = detectObservabilityDebugFetchProvisionMissing(cwd);
+    if (observabilityDebugFetchProvision)
+        advisories.push(observabilityDebugFetchProvision);
     // bkit-not-on-path advisory — suggest the shell alias for local development.
     const bkitNotOnPath = detectBkitNotOnPath();
     if (bkitNotOnPath)
