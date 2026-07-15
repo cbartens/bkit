@@ -12,6 +12,7 @@ import {
   VALID_SEVERITIES,
   isOpenWork,
   parseRemoteUrlToSlug,
+  resolveGitSha,
   resolveRepoSlug,
   appendLine,
   buildSummary,
@@ -462,6 +463,42 @@ describe("repo slug — one resolver, from the git remote", () => {
 
   it("returns empty for a directory that is not a git repo", () => {
     expect(resolveRepoSlug(os.tmpdir())).toBe("");
+  });
+});
+
+// parentSha reached rows as the LITERAL "HEAD~1" on every compliance row bkit ever
+// wrote. Two failures at once: the grader's diff guard rejects non-hex and returns
+// an EMPTY diff (so every diff-based rule passed vacuously while the row still said
+// "pass"), and parentSha is in identity(), so successive runs shared one identity
+// and folded into each other.
+describe("resolveGitSha — parentSha must be a real SHA before it reaches a row", () => {
+  const REPO = path.resolve(import.meta.dirname, "..", "..");
+
+  it("resolves a rev to a hex SHA the grader's guard accepts", () => {
+    const sha = resolveGitSha("HEAD", REPO);
+    if (!sha) return; // no commits (fresh CI clone) — nothing to assert
+    expect(sha).toMatch(/^[0-9a-f]{7,40}$/);
+  });
+
+  it("never returns the rev it was given", () => {
+    const sha = resolveGitSha("HEAD~1", REPO);
+    if (!sha) return;
+    expect(sha).not.toBe("HEAD~1");
+  });
+
+  it("gives DIFFERENT SHAs for different revs — so identity cannot collapse runs", () => {
+    const head = resolveGitSha("HEAD", REPO);
+    const parent = resolveGitSha("HEAD~1", REPO);
+    if (!head || !parent) return;
+    expect(head).not.toBe(parent);
+  });
+
+  it.each(["no-such-rev", "HEAD~99999", ""])("returns empty for unresolvable %j", (rev) => {
+    expect(resolveGitSha(rev, REPO)).toBe("");
+  });
+
+  it("returns empty outside a git repo rather than throwing", () => {
+    expect(resolveGitSha("HEAD", os.tmpdir())).toBe("");
   });
 });
 

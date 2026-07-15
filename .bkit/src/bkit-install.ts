@@ -19,6 +19,7 @@ import {
   formatComplianceSummary,
   readBkitVersion,
 } from "./bkit-comply.js";
+import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
 import {
   dispatchModules,
@@ -1651,27 +1652,26 @@ async function main() {
       const phase = complyPhase ?? "unknown";
       const logPrefix = "[bkit-comply]";
 
-      // Resolve parentSha from the workflow status ledger (.bkit/stats.jsonl) — look
-      // for the most recent workflow-started row that carried a parentSha. Falls back
-      // to HEAD~1 when none is recorded (keeps grader advisory, not blocking).
-      let parentSha = "HEAD~1";
+      // parentSha MUST be a resolved hex SHA, for two reasons:
+      //   1. diffPaths guards on /^[0-9a-f]{7,40}$/ and returns [] otherwise — so an
+      //      unresolved rev makes every diff-based rule grade an EMPTY diff and pass
+      //      vacuously. It logs, but the row is still written and still says "pass".
+      //   2. parentSha is in identity() for compliance, so an unresolved literal is
+      //      the SAME identity on every run — successive runs fold into one another
+      //      and the history silently collapses.
+      //
+      // The previous code scanned .bkit/stats.jsonl for "the most recent
+      // workflow-started row that carried a parentSha". That row does not exist
+      // there: `workflow-started` is a status.jsonl EVENT TYPE, while stats.jsonl
+      // holds compliance/outcome/counter — and of those, only compliance and counter
+      // carry parentSha, both of which the loop explicitly skipped. So the loop could
+      // never match, the literal "HEAD~1" always won, and every compliance row bkit
+      // has ever written records parentSha "HEAD~1" against an empty diff.
       const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-      if (fs.existsSync(statsPath)) {
-        const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n").filter(Boolean);
-        for (let i = lines.length - 1; i >= 0; i--) {
-          try {
-            const row = JSON.parse(lines[i]) as Record<string, unknown>;
-            // Exclude self-emitted rows (compliance/counter) so they cannot be
-            // picked up as a resolved parentSha (RC-1 kind filter).
-            if (row.kind === "compliance" || row.kind === "counter") continue;
-            if (typeof row.parentSha === "string" && row.parentSha.length > 0) {
-              parentSha = row.parentSha;
-              break;
-            }
-          } catch {
-            // skip unparseable rows
-          }
-        }
+      const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+      if (!parentSha) {
+        console.log(`${logPrefix} cannot resolve a parent SHA (no commits?) — skipping grade`);
+        return;
       }
 
       console.log(

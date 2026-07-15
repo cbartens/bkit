@@ -166,15 +166,18 @@ export function stampRepo(event, consumerSlug) {
         repo: event.repo && event.repo.length > 0 ? event.repo : consumerSlug,
     };
 }
-/** Identity of an event, or undefined when the row's kind is unknown to the codec. */
+/**
+ * Identity of an event, or undefined when the row's kind is unknown to the codec.
+ *
+ * `identity()` is a pure switch over `kind` that builds a template string — it
+ * cannot throw for anything `parse()` yields, and both callers pass parsed rows.
+ * The real case is an UNKNOWN kind (a row from a newer bkit): the switch has no
+ * default, so it falls through and returns undefined at runtime despite its
+ * `string` type. That is what this narrows — no catch needed.
+ */
 function identityOrUndefined(event) {
-    try {
-        const id = identity(event);
-        return typeof id === "string" ? id : undefined;
-    }
-    catch {
-        return undefined;
-    }
+    const id = identity(event);
+    return typeof id === "string" ? id : undefined;
 }
 /**
  * Remove from `srcPath` exactly those rows whose CONTENT is durably in the store.

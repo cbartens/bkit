@@ -58,6 +58,37 @@ export function parseRemoteUrlToSlug(url) {
         .match(/[/:]([^/:]+\/[^/:]+)$/);
     return m?.[1] ?? "";
 }
+/** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
+function gitEnv() {
+    const env = { ...process.env };
+    delete env["GIT_DIR"];
+    delete env["GIT_WORK_TREE"];
+    delete env["GIT_INDEX_FILE"];
+    delete env["GIT_OBJECT_DIRECTORY"];
+    return env;
+}
+/**
+ * Resolve a rev (`HEAD~1`, a branch, a tag) to a full hex SHA. "" if it does not
+ * resolve — e.g. `HEAD~1` in a repo with one commit.
+ *
+ * `parentSha` MUST be resolved before it reaches a row. It is part of identity()
+ * for compliance and counter, so an unresolved literal like "HEAD~1" is the SAME
+ * identity on every run and successive runs fold into each other. It is also what
+ * the grader diffs against, and the diff guard rejects anything non-hex — silently
+ * grading an empty diff, which passes every diff-based rule vacuously.
+ */
+export function resolveGitSha(rev, cwd) {
+    const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], {
+        cwd,
+        encoding: "utf-8",
+        env: gitEnv(),
+        stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (res.status !== 0 || typeof res.stdout !== "string")
+        return "";
+    const sha = res.stdout.trim();
+    return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
+}
 /**
  * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
  * remote or no git repo — callers decide the fallback, loudly.
@@ -71,15 +102,10 @@ export function parseRemoteUrlToSlug(url) {
  * ("no remote"), not an exception to swallow.
  */
 export function resolveRepoSlug(cwd) {
-    const env = { ...process.env };
-    delete env["GIT_DIR"];
-    delete env["GIT_WORK_TREE"];
-    delete env["GIT_INDEX_FILE"];
-    delete env["GIT_OBJECT_DIRECTORY"];
     const res = spawnSync("git", ["remote", "get-url", "origin"], {
         cwd,
         encoding: "utf-8",
-        env,
+        env: gitEnv(),
         stdio: ["ignore", "pipe", "ignore"],
     });
     if (res.status !== 0 || typeof res.stdout !== "string")

@@ -231,14 +231,18 @@ export function stampRepo(event: TelemetryEvent, consumerSlug: string): Telemetr
   };
 }
 
-/** Identity of an event, or undefined when the row's kind is unknown to the codec. */
+/**
+ * Identity of an event, or undefined when the row's kind is unknown to the codec.
+ *
+ * `identity()` is a pure switch over `kind` that builds a template string — it
+ * cannot throw for anything `parse()` yields, and both callers pass parsed rows.
+ * The real case is an UNKNOWN kind (a row from a newer bkit): the switch has no
+ * default, so it falls through and returns undefined at runtime despite its
+ * `string` type. That is what this narrows — no catch needed.
+ */
 function identityOrUndefined(event: TelemetryEvent): string | undefined {
-  try {
-    const id = identity(event);
-    return typeof id === "string" ? id : undefined;
-  } catch {
-    return undefined;
-  }
+  const id: string | undefined = identity(event);
+  return typeof id === "string" ? id : undefined;
 }
 
 /** What the store durably holds, read back off disk after fsync. */

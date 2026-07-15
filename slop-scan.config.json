@@ -17,18 +17,43 @@
     "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"
   },
   "rules": {
-    "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
-    "boundary/type-suppression": { "enabled": true },
-    "boundary/gate-suppression": { "enabled": true },
-    "structure.over-fragmentation": { "enabled": true },
-    "structure.directory-fanout-hotspot": { "enabled": true },
-    "structure.duplicate-function-signatures": { "enabled": true },
-    "structure.barrel-density": { "enabled": true },
-    "structure.pass-through-wrappers": { "enabled": true },
-    "defensive.empty-catch": { "enabled": true },
-    "defensive.error-swallowing": { "enabled": true },
-    "defensive.error-obscuring": { "enabled": true },
-    "defensive.async-noise": { "enabled": true }
+    "comments.placeholder-comments": {
+      "enabled": true,
+      "weight": 1.5
+    },
+    "boundary/type-suppression": {
+      "enabled": true
+    },
+    "boundary/gate-suppression": {
+      "enabled": true
+    },
+    "structure.over-fragmentation": {
+      "enabled": true
+    },
+    "structure.directory-fanout-hotspot": {
+      "enabled": true
+    },
+    "structure.duplicate-function-signatures": {
+      "enabled": true
+    },
+    "structure.barrel-density": {
+      "enabled": true
+    },
+    "structure.pass-through-wrappers": {
+      "enabled": true
+    },
+    "defensive.empty-catch": {
+      "enabled": true
+    },
+    "defensive.error-swallowing": {
+      "enabled": true
+    },
+    "defensive.error-obscuring": {
+      "enabled": true
+    },
+    "defensive.async-noise": {
+      "enabled": true
+    }
   },
   "overrides": [
     {
@@ -41,63 +66,96 @@
         "**/*.spec.js"
       ],
       "rules": {
-        "tests.duplicate-mock-setup": { "enabled": false }
+        "tests.duplicate-mock-setup": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-slop-type-suppression.integration.test.ts"],
       "rules": {
-        "boundary/type-suppression": { "enabled": false },
-        "boundary/gate-suppression": { "enabled": false }
+        "boundary/type-suppression": {
+          "enabled": false
+        },
+        "boundary/gate-suppression": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-modules.integration.test.ts"],
       "rules": {
-        "boundary/gate-suppression": { "enabled": false }
+        "boundary/gate-suppression": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src", ".bkit/src/**"],
       "rules": {
-        "structure.directory-fanout-hotspot": { "enabled": false }
+        "structure.directory-fanout-hotspot": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/templates/.opencode/plugin/gateguard.js", ".opencode/plugin/gateguard.js"],
       "rules": {
-        "defensive.empty-catch": { "enabled": false },
-        "structure.duplicate-function-signatures": { "enabled": false }
+        "defensive.empty-catch": {
+          "enabled": false
+        },
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/templates/.claude/hooks/gateguard.cjs", ".claude/hooks/gateguard.cjs"],
       "rules": {
-        "structure.duplicate-function-signatures": { "enabled": false }
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-comply.ts"],
       "rules": {
-        "defensive.error-obscuring": { "enabled": false }
+        "defensive.error-obscuring": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-gateguard-opencode.test.ts"],
       "rules": {
-        "defensive.empty-catch": { "enabled": false }
+        "defensive.empty-catch": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-telemetry-migrate.integration.test.ts"],
       "rules": {
-        "defensive.empty-catch": { "enabled": false }
+        "defensive.empty-catch": {
+          "enabled": false
+        }
       }
     },
     {
       "files": [".bkit/src/bkit-telemetry-migrate.ts"],
       "rules": {
-        "structure.pass-through-wrappers": { "enabled": false }
+        "structure.pass-through-wrappers": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-harvest.ts"],
+      "_reason": "canonicalRow() is a NAMED CONTRACT, not a pass-through: it is the single definition of the byte-for-byte serialisation the friction prune gate compares against, used by both the store writer and the gate. Inlining JSON.stringify at both call sites to satisfy the rule would be exactly the 'rewire callers to satisfy a lint' that rules.md forbids, and would let the two sides drift apart — the gate guards a DELETE, so drift is not free. Scoped to this one file + rule.",
+      "rules": {
+        "structure.pass-through-wrappers": {
+          "enabled": false
+        }
       }
     }
   ]
