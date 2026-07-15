@@ -1716,24 +1716,30 @@ async function main() {
     return;
   }
 
-  // harvest — cross-repo harvest CLI (WS-4, #234 #233).
-  // Copies consumer .bkit/{stats,friction}.jsonl into .bkit/harvest/; COUNT-ONLY for
-  // docs/{deferrals,failures}.jsonl. Never writes to consumer repos. Fail-open: exits 0.
+  // harvest — cross-repo harvest CLI (WS-4, #234 #233 #343).
+  // Copies consumer .bkit/stats.jsonl and MOVES .bkit/friction.jsonl into harvest/;
+  // COUNT-ONLY for docs/{deferrals,failures}.jsonl. Friction rows are pruned from the
+  // consumer only after they are fsync'd + read back from the store. Fail-open: exits 0.
   // See DE-34 for the shared-entrypoint + crash-isolation contract.
   if (verb === "harvest") {
     try {
-      const { runHarvest } = await import("./bkit-harvest.js");
+      const { runHarvest, HARVEST_DEST_DIR } = await import("./bkit-harvest.js");
       const cwd = process.cwd();
       console.log("[bkit-harvest] Starting cross-repo harvest...");
       const result = runHarvest(cwd);
       console.log(
-        `[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}`,
+        `[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`,
       );
       const countOnlyEntries = Object.entries(result.totalCountOnly);
       if (countOnlyEntries.length > 0) {
         for (const [file, count] of countOnlyEntries) {
           console.log(`[bkit-harvest] count-only ${file}: ${count} rows (not copied)`);
         }
+      }
+      if (result.totalPrunedRows > 0) {
+        console.log(
+          `[bkit-harvest] ${result.totalPrunedRows} friction row(s) were REMOVED from consumers and now exist only in ${HARVEST_DEST_DIR}/ — commit it.`,
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1749,11 +1755,14 @@ async function main() {
   if (verb === "analysis") {
     try {
       const { runAnalysis } = await import("./bkit-analysis.js");
+      const { HARVEST_DEST_DIR } = await import("./bkit-harvest.js");
       const cwd = process.cwd();
-      // Analyse: bkit's own stats.jsonl + harvested consumer rows
+      // Analyse: bkit's own stats.jsonl + harvested consumer rows.
+      // Harvest dest is sourced from the constant, NOT re-spelled here — these paths
+      // silently found nothing when the dir moved out of .bkit/ (#343).
       const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-      const harvestStatsPath = path.join(cwd, ".bkit", "harvest", "stats.jsonl");
-      const harvestFrictionPath = path.join(cwd, ".bkit", "harvest", "friction.jsonl");
+      const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
+      const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
       const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
       const paths = [statsPath, harvestStatsPath, harvestFrictionPath, frictionPath].filter((p) =>
         fs.existsSync(p),

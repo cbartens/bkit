@@ -17,6 +17,46 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 /**
+ * Split a legacy `**Related:**` value into individual pointers.
+ *
+ * The field was free prose ("BAR-138, BAR-130, `docs/…/design.md`, KN-1"), so
+ * split on commas and keep each item verbatim minus surrounding backticks —
+ * items carry trailing qualifiers ("BAR-142 §A2", "`docs/pending.md` (per-key
+ * deferred)") that are meaning, not noise, and are preserved as written.
+ */
+export function parseRelated(value) {
+    if (!value)
+        return [];
+    return value
+        .split(",")
+        .map((s) => s.trim().replace(/^`|`$/g, "").trim())
+        .filter((s) => s.length > 0);
+}
+/**
+ * Map a legacy `**Severity:**` value onto the current enum.
+ *
+ * The retired scale was `critical | normal | low`; `normal` is the middle of a
+ * three-point scale, so it lands on MEDIUM rather than HIGH. Legacy entries
+ * with no Severity (the whole of `friction.md`, which never had the field)
+ * default to MEDIUM — the neutral point. This is an explicit unknown->neutral
+ * mapping, NOT a claim about the row; re-triage on next touch.
+ */
+export function mapLegacySeverity(value) {
+    switch (value?.toLowerCase().replace(/`/g, "").trim()) {
+        case "critical":
+            return "CRITICAL";
+        case "high":
+            return "HIGH";
+        case "low":
+            return "LOW";
+        case "normal":
+        case "medium":
+            return "MEDIUM";
+        default:
+            return "MEDIUM";
+    }
+}
+/**
  * Parse a knowledge.md corpus into structured entries.
  * Handles both `KN-CORE-{N}` (bkit-shipped) and `KN-{N}` (consumer) namespaces.
  */
@@ -72,6 +112,9 @@ export function parsePendingMd(content) {
         const description = extractField(entryBody, "Description") ?? title;
         const workaround = extractField(entryBody, "Workaround");
         const source = extractField(entryBody, "Source");
+        // Both were silently dropped before #234's severity/references restoration.
+        const severity = mapLegacySeverity(extractField(entryBody, "Severity"));
+        const references = parseRelated(extractField(entryBody, "Related"));
         const key = slugify(`pending-${title.slice(0, 60)}`);
         entries.push({
             id: key,
@@ -82,7 +125,7 @@ export function parsePendingMd(content) {
             detail: entryBody.length > 0 ? entryBody : undefined,
             category,
             status,
-            aliases: [],
+            references,
             // reuse known fields; pending-specific fields stored in body
             rootCause: undefined,
             fix: workaround,
@@ -90,6 +133,8 @@ export function parsePendingMd(content) {
         });
         // attach custom fields for row builder
         entries[entries.length - 1]._type = type;
+        entries[entries.length - 1]._severity =
+            severity;
         entries[entries.length - 1]._workaround =
             workaround;
         entries[entries.length - 1]._source = source;
@@ -149,7 +194,10 @@ export function parseFrictionMd(content) {
             summary: title,
             detail: entryBody.length > 0 ? entryBody : undefined,
             category,
-            aliases: [],
+            references: parseRelated(extractField(entryBody, "Related")),
+            // The legacy friction.md format had no Severity field at all, so this is
+            // always the unknown->neutral default rather than a migrated value.
+            _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
             _scope: scope,
             _remediation: remediation,
             _recovery: recovery,
@@ -213,10 +261,15 @@ function parseMdEntries(content, headingRe) {
         const summary = cleanTitle(title);
         // Build detail from body (preserve for agent readability)
         const detail = body.length > 0 ? body : undefined;
-        // Build key: id-normalised-title slug
+        // Build key: id-normalised-title slug.
+        // Safe to embed the legacy id HERE (unlike an agent minting a fresh DE-{N}):
+        // migration is a one-shot deterministic read of a static .md, so two runs
+        // cannot race to claim the same number.
         const keySlug = slugify(`${id}-${summary.slice(0, 60)}`);
-        // Aliases: the original ID(s) — both short and CORE form preserved
-        const aliases = [id];
+        // References: the entry's own legacy id FIRST, then everything its
+        // `**Related:**` field pointed at. Both were dropped by the original
+        // migration — the id survived in aliases[], the Related: graph did not.
+        const references = [id, ...parseRelated(extractField(body, "Related"))];
         entries.push({
             id,
             key: keySlug,
@@ -229,7 +282,7 @@ function parseMdEntries(content, headingRe) {
             rationale,
             rootCause,
             fix,
-            aliases,
+            references,
         });
     }
     return entries;
@@ -267,7 +320,7 @@ function buildKnowledgeRow(entry, opts) {
         workflow: "migrate",
         step: "bkit-telemetry-migrate",
         key: entry.key,
-        aliases: entry.aliases,
+        references: entry.references,
         summary: entry.summary,
         description: entry.detail,
         rootCause: entry.rootCause,
@@ -285,7 +338,7 @@ function buildDecisionRow(entry, opts) {
         workflow: "migrate",
         step: "bkit-telemetry-migrate",
         key: entry.key,
-        aliases: entry.aliases,
+        references: entry.references,
         summary: entry.summary,
         rationale: entry.rationale,
         description: entry.detail,
@@ -308,10 +361,12 @@ function buildDeferralRow(entry, opts) {
         key: entry.key,
         type,
         category: entry.category ?? "other",
+        severity: e._severity ?? "MEDIUM",
         description: entry.summary,
         remediation: e._workaround,
         source: e._source,
         status,
+        references: entry.references,
     };
 }
 function buildFrictionRow(entry, opts) {
@@ -354,10 +409,12 @@ function buildFrictionRow(entry, opts) {
         key: entry.key,
         category,
         scope,
+        severity: e._severity ?? "MEDIUM",
         description: entry.summary,
         remediation: e._remediation,
         recovery: e._recovery,
         status,
+        references: entry.references,
         confidence,
         lastConfirmed,
     };

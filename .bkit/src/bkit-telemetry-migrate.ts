@@ -17,7 +17,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type TelemetryEvent } from "./bkit-telemetry.js";
+import { type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,8 +88,53 @@ export interface ParsedEntry {
   rootCause?: string;
   /** Fix or rule if found (knowledge only). */
   fix?: string;
-  /** Aliases: the original id(s) to put in aliases[]. */
-  aliases: string[];
+  /**
+   * References: the JSONL form of the legacy `**Related:**` field, plus this
+   * entry's own former id (`KN-14` / `DE-7`) when it had one. Everything the
+   * old ledger knew about how this entry connects to the rest of the repo.
+   */
+  references: string[];
+}
+
+/**
+ * Split a legacy `**Related:**` value into individual pointers.
+ *
+ * The field was free prose ("BAR-138, BAR-130, `docs/…/design.md`, KN-1"), so
+ * split on commas and keep each item verbatim minus surrounding backticks —
+ * items carry trailing qualifiers ("BAR-142 §A2", "`docs/pending.md` (per-key
+ * deferred)") that are meaning, not noise, and are preserved as written.
+ */
+export function parseRelated(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim().replace(/^`|`$/g, "").trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Map a legacy `**Severity:**` value onto the current enum.
+ *
+ * The retired scale was `critical | normal | low`; `normal` is the middle of a
+ * three-point scale, so it lands on MEDIUM rather than HIGH. Legacy entries
+ * with no Severity (the whole of `friction.md`, which never had the field)
+ * default to MEDIUM — the neutral point. This is an explicit unknown->neutral
+ * mapping, NOT a claim about the row; re-triage on next touch.
+ */
+export function mapLegacySeverity(value: string | undefined): TelemetrySeverity {
+  switch (value?.toLowerCase().replace(/`/g, "").trim()) {
+    case "critical":
+      return "CRITICAL";
+    case "high":
+      return "HIGH";
+    case "low":
+      return "LOW";
+    case "normal":
+    case "medium":
+      return "MEDIUM";
+    default:
+      return "MEDIUM";
+  }
 }
 
 /**
@@ -153,6 +198,9 @@ export function parsePendingMd(content: string): ParsedEntry[] {
     const description = extractField(entryBody, "Description") ?? title;
     const workaround = extractField(entryBody, "Workaround");
     const source = extractField(entryBody, "Source");
+    // Both were silently dropped before #234's severity/references restoration.
+    const severity = mapLegacySeverity(extractField(entryBody, "Severity"));
+    const references = parseRelated(extractField(entryBody, "Related"));
 
     const key = slugify(`pending-${title.slice(0, 60)}`);
     entries.push({
@@ -164,7 +212,7 @@ export function parsePendingMd(content: string): ParsedEntry[] {
       detail: entryBody.length > 0 ? entryBody : undefined,
       category,
       status,
-      aliases: [],
+      references,
       // reuse known fields; pending-specific fields stored in body
       rootCause: undefined,
       fix: workaround,
@@ -176,8 +224,11 @@ export function parsePendingMd(content: string): ParsedEntry[] {
         _type?: string;
         _workaround?: string;
         _source?: string;
+        _severity?: TelemetrySeverity;
       }
     )._type = type;
+    (entries[entries.length - 1] as ParsedEntry & { _severity?: TelemetrySeverity })._severity =
+      severity;
     (entries[entries.length - 1] as ParsedEntry & { _workaround?: string })._workaround =
       workaround;
     (entries[entries.length - 1] as ParsedEntry & { _source?: string })._source = source;
@@ -242,6 +293,7 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       _status?: string;
       _confidence?: string;
       _lastConfirmed?: string;
+      _severity?: TelemetrySeverity;
     } = {
       id: key,
       key,
@@ -250,7 +302,10 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       summary: title,
       detail: entryBody.length > 0 ? entryBody : undefined,
       category,
-      aliases: [],
+      references: parseRelated(extractField(entryBody, "Related")),
+      // The legacy friction.md format had no Severity field at all, so this is
+      // always the unknown->neutral default rather than a migrated value.
+      _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
       _scope: scope,
       _remediation: remediation,
       _recovery: recovery,
@@ -322,11 +377,16 @@ function parseMdEntries(content: string, headingRe: RegExp): ParsedEntry[] {
     // Build detail from body (preserve for agent readability)
     const detail = body.length > 0 ? body : undefined;
 
-    // Build key: id-normalised-title slug
+    // Build key: id-normalised-title slug.
+    // Safe to embed the legacy id HERE (unlike an agent minting a fresh DE-{N}):
+    // migration is a one-shot deterministic read of a static .md, so two runs
+    // cannot race to claim the same number.
     const keySlug = slugify(`${id}-${summary.slice(0, 60)}`);
 
-    // Aliases: the original ID(s) — both short and CORE form preserved
-    const aliases: string[] = [id];
+    // References: the entry's own legacy id FIRST, then everything its
+    // `**Related:**` field pointed at. Both were dropped by the original
+    // migration — the id survived in aliases[], the Related: graph did not.
+    const references: string[] = [id, ...parseRelated(extractField(body, "Related"))];
 
     entries.push({
       id,
@@ -340,7 +400,7 @@ function parseMdEntries(content: string, headingRe: RegExp): ParsedEntry[] {
       rationale,
       rootCause,
       fix,
-      aliases,
+      references,
     });
   }
 
@@ -387,7 +447,7 @@ function buildKnowledgeRow(
     workflow: "migrate",
     step: "bkit-telemetry-migrate",
     key: entry.key,
-    aliases: entry.aliases,
+    references: entry.references,
     summary: entry.summary,
     description: entry.detail,
     rootCause: entry.rootCause,
@@ -410,7 +470,7 @@ function buildDecisionRow(
     workflow: "migrate",
     step: "bkit-telemetry-migrate",
     key: entry.key,
-    aliases: entry.aliases,
+    references: entry.references,
     summary: entry.summary,
     rationale: entry.rationale,
     description: entry.detail,
@@ -422,7 +482,12 @@ function buildDeferralRow(
   entry: ParsedEntry,
   opts: { repo: string; bkitVersion: string; baseTs: number; idx: number },
 ): TelemetryEvent {
-  const e = entry as ParsedEntry & { _type?: string; _workaround?: string; _source?: string };
+  const e = entry as ParsedEntry & {
+    _type?: string;
+    _workaround?: string;
+    _source?: string;
+    _severity?: TelemetrySeverity;
+  };
   const rawType = e._type ?? "issue";
   const type: "issue" | "feature" = rawType === "feature" ? "feature" : "issue";
   const rawStatus = (entry.status ?? "open").toLowerCase();
@@ -438,10 +503,12 @@ function buildDeferralRow(
     key: entry.key,
     type,
     category: entry.category ?? "other",
+    severity: e._severity ?? "MEDIUM",
     description: entry.summary,
     remediation: e._workaround,
     source: e._source,
     status,
+    references: entry.references,
   } as TelemetryEvent;
 }
 
@@ -456,6 +523,7 @@ function buildFrictionRow(
     _status?: string;
     _confidence?: string;
     _lastConfirmed?: string;
+    _severity?: TelemetrySeverity;
   };
   const rawCat = e.category ?? "other";
   const VALID_CATS = new Set([
@@ -496,10 +564,12 @@ function buildFrictionRow(
     key: entry.key,
     category,
     scope,
+    severity: e._severity ?? "MEDIUM",
     description: entry.summary,
     remediation: e._remediation,
     recovery: e._recovery,
     status,
+    references: entry.references,
     confidence,
     lastConfirmed,
   } as TelemetryEvent;

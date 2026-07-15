@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ARCHIVE_SHARD_TEMPLATE,
   MAX_ROWS_BEFORE_ROLLUP,
+  SEVERITY_KINDS,
+  VALID_SEVERITIES,
   appendLine,
   buildSummary,
   fold,
@@ -79,6 +81,7 @@ function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     key,
     category: "agent-rework" as const,
     scope: "bkit-repo" as const,
+    severity: "MEDIUM" as const,
     description: "agent reworked step 3",
     ...overrides,
   } as TelemetryEvent;
@@ -90,6 +93,7 @@ function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     key,
     type: "issue" as const,
     category: "agentic",
+    severity: "LOW" as const,
     description: "deferred for later",
     ...overrides,
   } as TelemetryEvent;
@@ -99,6 +103,7 @@ function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
   return {
     ...baseEnvelope("failure"),
     key,
+    severity: "HIGH" as const,
     description: "found a bug",
     ...overrides,
   } as TelemetryEvent;
@@ -153,6 +158,84 @@ describe("identity — per-kind composite tuples", () => {
 // ---------------------------------------------------------------------------
 // validate() — A2-mandatory fields + kind validation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// severity — required on the triaged kinds, rejected elsewhere (#234)
+//
+// Regression guard: severity was specified in the #234 issue body AND design
+// (line 401, "MUST carry"), reached zero of the five plan files, and shipped as
+// a dead optional envelope field no writer ever emitted. These tests are what
+// make its absence loud instead of silent.
+// ---------------------------------------------------------------------------
+
+describe("severity — per-kind requirement + closed enum", () => {
+  it.each(["friction", "deferral", "failure"] as const)("%s carries severity", (kind) => {
+    expect(SEVERITY_KINDS.has(kind)).toBe(true);
+  });
+
+  it.each(["compliance", "outcome", "counter", "knowledge", "decision"] as const)(
+    "%s does NOT carry severity",
+    (kind) => {
+      expect(SEVERITY_KINDS.has(kind)).toBe(false);
+    },
+  );
+
+  it("VALID_SEVERITIES is exactly CRITICAL|HIGH|MEDIUM|LOW", () => {
+    expect([...VALID_SEVERITIES].sort()).toEqual(["CRITICAL", "HIGH", "LOW", "MEDIUM"]);
+  });
+
+  it.each(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const)("accepts severity %s", (severity) => {
+    expect(validate(deferralEvent("k", { severity } as Partial<TelemetryEvent>)).ok).toBe(true);
+  });
+
+  it.each(["friction", "deferral", "failure"] as const)(
+    "rejects a %s row with severity missing",
+    (kind) => {
+      const e = { ...baseEnvelope(kind), key: "k", description: "d" } as TelemetryEvent;
+      const r = validate(e);
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("severity");
+    },
+  );
+
+  // The old critical|normal|low scale is retired — accepting it would silently
+  // resurrect the vocabulary whose distribution collapsed to its default.
+  it.each(["low", "normal", "critical", "blocker", "advisory", "Critical", ""])(
+    "rejects off-enum severity %j",
+    (severity) => {
+      const r = validate(deferralEvent("k", { severity } as unknown as Partial<TelemetryEvent>));
+      expect(r.ok).toBe(false);
+    },
+  );
+
+  it("rejects severity on a kind that must not carry it", () => {
+    const r = validate(complianceEvent({ severity: "HIGH" } as unknown as Partial<TelemetryEvent>));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry severity");
+  });
+
+  // parse() must stay tolerant: the 44 rows written before this landed have no
+  // severity and must still read. validate() gates writes only (appendLine).
+  it("parse still reads pre-severity rows", () => {
+    const legacy = JSON.stringify({
+      ts: 1_700_000_000_000,
+      kind: "deferral",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.2.2",
+      workflow: "migrate",
+      step: "bkit-telemetry-migrate",
+      key: "pending-factory-reset-uninstall-mode",
+      type: "feature",
+      category: "agentic",
+      description: "Factory-reset uninstall mode",
+      status: "OPEN",
+    });
+    const res = parse(legacy);
+    expect(res.malformedLineCount).toBe(0);
+    expect(res.events).toHaveLength(1);
+    expect(res.events[0]!.key).toBe("pending-factory-reset-uninstall-mode");
+  });
+});
 
 describe("validate — A2-mandatory envelope fields", () => {
   it("accepts a valid compliance event", () => {

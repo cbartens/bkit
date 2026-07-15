@@ -48,6 +48,7 @@ Each `kind` lives in ONE file, written by specific processes:
 | `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship` (part of the dedup tuple for `compliance`/`counter`). |
 | `step` | `string` | Emitting step, e.g. `build-close-workflow`. |
 | `model` | `string?` | Model that wrote the row — the writing subagent's prompt frontmatter `model:` for subagent-written rows, or the orchestrator's session model for workflow-written rows (`compliance`/`outcome`/`counter`/`friction`). Blank if unknown. |
+| `references` | `string[]?` | Related context — see § Key & References. ANY pointer that helps a later reader place the row: feature ids, tracker ids, PRs, commit SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. Omit when there is genuinely nothing to point at; do NOT invent links. |
 
 ## Per-Kind Fields
 
@@ -57,13 +58,46 @@ Each `kind` lives in ONE file, written by specific processes:
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
 | `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number`, `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
-| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"CLOSED"\|string?`. |
-| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"CLOSED"?`. |
-| `failure` | `key`, `summary?`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"CLOSED"\|string?`. |
+| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"CLOSED"\|string?`. |
+| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"CLOSED"?`. |
+| `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 
-`key` = a written-once stable slug; recurrence = a same-`key` append. For `knowledge`/`decision`, `key` mirrors the former `KN-N`/`DE-N` id.
+## Key & References
+
+`key` = a written-once stable slug; recurrence = a same-`key` append.
+
+- **Mint it from the CONTENT, never from a counter.** A descriptive slug (`gh-mcp-401-after-token-rotation`), optionally prefixed with the driving issue (`681-e2e-parallelism-via-runner-matrix`).
+- **NEVER mint a sequential `DE-{N}`/`KN-{N}` number.** `ts` is the id; the old `next = max(grep 'DE-\d+') + 1` rule is RETIRED and MUST NOT be revived. Two workflows running concurrently both read the same max from their own base commit and mint the SAME number, so a sequential id silently collides — a content slug cannot. This is not hypothetical: nine ids collided in a live consumer ledger before the rule was retired.
+
+`references` = the JSONL form of the retired `**Related:**` field. Free-form, no schema — whatever a later reader needs to place this row:
+
+<!-- prettier-ignore -->
+```jsonl
+"references": ["681", "BAR-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "DE-7", "1718900000600"]
+```
+
+- Feature ids / `{FID}`, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, a sibling row's `ts`, and — on rows migrated off the `.md` ledgers — that row's own legacy `KN-N`/`DE-N` id.
+- Keep each item as the source wrote it; trailing qualifiers (`BAR-142 §A2`) are meaning, not noise.
+- **There is no separate identity field.** The design's `aliases[]` ("I AM `KN-14`") folded into `references` once sequential ids proved un-mintable — an id that two runs can both claim was never a reliable identity. `ts` is the id; everything in `references` is a pointer, including a legacy id.
+- Omit when there is genuinely nothing to point at. NEVER invent a link to fill the field.
+
+## Severity
+
+`severity` is REQUIRED on `friction` / `deferral` / `failure`, and MUST NOT appear on any other kind (`knowledge`/`decision` have no triage severity; `compliance`/`outcome`/`counter` are machine-generated). Closed enum — exactly these four, uppercase:
+
+<!-- prettier-ignore -->
+| Value | Means |
+| --- | --- |
+| `CRITICAL` | Data loss, security hole, or a broken workflow with no workaround. Triage before the next release. |
+| `HIGH` | Real damage or a blocked path, but a workaround exists. |
+| `MEDIUM` | Degraded behaviour or a repeated cost; safe to schedule. |
+| `LOW` | Cosmetic, nit, or a speculative future idea. |
+
+- **Same enum the challenge + audit prompts already assign** to findings — when a finding becomes a row (e.g. `@bkit-build-challenge-remediate` writing a BLOCKED finding to `docs/deferrals.jsonl`), carry ITS severity through UNCHANGED; do NOT re-derive.
+- NOT the `bkit install` preflight `blocker`/`advisory` scale — different axis, do not mix.
+- Pick the level the ROW earns, not the level that feels safe. A ledger where every row is `LOW` is exactly as useless as no severity at all — which is why the pre-JSONL `critical|normal|low` scale was retired (19 `low` / 2 `normal` / 0 `critical` across 21 rows).
 
 ## Identity / Dedup
 
@@ -150,6 +184,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "key": "ship-dev-commit-blocked-by-pre-commit-hook",
   "category": "tool-failure",
   "scope": "bkit-repo",
+  "severity": "HIGH",
   "description": "ship Steps 8-12 commit docs to dev, but the pre-commit hook refuses dev/main commits unless $PWD matches *.worktrees/*; git -C REPO_ROOT commit does not pass the guard and --no-verify is prohibited",
   "remediation": "commit via a temp branch (docs/ship-{FID}) from dev in a temp worktree, then FF-merge dev"
 }
@@ -170,6 +205,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "key": "pnpm-tag-drop-readme-note",
   "type": "issue",
   "category": "infra",
+  "severity": "LOW",
   "description": "pnpm normaliser strips the #vX.Y.Z pin from github:cbartens/bkit git-dep entries in package.json; document the workaround in README or fix upstream",
   "remediation": "note the pin workaround in the README install snippet"
 }
@@ -189,6 +225,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "model": "claude-opus-4-8",
   "key": "bkit-install-flips-core-bare",
   "summary": "bkit install flips core.bare=true",
+  "severity": "HIGH",
   "description": "`pnpm bkit install` leaves git config core.bare=true, which breaks git checkout/status afterward",
   "remediation": "run `git config core.bare false` after install",
   "status": "OPEN"

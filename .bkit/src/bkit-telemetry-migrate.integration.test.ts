@@ -4,7 +4,7 @@
  * Test matrix (WS-5 Derived Test Matrix):
  *
  * 1. Real-corpus migration: parses bkit's actual knowledge.md + decisions.md,
- *    produces .jsonl rows where every parsed id appears in an aliases[] (both
+ *    produces .jsonl rows where every parsed id appears in a references[] (both
  *    KN-CORE-{N} and KN-{N}/DE-{N} namespaces). (WS5-T3)
  *
  * 2. Abort-safety + idempotency: parity-mismatch fixture → ABORT, ZERO .md deleted;
@@ -235,9 +235,9 @@ describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => 
 
     expect(entries.length).toBeGreaterThan(0);
 
-    // Every entry must have a non-empty id in aliases[]
+    // Every entry must have a non-empty id in references[]
     for (const entry of entries) {
-      expect(entry.aliases).toContain(entry.id);
+      expect(entry.references).toContain(entry.id);
       expect(entry.id).toMatch(/^KN-(?:CORE-)?\d+$/);
       expect(entry.key).toBeTruthy();
       expect(entry.summary).toBeTruthy();
@@ -264,7 +264,7 @@ describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => 
     expect(entries.length).toBeGreaterThan(0);
 
     for (const entry of entries) {
-      expect(entry.aliases).toContain(entry.id);
+      expect(entry.references).toContain(entry.id);
       expect(entry.id).toMatch(/^DE-\d+$/);
       expect(entry.key).toBeTruthy();
       expect(entry.summary).toBeTruthy();
@@ -376,40 +376,100 @@ describe("migrate — happy path fixture", () => {
     expect(frictionRows[0]?.category).toBe("tool-failure");
     expect(frictionRows[0]?.scope).toBe("bkit-repo");
 
-    // Every row must have aliases[] containing the original id
+    // Every row must have references[] containing the original id (the former
+    // aliases[] folded in — see § Key & References in .bkit/jsonl.md)
     const knRows = knJsonl
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as { aliases?: string[]; key?: string; kind?: string });
+      .map((l) => JSON.parse(l) as { references?: string[]; key?: string; kind?: string });
     expect(knRows).toHaveLength(2);
     for (const row of knRows) {
       expect(row.kind).toBe("knowledge");
-      expect(row.aliases).toBeDefined();
-      expect(Array.isArray(row.aliases)).toBe(true);
+      expect(row.references).toBeDefined();
+      expect(Array.isArray(row.references)).toBe(true);
     }
 
-    const allKnAliases = knRows.flatMap((r) => r.aliases ?? []);
-    expect(allKnAliases).toContain("KN-CORE-1");
-    expect(allKnAliases).toContain("KN-1");
+    const allKnReferences = knRows.flatMap((r) => r.references ?? []);
+    expect(allKnReferences).toContain("KN-CORE-1");
+    expect(allKnReferences).toContain("KN-1");
 
     const deRows = deJsonl
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as { aliases?: string[]; kind?: string });
+      .map((l) => JSON.parse(l) as { references?: string[]; kind?: string });
     expect(deRows).toHaveLength(2);
     for (const row of deRows) {
       expect(row.kind).toBe("decision");
-      expect(row.aliases).toBeDefined();
+      expect(row.references).toBeDefined();
     }
-    const allDeAliases = deRows.flatMap((r) => r.aliases ?? []);
+    const allDeAliases = deRows.flatMap((r) => r.references ?? []);
     expect(allDeAliases).toContain("DE-1");
     expect(allDeAliases).toContain("DE-2");
 
     // Lookup table must NOT be written — migration leaves only the jsonl behind
     const lookupPath = path.join(dir, "docs", "telemetry-id-lookup.json");
     expect(fs.existsSync(lookupPath)).toBe(false);
+  });
+
+  // Regression guard (#234): the original migration called extractField for 14
+  // fields but never for "Related" or "Severity", so both were dropped on the
+  // floor for every consumer who migrated. These pin that they survive.
+  it("carries the legacy Related: graph into references[]", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { references?: string[]; description?: string });
+
+    // FIXTURE_PENDING_MD's first entry carries `- **Related:** BAR-139`
+    const withRelated = rows.find((r) => (r.references ?? []).includes("BAR-139"));
+    expect(withRelated).toBeDefined();
+
+    // ...and its sibling has no Related: line at all, so it must not invent one.
+    const withoutRelated = rows.find((r) => /pnpm normaliser/.test(r.description ?? ""));
+    expect(withoutRelated?.references ?? []).toEqual([]);
+  });
+
+  it("maps the legacy Severity: scale onto CRITICAL|HIGH|MEDIUM|LOW", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    // Both FIXTURE_PENDING_MD entries are `- **Severity:** low`
+    const deferrals = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { severity?: string });
+    expect(deferrals).toHaveLength(2);
+    for (const row of deferrals) expect(row.severity).toBe("LOW");
+
+    // friction.md never had a Severity field — unknown maps to the neutral point,
+    // NOT to LOW (which would understate every migrated friction row).
+    const friction = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { severity?: string });
+    expect(friction).toHaveLength(1);
+    expect(friction[0]?.severity).toBe("MEDIUM");
   });
 
   it("dry-run: writes nothing, returns expected counts for all four files", async () => {

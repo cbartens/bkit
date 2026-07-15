@@ -58,9 +58,13 @@ The `bkit harvest` CLI uses the `[bkit-harvest]` prefix for all stderr log lines
 - `[bkit-harvest] Harvesting: {path}` — emitted per consumer as harvest begins.
 - `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — per-file result for COPY ledgers.
 - `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — per-file result for COUNT-ONLY ledgers.
+- `[bkit-harvest] {path}/.bkit/{file} — pruned N harvested row(s)` — rows REMOVED from a consumer after being durably stored (friction only).
 - `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped (path not found, timeout, etc.).
-- `[bkit-harvest] Done — total rows collected: N, after dedup: M` — harvest summary.
+- `[bkit-harvest] Done — total rows collected: N, after dedup: M, pruned from consumers: P` — harvest summary.
+- `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — emitted whenever P > 0; the window where an uncommitted store is the sole copy.
 - `[bkit-harvest] harvest error (fail-open): {message}` — unhandled error in harvest dispatch (exits 0).
+
+A `pruned` line with no preceding `copied` line for the same file would mean rows were deleted without being stored — that ordering is enforced in code (copy → fsync → read back → prune), so treat it as a bug worth investigating, not noise.
 
 ### `[bkit-analysis]` prefix
 

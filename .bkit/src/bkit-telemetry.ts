@@ -54,12 +54,21 @@ export interface TelemetryEnvelope {
   subagent?: string;
   /** Model of the writing subagent (from its prompt frontmatter `model:`); blank/absent for orchestrator-written rows. */
   model?: string;
-  /** Severity where applicable. */
-  severity?: string;
-  /** Outbound links (issues, PRs, SHAs, FIDs, paths, sibling ts). */
+  /**
+   * Free-form related context — the JSONL form of the retired `**Related:**`
+   * field. Holds ANY pointer that helps a later reader place this row: feature
+   * ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, sibling `ts`,
+   * and this row's OWN former ledger id (`KN-14`, `DE-7`) when it was migrated
+   * off the `.md` ledgers.
+   *
+   * Deliberately NOT split into an identity field vs a link field. The design's
+   * separate `aliases[]` ("I AM KN-14") was folded in here after the sequential
+   * `DE-{N}` scheme proved un-mintable under concurrency — two workflows read
+   * the same max from their own base commit and mint the same id, so an alias
+   * could not be a reliable identity anyway (9 collided in a live consumer
+   * ledger). `ts` is the id; everything else is a pointer.
+   */
   references?: string[];
-  /** This entry's OWN former id(s) — e.g. "KN-14", "DE-7". */
-  aliases?: string[];
   /**
    * Explicit written-once logical key for instinct-loop kinds
    * (friction / deferral / failure / knowledge / decision).
@@ -93,6 +102,28 @@ export const VALID_KINDS: Set<string> = new Set([
   "knowledge",
   "decision",
 ]);
+
+/**
+ * Triage severity — carried by the three author-written kinds whose rows are
+ * triaged by a human or a later agent (friction / deferral / failure).
+ *
+ * Deliberately the SAME vocabulary the challenge + audit prompts already assign
+ * to their findings, so `@bkit-build-challenge-remediate` passes a blocked
+ * finding's severity straight through to its deferral row instead of re-deriving
+ * it. NOT the preflight `blocker`/`advisory` scale (that gates `bkit install`,
+ * a different axis), and NOT the pre-JSONL `critical|normal|low` scale — the
+ * latter's authored distribution collapsed to its default (19 low / 2 normal /
+ * 0 critical of 21 rows in the old `docs/pending.md`), carrying no signal.
+ *
+ * Absent on machine-generated kinds (compliance / outcome / counter) and on
+ * knowledge / decision, which have no triage severity.
+ */
+export type TelemetrySeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+export const VALID_SEVERITIES: Set<string> = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+
+/** Kinds that carry `severity`. Keep in sync with the payload interfaces below. */
+export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "failure"]);
 
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
@@ -176,6 +207,8 @@ export interface FrictionPayload {
     | "destructive-backout"
     | "other";
   scope: "bkit-repo" | "consumer" | "universal";
+  /** How much this friction hurts — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
   description: string;
   remediation?: string;
   recovery?: string;
@@ -189,6 +222,8 @@ export interface FrictionPayload {
 export interface DeferralPayload {
   type: "issue" | "feature";
   category: string;
+  /** Triage severity of the deferred work — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
   description: string;
   remediation?: string;
   source?: string;
@@ -198,6 +233,8 @@ export interface DeferralPayload {
 // failure — keyed by explicit `key` field
 export interface FailurePayload {
   summary?: string;
+  /** Triage severity of the discovered bug — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
   description: string;
   rootCause?: string;
   remediation?: string;
@@ -308,6 +345,23 @@ export function validate(event: unknown): ValidationResult {
 
   // kind-specific payload validation (minimal — structural check)
   const kind = e["kind"] as TelemetryKind;
+
+  // severity — required on the triaged author-written kinds, rejected elsewhere.
+  // Enforced on write only; `parse` stays tolerant so pre-severity rows still read.
+  if (SEVERITY_KINDS.has(kind)) {
+    if (e["severity"] === undefined || e["severity"] === null) {
+      return { ok: false, reason: `${kind} row missing required field: severity` };
+    }
+    if (!VALID_SEVERITIES.has(e["severity"] as string)) {
+      return {
+        ok: false,
+        reason: `${kind} severity must be one of CRITICAL|HIGH|MEDIUM|LOW (got: ${String(e["severity"])})`,
+      };
+    }
+  } else if (e["severity"] !== undefined) {
+    return { ok: false, reason: `${kind} rows do not carry severity` };
+  }
+
   if (kind === "compliance") {
     if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
       return { ok: false, reason: "compliance row missing required payload fields" };

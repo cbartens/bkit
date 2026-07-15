@@ -351,9 +351,9 @@ expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).to
 
 Always assert at least one positive signal (a known log prefix like `[bkit-install]`, an exit code 0 with reason in the failure message, or a written-file existence) — otherwise a binary-not-found exit-1 would pass vacuously.
 
-## Filesystem consumer-repo boundary pattern (#234 WS-4)
+## Filesystem consumer-repo boundary pattern (#234 WS-4, amended #343)
 
-Integration tests that verify the harvest copy-only invariant use a real temporary directory (`os.tmpdir()`) with actual `fs.stat` and `fs.readFileSync` ground-truth — NO mocks. Pattern:
+Integration tests that verify the harvest boundary use a real temporary directory (`os.tmpdir()`) with actual `fs.stat` and `fs.readFileSync` ground-truth — NO mocks. Pattern:
 
 1. `fs.mkdtempSync` → create a temp consumer repo tree.
 2. Write known JSONL content to `consumerPath/.bkit/stats.jsonl` (the test fixture).
@@ -361,7 +361,11 @@ Integration tests that verify the harvest copy-only invariant use a real tempora
 4. Run `runHarvest(bkitRoot)`.
 5. `snapshotFile(srcPath)` → record AFTER harvest.
 6. Assert `fileUnchanged(before, after)` — content and size must be byte-identical; this is the ground-truth boundary assertion.
-7. Assert the bkit central store (`.bkit/harvest/stats.jsonl`) gained the expected rows.
+7. Assert the bkit central store (`harvest/stats.jsonl`) gained the expected rows.
+
+**The invariant is per-file, not global (#343).** `stats.jsonl` is copy-only and MUST satisfy step 6. `friction.jsonl` is a MOVE: harvest prunes rows from the consumer once they are durably in the store, so `fileUnchanged` is `false` for it by design. A test asserting the copy-only invariant across both files encodes a contract that no longer exists.
+
+Because pruning makes the store the only copy of a harvested row until it is committed, the destructive half needs property tests, not just a happy path: the store accumulates across runs (never cleared), malformed lines are never pruned, and rows absent from the store are left in place. See `bkit-harvest.integration.test.ts` for the canonical example.
 
 This pattern applies to ANY test that verifies a read-only invariant against a real filesystem object. The assertions in step 6 MUST be `fileUnchanged` (content and size) — "mtime did not change" is weaker (filesystem can preserve mtime on read) and is captured by the content check. The test MUST use `afterEach(() => fs.rmSync(tmpDir, { recursive: true }))` to clean up. See `bkit-harvest.integration.test.ts` for the canonical example.
 

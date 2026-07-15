@@ -39,6 +39,9 @@ export const VALID_KINDS = new Set([
     "knowledge",
     "decision",
 ]);
+export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+/** Kinds that carry `severity`. Keep in sync with the payload interfaces below. */
+export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors bkit-status.ts's tuple dedupe approach.
@@ -95,6 +98,22 @@ export function validate(event) {
     }
     // kind-specific payload validation (minimal — structural check)
     const kind = e["kind"];
+    // severity — required on the triaged author-written kinds, rejected elsewhere.
+    // Enforced on write only; `parse` stays tolerant so pre-severity rows still read.
+    if (SEVERITY_KINDS.has(kind)) {
+        if (e["severity"] === undefined || e["severity"] === null) {
+            return { ok: false, reason: `${kind} row missing required field: severity` };
+        }
+        if (!VALID_SEVERITIES.has(e["severity"])) {
+            return {
+                ok: false,
+                reason: `${kind} severity must be one of CRITICAL|HIGH|MEDIUM|LOW (got: ${String(e["severity"])})`,
+            };
+        }
+    }
+    else if (e["severity"] !== undefined) {
+        return { ok: false, reason: `${kind} rows do not carry severity` };
+    }
     if (kind === "compliance") {
         if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
             return { ok: false, reason: "compliance row missing required payload fields" };

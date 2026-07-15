@@ -533,11 +533,16 @@ Usage:
                                  rows to .bkit/stats.jsonl. Fail-open: always exits 0.
                                  Valid phases: design, plan, build, debug, ship.
   bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
-                                 and .bkit/friction.jsonl into .bkit/harvest/ (COUNT-ONLY
+                                 and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
                                  for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from .bkit/consumers.md. Never
-                                 writes to any consumer repo. Deduplicates by per-kind
-                                 composite identity. Advisory + fail-open: exits 0.
+                                 Reads consumer paths from .bkit/consumers.md.
+                                 DESTRUCTIVE: harvested friction rows are REMOVED from
+                                 the consumer, but only after they are fsync'd and read
+                                 back from harvest/. stats.jsonl is never modified.
+                                 harvest/ accumulates and is never cleared — commit it,
+                                 as it is the only record of pruned rows. Never commits
+                                 in any repo. Deduplicates by per-kind composite
+                                 identity. Advisory + fail-open: exits 0.
   bkit telemetry migrate [--dry-run]
                                  Migrate docs/knowledge.md + docs/decisions.md to
                                  docs/knowledge.jsonl + docs/decisions.jsonl (kind:"knowledge"
@@ -553,7 +558,7 @@ Usage:
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, and per-rule compliance
                                  rate over kind:"compliance" rows. Reads from
-                                 .bkit/harvest/ and .bkit/stats.jsonl. Advisory +
+                                 harvest/ and .bkit/stats.jsonl. Advisory +
                                  inform-only: exits 0.
   bkit help                     Print this message.
 
