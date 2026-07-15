@@ -21,3 +21,21 @@
 ---
 
 _Note for this design (#342):_ #341 is the parent runtime-portability effort. #342's scope is narrower and orthogonal — the untrusted-content **contract** (prose rule + coverage + enforcement) across `rules.md`, workflow headers, and leaf prompts. #342 explicitly cross-references (does not re-track) #341's structural mitigations: narrowest-scoped token (§6f) and the D1 skip-token-free merge-body guard (§6d).
+
+---
+
+## Plan-phase re-run (Step 3.1) — Search unavailable
+
+**Everything above this line is the design-phase artifact, preserved verbatim.** The plan phase re-ran the related-issues
+search per its Step 3.1 contract and could not add to it:
+
+**Search unavailable.** `mcp__github__search_issues` returned `total_count: 0` for every query tried
+(`prompt injection untrusted rules enforcement in:title,body`, `injection untrusted in:title,body`,
+`repo:cbartens/bkit injection untrusted in:title,body`) **and** for the control probe `repo:cbartens/bkit bkit`,
+which must match. A control query returning zero proves the GitHub issue-search index is not serving this repo under the
+current token — this is **not** a genuine "no related issues" result. Treat any absence below as **missing context**, not
+as evidence that nothing related exists. Logged to `.bkit/friction.jsonl`
+(`plan-generate-search-issues-index-empty-private-repo`).
+
+Consequence for the plan: the #341 cross-references above are the known related context and are **carried from the design
+phase**, not re-confirmed by search. No new related issues were discoverable this run.
