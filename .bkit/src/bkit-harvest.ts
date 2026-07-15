@@ -67,7 +67,14 @@ export const HARVEST_DEST_DIR = "harvest";
 export interface HarvestConsumerResult {
   consumerPath: string;
   copiedRows: number;
+  /**
+   * Distinct ENTITIES per count-only ledger (same-key rows folded to one).
+   * This is the dimensional number: a triage pass that closes a deferral appends
+   * a second same-key row, which must not read as a second deferral.
+   */
   countOnlyRows: Record<string, number>;
+  /** Raw line count per count-only ledger. Diverges from countOnlyRows once rows are updated. */
+  countOnlyRawRows: Record<string, number>;
   malformedLineCount: number;
   skipped: boolean;
   skipReason?: string;
@@ -119,6 +126,7 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
     consumerPath,
     copiedRows: 0,
     countOnlyRows: {},
+    countOnlyRawRows: {},
     malformedLineCount: 0,
     skipped: false,
     prunedRows: {},
@@ -183,10 +191,17 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
     }
     const raw = fs.readFileSync(srcPath, "utf-8");
     const parsed = parse(raw);
-    result.countOnlyRows[filename] = parsed.events.length;
+    // Count ENTITIES, not lines. A row is not an entity: updating a deferral
+    // (triage closing it, adding references) appends a new same-key row, so a
+    // raw line count reports one deferral as two and inflates with every triage
+    // pass. `fold` collapses same-key rows to the current state — the thing the
+    // dimensional harvest is actually counting. See .bkit/jsonl.md § Updating a Row.
+    const folded = fold(parsed.events);
+    result.countOnlyRows[filename] = folded.size;
+    result.countOnlyRawRows[filename] = parsed.events.length;
     result.malformedLineCount += parsed.malformedLineCount;
     console.error(
-      `[bkit-harvest] ${consumerPath}/docs/${filename} — count-only: ${parsed.events.length} rows`,
+      `[bkit-harvest] ${consumerPath}/docs/${filename} — count-only: ${folded.size} entities (${parsed.events.length} rows)`,
     );
   }
 

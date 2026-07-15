@@ -335,6 +335,35 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     expect(fs.existsSync(harvestDeferralsPath)).toBe(false); // NOT copied
   });
 
+  // A consumer's triage pass closes a deferral by APPENDING a same-key row with
+  // status CLOSED (jsonl.md § Updating a Row). Counting raw lines would report
+  // that one deferral as two and inflate the dimensional counts with every pass.
+  it("counts ENTITIES not rows — a triage update does not inflate the count", () => {
+    const consumerPath = path.join(tmpDir, "consumer-triaged");
+    const opened = deferralRow(1_700_000_001_000, "defer-1");
+    // triage: same key, later ts, now closed + carrying a reference to the PR
+    const closed = makeRow("deferral", 1_700_000_009_000, {
+      key: "defer-1",
+      type: "issue",
+      category: "agentic",
+      description: "test deferral",
+      status: "CLOSED",
+      references: ["PR-412"],
+    });
+    const untouched = deferralRow(1_700_000_001_001, "defer-2");
+
+    makeConsumerRepo(consumerPath, {
+      ".bkit/stats.jsonl": statsRow(1_700_000_000_001) + "\n",
+      "docs/deferrals.jsonl": [opened, closed, untouched].join("\n") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const res = harvestConsumer(consumerPath, bkitRoot);
+
+    // 3 rows on disk, but only 2 real deferrals
+    expect(res.countOnlyRawRows["deferrals.jsonl"]).toBe(3);
+    expect(res.countOnlyRows["deferrals.jsonl"]).toBe(2);
+  });
+
   it("does not copy .env or any file outside the named .jsonl ledgers", () => {
     const consumerPath = path.join(tmpDir, "consumer-secret");
     makeConsumerRepo(consumerPath, {

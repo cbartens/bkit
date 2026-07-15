@@ -143,6 +143,12 @@ A row is a fact at a point in time, not a final answer. These fields are EXPECTE
 
 Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry into two.
 
+**Triage** (a consumer sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that is now done) is exactly this operation: for each entry that has moved on, append a same-`key` row with `status: "CLOSED"`, the `references` you now have (the PR, the commit, the issue that closed it), and a re-triaged `severity` if it turned out to matter more or less. The old row stays put.
+
+Appending rather than editing is what makes the close DATABLE: the entry's own `ts` is when it was raised, the closing row's `ts` is when it was resolved, so "how long did this stay open" and "time between a failure and its fix" fall out of the ledger — the reason `ts` is the id in the first place. Editing `status` in place throws that away: you get a `CLOSED` with no idea when, and no trail of what closed it.
+
+Readers count ENTITIES, never lines — `fold` first. Two rows sharing a `key` are one deferral with a history, not two deferrals.
+
 Editing the prior line instead breaks two things at once: every ledger resolves `merge=union` (`git check-attr merge …`), so when two branches edit the same row the union keeps BOTH edited versions — and since they share a `ts`, the fold cannot tell which one won. Appending is conflict-free under union by construction.
 
 ## Identity / Dedup
