@@ -184,23 +184,17 @@ description: "Ship Feature — Autonomous merge and archive"
    Format `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug <=3 tokens, kebab, lowercase. No strict regex assert.
    <!-- bkit:tracker false end -->
 8. <!-- bkit:tracker github start -->
-
    Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-
    Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker github start -->
-
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-
 9. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -585,17 +579,14 @@ description: "Ship Feature — Autonomous merge and archive"
 9. Route:
    - **If** `state` = MERGED → Step 9.
    - **If** `state` != MERGED — run counter-bus routing:
-
      ```bash
      REPO_ROOT=$(git rev-parse --show-toplevel)
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
      decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path 2>/dev/null
      ```
-
      - **If** exit 0 (printed `step-7`) → Step 7.
      - **If** exit 1 (printed `failure-path`) → **Failure Path**.
-
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Merge PR
@@ -1074,55 +1065,39 @@ description: "Ship Feature — Autonomous merge and archive"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 5. <!-- bkit:tracker github start -->
-
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`. Do NOT set Done.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker github start -->
-
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-
 6. <!-- bkit:tracker true start -->
-
    Build `{ARTIFACTS}` link list:
-
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/ship-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
    printf '%s\n' "$ARTIFACTS"
    ```
-
    <!-- bkit:tracker true end -->
-
 7. <!-- bkit:tracker github start -->
-
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-
    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-
    `{BODY}` = fenced block below:
-
    ```comment
    ### Step 13 — Close Workflow
    Artifacts:
    {ARTIFACTS}
    ```
-
    <!-- bkit:tracker true end -->
-
 8. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
    <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})

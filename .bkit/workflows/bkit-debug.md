@@ -185,7 +185,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
    - **If** any `debug-failure-soak` step recorded for the current `DEBUG_ATTEMPT` → `DEBUG_MODE` = SOAK.
    - Otherwise run counter-bus routing for `DEBUG_ATTEMPT >= MAX_DEBUG_ATTEMPT` check:
-
      ```bash
      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
@@ -194,10 +193,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      THRESHOLD=$((MAX_DEBUG_ATTEMPT - 1))
      decide_next DEBUG_ATTEMPT "$DEBUG_ATTEMPT" "$THRESHOLD" NORMAL SOAK 2>/dev/null
      ```
-
      - **If** exit 0 (printed `NORMAL`) → `DEBUG_MODE` = NORMAL.
      - **If** exit 1 (printed `SOAK`) → `DEBUG_MODE` = SOAK.
-
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
     <!-- bkit:tracker github start -->
@@ -210,23 +207,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     Format `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug <=3 tokens, kebab, lowercase. No strict regex assert.
     <!-- bkit:tracker false end -->
 11. <!-- bkit:tracker github start -->
-
     Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-
     Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker github start -->
-
     **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-
     No-op (log `Board status carried by issue state — no separate update.`).
     <!-- bkit:tracker linear end -->
-
 12. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
@@ -426,14 +417,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` > 1 → Step 8.
    - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` = 1 → Step 9.
    - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL — run counter-bus routing:
-
      ```bash
      REPO_ROOT=$(git rev-parse --show-toplevel)
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
      decide_next NORMAL_ATTEMPT "$NORMAL_ATTEMPT" "$MAX_NORMAL_ATTEMPT" step-4 soak-escalation 2>/dev/null
      ```
-
      - **If** exit 0 (printed `step-4`) → Step 4.
      - **If** exit 1 (printed `soak-escalation`) — NORMAL exhausted; final SOAK escalation:
        ```bash
@@ -443,19 +432,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        counter_reset SOAK_ATTEMPT
        ```
        → set `DEBUG_MODE` = SOAK, `SOAK_ATTEMPT` reset to 0 → Step 4.
-
    - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK — run counter-bus routing:
-
      ```bash
      REPO_ROOT=$(git rev-parse --show-toplevel)
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
      check_max SOAK_ATTEMPT "$SOAK_ATTEMPT" "$MAX_SOAK_ATTEMPT" 2>/dev/null
      ```
-
      - **If** exit 0 (within budget) → Step 4.
      - **If** exit 1 (SOAK exhausted) → **Failure Path**.
-
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Run Tests
@@ -1181,23 +1166,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
    ```
 10. <!-- bkit:tracker github start -->
-
     No issue changes.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-
     Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review" })`.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker github start -->
-
     **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-
     No-op (log `Board status carried by issue state — no separate update.`).
     <!-- bkit:tracker linear end -->
-
 11. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
     <!-- bkit:tracker github start -->
     `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
@@ -1209,29 +1188,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
     <!-- bkit:tracker true end -->
 12. <!-- bkit:tracker true start -->
-
     Build `{ARTIFACTS}` link list:
-
     ```bash
     RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=$(git branch --show-current)
     ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/debug-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
     printf '%s\n' "$ARTIFACTS"
     ```
-
     <!-- bkit:tracker true end -->
-
 13. <!-- bkit:tracker github start -->
-
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-
     `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker true start -->
-
     `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
-
     ```comment
     ### Step 10 — Close Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -1240,9 +1211,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     Artifacts:
     {ARTIFACTS}
     ```
-
     <!-- bkit:tracker true end -->
-
 14. Final return: Display `debug-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
     <!-- bkit:tracker true start -->
     Append issue link [{ISSUE_ID} {TITLE}]({URL})

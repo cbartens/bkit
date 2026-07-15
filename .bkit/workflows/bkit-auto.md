@@ -92,36 +92,26 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
      <!-- bkit:tracker github start -->
-
     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
-
     ```html
     <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
     ```
-
     **If** marker missing or malformed → **Failure Path**.
      <!-- bkit:tracker github end -->
      <!-- bkit:tracker linear start -->
-
     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
-
     ```html
     <!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
     ```
-
     **If** marker missing or malformed → **Failure Path**.
      <!-- bkit:tracker linear end -->
      <!-- bkit:tracker false start -->
-
     Parse `FID` from marker below:
-
     ```html
     <!-- bkit:fid={FID} -->
     ```
-
     **If** marker missing or malformed → **Failure Path**.
      <!-- bkit:tracker false end -->
-
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
