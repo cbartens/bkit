@@ -168,23 +168,17 @@ One deferral, three rows, in append order — raised, analysed, closed (envelope
 { "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["BAR-131", "#268", "PR-412", "e93da12"] }
 ```
 
-Same `key` throughout — that is what makes them one entry. `fold` returns only the third; the first two are the history. Note what each append bought: `severity` rose on re-triage, `remediation` appeared once someone worked it out, `references` accumulated (`#268` at triage, the PR and SHA at close), and the three `ts` values give "37 days sitting unanalysed, then 31 more to fix" — none of which survives editing one line in place.
+Same `key` throughout is what makes them one entry; `fold` returns only the third, the first two are the history. Each append bought something real: `severity` rose on re-triage, `remediation` appeared once someone worked it out, `references` accumulated (`#268` at triage, the PR and SHA at close) — and the three `ts` values give "37 days sitting unanalysed, then 31 more to fix," which editing one line in place would lose entirely. This is also what makes a close DATABLE: entry `ts` = raised, closing row's `ts` = resolved, so "how long open" / "time to fix" fall out of the ledger — the reason `ts` is the id at all.
 
 **Triage** (a consumer sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that is now done) is exactly this operation: for each entry that has moved on, append a same-`key` row with `status: "CLOSED"`, the `references` you now have (the PR, the commit, the issue that closed it), and a re-triaged `severity` if it turned out to matter more or less. The old row stays put.
 
-**`TRIAGED` is the state between**, and it is shared by all three triaged kinds — `friction`, `deferral`, `failure`. Exactly the trio that carries `severity`, for the same reason: these are the kinds that describe OPEN WORK someone has to look at.
-
-Analysing something and fixing it are different events, often months apart: a sweep can establish exactly what an entry is, and where its fix belongs, while closing nothing. Recording that as `CLOSED` is a lie, and leaving it `OPEN` throws away the analysis and invites the next sweep to redo it. Hence the ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not yet fixed) -> `CLOSED` (dealt with — fixed, refuted, or established as not ours to fix). Append `TRIAGED` exactly like a close, carrying the disposition in `references`: the issue, the `Fix N` it maps to, or why it is not ours. A diagnosed bug is not a fixed bug.
+**`TRIAGED` is the state between**, shared by all three triaged kinds — `friction`, `deferral`, `failure` — the trio that carries `severity` because these describe OPEN WORK someone has to look at. Analysing something and fixing it are different events, often months apart: recording an analysed-but-unfixed entry as `CLOSED` is a lie; leaving it `OPEN` throws away the analysis and invites the next sweep to redo it. Hence the ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not yet fixed) -> `CLOSED` (fixed, refuted, or established as not ours to fix). Append `TRIAGED` exactly like a close, carrying the disposition in `references`: the issue, the `Fix N` it maps to, or why it is not ours. A diagnosed bug is not a fixed bug — and this extends the datability above: raised -> triaged -> closed distinguishes "sat unanalysed" from "known but unfixed," which a single `OPEN`/`CLOSED` pair cannot.
 
 **`TRIAGED` IS STILL OPEN WORK.** Any reader counting open entries — a CI gate on open `CRITICAL` failures, an audit debt lens, an age report — MUST count it. Only `CLOSED` is done; test `status != "CLOSED"`, never `status == "OPEN"` (`isOpenWork()` in the codec). Getting this backwards silently retires work the moment someone looks at it — the exact failure `TRIAGED` exists to prevent.
 
 Not on `knowledge` (no status — a lesson is not work) or `decision` (`ACTIVE`/`SUPERSEDED` is a lifecycle, a different axis).
 
-Appending rather than editing is what makes the close DATABLE: the entry's own `ts` is when it was raised, the closing row's `ts` is when it was resolved, so "how long did this stay open" and "time between a failure and its fix" fall out of the ledger — the reason `ts` is the id in the first place. Editing `status` in place throws that away: you get a `CLOSED` with no idea when, and no trail of what closed it. `TRIAGED` extends the same property to the analysis: raised -> triaged -> closed gives "how long did this sit unanalysed" and "how long from knowing to fixing" — two different failures that a single `OPEN`/`CLOSED` pair cannot tell apart.
-
-Readers count ENTITIES, never lines — `fold` first. Two rows sharing a `key` are one deferral with a history, not two deferrals.
-
-Editing the prior line instead breaks two things at once: every ledger resolves `merge=union` (`git check-attr merge …`), so when two branches edit the same row the union keeps BOTH edited versions — and since they share a `ts`, the fold cannot tell which one won. Appending is conflict-free under union by construction.
+Readers count ENTITIES, never lines — `fold` first; two rows sharing a `key` are one deferral with a history, not two. This is also why appending beats editing under version control: every ledger resolves `merge=union` (`git check-attr merge …`), so two branches editing the same row would both survive the union — and since they share a `ts`, fold cannot tell which won. Appending is conflict-free under union by construction.
 
 ## These Ledgers Are Inputs, Not a Diary
 
@@ -213,7 +207,7 @@ Identity is this tuple, NOT bare `ts`:
 An identity match means the two rows describe the SAME thing — it does NOT by itself mean skip:
 
 - **Nothing changed** -> skip. A byte-identical re-log is noise.
-- **Something changed** (see § Updating a Row) -> **APPEND**. That is how state advances; `fold()` keeps the newest per identity and the older rows remain as history.
+- **Something changed** -> **APPEND** (mechanics: § Updating a Row).
 
 Treating every identity match as a duplicate silently freezes each entry at its first write — no closure, no recurrence, and `confidence` / `lastConfirmed` / `recurrenceCount` stay forever unpopulated.
 
