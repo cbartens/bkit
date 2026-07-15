@@ -184,13 +184,14 @@ Readers count ENTITIES, never lines — `fold` first.
 
 ## Migrated Rows Are Not Evidence On Every Axis
 
-Rows imported by `bkit telemetry migrate` from the legacy `friction.md` carry transport values on three
+Rows imported by `bkit telemetry migrate` from the legacy `friction.md` carry transport values on some
 axes. Measured on `harvest/friction.jsonl` (2026-07-15, 257 rows / 156 entities) — read these before
 ranking anything by them:
 
-- **`ts` is the migration time, not the incident time.** All 257 rows span 2026-07-13..15, the migration
-  window. The real date survives only as a prose prefix in `summary` (`"2026-05-30 — ..."`), on 50 rows.
-  Do NOT rank by recency or compute rates from `ts` on migrated rows.
+- **`ts` is now the real incident date on migrated rows** — backfilled 2026-07-15 from the legacy heading
+  (`## Title (YYYY-MM-DD)`), which `parseTitleDate` reads and the row builder prefers over the synthetic
+  `baseTs + idx`. 183 of 257 rows were corrected; span is now 2026-05-24..2026-07-15. The 74 untouched are
+  live rows whose `ts` was already correct, plus 2 legacy entries whose heading carried no date.
 - **`severity` is `MEDIUM` on every migrated friction row.** `friction.md` never had the field, so
   `mapLegacySeverity` maps unknown -> neutral by design. It is a placeholder, NOT a triage judgement —
   do not read P0/P1 out of it. Re-triage on next touch.

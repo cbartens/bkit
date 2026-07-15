@@ -229,6 +229,7 @@ export function parseFrictionMd(content) {
             // The legacy friction.md format had no Severity field at all, so this is
             // always the unknown->neutral default rather than a migrated value.
             _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
+            entryTs: parseTitleDate(titleRaw),
             _scope: scope,
             _remediation: remediation,
             _status: status,
@@ -336,6 +337,32 @@ function extractField(body, fieldName) {
     const m = re.exec(body);
     return m ? m[1]?.trim() : undefined;
 }
+/**
+ * Incident time carried by a legacy heading, as unix ms — or undefined.
+ *
+ * `friction.md` used two conventions: the documented trailing `(YYYY-MM-DD)` and
+ * an ad-hoc leading `YYYY-MM-DD — `. Both are read.
+ *
+ * The heading is NOT rewritten here. `cleanTitle` already removes the trailing
+ * form, and the leading form is part of the title `stableKey` hashes — stripping
+ * it would re-key the row, so a re-migration would mint new entities instead of
+ * updating the existing ones.
+ */
+export function parseTitleDate(titleRaw) {
+    const m = /\((\d{4})-(\d{2})-(\d{2})\)\s*$/.exec(titleRaw) ?? /^(\d{4})-(\d{2})-(\d{2})\b/.exec(titleRaw);
+    if (!m)
+        return undefined;
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31)
+        return undefined;
+    const ms = Date.UTC(y, mo - 1, d);
+    // Date.UTC rolls invalid days over (Feb 31 -> Mar 3); reject rather than lie.
+    const back = new Date(ms);
+    if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) {
+        return undefined;
+    }
+    return ms;
+}
 function cleanTitle(title) {
     // Strip trailing " (superseded by KN-17, ...)" and "(YYYY-MM-DD)" markers
     return title
@@ -414,7 +441,7 @@ function buildDeferralRow(entry, opts) {
     const rawType = e._type ?? "issue";
     const type = rawType === "feature" ? "feature" : "issue";
     return {
-        ts: opts.baseTs + opts.idx,
+        ts: entry.entryTs ?? opts.baseTs + opts.idx,
         kind: "deferral",
         repo: opts.repo,
         bkitVersion: opts.bkitVersion,
@@ -461,7 +488,7 @@ function buildFrictionRow(entry, opts) {
     }
     const status = e._status === undefined ? undefined : parseLegacyStatus(e._status);
     return {
-        ts: opts.baseTs + opts.idx,
+        ts: entry.entryTs ?? opts.baseTs + opts.idx,
         kind: "friction",
         repo: opts.repo,
         bkitVersion: opts.bkitVersion,

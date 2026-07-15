@@ -32,6 +32,7 @@ import {
   parseLegacyStatus,
   runMigrate,
   type MigrateOptions,
+  parseTitleDate,
 } from "./bkit-telemetry-migrate.js";
 
 // Resolve repo root relative to this test file (.bkit/src/ -> repo root)
@@ -312,6 +313,51 @@ describe("real-corpus: parseFrictionMd parses bkit actual friction.md", () => {
 // ---------------------------------------------------------------------------
 // Test 2z: keys survive title truncation (#99 corpus-integrity triage)
 // ---------------------------------------------------------------------------
+
+describe("ts: legacy heading date is the fallback when the source carries no ts", () => {
+  it("reads the documented trailing (YYYY-MM-DD)", () => {
+    expect(parseTitleDate("Ship Step 5: merged PR with failing CI run (2026-05-24)")).toBe(
+      Date.UTC(2026, 4, 24),
+    );
+  });
+
+  it("reads the ad-hoc leading YYYY-MM-DD", () => {
+    expect(parseTitleDate("2026-05-30 — re-plan pre-worktree git add would sweep WIP")).toBe(
+      Date.UTC(2026, 4, 30),
+    );
+  });
+
+  it("returns undefined when the heading carries no date", () => {
+    expect(
+      parseTitleDate("Summary subagent wrote plan-summary.md to main checkout"),
+    ).toBeUndefined();
+  });
+
+  it("does not mistake a version or issue number for a date", () => {
+    expect(parseTitleDate("bkit upgrade 4.3.0 aborts (#341)")).toBeUndefined();
+  });
+
+  it("rejects an impossible date rather than rolling it over", () => {
+    expect(parseTitleDate("Something (2026-02-31)")).toBeUndefined();
+    expect(parseTitleDate("Something (2026-13-01)")).toBeUndefined();
+  });
+
+  it("trailing-date heading: cleanTitle still strips the date, so the key is unchanged", () => {
+    const [entry] = parseFrictionMd(
+      "## Ship Step 5: merged PR with failing CI run (2026-05-24)\n\n- **Category:** other\n",
+    );
+    expect(entry?.title).toBe("Ship Step 5: merged PR with failing CI run");
+    expect(entry?.entryTs).toBe(Date.UTC(2026, 4, 24));
+  });
+
+  it("leading-date heading: the date stays IN the title, so the key is unchanged", () => {
+    const [entry] = parseFrictionMd(
+      "## 2026-05-30 — re-plan pre-worktree sweep\n\n- **Category:** other\n",
+    );
+    expect(entry?.title).toBe("2026-05-30 — re-plan pre-worktree sweep");
+    expect(entry?.entryTs).toBe(Date.UTC(2026, 4, 30));
+  });
+});
 
 describe("migrate — friction keys survive title truncation", () => {
   // Verbatim from app-gether-life's real friction log. The two titles are
