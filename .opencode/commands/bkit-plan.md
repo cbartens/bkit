@@ -81,7 +81,7 @@ $ARGUMENTS
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if [ -f "$LOCK" ]; then
+   if ! (set -C; printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -96,10 +96,13 @@ $ARGUMENTS
        LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     else
+       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
+     (set -C; printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
@@ -237,7 +240,7 @@ $ARGUMENTS
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -283,7 +286,7 @@ $ARGUMENTS
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
-2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures from each.
 4. Update status and commit:
    ```bash
@@ -320,7 +323,7 @@ $ARGUMENTS
    Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'plan-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. Update status and commit:
    ```bash
@@ -363,7 +366,7 @@ $ARGUMENTS
      Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
-2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-scope-check-1.md` and `plan-scope-check-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `SCOPE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `SCOPE_FAILURES` = sum of failures from each.
 4. Update status and commit:
    ```bash
@@ -401,7 +404,7 @@ $ARGUMENTS
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
    Update: `docs/deferrals.jsonl` (APPEND scope expansions if any).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-v3-checked.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_SCOPE_VERDICT`. **If** `APPLY_SCOPE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'plan-v3-checked.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. Update status and commit:
    ```bash
@@ -440,7 +443,7 @@ $ARGUMENTS
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-complexity-check.md` until `<!-- verdict:end -->` → extract `Verdict` as `COMPLEXITY_VERDICT` (`SINGLE` = no split, `SPLIT` = partition required).
 4. Update status and commit:
    ```bash
@@ -478,7 +481,7 @@ $ARGUMENTS
    Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-1.md` ... `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-N.md` (children).
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `plan-v4-split.md` until `<!-- verdict:end -->` → extract `Verdict` as `SPLIT_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -522,7 +525,7 @@ $ARGUMENTS
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Read `plan-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Emit telemetry summary:
    ````bash
@@ -634,6 +637,8 @@ $ARGUMENTS
    trap 'rm -f "$DEVLOCK"' EXIT
    git checkout dev
    [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
+   STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
+   [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"
    STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/friction\.jsonl$' || true)

@@ -69,7 +69,7 @@
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md`.
-6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+6. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip ci]"`.
@@ -96,7 +96,7 @@
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if [ -f "$LOCK" ]; then
+   if ! (set -C; printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -111,10 +111,13 @@
        LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     else
+       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
+     (set -C; printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
@@ -529,7 +532,7 @@
    Context: You are a subagent in the Debug phase. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md`.
-4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 5. Read `debug-failure-diagnose-{NORMAL_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT` and `Mode` as `DIAGNOSE_MODE`.
 6. Update status and commit:
    ```bash
@@ -574,7 +577,7 @@
    Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-{NORMAL_ATTEMPT}-log.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -624,7 +627,7 @@
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-*-log.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-{NORMAL_ATTEMPT}-log.md`.
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Read `debug-failure-soak-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `SOAK_VERDICT`.
 5. Update status and commit:
    ```bash
@@ -714,7 +717,7 @@
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only), `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `debug-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Emit telemetry summary:
    ````bash

@@ -74,7 +74,7 @@ $ARGUMENTS
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
-6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+6. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): build aborted bkit [skip ci]"`.
@@ -114,7 +114,7 @@ $ARGUMENTS
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if [ -f "$LOCK" ]; then
+   if ! (set -C; printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -129,10 +129,13 @@ $ARGUMENTS
        LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     else
+       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
+     (set -C; printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
@@ -339,7 +342,7 @@ $ARGUMENTS
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `.agents/skills.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-install-skills.md`, `.agents/skills/` (skill installs via Bash).
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -384,7 +387,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
-4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 5. Read `build-plan-execute-{SUB_PLAN}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `EXECUTE_VERDICT`.
 6. Update status and commit:
    ```bash
@@ -424,7 +427,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
    Update:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
-10. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+10. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 11. Read `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
 12. Update status and commit:
     ```bash
@@ -489,7 +492,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
     Create:`docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
-20. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+20. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 21. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 22. Update status and commit:
     ```bash
@@ -529,7 +532,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
-2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `build-plan-verify-holistic.md` until `<!-- verdict:end -->` → extract `Verdict` as `HOLISTIC_VERDICT` and `Failures` as `HOLISTIC_FAILURES`.
 4. Update status and commit:
    ```bash
@@ -611,7 +614,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `build-challenge.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_VERDICT` and `Failures` as `CHALLENGE_FAILURES`. `CHALLENGE_VERDICT` must be in `PASS|CONCERNS|FAIL` (canonical challenge verdict; NO `BLOCK` / `WARN`).
 4. Update status and commit:
    ```bash
@@ -659,7 +662,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`.
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
 5. Update status and commit:
    ```bash
@@ -702,7 +705,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-tests.md`, test files.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `build-challenge-tests.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_TESTS_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -820,7 +823,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`.
    Create:`docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
-4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 5. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 6. Update status and commit:
    ```bash
@@ -861,7 +864,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source and test files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-remediate-{TEST_ATTEMPT}-log.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `build-failure-remediate-{TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -901,7 +904,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `build-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Emit telemetry summary:
    ````bash

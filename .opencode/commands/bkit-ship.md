@@ -72,7 +72,7 @@ $ARGUMENTS
      trap 'rm -f "$DEVLOCK"' EXIT
      git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
      git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" 2>/dev/null || true
-     git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" 2>/dev/null || true
+     git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" -- "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" 2>/dev/null || true
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    else
      echo "dev lock busy — ship FAILED status left uncommitted on dev; it rides along on the next dev push" >&2
@@ -96,7 +96,7 @@ $ARGUMENTS
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
-6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+6. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): ship aborted bkit [skip ci]"`.
@@ -123,7 +123,7 @@ $ARGUMENTS
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if [ -f "$LOCK" ]; then
+   if ! (set -C; printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -138,10 +138,13 @@ $ARGUMENTS
        LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     else
+       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
+     (set -C; printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
@@ -271,13 +274,17 @@ $ARGUMENTS
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-10. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ### Step 2 — Worktree Setup
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
-   ```
+10. 
+`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   
+`{BODY}` = fenced block below:
+
+```comment
+### Step 2 — Worktree Setup
+[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+[docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
+```
+
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -362,7 +369,7 @@ $ARGUMENTS
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Update: Conflicted source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
 4. **If** `RESOLVE_VERDICT` = PASS → `rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"`. **Else** → **Failure Path**.
 5. Update status and commit:
@@ -471,7 +478,13 @@ $ARGUMENTS
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
      (
        cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
-       git fetch origin dev
+       git fetch origin dev "feat/{FID}"
+       if [ "$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)" = "CONFLICTING" ] \
+          && git merge-tree --write-tree origin/dev "origin/feat/{FID}" >/dev/null 2>&1; then
+         echo "GitHub reports CONFLICTING but git merges origin/dev into feat/{FID} cleanly — refreshing the PR head to force a mergeability recompute" >&2
+         git -C "{WORKTREE_PATH}" merge origin/dev -m "chore({FID}): sync dev" \
+           && git -C "{WORKTREE_PATH}" push origin "feat/{FID}"
+       fi
        gh pr update-branch {PR_NUMBER} 2>/dev/null || true
        gh pr merge {PR_NUMBER} --squash --delete-branch \
          --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
@@ -535,7 +548,7 @@ $ARGUMENTS
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -586,7 +599,7 @@ $ARGUMENTS
    Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
-4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 6. Update status and commit:
    ```bash
@@ -700,7 +713,7 @@ $ARGUMENTS
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-4. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 5. Derive `UPDATE_DOCS_VERDICT`:
    ```bash
    COMPLETED_HIT=$(grep -c "docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/.*{FID}" docs/completed.md || echo 0)
@@ -723,7 +736,7 @@ $ARGUMENTS
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "docs({FID}): update-docs-summary"
+   git add -- docs/ && git commit --allow-empty -m "docs({FID}): update-docs-summary" -- docs/
    ```
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
@@ -758,11 +771,12 @@ $ARGUMENTS
 
 **Run only if** `state` = MERGED.
 
-1. Prune feature-specific skills — uninstall any `.agents/skills/` skills not listed in `.agents/skills.md` via the CLI (keeps `skills-lock.json` and `package.json` in sync):
+1. Prune feature-specific skills — uninstall any `.agents/skills/` skills not listed in `.agents/skills.md` via the CLI:
    ```bash
    for skill_dir in .agents/skills/*/; do
+     [ -d "$skill_dir" ] || continue
      skill=$(basename "$skill_dir")
-     grep -q "$skill" .agents/skills.md || npx skills remove "$skill" -y
+     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
    done
    ```
 2. Update status and commit:
@@ -773,7 +787,7 @@ $ARGUMENTS
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"ship", step:"ship-prune-skills", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): prune-skills"
+   git add -- docs/plans/{YYYYMM}/logs/{FID}/ .agents/skills skills-lock.json && git commit --allow-empty -m "chore({FID}): prune-skills" -- docs/plans/{YYYYMM}/logs/{FID}/ .agents/skills skills-lock.json
    ```
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
@@ -946,8 +960,8 @@ $ARGUMENTS
      --argjson coverage "$COVERAGE" \
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   git -C "$REPO_ROOT" add -A
-   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]"
+   git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }

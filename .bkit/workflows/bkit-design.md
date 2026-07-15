@@ -97,7 +97,7 @@ description: "Design Feature — Autonomous design phase"
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if [ -f "$LOCK" ]; then
+   if ! (set -C; printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -112,10 +112,13 @@ description: "Design Feature — Autonomous design phase"
        LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     else
+       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
+     (set -C; printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
@@ -315,7 +318,7 @@ description: "Design Feature — Autonomous design phase"
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
-3. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -359,7 +362,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -408,7 +411,7 @@ description: "Design Feature — Autonomous design phase"
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
-2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `design-review-1.md` and `design-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`).
 4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 5. **If** `REVIEW_VERDICT` = FAIL → **Failure Path**.
@@ -457,7 +460,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. Update status and commit:
    ```bash
@@ -503,7 +506,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 3. Read `design-v3-organised.md` until `<!-- verdict:end -->` → extract `Verdict` as `ORGANISE_VERDICT`. **If** `ORGANISE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path**.
 5. Update status and commit:
@@ -551,7 +554,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/design-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md`.
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Emit telemetry summary:
    ````bash
@@ -783,6 +786,8 @@ description: "Design Feature — Autonomous design phase"
    trap 'rm -f "$DEVLOCK"' EXIT
    git checkout dev
    [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
+   STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
+   [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"
    STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/friction\.jsonl$' || true)
