@@ -304,7 +304,6 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
     const scope = extractField(entryBody, "Scope") ?? "bkit-repo";
     const description = extractField(entryBody, "Description") ?? title;
     const remediation = extractField(entryBody, "Suggested fix");
-    const recovery = extractField(entryBody, "Recovery");
     const status = extractField(entryBody, "Status")?.replace(/`/g, "").trim();
     const confidenceStr = extractField(entryBody, "Confidence");
     const lastConfirmedStr = extractField(entryBody, "Last-confirmed");
@@ -313,7 +312,6 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
     const entry: ParsedEntry & {
       _scope?: string;
       _remediation?: string;
-      _recovery?: string;
       _status?: string;
       _source?: string;
       _workflow?: string;
@@ -344,7 +342,6 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
       _scope: scope,
       _remediation: remediation,
-      _recovery: recovery,
       _status: status,
       _confidence: confidenceStr,
       _lastConfirmed: lastConfirmedStr,
@@ -589,7 +586,6 @@ function buildFrictionRow(
   const e = entry as ParsedEntry & {
     _scope?: string;
     _remediation?: string;
-    _recovery?: string;
     _status?: string;
     _source?: string;
     _workflow?: string;
@@ -645,7 +641,6 @@ function buildFrictionRow(
     summary: entry.summary,
     description: e._description ?? entry.summary,
     remediation: e._remediation,
-    recovery: e._recovery,
     source: e._source,
     status,
     references: entry.references,

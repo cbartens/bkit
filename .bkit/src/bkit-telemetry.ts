@@ -260,10 +260,8 @@ export type TriageStatus = "OPEN" | "TRIAGED" | "CLOSED";
 
 export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 
-/** A row still needing work: anything not CLOSED, including TRIAGED. */
-export function isOpenWork(status: string | undefined): boolean {
-  return status !== "CLOSED";
-}
+/** The decision lifecycle — a separate axis from the triage ladder. */
+export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
@@ -364,7 +362,6 @@ export interface FrictionPayload {
   summary?: string;
   description: string;
   remediation?: string;
-  recovery?: string;
   /** Who observed it: agent | human | phase | orchestrator. Mirrors DeferralPayload.source. */
   source?: string;
   /**
@@ -533,6 +530,27 @@ export function validate(event: unknown): ValidationResult {
     }
   } else if (e["severity"] !== undefined) {
     return { ok: false, reason: `${kind} rows do not carry severity` };
+  }
+
+  // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
+  // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+  // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+  if (SEVERITY_KINDS.has(kind)) {
+    if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"] as string)) {
+      return {
+        ok: false,
+        reason: `${kind} status must be one of OPEN|TRIAGED|CLOSED (got: ${String(e["status"])})`,
+      };
+    }
+  } else if (kind === "decision") {
+    if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"] as string)) {
+      return {
+        ok: false,
+        reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+      };
+    }
+  } else if (e["status"] !== undefined) {
+    return { ok: false, reason: `${kind} rows do not carry status` };
   }
 
   if (kind === "compliance") {

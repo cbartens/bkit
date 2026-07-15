@@ -10,7 +10,6 @@ import {
   TRIAGE_STATUSES,
   VALID_KINDS,
   VALID_SEVERITIES,
-  isOpenWork,
   parseRemoteUrlToSlug,
   resolveGitSha,
   resolveRepoSlug,
@@ -111,6 +110,15 @@ function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
     key,
     severity: "HIGH" as const,
     description: "found a bug",
+    ...overrides,
+  } as TelemetryEvent;
+}
+
+function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("decision"),
+    key,
+    summary: "chose the boring option",
     ...overrides,
   } as TelemetryEvent;
 }
@@ -220,6 +228,55 @@ describe("severity — per-kind requirement + closed enum", () => {
     expect(r.reason).toContain("do not carry severity");
   });
 
+  it.each(["OPEN", "TRIAGED", "CLOSED"])("accepts triage status %j on the severity kinds", (s) => {
+    expect(validate({ ...deferralEvent("k"), status: s }).ok).toBe(true);
+  });
+
+  // The free-text statuses the legacy corpus carried (`WORKED_AROUND`, `Resolving`,
+  // a whole sentence) are exactly what this gate stops being written again.
+  it.each(["WORKED_AROUND", "Resolving", "resolved", "open", "ACTIVE", ""])(
+    "rejects off-ladder status %j on a severity kind",
+    (status) => {
+      const r = validate({ ...deferralEvent("k"), status });
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("OPEN|TRIAGED|CLOSED");
+    },
+  );
+
+  // decision is a different axis — the triage ladder must not leak onto it.
+  it.each(["ACTIVE", "SUPERSEDED"])("accepts decision status %j", (s) => {
+    expect(validate({ ...decisionEvent("k"), status: s }).ok).toBe(true);
+  });
+
+  it.each(["OPEN", "CLOSED", "TRIAGED"])("rejects triage status %j on a decision", (status) => {
+    const r = validate({ ...decisionEvent("k"), status });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("ACTIVE|SUPERSEDED");
+  });
+
+  it("rejects status on a kind that must not carry it", () => {
+    const r = validate({ ...complianceEvent(), status: "OPEN" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry status");
+  });
+
+  // parse() stays tolerant: 3 legacy rows carry free-text statuses and must still read.
+  it("parse still reads legacy free-text status rows", () => {
+    const legacy = JSON.stringify({
+      ts: 1_700_000_000_000,
+      kind: "friction",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.2.2",
+      step: "bkit-telemetry-migrate",
+      key: "legacy-free-text-status",
+      description: "d",
+      status: "WORKED_AROUND",
+    });
+    const res = parse(legacy);
+    expect(res.malformedLineCount).toBe(0);
+    expect(res.events).toHaveLength(1);
+  });
+
   // parse() must stay tolerant: the 44 rows written before this landed have no
   // severity and must still read. validate() gates writes only (appendLine).
   it("parse still reads pre-severity rows", () => {
@@ -256,7 +313,7 @@ describe("updating a row — supersede by same-key append", () => {
     const closed = frictionEvent("ship-blocked-by-hook", {
       ts: 1_700_000_009_999,
       status: "CLOSED",
-      recovery: "temp branch + FF-merge",
+      remediation: "commit via a temp branch, then FF-merge dev",
       recurrenceCount: 2,
     } as Partial<TelemetryEvent>);
 
@@ -264,10 +321,10 @@ describe("updating a row — supersede by same-key append", () => {
     expect(state.size).toBe(1);
     const current = [...state.values()][0] as TelemetryEvent & {
       status?: string;
-      recovery?: string;
+      remediation?: string;
     };
     expect(current.status).toBe("CLOSED");
-    expect(current.recovery).toBe("temp branch + FF-merge");
+    expect(current.remediation).toBe("commit via a temp branch, then FF-merge dev");
     // both rows remain on disk — the history the instinct loop folds over
     expect([logged, closed]).toHaveLength(2);
   });
@@ -305,26 +362,6 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
     expect([...SEVERITY_KINDS].sort()).toEqual(["deferral", "failure", "friction"]);
   });
 
-  it.each([
-    ["OPEN", true],
-    ["TRIAGED", true],
-    [undefined, true],
-    ["CLOSED", false],
-  ])("isOpenWork(%j) === %s", (status, expected) => {
-    expect(isOpenWork(status as string | undefined)).toBe(expected);
-  });
-
-  it("TRIAGED is open work — counting status==OPEN would drop it", () => {
-    const rows = [
-      deferralEvent("a", { status: "OPEN" } as Partial<TelemetryEvent>),
-      deferralEvent("b", { status: "TRIAGED" } as Partial<TelemetryEvent>),
-      deferralEvent("c", { status: "CLOSED" } as Partial<TelemetryEvent>),
-    ];
-    const open = rows.filter((r) => isOpenWork((r as { status?: string }).status));
-    expect(open).toHaveLength(2);
-    expect(open.map((r) => r.key)).toEqual(["a", "b"]);
-  });
-
   it("a triage sweep appends TRIAGED, and the entry stays open", () => {
     const raised = deferralEvent("k", { ts: 1_000, status: "OPEN" } as Partial<TelemetryEvent>);
     const triaged = deferralEvent("k", {
@@ -337,7 +374,6 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
     };
     expect(current.status).toBe("TRIAGED");
     expect(current.references).toEqual(["#412"]);
-    expect(isOpenWork(current.status)).toBe(true);
   });
 });
 

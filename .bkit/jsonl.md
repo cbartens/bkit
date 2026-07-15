@@ -61,7 +61,7 @@ Each `kind` lives in ONE file, written by specific processes:
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
 | `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at ship time, folded — not lines; per-cycle is the delta against the previous `outcome` row), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
-| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row). |
+| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row). |
 | `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
 | `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
@@ -151,7 +151,7 @@ These fields change after first write:
 | Field | Changes when |
 | --- | --- |
 | `status` | work closes (`OPEN` -> `CLOSED`), or a decision is `SUPERSEDED`. |
-| `recovery` / `remediation` | the workaround is found — usually AFTER the row was logged mid-workflow. |
+| `remediation` | the fix is known — usually AFTER the row was logged mid-workflow. |
 | `severity` | re-triage says it was worse or milder than first thought. |
 | `confidence` | the same thing recurs (raise) or is contradicted (lower). |
 | `lastConfirmed` | re-observed. |
@@ -176,7 +176,7 @@ Same `key` throughout makes them one entry; `fold` returns only the third. Each 
 
 **`TRIAGED`** is the state between, on all three triaged kinds (`friction`/`deferral`/`failure` — the trio carrying `severity`). The ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not yet fixed) -> `CLOSED` (fixed, refuted, or established as not ours). Append it exactly like a close, carrying the disposition in `references`: the issue, the `Fix N` it maps to, or why it is not ours.
 
-**`TRIAGED` IS STILL OPEN WORK.** Counting open entries — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"` (`isOpenWork()` in the codec). Only `CLOSED` is done.
+**`TRIAGED` IS STILL OPEN WORK.** Counting open entries — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
 
 Not on `knowledge` (no status) or `decision` (`ACTIVE`/`SUPERSEDED` is a lifecycle).
 

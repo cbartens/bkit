@@ -131,10 +131,8 @@ export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
  */
 export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
-/** A row still needing work: anything not CLOSED, including TRIAGED. */
-export function isOpenWork(status) {
-    return status !== "CLOSED";
-}
+/** The decision lifecycle — a separate axis from the triage ladder. */
+export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors bkit-status.ts's tuple dedupe approach.
@@ -206,6 +204,28 @@ export function validate(event) {
     }
     else if (e["severity"] !== undefined) {
         return { ok: false, reason: `${kind} rows do not carry severity` };
+    }
+    // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
+    // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+    // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+    if (SEVERITY_KINDS.has(kind)) {
+        if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"])) {
+            return {
+                ok: false,
+                reason: `${kind} status must be one of OPEN|TRIAGED|CLOSED (got: ${String(e["status"])})`,
+            };
+        }
+    }
+    else if (kind === "decision") {
+        if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"])) {
+            return {
+                ok: false,
+                reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+            };
+        }
+    }
+    else if (e["status"] !== undefined) {
+        return { ok: false, reason: `${kind} rows do not carry status` };
     }
     if (kind === "compliance") {
         if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
