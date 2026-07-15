@@ -237,6 +237,53 @@ describe("severity — per-kind requirement + closed enum", () => {
   });
 });
 
+// The spec previously said "skip if an identity-matching row already exists",
+// which forbade the same-key append the instinct loop is built on — so no ledger
+// ever accumulated a second same-key row and confidence/lastConfirmed/
+// recurrenceCount stayed permanently unpopulated. Updating is an APPEND.
+describe("updating a row — supersede by same-key append", () => {
+  it("a later same-key row wins the fold; the earlier one stays as history", () => {
+    const logged = frictionEvent("ship-blocked-by-hook", {
+      ts: 1_700_000_000_000,
+      status: "OPEN",
+    } as Partial<TelemetryEvent>);
+    const closed = frictionEvent("ship-blocked-by-hook", {
+      ts: 1_700_000_009_999,
+      status: "CLOSED",
+      recovery: "temp branch + FF-merge",
+      recurrenceCount: 2,
+    } as Partial<TelemetryEvent>);
+
+    const state = fold([logged, closed]);
+    expect(state.size).toBe(1);
+    const current = [...state.values()][0] as TelemetryEvent & {
+      status?: string;
+      recovery?: string;
+    };
+    expect(current.status).toBe("CLOSED");
+    expect(current.recovery).toBe("temp branch + FF-merge");
+    // both rows remain on disk — the history the instinct loop folds over
+    expect([logged, closed]).toHaveLength(2);
+  });
+
+  it("fold is last-wins by ts, not by file order", () => {
+    const newer = frictionEvent("k", { ts: 2_000, status: "CLOSED" } as Partial<TelemetryEvent>);
+    const older = frictionEvent("k", { ts: 1_000, status: "OPEN" } as Partial<TelemetryEvent>);
+    // pass out of order — ts must decide, not array position
+    const state = fold([newer, older]);
+    const current = [...state.values()][0] as TelemetryEvent & { status?: string };
+    expect(current.status).toBe("CLOSED");
+  });
+
+  it("a reworded key forks the entry instead of updating it", () => {
+    const a = frictionEvent("ship-blocked-by-hook", { ts: 1_000 } as Partial<TelemetryEvent>);
+    const b = frictionEvent("ship-blocked-by-precommit-hook", {
+      ts: 2_000,
+    } as Partial<TelemetryEvent>);
+    expect(fold([a, b]).size).toBe(2);
+  });
+});
+
 describe("validate — A2-mandatory envelope fields", () => {
   it("accepts a valid compliance event", () => {
     expect(validate(complianceEvent()).ok).toBe(true);

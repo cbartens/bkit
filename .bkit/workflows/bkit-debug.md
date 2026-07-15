@@ -922,7 +922,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `TEST_VERDICT` = PASS.
 
-1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`. To fill either in, APPEND a new row with the SAME `key` (never edit the logged line) — see `.bkit/jsonl.md` § Updating a Row.
 2. **If** `PUSH_MODE` = PR **and** `[verbose ci]` in PR title → strip the marker (with optional `bkit ` attribution prefix) from PR title:
    ```bash
    if [ "$PUSH_MODE" = "PR" ] && [ -n "$PR_NUMBER" ]; then

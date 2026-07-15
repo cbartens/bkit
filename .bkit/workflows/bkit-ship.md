@@ -975,7 +975,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 13 — Close Workflow
 
-1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`. To fill either in, APPEND a new row with the SAME `key` (never edit the logged line) — see `.bkit/jsonl.md` § Updating a Row.
 2. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
    ```bash
    pnpm bkit comply --phase ship || echo "[bkit-comply] grader unavailable, skipping"

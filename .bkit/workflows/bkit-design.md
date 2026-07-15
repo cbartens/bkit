@@ -754,7 +754,7 @@ description: "Design Feature — Autonomous design phase"
    cp "$DESIGN_FINAL" "$CANONICAL"
    [ -s "$CANONICAL" ] || { echo "Canonical empty: $CANONICAL" >&2; exit 1; }
    ```
-2. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+2. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`. To fill either in, APPEND a new row with the SAME `key` (never edit the logged line) — see `.bkit/jsonl.md` § Updating a Row.
 3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")

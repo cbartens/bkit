@@ -6,8 +6,9 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
-> - One row per line, append-only — NEVER mutate or reorder prior lines. ONE exception, `.bkit/friction.jsonl` under `bkit harvest` — see § Friction Is a Drained Queue.
-> - Before appending: Read the file, skip if an identity-matching row already exists.
+> - One row per line. NEVER edit or reorder a prior LINE — but a row's STATE is not frozen: you change it by appending a new same-`key` row. See § Updating a Row.
+> - Before appending: Read the file. Skip ONLY if an identity-matching row exists AND nothing has changed — a changed field is an update, NOT a duplicate.
+> - Rows are removed from `.bkit/friction.jsonl` by `bkit harvest`, and by nothing else — see § Friction Is a Drained Queue.
 > - Best-effort append — ALWAYS exit 0; NEVER gate workflows on telemetry success.
 
 ## Write Idiom
@@ -124,9 +125,29 @@ Where a kind has BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): 
 - NOT the `bkit install` preflight `blocker`/`advisory` scale — different axis, do not mix.
 - Pick the level the ROW earns, not the level that feels safe. A ledger where every row is `LOW` is exactly as useless as no severity at all — which is why the pre-JSONL `critical|normal|low` scale was retired (19 `low` / 2 `normal` / 0 `critical` across 21 rows).
 
+## Updating a Row
+
+A row is a fact at a point in time, not a final answer. These fields are EXPECTED to change after first write:
+
+<!-- prettier-ignore -->
+| Field | Changes when |
+| --- | --- |
+| `status` | work closes (`OPEN` -> `CLOSED`), or a decision is `SUPERSEDED`. |
+| `recovery` / `remediation` | the workaround is found — usually AFTER the row was logged mid-workflow. |
+| `severity` | re-triage says it was worse or milder than first thought. |
+| `confidence` | the same thing recurs (raise) or is contradicted (lower). |
+| `lastConfirmed` | re-observed. |
+| `recurrenceCount` | it happens again. |
+
+**Update by APPENDING a new row with the SAME `key` — never by editing the old line.** `fold()` sorts by `ts` and takes last-wins per identity, so the newest same-`key` row IS the current state, and the older rows stay as the history that makes `confidence` / `recurrenceCount` / interval-between-recurrences computable. A recurrence and an update are the same operation.
+
+Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry into two.
+
+Editing the prior line instead breaks two things at once: every ledger resolves `merge=union` (`git check-attr merge …`), so when two branches edit the same row the union keeps BOTH edited versions — and since they share a `ts`, the fold cannot tell which one won. Appending is conflict-free under union by construction.
+
 ## Identity / Dedup
 
-Skip an append when a row with the same identity tuple already exists (NOT bare `ts`):
+Identity is this tuple, NOT bare `ts`:
 
 <!-- prettier-ignore -->
 | Kind | Identity tuple |
@@ -135,6 +156,13 @@ Skip an append when a row with the same identity tuple already exists (NOT bare 
 | `outcome` | `(repo, prNumber)` |
 | `counter` | `(repo, workflow, parentSha, counterName)` |
 | `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` | `(kind, repo, key)` |
+
+An identity match means the two rows describe the SAME thing — it does NOT by itself mean skip:
+
+- **Nothing changed** -> skip. A byte-identical re-log is noise.
+- **Something changed** (see § Updating a Row) -> **APPEND**. That is how state advances; `fold()` keeps the newest per identity and the older rows remain as history.
+
+Treating every identity match as a duplicate silently freezes each entry at its first write — no closure, no recurrence, and `confidence` / `lastConfirmed` / `recurrenceCount` stay forever unpopulated.
 
 ## Versioning
 

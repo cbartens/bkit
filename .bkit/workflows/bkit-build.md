@@ -1163,7 +1163,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`. To fill either in, APPEND a new row with the SAME `key` (never edit the logged line) — see `.bkit/jsonl.md` § Updating a Row.
 2. `git fetch origin dev`.
    **EC-1 pre-flight** — detect a pre-existing open PR on this branch before attempting `gh pr create` (a blind `gh pr create` on a branch with an existing open PR errors, triggers retry, then Failure Path):
    ```bash
