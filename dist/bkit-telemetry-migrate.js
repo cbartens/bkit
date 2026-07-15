@@ -33,6 +33,25 @@ export function parseRelated(value) {
         .filter((s) => s.length > 0);
 }
 /**
+ * Map a legacy `**Status:**` value onto OPEN/CLOSED.
+ *
+ * The legacy field was free prose, not a token: `RESOLVED — closed by the bkit
+ * 3.3.0 upgrade`, `resolved (#453, 2026-06-03) — migration 20260603150000`,
+ * `partially-resolved — Phase 1 landed, Phase 2 open`. An exact-equality check
+ * (`raw === "resolved"`) silently defaults every one of those to OPEN, marking
+ * closed work as outstanding. Substring-match instead — the same rule the
+ * friction builder already used, now shared so the two cannot drift again.
+ *
+ * `partially-resolved` deliberately reads as OPEN: work remains. It is matched
+ * BEFORE the resolve check because it contains "resolv" as a substring.
+ */
+export function parseLegacyStatus(value) {
+    const raw = (value ?? "open").toLowerCase().replace(/`/g, "").trim();
+    if (/partial|in progress|in-progress|wip/.test(raw))
+        return "OPEN";
+    return /recover|resolv|clos|fix|done|complet/.test(raw) ? "CLOSED" : "OPEN";
+}
+/**
  * Map a legacy `**Severity:**` value onto the current enum.
  *
  * The retired scale was `critical | normal | low`; `normal` is the middle of a
@@ -135,6 +154,9 @@ export function parsePendingMd(content) {
         entries[entries.length - 1]._type = type;
         entries[entries.length - 1]._severity =
             severity;
+        // Was parsed and then discarded — the row builder emitted the title instead.
+        entries[entries.length - 1]._description =
+            description;
         entries[entries.length - 1]._workaround =
             workaround;
         entries[entries.length - 1]._source = source;
@@ -194,6 +216,9 @@ export function parseFrictionMd(content) {
             summary: title,
             detail: entryBody.length > 0 ? entryBody : undefined,
             category,
+            // Was parsed and then discarded — the row builder emitted the title instead.
+            _description: description,
+            _source: extractField(entryBody, "Source"),
             references: parseRelated(extractField(entryBody, "Related")),
             // The legacy friction.md format had no Severity field at all, so this is
             // always the unknown->neutral default rather than a migrated value.
@@ -257,6 +282,13 @@ function parseMdEntries(content, headingRe) {
         const rationale = extractField(body, "Why") ?? extractField(body, "Rationale");
         const rootCause = extractField(body, "Root cause");
         const fix = extractField(body, "Fix or rule");
+        // `Discarded:` -> DecisionPayload.alternatives. The payload field has existed
+        // since #234 but nothing ever populated it: 26 of bkit's 34 decision rows had
+        // their alternatives left as prose inside `description`.
+        const alternatives = extractField(body, "Discarded");
+        // `Superseded by: DE-12` is a POINTER to another entry, so it belongs in
+        // references (`status: SUPERSEDED` records the state; this records by what).
+        const supersededBy = extractField(body, "Superseded by");
         // Build summary from title (clean trailing date/supersession markers)
         const summary = cleanTitle(title);
         // Build detail from body (preserve for agent readability)
@@ -269,7 +301,11 @@ function parseMdEntries(content, headingRe) {
         // References: the entry's own legacy id FIRST, then everything its
         // `**Related:**` field pointed at. Both were dropped by the original
         // migration — the id survived in aliases[], the Related: graph did not.
-        const references = [id, ...parseRelated(extractField(body, "Related"))];
+        const references = [
+            id,
+            ...parseRelated(extractField(body, "Related")),
+            ...parseRelated(supersededBy),
+        ];
         entries.push({
             id,
             key: keySlug,
@@ -284,6 +320,8 @@ function parseMdEntries(content, headingRe) {
             fix,
             references,
         });
+        entries[entries.length - 1]._alternatives =
+            alternatives;
     }
     return entries;
 }
@@ -329,7 +367,11 @@ function buildKnowledgeRow(entry, opts) {
 }
 function buildDecisionRow(entry, opts) {
     const ts = opts.baseTs + opts.idx;
-    const statusValue = entry.status === "superseded" ? "SUPERSEDED" : "ACTIVE";
+    // Substring, not equality — `superseded by DE-12` / `superseded — …` are real
+    // legacy spellings and an exact match silently reports them as ACTIVE.
+    const statusValue = /supersed/i.test(entry.status ?? "")
+        ? "SUPERSEDED"
+        : "ACTIVE";
     return {
         ts,
         kind: "decision",
@@ -341,6 +383,7 @@ function buildDecisionRow(entry, opts) {
         references: entry.references,
         summary: entry.summary,
         rationale: entry.rationale,
+        alternatives: entry._alternatives,
         description: entry.detail,
         status: statusValue,
     };
@@ -349,8 +392,6 @@ function buildDeferralRow(entry, opts) {
     const e = entry;
     const rawType = e._type ?? "issue";
     const type = rawType === "feature" ? "feature" : "issue";
-    const rawStatus = (entry.status ?? "open").toLowerCase();
-    const status = rawStatus === "resolved" || rawStatus === "closed" ? "CLOSED" : "OPEN";
     return {
         ts: opts.baseTs + opts.idx,
         kind: "deferral",
@@ -362,10 +403,13 @@ function buildDeferralRow(entry, opts) {
         type,
         category: entry.category ?? "other",
         severity: e._severity ?? "MEDIUM",
-        description: entry.summary,
+        // Title -> summary, prose -> description. Emitting the title as `description`
+        // (and dropping the parsed prose) retained ~40% of the legacy content.
+        summary: entry.summary,
+        description: e._description ?? entry.summary,
         remediation: e._workaround,
         source: e._source,
-        status,
+        status: parseLegacyStatus(entry.status),
         references: entry.references,
     };
 }
@@ -394,11 +438,7 @@ function buildFrictionRow(entry, opts) {
         if (!isNaN(d))
             lastConfirmed = d;
     }
-    const status = e._status === undefined
-        ? undefined
-        : /recover|resolv|clos|fix|done/i.test(e._status)
-            ? "CLOSED"
-            : "OPEN";
+    const status = e._status === undefined ? undefined : parseLegacyStatus(e._status);
     return {
         ts: opts.baseTs + opts.idx,
         kind: "friction",
@@ -410,9 +450,12 @@ function buildFrictionRow(entry, opts) {
         category,
         scope,
         severity: e._severity ?? "MEDIUM",
-        description: entry.summary,
+        // Title -> summary, prose -> description (was emitting the title as description).
+        summary: entry.summary,
+        description: e._description ?? entry.summary,
         remediation: e._remediation,
         recovery: e._recovery,
+        source: e._source,
         status,
         references: entry.references,
         confidence,

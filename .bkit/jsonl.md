@@ -58,8 +58,8 @@ Each `kind` lives in ONE file, written by specific processes:
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
 | `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number`, `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
-| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"CLOSED"\|string?`. |
-| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"CLOSED"?`. |
+| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"CLOSED"\|string?`. |
+| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"CLOSED"?`. |
 | `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
@@ -82,6 +82,10 @@ Each `kind` lives in ONE file, written by specific processes:
 - Keep each item as the source wrote it; trailing qualifiers (`BAR-142 §A2`) are meaning, not noise.
 - **There is no separate identity field.** The design's `aliases[]` ("I AM `KN-14`") folded into `references` once sequential ids proved un-mintable — an id that two runs can both claim was never a reliable identity. `ts` is the id; everything in `references` is a pointer, including a legacy id.
 - Omit when there is genuinely nothing to point at. NEVER invent a link to fill the field.
+
+## Summary vs Description
+
+Where a kind has BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): `summary` = the short title, `description` = the actual prose. Putting the title in `description` and dropping the prose is a real data-loss bug that shipped once — the legacy `.md` migration retained ~40% of its source content that way. If you only have one sentence, it goes in `description`.
 
 ## Severity
 

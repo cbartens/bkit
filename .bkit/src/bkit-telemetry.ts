@@ -209,9 +209,13 @@ export interface FrictionPayload {
   scope: "bkit-repo" | "consumer" | "universal";
   /** How much this friction hurts — see TelemetrySeverity. */
   severity: TelemetrySeverity;
+  /** Short title. `description` carries the prose; without this the title has nowhere to live. */
+  summary?: string;
   description: string;
   remediation?: string;
   recovery?: string;
+  /** Who observed it: agent | human | phase | orchestrator. Mirrors DeferralPayload.source. */
+  source?: string;
   status?: "OPEN" | "CLOSED" | string;
   confidence?: number;
   lastConfirmed?: number;
@@ -224,6 +228,8 @@ export interface DeferralPayload {
   category: string;
   /** Triage severity of the deferred work — see TelemetrySeverity. */
   severity: TelemetrySeverity;
+  /** Short title. `description` carries the prose; without this the title has nowhere to live. */
+  summary?: string;
   description: string;
   remediation?: string;
   source?: string;

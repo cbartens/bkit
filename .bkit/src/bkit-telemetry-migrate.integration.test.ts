@@ -29,6 +29,7 @@ import {
   parseDecisionsMd,
   parsePendingMd,
   parseFrictionMd,
+  parseLegacyStatus,
   runMigrate,
   type MigrateOptions,
 } from "./bkit-telemetry-migrate.js";
@@ -143,9 +144,11 @@ const FIXTURE_DE_MD = `<!-- bkit:start -->
 ## DE-2: Second decision (2026-02-01)
 
 - **Category:** infra
-- **Status:** superseded
+- **Status:** superseded by DE-1 — revisited after the 4.0 cutover
 - **Decision:** another decision
 - **Why:** other reason
+- **Discarded:** the vendored fork, and doing nothing
+- **Superseded by:** DE-1
 - **Source:** human
 
 <!-- bkit:end -->
@@ -439,6 +442,104 @@ describe("migrate — happy path fixture", () => {
     // ...and its sibling has no Related: line at all, so it must not invent one.
     const withoutRelated = rows.find((r) => /pnpm normaliser/.test(r.description ?? ""));
     expect(withoutRelated?.references ?? []).toEqual([]);
+  });
+
+  // Defect B (#234): the deferral status parser used exact equality, so any status
+  // carrying qualifying prose silently defaulted to OPEN — marking closed work as
+  // outstanding. The friction builder in the same file already did this correctly.
+  // parseLegacyStatus is now shared so the two cannot drift apart again.
+  it.each([
+    ["resolved", "CLOSED"],
+    ["closed", "CLOSED"],
+    ["RESOLVED — closed by the bkit 3.3.0 upgrade", "CLOSED"],
+    ["resolved (#453, 2026-06-03) — migration 20260603150000", "CLOSED"],
+    ["`RECOVERED`", "CLOSED"],
+    ["fixed in #412", "CLOSED"],
+    ["open", "OPEN"],
+    ["deferred", "OPEN"],
+    // "partially-resolved" contains "resolv" but work remains — must stay OPEN.
+    ["partially-resolved — Phase 1 landed, Phase 2 open", "OPEN"],
+    ["in progress", "OPEN"],
+    [undefined, "OPEN"],
+  ])("parseLegacyStatus(%j) -> %s", (input, expected) => {
+    expect(parseLegacyStatus(input as string | undefined)).toBe(expected);
+  });
+
+  it("carries the legacy Description: prose into description, title into summary", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const deferrals = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { summary?: string; description?: string });
+
+    const factoryReset = deferrals.find((r) => /Factory-reset/.test(r.summary ?? ""));
+    expect(factoryReset).toBeDefined();
+    // description must be the **Description:** prose, NOT the heading
+    expect(factoryReset?.description).toContain("Full factory-reset is out-of-scope");
+    expect(factoryReset?.description).not.toBe(factoryReset?.summary);
+
+    const friction = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { summary?: string; description?: string });
+    expect(friction[0]?.summary).toContain("Ship Step 9");
+    expect(friction[0]?.description).toContain("Pre-commit hook refuses commits");
+  });
+
+  // DecisionPayload.alternatives has existed since #234 but nothing populated it:
+  // `Discarded:` was never parsed, so 26 of bkit's 34 decision rows left their
+  // alternatives as prose inside description. `Superseded by:` is a pointer and
+  // belongs in references. The status check here was exact-equality too, so
+  // "superseded by DE-1 — …" silently reported ACTIVE.
+  it("carries Discarded: into alternatives and Superseded by: into references", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "decisions.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            references?: string[];
+            alternatives?: string;
+            status?: string;
+            summary?: string;
+          },
+      );
+
+    const de2 = rows.find((r) => (r.references ?? []).includes("DE-2"));
+    expect(de2).toBeDefined();
+    expect(de2?.alternatives).toContain("vendored fork");
+    // `Superseded by: DE-1` is a pointer -> references
+    expect(de2?.references).toContain("DE-1");
+    // prose-qualified status must still resolve to SUPERSEDED, not ACTIVE
+    expect(de2?.status).toBe("SUPERSEDED");
+
+    // DE-1 has no Discarded: line — must not invent one
+    const de1 = rows.find(
+      (r) => (r.references ?? []).includes("DE-1") && r.summary === "First decision",
+    );
+    expect(de1?.alternatives).toBeUndefined();
+    expect(de1?.status).toBe("ACTIVE");
   });
 
   it("maps the legacy Severity: scale onto CRITICAL|HIGH|MEDIUM|LOW", async () => {
