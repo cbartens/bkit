@@ -427,23 +427,12 @@
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Emit telemetry summary read (count/size/fold-time + signal lines):
-   ```bash
+   ````bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   if [ -f "$STATS" ]; then
-     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
-     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
-     FOLD_START=$(date +%s%N 2>/dev/null || echo 0)
-     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
-     FOLD_END=$(date +%s%N 2>/dev/null || echo 0)
-     FOLD_MS=$(( (FOLD_END - FOLD_START) / 1000000 )) 2>/dev/null || FOLD_MS=0
-     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
-     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | fold-time: ~${FOLD_MS}ms | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
-     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
-   else
-     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
-   fi
-   ```
+   SUMMARY="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"
+   TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=design 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
+   printf '\n## Telemetry Summary\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY"
+   ````
 6. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -582,7 +571,7 @@
    cp "$DESIGN_FINAL" "$CANONICAL"
    [ -s "$CANONICAL" ] || { echo "Canonical empty: $CANONICAL" >&2; exit 1; }
    ```
-2. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+2. Sweep `.bkit/friction.jsonl` for current workflow entries → ensure each has valid `Recovery` and `Status`. To fill either in, APPEND a new row with the SAME `key` (never edit the logged line) — see `.bkit/jsonl.md` § Updating a Row.
 3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -593,7 +582,7 @@
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   BKIT_VER=$(cat "$REPO_ROOT/.bkit/version" 2>/dev/null | grep '"version"' | grep -oE '"[0-9]+\.[0-9]+\.[0-9]+"' | tr -d '"' || echo "unknown")
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"  # key is pinnedVersion, NOT version; and a pipeline's status is its LAST command's, so a `| tr ... || echo` fallback never fires on a failed grep
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    jq -nc \
      --arg repo "$REPO_SLUG" \
