@@ -143,6 +143,17 @@ A row is a fact at a point in time, not a final answer. These fields are EXPECTE
 
 Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry into two.
 
+One deferral, three rows, in append order — raised, analysed, closed (envelope fields trimmed for readability; on disk each is a full single-line row):
+
+<!-- prettier-ignore -->
+```jsonl
+{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["BAR-131"] }
+{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["BAR-131", "#268", "README.md"] }
+{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["BAR-131", "#268", "PR-412", "e93da12"] }
+```
+
+Same `key` throughout — that is what makes them one entry. `fold` returns only the third; the first two are the history. Note what each append bought: `severity` rose on re-triage, `remediation` appeared once someone worked it out, `references` accumulated (`#268` at triage, the PR and SHA at close), and the three `ts` values give "37 days sitting unanalysed, then 31 more to fix" — none of which survives editing one line in place.
+
 **Triage** (a consumer sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that is now done) is exactly this operation: for each entry that has moved on, append a same-`key` row with `status: "CLOSED"`, the `references` you now have (the PR, the commit, the issue that closed it), and a re-triaged `severity` if it turned out to matter more or less. The old row stays put.
 
 **`TRIAGED` is the state between**, and it is shared by all three triaged kinds — `friction`, `deferral`, `failure`. Exactly the trio that carries `severity`, for the same reason: these are the kinds that describe OPEN WORK someone has to look at.
@@ -264,8 +275,12 @@ Indented here for readability — **on disk each row is a single physical line**
   "category": "tool-failure",
   "scope": "bkit-repo",
   "severity": "HIGH",
+  "summary": "ship Step 9 dev commit blocked by the pre-commit hook",
   "description": "ship Steps 8-12 commit docs to dev, but the pre-commit hook refuses dev/main commits unless $PWD matches *.worktrees/*; git -C REPO_ROOT commit does not pass the guard and --no-verify is prohibited",
-  "remediation": "commit via a temp branch (docs/ship-{FID}) from dev in a temp worktree, then FF-merge dev"
+  "remediation": "commit via a temp branch (docs/ship-{FID}) from dev in a temp worktree, then FF-merge dev",
+  "source": "orchestrator",
+  "status": "OPEN",
+  "references": ["342", "docs/plans/202607/342-injection-hardening-plan.md"]
 }
 ```
 
@@ -285,8 +300,12 @@ Indented here for readability — **on disk each row is a single physical line**
   "type": "issue",
   "category": "infra",
   "severity": "LOW",
+  "summary": "pnpm tag-drop README note for the install snippet",
   "description": "pnpm normaliser strips the #vX.Y.Z pin from github:cbartens/bkit git-dep entries in package.json; document the workaround in README or fix upstream",
-  "remediation": "note the pin workaround in the README install snippet"
+  "remediation": "note the pin workaround in the README install snippet",
+  "source": "phase",
+  "status": "OPEN",
+  "references": ["BAR-131", "BAR-130", "README.md"]
 }
 ```
 
@@ -306,8 +325,10 @@ Indented here for readability — **on disk each row is a single physical line**
   "summary": "bkit install flips core.bare=true",
   "severity": "HIGH",
   "description": "`pnpm bkit install` leaves git config core.bare=true, which breaks git checkout/status afterward",
+  "rootCause": "the install engine writes core.bare while staging and does not restore it on the success path",
   "remediation": "run `git config core.bare false` after install",
-  "status": "OPEN"
+  "status": "OPEN",
+  "references": ["176", "a1b2c3d", ".bkit/src/bkit-install.ts"]
 }
 ```
 
@@ -327,7 +348,8 @@ Indented here for readability — **on disk each row is a single physical line**
   "summary": "GitHub MCP / gh 401 immediately after a token rotation",
   "description": "401 from the GitHub MCP server or gh despite a freshly-rotated, valid, correctly-scoped PAT in .bkit/.env",
   "rootCause": "the MCP server captures GH_MCP_TOKEN at process launch, so a mid-session rotation leaves it holding the dead token",
-  "remediation": "restart/reload the MCP server after rotating; for a one-off CLI, prefix `direnv exec . gh …`"
+  "remediation": "restart/reload the MCP server after rotating; for a one-off CLI, prefix `direnv exec . gh …`",
+  "references": ["KN-CORE-1", ".bkit/.env", "DE-35"]
 }
 ```
 
@@ -347,6 +369,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "summary": "distribute @cbartens/bkit via the GitHub Packages npm registry",
   "rationale": "eliminates four friction classes of the git-dep model: two-surface git auth, the CI auth shim, the prepare:tsc OOM trap, and pnpm dropping the version pin",
   "alternatives": "npmjs.org public (package is private), continue git-dep, Releases tarball, vendor per-consumer, dual-publish git+registry",
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "references": ["DE-3", "BAR-138", "BAR-130", "package.json", ".github/workflows/release.yml", "KN-1"]
 }
 ```

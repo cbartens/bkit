@@ -8,6 +8,7 @@ import {
   MAX_ROWS_BEFORE_ROLLUP,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
+  VALID_KINDS,
   VALID_SEVERITIES,
   isOpenWork,
   appendLine,
@@ -334,6 +335,66 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
     expect(current.status).toBe("TRIAGED");
     expect(current.references).toEqual(["#412"]);
     expect(isOpenWork(current.status)).toBe(true);
+  });
+});
+
+// The spec's examples are what agents copy — they are the schema in practice.
+// An example that silently drifts from the codec teaches the wrong shape to every
+// writer, which is precisely how `severity` and `references` were lost: present in
+// the type, absent from what anyone read. Validate them through the REAL codec
+// rather than eyeballing, so the examples cannot rot again.
+describe("jsonl.md examples — validated against the codec", () => {
+  const SPEC = path.resolve(import.meta.dirname, "..", "jsonl.md");
+
+  /** Pull every balanced JSON object out of the spec's ```jsonl fences. */
+  function specExamples(): Array<Record<string, unknown>> {
+    const src = fs.readFileSync(SPEC, "utf-8");
+    const fences = [...src.matchAll(/```jsonl\n([\s\S]*?)```/g)].map((m) => m[1] ?? "");
+    const out: Array<Record<string, unknown>> = [];
+    for (const fence of fences) {
+      let depth = 0;
+      let buf = "";
+      for (const ch of fence) {
+        if (ch === "{") depth++;
+        if (depth > 0) buf += ch;
+        if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            out.push(JSON.parse(buf) as Record<string, unknown>);
+            buf = "";
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it("every full example row is a valid event", () => {
+    const examples = specExamples();
+    expect(examples.length).toBeGreaterThan(5);
+    for (const ex of examples) {
+      // The § Updating a Row walkthrough trims the envelope for readability and
+      // says so; only full rows are held to validate().
+      if (!ex["repo"]) continue;
+      const r = validate(ex);
+      expect(r.ok, `${String(ex["kind"])} example invalid: ${r.reason}`).toBe(true);
+    }
+  });
+
+  it("every kind has a worked example", () => {
+    const kinds = new Set(specExamples().map((e) => e["kind"]));
+    for (const kind of VALID_KINDS) expect(kinds, `no example for kind: ${kind}`).toContain(kind);
+  });
+
+  it("the triaged kinds' examples carry severity and references", () => {
+    for (const ex of specExamples()) {
+      const kind = ex["kind"] as string;
+      if (!ex["repo"] || !SEVERITY_KINDS.has(kind)) continue;
+      expect(ex["severity"], `${kind} example lacks severity`).toBeDefined();
+      // references is the one cross-entry pointer — an example omitting it teaches
+      // writers to omit it, which is how the Related: graph evaporated.
+      expect(ex["references"], `${kind} example lacks references`).toBeDefined();
+    }
   });
 });
 
