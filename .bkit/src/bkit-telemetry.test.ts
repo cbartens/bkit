@@ -7,7 +7,9 @@ import {
   ARCHIVE_SHARD_TEMPLATE,
   MAX_ROWS_BEFORE_ROLLUP,
   SEVERITY_KINDS,
+  TRIAGE_STATUSES,
   VALID_SEVERITIES,
+  isOpenWork,
   appendLine,
   buildSummary,
   fold,
@@ -281,6 +283,57 @@ describe("updating a row — supersede by same-key append", () => {
       ts: 2_000,
     } as Partial<TelemetryEvent>);
     expect(fold([a, b]).size).toBe(2);
+  });
+});
+
+// TRIAGED = analysed, disposition known, NOT fixed. It rides on exactly the kinds
+// that carry severity, because both express the same property: these three describe
+// open work someone triages. The trap it guards is a reader testing status=="OPEN"
+// and silently retiring everything the moment a sweep looks at it.
+describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
+  it("TRIAGE_STATUSES is exactly OPEN|TRIAGED|CLOSED", () => {
+    expect([...TRIAGE_STATUSES].sort()).toEqual(["CLOSED", "OPEN", "TRIAGED"]);
+  });
+
+  it("the triaged kinds are exactly the severity-carrying kinds", () => {
+    // Same trio by construction — if these ever diverge, one of the two concepts
+    // has been extended without the other and the spec is lying.
+    expect([...SEVERITY_KINDS].sort()).toEqual(["deferral", "failure", "friction"]);
+  });
+
+  it.each([
+    ["OPEN", true],
+    ["TRIAGED", true],
+    [undefined, true],
+    ["CLOSED", false],
+  ])("isOpenWork(%j) === %s", (status, expected) => {
+    expect(isOpenWork(status as string | undefined)).toBe(expected);
+  });
+
+  it("TRIAGED is open work — counting status==OPEN would drop it", () => {
+    const rows = [
+      deferralEvent("a", { status: "OPEN" } as Partial<TelemetryEvent>),
+      deferralEvent("b", { status: "TRIAGED" } as Partial<TelemetryEvent>),
+      deferralEvent("c", { status: "CLOSED" } as Partial<TelemetryEvent>),
+    ];
+    const open = rows.filter((r) => isOpenWork((r as { status?: string }).status));
+    expect(open).toHaveLength(2);
+    expect(open.map((r) => r.key)).toEqual(["a", "b"]);
+  });
+
+  it("a triage sweep appends TRIAGED, and the entry stays open", () => {
+    const raised = deferralEvent("k", { ts: 1_000, status: "OPEN" } as Partial<TelemetryEvent>);
+    const triaged = deferralEvent("k", {
+      ts: 2_000,
+      status: "TRIAGED",
+      references: ["#412"],
+    } as Partial<TelemetryEvent>);
+    const current = [...fold([raised, triaged]).values()][0] as TelemetryEvent & {
+      status?: string;
+    };
+    expect(current.status).toBe("TRIAGED");
+    expect(current.references).toEqual(["#412"]);
+    expect(isOpenWork(current.status)).toBe(true);
   });
 });
 

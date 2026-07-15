@@ -14,6 +14,7 @@
 //
 // NEVER called from bkit upgrade — only via explicit `bkit telemetry migrate` invocation.
 // This is enforced mechanically by bkit-telemetry-migrate.integration.test.ts (WS5-T2b).
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 /**
@@ -134,7 +135,7 @@ export function parsePendingMd(content) {
         // Both were silently dropped before #234's severity/references restoration.
         const severity = mapLegacySeverity(extractField(entryBody, "Severity"));
         const references = parseRelated(extractField(entryBody, "Related"));
-        const key = slugify(`pending-${title.slice(0, 60)}`);
+        const key = stableKey("pending", title);
         entries.push({
             id: key,
             key,
@@ -207,7 +208,7 @@ export function parseFrictionMd(content) {
         const status = extractField(entryBody, "Status")?.replace(/`/g, "").trim();
         const confidenceStr = extractField(entryBody, "Confidence");
         const lastConfirmedStr = extractField(entryBody, "Last-confirmed");
-        const key = slugify(`friction-${title.slice(0, 60)}`);
+        const key = stableKey("friction", title);
         const entry = {
             id: key,
             key,
@@ -302,7 +303,7 @@ function parseMdEntries(content, headingRe) {
         // Safe to embed the legacy id HERE (unlike an agent minting a fresh DE-{N}):
         // migration is a one-shot deterministic read of a static .md, so two runs
         // cannot race to claim the same number.
-        const keySlug = slugify(`${id}-${summary.slice(0, 60)}`);
+        const keySlug = stableKey(id, summary);
         // References: the entry's own legacy id FIRST, then everything its
         // `**Related:**` field pointed at. Both were dropped by the original
         // migration — the id survived in aliases[], the Related: graph did not.
@@ -349,6 +350,22 @@ function slugify(text) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 80);
+}
+/**
+ * Key that survives title truncation. `slugify(prefix-title.slice(0, 60))` is not
+ * unique: two entries whose titles diverge only after char 60 collapse to one key,
+ * and `fold()` keeps only the last — so the store silently holds one entity where
+ * the log had two. Recurrence entries are the most exposed, because a recurrence is
+ * titled like the original it recurs from; the real case was the two "Plan Step 11:
+ * close-workflow STRAY guard rejects protocol-mandated ..." entries, which differ
+ * only at char 61+. The digest is appended ONLY when truncation actually discards
+ * characters, so short titles keep a clean, readable key.
+ */
+function stableKey(prefix, title) {
+    const slug = slugify(`${prefix}-${title.slice(0, 60)}`);
+    if (title.length <= 60)
+        return slug;
+    return `${slug}-${createHash("sha256").update(title).digest("hex").slice(0, 7)}`;
 }
 // ---------------------------------------------------------------------------
 // Row builders

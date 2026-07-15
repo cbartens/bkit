@@ -57,11 +57,11 @@ Each `kind` lives in ONE file, written by specific processes:
 | Kind | Fields (beyond envelope) |
 | --- | --- |
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
-| `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number`, `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
+| `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number` (both = the repo's CUMULATIVE UNIQUE entity count at ship time, folded — NOT lines, NOT this cycle; per-cycle is the delta against the previous `outcome` row), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
-| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"CLOSED"\|string?`. |
-| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"CLOSED"?`. |
-| `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"CLOSED"\|string?`. |
+| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `recovery?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row). |
+| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
+| `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 
@@ -145,11 +145,31 @@ Copy the prior row, change what changed, append. Carry `key` across verbatim —
 
 **Triage** (a consumer sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that is now done) is exactly this operation: for each entry that has moved on, append a same-`key` row with `status: "CLOSED"`, the `references` you now have (the PR, the commit, the issue that closed it), and a re-triaged `severity` if it turned out to matter more or less. The old row stays put.
 
-Appending rather than editing is what makes the close DATABLE: the entry's own `ts` is when it was raised, the closing row's `ts` is when it was resolved, so "how long did this stay open" and "time between a failure and its fix" fall out of the ledger — the reason `ts` is the id in the first place. Editing `status` in place throws that away: you get a `CLOSED` with no idea when, and no trail of what closed it.
+**`TRIAGED` is the state between**, and it is shared by all three triaged kinds — `friction`, `deferral`, `failure`. Exactly the trio that carries `severity`, for the same reason: these are the kinds that describe OPEN WORK someone has to look at.
+
+Analysing something and fixing it are different events, often months apart: a sweep can establish exactly what an entry is, and where its fix belongs, while closing nothing. Recording that as `CLOSED` is a lie, and leaving it `OPEN` throws away the analysis and invites the next sweep to redo it. Hence the ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not yet fixed) -> `CLOSED` (dealt with — fixed, refuted, or established as not ours to fix). Append `TRIAGED` exactly like a close, carrying the disposition in `references`: the issue, the `Fix N` it maps to, or why it is not ours. A diagnosed bug is not a fixed bug.
+
+**`TRIAGED` IS STILL OPEN WORK.** Any reader counting open entries — a CI gate on open `CRITICAL` failures, an audit debt lens, an age report — MUST count it. Only `CLOSED` is done; test `status != "CLOSED"`, never `status == "OPEN"` (`isOpenWork()` in the codec). Getting this backwards silently retires work the moment someone looks at it — the exact failure `TRIAGED` exists to prevent.
+
+Not on `knowledge` (no status — a lesson is not work) or `decision` (`ACTIVE`/`SUPERSEDED` is a lifecycle, a different axis).
+
+Appending rather than editing is what makes the close DATABLE: the entry's own `ts` is when it was raised, the closing row's `ts` is when it was resolved, so "how long did this stay open" and "time between a failure and its fix" fall out of the ledger — the reason `ts` is the id in the first place. Editing `status` in place throws that away: you get a `CLOSED` with no idea when, and no trail of what closed it. `TRIAGED` extends the same property to the analysis: raised -> triaged -> closed gives "how long did this sit unanalysed" and "how long from knowing to fixing" — two different failures that a single `OPEN`/`CLOSED` pair cannot tell apart.
 
 Readers count ENTITIES, never lines — `fold` first. Two rows sharing a `key` are one deferral with a history, not two deferrals.
 
 Editing the prior line instead breaks two things at once: every ledger resolves `merge=union` (`git check-attr merge …`), so when two branches edit the same row the union keeps BOTH edited versions — and since they share a `ts`, the fold cannot tell which one won. Appending is conflict-free under union by construction.
+
+## These Ledgers Are Inputs, Not a Diary
+
+Writing a row is half the job. `docs/deferrals.jsonl` and `docs/failures.jsonl` are a **backlog of real work** — deferred scope and known bugs, in the repo, machine-readable, with `severity` to rank by and `ts` to age by. A ledger only ever appended to is a place work goes to be forgotten, which is the failure mode it exists to prevent.
+
+READ them:
+
+- **Before designing or planning** — an entry may already describe the thing being designed, or the reason a past attempt was deferred. Grep the ledger before re-deriving.
+- **On a triage sweep** — walk the OPEN entries against the tracker and the codebase: some are already fixed, some now have an owning issue, some are stale. Close, `TRIAGED`, or re-`severity` each by appending (see § Updating a Row). An entry closed by work nobody linked back is the common case.
+- **When a bug looks familiar** — a same-`key` `failure` row means it recurred, not that it is new.
+
+Ranking is already in the data: `severity: CRITICAL` first, then oldest `ts` among `OPEN`. Nothing needs computing.
 
 ## Identity / Dedup
 

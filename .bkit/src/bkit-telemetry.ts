@@ -122,8 +122,40 @@ export type TelemetrySeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
 export const VALID_SEVERITIES: Set<string> = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 
-/** Kinds that carry `severity`. Keep in sync with the payload interfaces below. */
+/**
+ * Kinds that carry `severity` — and, identically, the kinds that carry the
+ * OPEN/TRIAGED/CLOSED ladder. Both express the same property: these three are
+ * the author-written kinds that describe OPEN WORK someone triages. Keep in
+ * sync with the payload interfaces below.
+ */
 export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "failure"]);
+
+/**
+ * The triage ladder, shared by the SEVERITY_KINDS trio (friction/deferral/failure).
+ *
+ * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
+ * fixed -> `CLOSED` dealt with (fixed, refuted, or established as not ours).
+ *
+ * `TRIAGED` exists because analysing something and fixing it are different events,
+ * often far apart. Without it a sweep that works out exactly what an entry is, and
+ * where its fix belongs, has nowhere to put that: recording `CLOSED` is a lie, and
+ * leaving `OPEN` discards the analysis and invites the next sweep to redo it.
+ *
+ * `TRIAGED` IS STILL OPEN WORK. Readers counting open entries — a CI gate on open
+ * CRITICAL failures, an audit debt lens, an age report — MUST count it. Only
+ * `CLOSED` is done.
+ *
+ * NOT on knowledge (no status — a lesson is not work) or decision (`ACTIVE`/
+ * `SUPERSEDED` is a lifecycle, a different axis entirely).
+ */
+export type TriageStatus = "OPEN" | "TRIAGED" | "CLOSED";
+
+export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"]);
+
+/** A row still needing work: anything not CLOSED, including TRIAGED. */
+export function isOpenWork(status: string | undefined): boolean {
+  return status !== "CLOSED";
+}
 
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
@@ -166,9 +198,20 @@ export interface OutcomePayload {
   correctiveCommits?: number;
   /** Number of PR review iterations. */
   reviewIterations?: number;
-  /** Count of deferrals emitted during this run. */
+  /**
+   * The repo's CUMULATIVE count of distinct deferrals at ship time — folded
+   * entities, not lines. Per-cycle is the DELTA against the previous outcome
+   * row (see newFailuresThisRun / isErrorRun in bkit-analysis.ts).
+   */
   deferrals: number;
-  /** Count of failures emitted during this run. */
+  /**
+   * The repo's CUMULATIVE count of distinct failures at ship time — folded
+   * entities, not lines. Per-cycle is the DELTA against the previous outcome row.
+   *
+   * A total, NOT this run's discoveries: a raw count would mark every run after
+   * the first-ever bug as an error run forever. Readers MUST diff consecutive
+   * rows rather than test this absolutely.
+   */
   failures: number;
   /** Sweep verdict from ship deferred-sweep step. */
   sweepVerdict?: string;
@@ -216,7 +259,18 @@ export interface FrictionPayload {
   recovery?: string;
   /** Who observed it: agent | human | phase | orchestrator. Mirrors DeferralPayload.source. */
   source?: string;
-  status?: "OPEN" | "CLOSED" | string;
+  /**
+   * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
+   * fixed -> `CLOSED` dealt with (fixed, refuted, or not ours to fix).
+   *
+   * `TRIAGED` exists because analysing a friction and fixing it are different events,
+   * often months apart, and collapsing them loses the interval. Appending it as its own
+   * same-`key` row makes that interval fall out of the ledger the same way the close does
+   * (see § Updating a Row): the entry's `ts` is when it was raised, the TRIAGED row's `ts`
+   * is when someone worked out what it was, the CLOSED row's `ts` is when it was fixed.
+   * Carry the disposition in `references` (the issue, the Fix N, or why it is not ours).
+   */
+  status?: TriageStatus | string;
   confidence?: number;
   lastConfirmed?: number;
   recurrenceCount?: number;
@@ -233,7 +287,8 @@ export interface DeferralPayload {
   description: string;
   remediation?: string;
   source?: string;
-  status?: "OPEN" | "CLOSED";
+  /** OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work. */
+  status?: TriageStatus;
 }
 
 // failure — keyed by explicit `key` field
@@ -244,7 +299,11 @@ export interface FailurePayload {
   description: string;
   rootCause?: string;
   remediation?: string;
-  status?: "OPEN" | "CLOSED" | string;
+  /**
+   * OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work
+   * — a diagnosed bug is not a fixed bug.
+   */
+  status?: TriageStatus | string;
 }
 
 // knowledge — keyed by explicit `key` field (P5)

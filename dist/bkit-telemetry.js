@@ -40,8 +40,18 @@ export const VALID_KINDS = new Set([
     "decision",
 ]);
 export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
-/** Kinds that carry `severity`. Keep in sync with the payload interfaces below. */
+/**
+ * Kinds that carry `severity` — and, identically, the kinds that carry the
+ * OPEN/TRIAGED/CLOSED ladder. Both express the same property: these three are
+ * the author-written kinds that describe OPEN WORK someone triages. Keep in
+ * sync with the payload interfaces below.
+ */
 export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
+export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
+/** A row still needing work: anything not CLOSED, including TRIAGED. */
+export function isOpenWork(status) {
+    return status !== "CLOSED";
+}
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors bkit-status.ts's tuple dedupe approach.

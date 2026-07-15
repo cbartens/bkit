@@ -310,6 +310,98 @@ describe("real-corpus: parseFrictionMd parses bkit actual friction.md", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Test 2z: keys survive title truncation (#99 corpus-integrity triage)
+// ---------------------------------------------------------------------------
+
+describe("migrate — friction keys survive title truncation", () => {
+  // Verbatim from app-gether-life's real friction log. The two titles are
+  // byte-identical for their first 71 characters and diverge only at the path
+  // they name, so a key built from title.slice(0, 60) collapses them into one
+  // entity and fold() drops one. A recurrence is titled like the entry it
+  // recurs from, so recurrences — the highest-signal rows — collide most.
+  const COLLIDING_FRICTION_MD = [
+    "<!-- bkit:start -->",
+    "# Friction",
+    "<!-- bkit:end -->",
+    "",
+    "## Plan Step 11: close-workflow STRAY guard rejects protocol-mandated `docs/pending.md` edit (2026-06-16)",
+    "",
+    "- **Category:** other",
+    "- **Workflow:** plan",
+    "- **Step:** 11 (close-workflow) — squash-merge STRAY guard",
+    "- **Description:** The close STRAY guard rejected a doc the protocol mandates.",
+    "- **Status:** `RECOVERED`",
+    "",
+    "## Plan Step 11: close-workflow STRAY guard rejects protocol-mandated `docs/decisions.md` + `docs/pending.md` edits (recurrence of the 527 entry) (2026-06-16)",
+    "",
+    "- **Category:** other",
+    "- **Workflow:** plan",
+    "- **Step:** 11 (close-workflow) — squash-merge STRAY guard",
+    "- **Description:** Recurrence of the same guard rejecting mandated docs.",
+    "- **Status:** `RECOVERED`",
+    "",
+  ].join("\n");
+
+  it("emits two distinct keys for titles that diverge only after char 60", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: COLLIDING_FRICTION_MD,
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    expect(result.frictionRowCount).toBe(2);
+
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as { key: string; summary?: string });
+
+    expect(rows).toHaveLength(2);
+    // The defect this pins: both keys were "friction-plan-step-11-close-workflow-
+    // stray-guard-rejects-protocol-ma" before stableKey().
+    expect(rows[0].key).not.toBe(rows[1].key);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    // Still readable — the digest only suffixes the human-readable slug.
+    for (const r of rows) {
+      expect(r.key.startsWith("friction-plan-step-11-close-workflow-stray-guard")).toBe(true);
+    }
+  });
+
+  it("leaves short titles unsuffixed", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: [
+        "<!-- bkit:start -->",
+        "# Friction",
+        "<!-- bkit:end -->",
+        "",
+        "## Short title (2026-06-16)",
+        "",
+        "- **Category:** other",
+        "- **Workflow:** ship",
+        "- **Description:** A title under the truncation threshold.",
+        "- **Status:** `RECOVERED`",
+        "",
+      ].join("\n"),
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    const row = JSON.parse(
+      fs.readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8").trim(),
+    ) as { key: string };
+    // No digest suffix: the title (date stripped by normaliseTitle) is under 60 chars.
+    expect(row.key).toBe("friction-short-title");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test 2a: Fixture migration — happy path (WS5-T2)
 // ---------------------------------------------------------------------------
 

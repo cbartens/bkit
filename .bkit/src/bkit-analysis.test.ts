@@ -23,6 +23,7 @@ import {
   computeRegression,
   computeVersionCompliance,
   foldWithArchive,
+  newFailuresThisRun,
   runAnalysis,
   writeRollupShard,
   type ComplianceRow,
@@ -112,6 +113,62 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // WS4-T3: #183 size↔outcome regression + dispatch-size threshold + counterSource
 // ---------------------------------------------------------------------------
+
+// outcome.deferrals/failures are the repo's CUMULATIVE distinct-entity totals at
+// ship time, so per-run discoveries are the delta against the previous row. The
+// old classifier tested `row.failures > 0` absolutely against a total produced by
+// `wc -l`, which marks every run after the repo's first-ever bug as an error run
+// forever — the regression reads 100% error at every size and the size signal,
+// the entire point of #183, disappears.
+describe("newFailuresThisRun — per-run delta over cumulative totals", () => {
+  it("a flat cumulative total is NOT a new failure each run", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 10, 2, { failures: 1 }), // the repo's first-ever bug
+      outcomeRow(1002, 20, 3, { failures: 1 }), // same total — nothing new
+      outcomeRow(1003, 30, 4, { failures: 1 }), // still nothing new
+    ];
+    expect(newFailuresThisRun(rows[0]!, rows)).toBe(1); // no predecessor: total IS delta
+    expect(newFailuresThisRun(rows[1]!, rows)).toBe(0);
+    expect(newFailuresThisRun(rows[2]!, rows)).toBe(0);
+
+    // Only the first run is an error run — under the old absolute test, all three were.
+    const result = computeRegression(rows);
+    const xs = result.buckets.find((b) => b.label.startsWith("XS"))!;
+    expect(xs.count).toBe(3);
+    expect(xs.errorCount).toBe(1);
+  });
+
+  it("a rising total marks exactly the run that raised it", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 10, 2, { failures: 2 }),
+      outcomeRow(1002, 20, 3, { failures: 5 }), // +3 discovered this run
+    ];
+    expect(newFailuresThisRun(rows[1]!, rows)).toBe(3);
+  });
+
+  it("deltas are per-repo — another repo's ledger must not leak in", () => {
+    const mine = outcomeRow(1002, 20, 3, { failures: 1 });
+    const theirs: OutcomeRow = { ...outcomeRow(1001, 10, 2, { failures: 9 }), repo: "other/repo" };
+    // Only predecessor is from a different repo, so `mine` has none of its own.
+    expect(newFailuresThisRun(mine, [theirs, mine])).toBe(1);
+  });
+
+  it("a falling total is not an error run — triage folding duplicates away", () => {
+    const rows: OutcomeRow[] = [
+      outcomeRow(1001, 10, 2, { failures: 4 }),
+      outcomeRow(1002, 20, 3, { failures: 2 }), // sweep collapsed dupes
+    ];
+    expect(newFailuresThisRun(rows[1]!, rows)).toBe(0);
+  });
+
+  it("uses the newest prior row, not file order", () => {
+    const newest = outcomeRow(3000, 20, 3, { failures: 5 });
+    const oldest = outcomeRow(1000, 10, 2, { failures: 1 });
+    const middle = outcomeRow(2000, 15, 2, { failures: 4 });
+    // shuffled input — ts must decide the predecessor
+    expect(newFailuresThisRun(newest, [newest, oldest, middle])).toBe(1);
+  });
+});
 
 describe("computeRegression — #183 size↔outcome (WS4-T3)", () => {
   it("computes error rate per size bucket", () => {
