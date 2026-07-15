@@ -76,10 +76,15 @@ Three fields, three different questions. They were collapsed into one, so the ha
 | **The orchestrator** (a workflow itself) | `ship` | `ship-close-gate` | *(absent)* | *(absent)* |
 | **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-challenge` | `bkit-build-challenge-remediate` | that prompt's own `model:` |
 
-- **`step` is never an agent name.** `step: "bkit-telemetry-migrate"` is wrong; that is a `subagent`.
-- **`subagent` is set on EVERY subagent-written row** and absent on orchestrator rows. Blank `subagent` therefore means "the workflow wrote this", not "unknown".
-- **`model` is read from the writing subagent's prompt frontmatter `model:` at call time** — the deterministic value bkit already owns, and the only one that stays true when a prompt is re-pinned to a different model. Set it exactly where `subagent` is set.
-- **NEVER set `model` on an orchestrator row.** The session model is whatever the operator happened to run; it is not a property of the row, and asking a model to self-report it reintroduces the nondeterminism the compliance grader exists to measure away.
+**If you are a subagent, fill these from YOUR OWN prompt file — do not wait to be told:**
+
+- **`subagent`** = your frontmatter `name:`. Read it; never a name written into a step instruction, which is a copy that goes stale the day the prompt is renamed.
+- **`model`** = your frontmatter `model:`. The deterministic value bkit already owns, and the only one that stays true when a prompt is re-pinned. Never the model you believe you are — self-report is the nondeterminism the compliance grader exists to measure away.
+- **`step`** = the workflow step that invoked you (your Context names it). NEVER your own name: `step: "bkit-telemetry-migrate"` is wrong, that is a `subagent`.
+
+**If you are an orchestrator, omit `subagent` and `model` entirely.** Blank `subagent` means "the workflow wrote this", not "unknown". The session model is whatever the operator happened to run — a property of the run, not of the row.
+
+Set these on EVERY row you append, to any ledger. This rule lives here, once: a prompt that says "append a row in `.bkit/jsonl.md` format" has already told you to follow it.
 
 ## Key & References
 

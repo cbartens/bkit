@@ -51,8 +51,8 @@ reasoningEffort: low
    - Drizzle migrations → resequence.
 8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass. **If** any declared live tests were failing → remediation done ONLY when those same live tests pass.
 9. **If** any failures → document errors in output, set `Verdict` = FAIL (no alternatives, no rollbacks, no `--no-verify`).
-10. Once all remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-debug-failure-remediate` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
-11. Once all remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-debug-failure-remediate` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
+10. Once all remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+11. Once all remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 12. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = every remediation step has `DONE` entry across logs AND all local tests pass.
     - `FAIL` = unable to remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR some local tests still fail.

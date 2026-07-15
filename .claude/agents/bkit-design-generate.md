@@ -45,7 +45,7 @@ maxTurns: 50
    - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
 8. Preserve strongest approaches. Consolidate Decisions.
-9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-design-generate` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
+9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
 **Output format:**
 

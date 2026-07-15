@@ -42,8 +42,8 @@ reasoningEffort: high
 7. `Related Issues` per template section (if any); do NOT expand scope.
 8. `Acceptance Scenario` per template section; expand NOT replace on design if provided.
 9. `Supersession Inventory` per template section. If plan adds without replacing then `None`.
-10. Append new architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-plan-generate` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
-11. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-plan-generate` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
+10. Append new architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+11. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
 **Output format:** See `docs/plans/template.md`.
 

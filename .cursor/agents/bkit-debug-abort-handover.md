@@ -36,8 +36,8 @@ tools:
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Extract `Rot Signals` from diagnose attempts → aggregate into handover - dedupe slugs but retain all evidence.
 6. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
-7. Append failure rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-debug-abort-handover` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
-8. Append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. Set `subagent` = `bkit-debug-abort-handover` and `model` = this prompt's own frontmatter `model:` value; `step` = the workflow step that invoked you, NEVER your own name.
+7. Append failure rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+8. Append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
 **Output format:**
 
