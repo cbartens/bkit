@@ -22,10 +22,10 @@
 - **No speculative scope:** ONLY build for requirements at hand (YAGNI). NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
 - **Investigate before implementing:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
-- **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, not mandate. NEVER skip human gates.
+- **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, NOT mandate. NEVER skip human gates (design / plan HARD STOP, production merge). Steps inside `/bkit-*` workflows are PRE-APPROVED by human; do NOT request confirmation.
 - **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human approval is a gate, not a goal.
 - **Honest reporting:** NEVER assume or report done / passing / fixed without running actual checks; state failures, skips, and uncertainty verbatim.
-- **Major changes:** ALWAYS require human confirmation — global, architecture, technology, process, layout, UX.
+- **Major changes:** ALWAYS require human confirmation (global, architecture, technology, process, layout, UX). Steps forcing calls inside `/bkit-*` workflows: Decide, append rows to `docs/decisions.jsonl`, and surface in output; NEVER decide silently.
 
 ### Output & Editing
 
@@ -48,14 +48,14 @@
 
 ### Orchestrators & Agents
 
-- **Workflows/commands:** Invoke subagents via tool and `/name`. No NL auto-delegation/inlining.
+- **Workflows/commands:** Invoke subagents via `Agent` tool and `@name`; skills via `skill` tool and `/name`. No NL auto-delegation/inlining.
 - **Orchestrators:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 - **Subagents:** Leaves only, NEVER invoke other subagents.
 
 ### Plans & Process
 
 - **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
-- **Gates:** STOP at every gate. ALWAYS verify all steps before proceeding.
+- **Workflow gates:** ALWAYS verify EVERY gate item before proceeding; skipped gates = invalid work. Gates inside `/bkit-*` workflows are self-verification, NOT human gates; STOP only for explicit HARD STOPs.
 - **Tracker MCP:** Issue update via configured MCP only; use CLI/HTTP shell-outs as backup only.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 
@@ -63,19 +63,20 @@
 
 > Full CI/CD matrix: `docs/deployments.md`.
 
-- **Commits/pushes:** NEVER commit / push unprompted; requires specific request.
-- **Commits:** `{type}({FID}): {message}` format.
+- **Commits:** ALWAYS commit early and often; NO human confirmation required. ONLY stage files touched by you; NEVER blanket-stage unrelated tree state. ONLY use `git add -A` in dedicated worktrees, where the whole tree IS the task.
+- **Commit format:** `{type}({FID}): {message}`.
+- **Pushes:** NEVER push unprompted; ALWAYS requires specific human request OR `/bkit-*` workflow steps mandating push. Pushes mandated inside `/bkit-*` workflows are PRE-APPROVED by human; do NOT request confirmation.
 - **Code commits:** Ensure code commit is HEAD so CI runs.
-- **Docs-only commits:** Append `[skip ci]`. Do NOT push alone, ALWAYS batch with next code push. NEVER append on manual code commits, on `dev` / `main` pushes, or as HEAD of PR branches.
+- **Docs-only commits:** Append `bkit [skip ci]` but ONLY on commits carrying no code; NEVER on commits carrying code.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease`.
-- **CI:** Pushes auto-trigger; NEVER manually. ALWAYS verify HEAD commit does NOT contain `[skip ci]` on final push to PR / `dev`. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
+- **CI:** Pushes auto-trigger; NEVER manually. ANY push carrying code MUST have HEAD without `[skip ci]` so CI runs; batch doc commits into pushes OR add bare trigger commits. NEVER leave `[skip ci]` at HEAD of any PR pushes that require CI runs. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
 - **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
-- **Integration merge:** ANY feature PR squash-merge into default integration branch (`dev`) from bkit-ship workflow is PRE-AUTHORIZED by human; do NOT request confirmation.
+- **Integration merge:** ANY feature PR squash-merge into default integration branch (`dev`) from inside `/bkit-*` workflows are PRE-APPROVED by human; do NOT request confirmation.
 
 ### Testing & Debugging
 
@@ -84,13 +85,13 @@
 - **Local (pre-push / husky):** lint, typecheck, format:check, `pnpm test` (unit and in-process integration), prose, slop:delta, `bkit check`. NO tests requiring deployed boundary / backing service.
 - **CI on PR (to `dev` / `main`):** static, unit, integration (incl. service / DB-backed), E2E, migration replay — one affected-gated parallel lane per tier plus `bkit-tests-check` capstone. NO `@live` tests.
 - **CI on push (to `dev` / `main`):** PR lanes plus `@live` canary tests against deployed URL.
-- **Debug (on demand):** Re-runs failing E2E / `@live` tier tests against deployed boundary. NO local tests.
-- **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
+- **Debug (on demand):** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
+- **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **Secrets from direnv:** ALWAYS check direnv first `direnv exec . printenv {VAR}` before asking for secrets / tokens / env vars. ONLY ask when genuinely absent.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
-- **Fix code, never gate:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted → ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation.
+- **Fix code, never gate:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Append `BLOCKED` rows to `docs/deferrals.jsonl`, and continue; NEVER self-authorize the opt-out.
 - **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 
 ### Security & Data
