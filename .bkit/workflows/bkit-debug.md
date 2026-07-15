@@ -860,9 +860,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 4. Emit telemetry summary read:
    ````bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   SUMMARY_MD="docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"
+   SUMMARY="docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"
    TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=debug 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
-   printf '\n## Telemetry\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY_MD"
+   printf '\n## Telemetry Summary\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY"
    ````
 5. Update status and commit:
    ```bash

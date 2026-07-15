@@ -554,9 +554,9 @@ description: "Design Feature — Autonomous design phase"
 5. Emit telemetry summary read (count/size/fold-time + signal lines):
    ````bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   SUMMARY_MD="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"
+   SUMMARY="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"
    TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=design 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
-   printf '\n## Telemetry\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY_MD"
+   printf '\n## Telemetry Summary\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY"
    ````
 6. Update status and commit:
    ```bash
