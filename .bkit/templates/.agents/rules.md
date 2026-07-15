@@ -39,8 +39,8 @@
 - **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders/commented-out code, or dead stubs. Match surrounding comment density.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
 - **Blockers:** NEVER fail silently. Document in logs/files/responses.
-- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` (row format: `.bkit/jsonl.md`).
-- **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` (row format: `.bkit/jsonl.md`).
+- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+- **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
 ### Skills & Docs
 
