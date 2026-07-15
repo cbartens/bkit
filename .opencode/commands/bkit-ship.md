@@ -473,7 +473,21 @@ $ARGUMENTS
    fi
    ```
    **If** assertion fails → **Failure Path**.
-4. Refresh PR head against `dev` and merge with empty body:
+4. Re-check CI against the PR head about to merge — Step 2's read is stale once the head moves, and a query failure is NOT a pass:
+   ```bash
+   if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
+     PRE_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
+     [ -z "$PRE_HEAD" ] && { echo "Cannot read PR head — query failed (403 = PAT scope); NOT validated, refusing to merge" >&2; exit 1; }
+     PRE_RUN=$(gh run list --branch "feat/{FID}" --workflow CI --limit 5 --json databaseId,headSha,status,conclusion --jq "[.[] | select(.headSha == \"$PRE_HEAD\")] | .[0] // empty" 2>/dev/null)
+     [ -z "$PRE_RUN" ] && { echo "No CI run for PR head $PRE_HEAD — NOT validated, refusing to merge" >&2; exit 1; }
+     PRE_STATUS=$(echo "$PRE_RUN" | jq -r '.status // empty')
+     [ "$PRE_STATUS" != "completed" ] && { echo "CI for PR head $PRE_HEAD has not completed (status: ${PRE_STATUS:-unknown}) — wait for it, then re-run ship" >&2; exit 1; }
+     PRE_CONCLUSION=$(echo "$PRE_RUN" | jq -r '.conclusion // empty')
+     [ "$PRE_CONCLUSION" != "success" ] && { echo "CI for PR head $PRE_HEAD concluded ${PRE_CONCLUSION:-unknown} — refusing to merge" >&2; exit 1; }
+   fi
+   ```
+   **If** exit non-zero → **Failure Path**.
+5. Refresh PR head against `dev` and merge with empty body:
    ```bash
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
      (
@@ -492,11 +506,11 @@ $ARGUMENTS
      )
    fi
    ```
-5. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-6. Decide `MERGE_VERDICT`:
+6. `gh pr view {PR_NUMBER} --json state` → extract `state`.
+7. Decide `MERGE_VERDICT`:
    - **If** `state` = MERGED → `MERGE_VERDICT` = PASS; `MERGE_FAILURES` = 0.
    - **Else** → `MERGE_VERDICT` = FAIL; `MERGE_FAILURES` = 1.
-7. Update status and commit:
+8. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -505,31 +519,32 @@ $ARGUMENTS
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-9. Route:
-   - **If** `state` = MERGED → Step 9.
-   - **If** `state` != MERGED — run counter-bus routing:
-     ```bash
-     REPO_ROOT=$(git rev-parse --show-toplevel)
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-     decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path 2>/dev/null
-     ```
-     - **If** exit 0 (printed `step-7`) → Step 7.
-     - **If** exit 1 (printed `failure-path`) → **Failure Path**.
-   - **Else** → **Failure Path**.
+10. Route:
+
+- **If** `state` = MERGED → Step 9.
+- **If** `state` != MERGED — run counter-bus routing:
+  ```bash
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+  . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+  decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path 2>/dev/null
+  ```
+  - **If** exit 0 (printed `step-7`) → Step 7.
+  - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+- **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Merge PR
 
 - [ ] Merge attempt incremented (`MERGE_ATTEMPT` + 1)
 - [ ] HEAD-Subject Assertion passed
+- [ ] PR head CI re-checked at `PRE_HEAD` (`completed` + `success`; query failure is NOT a pass)
 - [ ] PR merge attempted
 - [ ] State extracted (`state`, MERGED or not)
-- [ ] CI run triggered on dev (`RUN_ID` captured)
 - [ ] Verdict extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
 - [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
