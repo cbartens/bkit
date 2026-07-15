@@ -858,10 +858,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Emit telemetry summary read:
-   ```bash
+   ````bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   pnpm bkit telemetry summary --phase=debug || echo "[bkit-telemetry] summary unavailable, skipping"
-   ```
+   SUMMARY_MD="docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"
+   TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=debug 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
+   printf '\n## Telemetry\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY_MD"
+   ````
 5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"

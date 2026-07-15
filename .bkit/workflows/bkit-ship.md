@@ -801,9 +801,11 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 6. Emit telemetry summary read (includes chain-wide rollup for ship):
-   ```bash
-   pnpm bkit telemetry summary --phase=ship || echo "[bkit-telemetry] summary unavailable, skipping"
-   ```
+   ````bash
+   SUMMARY_MD="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"
+   TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=ship 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
+   printf '\n## Telemetry\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY_MD"
+   ````
 7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"

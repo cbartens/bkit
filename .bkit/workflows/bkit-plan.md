@@ -660,10 +660,12 @@ description: "Plan Feature — Autonomous plan generation"
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `plan-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Emit telemetry summary read:
-   ```bash
+   ````bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   pnpm bkit telemetry summary --phase=plan || echo "[bkit-telemetry] summary unavailable, skipping"
-   ```
+   SUMMARY_MD="docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md"
+   TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=plan 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
+   printf '\n## Telemetry\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY_MD"
+   ````
 6. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
