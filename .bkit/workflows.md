@@ -181,6 +181,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Lock path is **absolute** (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, anchored to main repo working tree via `git rev-parse --path-format=absolute --git-common-dir`) so acquire/release resolve to the same inode regardless of cwd. Existing lock → Step 1 cross-checks its owning workflow's folded status.jsonl: `DONE`/`FAILED` → clean silently; `IN_PROGRESS` + last step <30min → Failure Path with `Workflow already running for {FID}`; `IN_PROGRESS` + last step >=30min → stale, clean. Released in Close Workflow and Failure Path; **both must assert the lock file is absent before exiting** (else Failure Path with `Lock removal failed`). |
+| **Dev lock** | Repo-global `$REPO_ROOT/.bkit/.dev.lock` (gitignored), held ONLY across a **dev critical section** — any block that checks out, stages, commits, or pushes `dev` in the **main checkout**. Scope is cross-FID: the per-FID `.lock` guards two runs of the SAME feature, but concurrent runs of DIFFERENT features share `dev`, the main working tree, `.git/config` and `.bkit/stats.jsonl`, and corrupt each other with no per-FID contention. Sites: `design` + `plan` close-workflow squash; `ship` Step 6 (pre-merge dirty-dev), Step 9 (switch-to-dev), Step 13 (close), Failure Path. `build`/`debug` have none — they close via PR and never touch `dev`. Acquire is atomic (`set -C` = `O_EXCL`; a plain `>` truncate-creates and cannot arbitrate). Release via `trap 'rm -f "$DEVLOCK"' EXIT` so every `exit 1` inside the section releases. Holder line is `{ISO} {workflow} {FID}` — reported verbatim on contention. Worktree-phase work stays fully parallel; only the dev sections serialise. |
 
 ### `status.jsonl` — workflow state SoT
 
@@ -506,6 +507,8 @@ Then assert each Update/Create artifact exists and is non-empty. Empty → **Fai
 | `MAX_MERGE_ATTEMPT` | 3 | `/bkit-ship` PR merge retries |
 | Step timeout | 3600s | Any workflow or subagent run exceeding this → Failure Path |
 | Lock idle threshold | 1800s | Concurrent-run cut-off: lock with `status.jsonl` last-step age <30min and `IN_PROGRESS` → Failure Path; >=30min or `DONE`/`FAILED` → stale, clean |
+| Dev lock stale threshold | 900s | `.bkit/.dev.lock` mtime age at which a holder is presumed dead → clear and retry. Bounds the blast radius of a leaked dev lock to 15min |
+| Dev lock wait budget | 600s | How long a dev critical section waits for the lock before Failure Path with the holder line. Failure Path itself uses 60s and SKIPS its dev ops rather than hard-failing |
 
 Reference these constants by name in retry checks — never use literal `3`.
 

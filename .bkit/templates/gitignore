@@ -39,6 +39,9 @@ tmp/**
 docs/plans/*/logs/**/raw/
 docs/plans/*/logs/**/.lock
 
+# bkit workflows — repo-global dev critical-section lock (cross-FID)
+.bkit/.dev.lock
+
 # Claude Code harness — /schedule daemon lock
 .claude/scheduled_tasks.lock
 
