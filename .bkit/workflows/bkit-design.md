@@ -569,7 +569,7 @@ description: "Design Feature — Autonomous design phase"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip ci]"
    ```
-7. Assert `{BRANCH}` non-empty and push (force-with-lease on the personal branch, plain on `dev` / `main`):
+7. Assert `{BRANCH}` non-empty and push (force-with-lease on personal branch, plain on `dev` / `main`):
    ```bash
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
