@@ -315,6 +315,8 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       _recovery?: string;
       _status?: string;
       _source?: string;
+      _workflow?: string;
+      _step?: string;
       _confidence?: string;
       _lastConfirmed?: string;
       _severity?: TelemetrySeverity;
@@ -330,6 +332,11 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       // Was parsed and then discarded — the row builder emitted the title instead.
       _description: description,
       _source: extractField(entryBody, "Source"),
+      // WHERE the friction happened. For a live friction row the orchestrator
+      // writes exactly this into the envelope workflow/step, so preserving them
+      // keeps migrated rows on the same axis as live ones — see buildFrictionRow.
+      _workflow: extractField(entryBody, "Workflow"),
+      _step: extractField(entryBody, "Step"),
       references: parseRelated(extractField(entryBody, "Related")),
       // The legacy friction.md format had no Severity field at all, so this is
       // always the unknown->neutral default rather than a migrated value.
@@ -568,6 +575,8 @@ function buildFrictionRow(
     _recovery?: string;
     _status?: string;
     _source?: string;
+    _workflow?: string;
+    _step?: string;
     _confidence?: string;
     _lastConfirmed?: string;
     _severity?: TelemetrySeverity;
@@ -603,8 +612,14 @@ function buildFrictionRow(
     kind: "friction",
     repo: opts.repo,
     bkitVersion: opts.bkitVersion,
-    workflow: "migrate",
-    step: "bkit-telemetry-migrate",
+    // WHERE the friction happened, not who transported the row. A live friction
+    // row's envelope workflow/step ARE the workflow/step the friction occurred in
+    // (the orchestrator writing it is the workflow it happened in), so stamping
+    // "migrate" here put every migrated row on a different axis from every live
+    // one and blinded exactly the workflow/step dimensions the harvest slices by.
+    // Falls back to the migrate provenance only when the legacy row had neither.
+    workflow: e._workflow ?? "migrate",
+    step: e._step ?? "bkit-telemetry-migrate",
     key: entry.key,
     category,
     scope,

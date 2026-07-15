@@ -744,7 +744,9 @@ Usage:
                                  Migrate docs/knowledge.md + docs/decisions.md to
                                  docs/knowledge.jsonl + docs/decisions.jsonl (kind:"knowledge"
                                  and kind:"decision" rows). Parity-gated + destructive: ports
-                                 each entry with its KN-N/DE-N id in aliases[], verifies
+                                 each entry with its KN-N/DE-N id + legacy Related:
+                                 graph in references[], its Severity and its
+                                 Description prose, verifies
                                  row-count parity against a transient .md.bak, then DELETES
                                  the .md ONLY after parity is confirmed (idempotent: re-run
                                  is a no-op if migration already completed). A parity mismatch

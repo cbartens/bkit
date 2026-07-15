@@ -542,6 +542,62 @@ describe("migrate — happy path fixture", () => {
     expect(de1?.status).toBe("ACTIVE");
   });
 
+  // A live friction row's envelope workflow/step ARE where the friction happened
+  // (the orchestrator writing it is the workflow it happened in). Stamping the
+  // migrate transport there instead put migrated rows on a different axis from
+  // live ones and blinded the two dimensions the harvest slices by.
+  it("preserves friction Workflow:/Step: as the envelope workflow/step", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { workflow?: string; step?: string; source?: string });
+
+    // FIXTURE_FRICTION_MD carries `Workflow: ship` / `Step: 9 — Update Docs & Summary`
+    expect(rows[0]?.workflow).toBe("ship");
+    expect(rows[0]?.step).toContain("9");
+    expect(rows[0]?.workflow).not.toBe("migrate");
+    expect(rows[0]?.source).toBe("orchestrator");
+  });
+
+  it("falls back to migrate provenance when the legacy row had no Workflow:/Step:", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: `<!-- bkit:start -->
+
+# Friction
+
+<!-- bkit:end -->
+
+## Bare friction entry with no Workflow or Step (2026-05-11)
+
+- **Category:** other
+- **Scope:** consumer
+- **Description:** something rubbed.
+`,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { workflow?: string; step?: string });
+    expect(rows[0]?.workflow).toBe("migrate");
+    expect(rows[0]?.step).toBe("bkit-telemetry-migrate");
+  });
+
   it("maps the legacy Severity: scale onto CRITICAL|HIGH|MEDIUM|LOW", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,

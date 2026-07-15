@@ -48,13 +48,18 @@ cbartens/bkit (this repo)
 │   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
 │   ├── bkit-telemetry.ts   # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine, ARCHIVE_SHARD_TEMPLATE (#234 WS-1)
 │   ├── bkit-comply.ts      # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
-│   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4) — COPIES consumer .bkit/{stats,friction}.jsonl; COUNT-ONLY for docs/{deferrals,failures}.jsonl; deduplicates by per-kind composite identity; never writes consumer repos; `bkit harvest`
+│   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; deduplicates by per-kind composite identity; prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
 │   ├── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; rollup writer (writeRollupShard); `bkit analysis`
-│   └── bkit-telemetry-migrate.ts # Knowledge/decisions migration CLI (#234 WS-5) — parity-gated destructive migration of docs/knowledge.md → docs/knowledge.jsonl and docs/decisions.md → docs/decisions.jsonl; KN-/DE- ids preserved in aliases[]; `bkit telemetry migrate [--dry-run]`
+│   └── bkit-telemetry-migrate.ts # Legacy .md → .jsonl migration CLI (#234 WS-5) — parity-gated destructive migration of docs/knowledge.md, docs/decisions.md, docs/pending.md → deferrals.jsonl, .bkit/friction.md; KN-/DE- ids + legacy Related: graph preserved in references[]; Severity mapped onto CRITICAL|HIGH|MEDIUM|LOW; Description prose → description (title → summary); Discarded: → alternatives; friction Workflow:/Step: preserved as the envelope workflow/step (where it happened, not the migrate transport); `bkit telemetry migrate [--dry-run]`
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
 ├── .bkit/prompts/        # Subagent prompt files
 ├── .bkit/templates/        # Files templated into consumer repos on install
+├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).
+│                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
+│                           # install surface; harvested consumer data is neither managed nor shipped).
+│                           # Accumulates across runs and is never cleared — once harvest prunes a
+│                           # consumer's friction row, this is the only copy until it is committed.
 └── package.json            # bin: bkit → dist/bkit-install.js
 ```
 
@@ -143,9 +148,11 @@ The compliance grader is a deterministic, advisory-only (never-gating) subsystem
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) and `docs/decisions.jsonl` (`kind:"decision"`) are the NDJSON successors to `docs/knowledge.md` / `docs/decisions.md`. They are consumer-inherited ledgers (installed inside the `.gitattributes` managed block with `merge=union`) populated by `bkit telemetry migrate`.
 
-**Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports the markdown corpus to NDJSON rows, preserves all `KN-N` / `KN-CORE-N` / `DE-N` ids in `aliases[]`, then DELETES the `.md` only after row-count parity is confirmed against a transient `.md.bak`. A parity mismatch or absent `.md.bak` ABORTS with ZERO `.md` deleted. Re-run is idempotent (no-op if already migrated). The destructive delete is provably unreachable from `bkit upgrade` — pinned by a boundary test (KN-8 regression vector, DE-39).
+**Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports the markdown corpus to NDJSON rows, preserves all `KN-N` / `KN-CORE-N` / `DE-N` ids plus the legacy `**Related:**` graph in `references[]`, then DELETES the `.md` only after row-count parity is confirmed against a transient `.md.bak`. A parity mismatch or absent `.md.bak` ABORTS with ZERO `.md` deleted. Re-run is idempotent (no-op if already migrated). The destructive delete is provably unreachable from `bkit upgrade` — pinned by a boundary test (KN-8 regression vector, DE-39).
 
-**Data topology:** both ledgers carry the shared `TelemetryEnvelope` fields (ts, kind, repo, bkitVersion, workflow, step, key, aliases[]) plus kind-specific payloads (`KnowledgePayload` / `DecisionPayload`) defined in `bkit-telemetry.ts`. Agents read these files instead of the markdown ledgers post-migration.
+**Data topology:** both ledgers carry the shared `TelemetryEnvelope` fields (ts, kind, repo, bkitVersion, workflow, step, key, references[]) plus kind-specific payloads (`KnowledgePayload` / `DecisionPayload`) defined in `bkit-telemetry.ts`. Agents read these files instead of the markdown ledgers post-migration.
+
+`references[]` is the single cross-entry pointer for EVERY kind — it lives on the envelope, not a payload. It holds any pointer at all (feature ids, tracker ids, PRs, commit SHAs, file paths, a sibling row's `ts`, and a migrated row's own legacy `KN-N`/`DE-N`). There is no separate identity field: the design's `aliases[]` folded into it once sequential `DE-{N}` ids proved un-mintable under concurrency — two runs read the same max from their own base commit and mint the same id, so an alias could never be a reliable identity. `ts` is the id; everything in `references[]` is a pointer. Full contract: `.bkit/jsonl.md` § Key & References.
 
 ## Distribution
 

@@ -6,7 +6,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
-> - One row per line, append-only — NEVER mutate or reorder prior lines.
+> - One row per line, append-only — NEVER mutate or reorder prior lines. ONE exception, `.bkit/friction.jsonl` under `bkit harvest` — see § Friction Is a Drained Queue.
 > - Before appending: Read the file, skip if an identity-matching row already exists.
 > - Best-effort append — ALWAYS exit 0; NEVER gate workflows on telemetry success.
 
@@ -82,6 +82,27 @@ Each `kind` lives in ONE file, written by specific processes:
 - Keep each item as the source wrote it; trailing qualifiers (`BAR-142 §A2`) are meaning, not noise.
 - **There is no separate identity field.** The design's `aliases[]` ("I AM `KN-14`") folded into `references` once sequential ids proved un-mintable — an id that two runs can both claim was never a reliable identity. `ts` is the id; everything in `references` is a pointer, including a legacy id.
 - Omit when there is genuinely nothing to point at. NEVER invent a link to fill the field.
+
+## Friction Is a Drained Queue — the one non-append-only ledger
+
+Every other ledger is a permanent record. `.bkit/friction.jsonl` is a **work queue that drains**, so it is the ONE file rows are removed from:
+
+<!-- prettier-ignore -->
+| Actor | May do |
+| --- | --- |
+| **A consumer repo** (you, in normal work) | APPEND only. NEVER delete, edit, or reorder a friction row — not even your own, not even to tidy. |
+| **`bkit harvest`, run from the bkit repo** | MOVES rows out: copies each into bkit's central `harvest/` store, then PRUNES that row from the consumer. Consumers start each cycle clean. |
+
+A friction row vanishing from your `.bkit/friction.jsonl` is therefore `bkit harvest` having banked it centrally — NOT data loss, and NOT licence to prune by hand.
+
+The prune is gated, in this order, and each gate exists because the alternative loses data:
+
+- **Durability first:** a row is pruned ONLY after that exact row is fsync'd into the central store AND read back. Crash anywhere and the copy simply re-runs.
+- **Content, never identity:** the gate is byte-for-byte row content. `fold` collapses rows sharing an identity, so an identity-gated prune would delete rows the store never actually kept — real, since `key`s are truncated and two distinct entries can collide. A row that loses the fold STAYS in the consumer and is reported.
+- **Malformed lines are never pruned** — not ours to delete.
+- **The central store accumulates** and is never cleared; until the caller commits it, it is the only record of the pruned rows. `harvest` NEVER commits, in either repo.
+
+`stats.jsonl` is COPY-only (consumer content untouched); `deferrals`/`failures` are COUNT-only (dimensional counts from envelope metadata — prose never leaves the consumer). Contract lives in `.bkit/src/bkit-harvest.ts`.
 
 ## Summary vs Description
 
