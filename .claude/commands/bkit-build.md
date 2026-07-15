@@ -223,7 +223,7 @@ description: "Build Feature — Autonomous implementation"
        git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
      else
        git fetch origin dev
-       git worktree add "$WORKTREE_PATH" -b "feat/{FID}" HEAD
+       git worktree add "$WORKTREE_PATH" -b "feat/{FID}" origin/dev
      fi
      cd "$WORKTREE_PATH"
    fi

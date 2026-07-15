@@ -75,7 +75,11 @@ description: "Ship Feature — Autonomous merge and archive"
      echo "dev lock busy — ship FAILED status left uncommitted on dev; it rides along on the next dev push" >&2
    fi
    ```
-2. Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+2. Resolve merge state — `gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null` → `FAILED_STATE` (empty when `{PR_NUMBER}` unset).
+   **Decide `{LABELS}`:**
+   - **If** `FAILED_STATE` = MERGED → drop all `bkit:*` phase labels, add `bkit:merged` **and** `bkit:failed`.
+   - **Else** → add `bkit:failed`; prior phase label persists, additive.
+   `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
@@ -229,10 +233,13 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
-5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
-6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
-7. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
-8. Update status and commit:
+5. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
+6. **Route:**
+   - **If** `state` = MERGED → **Step 9**.
+   - **Else** → next sub-step.
+7. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
+8. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+9. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
    WT=$(git rev-parse --show-toplevel)
@@ -261,7 +268,7 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+10. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
@@ -458,20 +465,16 @@ description: "Ship Feature — Autonomous merge and archive"
    **If** assertion fails → **Failure Path**.
 4. Refresh PR head against `dev` and merge with empty body:
    ```bash
-   (
-     cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
-     git fetch origin dev
-     gh pr update-branch {PR_NUMBER} 2>/dev/null || true
-     gh pr merge {PR_NUMBER} --squash --delete-branch \
-       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
-       --body ""
-   )
-   PUSH_AT=$(date -u +%s)
-   sleep 30
-   RUN_ID=$(gh run list --branch dev --limit 5 \
-     --json databaseId,createdAt,workflowName \
-     --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
-   [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
+   if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
+     (
+       cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+       git fetch origin dev
+       gh pr update-branch {PR_NUMBER} 2>/dev/null || true
+       gh pr merge {PR_NUMBER} --squash --delete-branch \
+         --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
+         --body ""
+     )
+   fi
    ```
 5. `gh pr view {PR_NUMBER} --json state` → extract `state`.
 6. Decide `MERGE_VERDICT`:
@@ -853,11 +856,17 @@ description: "Ship Feature — Autonomous merge and archive"
    [ "$RUN_STATUS" != "completed" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA has not completed (status: ${RUN_STATUS:-unknown}) — feature merge not test-validated" >&2; exit 1; }
    RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
    [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
-   [ "$RUN_CONCLUSION" = "failure" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA concluded failure — feature merge not test-validated" >&2; exit 1; }
    TESTS_JOBS=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | startswith("bkit-tests")) | {name, conclusion}]')
    [ "$(echo "$TESTS_JOBS" | jq 'length')" -eq 0 ] && { echo "No bkit-tests* job on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
-   TESTS_NOT_OK=$(echo "$TESTS_JOBS" | jq -r 'if any(.[]; .name == "bkit-tests-check") then map(select(.name == "bkit-tests-check")) else . end | [.[] | select(.conclusion != "success") | "\(.name)=\(.conclusion // "null")"] | join(", ")')
+   LIVE_NOT_OK=$(echo "$TESTS_JOBS" | jq -r '[.[] | select(.name == "bkit-tests-live") | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.name)=\(.conclusion)"] | join(", ")')
+   if [ -n "$LIVE_NOT_OK" ]; then
+     GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c '[.[] | select(.name != "bkit-tests-live" and .name != "bkit-tests-check")]')
+   else
+     GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c 'if any(.[]; .name == "bkit-tests-check") then map(select(.name == "bkit-tests-check")) else . end')
+   fi
+   TESTS_NOT_OK=$(echo "$GATE_JOBS" | jq -r '[.[] | select(.conclusion != "success") | "\(.name)=\(.conclusion // "null")"] | join(", ")')
    [ -n "$TESTS_NOT_OK" ] && { echo "Test tiers not green on CI run $RUN_ID for squash merge $SQUASH_SHA: $TESTS_NOT_OK — feature merge not test-validated" >&2; exit 1; }
+   [ -n "$LIVE_NOT_OK" ] && echo "Live tier not green on CI run $RUN_ID ($LIVE_NOT_OK) — post-merge canary, not a merge gate; reproduce with /bkit-debug" >&2
    ```
    **If** exit non-zero → **Failure Path**.
 3. Update status, batch-commit, and push:
