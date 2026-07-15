@@ -1791,6 +1791,23 @@ async function main() {
   if (verb === "telemetry") {
     try {
       const { runMigrate } = await import("./bkit-telemetry-migrate.js");
+      // `bkit telemetry summary [--phase <workflow>]` — THE telemetry summary, for
+      // every workflow's close step. Previously each of the five workflows carried
+      // its own bash version, and each was wrong: `grep -c … || echo 0` printed
+      // "0\n0" whenever nothing was malformed (grep exits 1 on zero matches), and
+      // `jq '.bkitVersion // "unknown"'` bucketed empty versions under an empty key
+      // because `//` substitutes only on null/false. One implementation, one answer.
+      if (telemetrySubverb === "summary") {
+        const { foldFrom, buildSummary } = await import("./bkit-telemetry.js");
+        const statsPath = path.join(process.cwd(), ".bkit", "stats.jsonl");
+        if (!fs.existsSync(statsPath)) {
+          console.log("[bkit-telemetry] stats.jsonl not found — no telemetry rows yet");
+          return;
+        }
+        const summary = buildSummary(foldFrom([statsPath]), complyPhase ?? undefined);
+        for (const line of summary.lines) console.log(line);
+        return;
+      }
       if (telemetrySubverb === "migrate") {
         const pkgPath = path.join(process.cwd(), "package.json");
         let bkitVersion = "unknown";

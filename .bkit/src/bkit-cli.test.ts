@@ -847,7 +847,7 @@ describe("parseArgs — comply verb", () => {
 
   it("--phase on non-comply verb exits with error", () => {
     const msg = expectExit(() => parseArgs(["install", "--claude", "--phase=ship"]));
-    expect(msg).toMatch(/--phase is only valid with the .comply. verb/);
+    expect(msg).toMatch(/--phase is only valid with the .comply. and .telemetry. verbs/);
   });
 
   it("complyPhase is null for non-comply verbs", () => {

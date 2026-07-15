@@ -43,7 +43,7 @@ export function parseCloudVariant(value) {
 // telemetry — sub-verb for bkit telemetry <subverb>
 // ---------------------------------------------------------------------------
 /** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
-export const TELEMETRY_SUBVERBS = ["migrate"];
+export const TELEMETRY_SUBVERBS = ["migrate", "summary"];
 /** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
 export function parseTelemetrySubverb(value) {
     return typeof value === "string" && TELEMETRY_SUBVERBS.includes(value)
@@ -242,11 +242,12 @@ export function parseArgs(argv) {
                 continue;
             }
             // Value-bearing flag: --phase=<design|plan|build|debug|ship>
-            // Used by `bkit comply` to identify the workflow phase being graded.
+            // `bkit comply` — the workflow phase being graded.
+            // `bkit telemetry summary` — the workflow to report a chain rollup for.
             // Rejected for all other verbs.
             if (flag.startsWith("phase=")) {
-                if (verb !== "comply") {
-                    console.error(`[bkit] --phase is only valid with the \`comply\` verb. Run \`bkit help\` for usage.`);
+                if (verb !== "comply" && verb !== "telemetry") {
+                    console.error(`[bkit] --phase is only valid with the \`comply\` and \`telemetry\` verbs. Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
                 const value = flag.slice("phase=".length);

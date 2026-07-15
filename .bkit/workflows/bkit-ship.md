@@ -802,19 +802,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 6. Emit telemetry summary read (includes chain-wide rollup for ship):
    ```bash
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   if [ -f "$STATS" ]; then
-     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
-     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
-     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
-     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
-     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
-     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
-     SHIP_ROWS=$(grep -c '"workflow":"ship"' "$STATS" 2>/dev/null || echo 0)
-     echo "[bkit-telemetry] ship rows: $SHIP_ROWS | design→ship chain total: $ROW_COUNT"
-   else
-     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
-   fi
+   pnpm bkit telemetry summary --phase=ship || echo "[bkit-telemetry] summary unavailable, skipping"
    ```
 7. Update status and commit:
    ```bash

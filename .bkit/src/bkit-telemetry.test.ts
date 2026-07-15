@@ -502,6 +502,80 @@ describe("resolveGitSha — parentSha must be a real SHA before it reaches a row
   });
 });
 
+// ONE summary, called by every workflow close step via `bkit telemetry summary`.
+// The five workflows each carried their own bash copy and every one was wrong:
+//   grep -cvE '…' || echo 0   -> prints "0\n0" when NOTHING is malformed, because
+//                                grep -c exits 1 on zero matches (the common case)
+//   jq '.bkitVersion // "unknown"' -> buckets "" under an EMPTY key, since jq's //
+//                                substitutes only on null/false
+//   wc -l                     -> counts lines, not parsed rows
+describe("buildSummary — the one telemetry summary", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function write(rows: TelemetryEvent[], extraLines: string[] = []): string {
+    const p = path.join(dir, "stats.jsonl");
+    fs.writeFileSync(p, [...rows.map((r) => JSON.stringify(r)), ...extraLines].join("\n") + "\n");
+    return p;
+  }
+
+  it("names the unknown-version bucket instead of leaving it empty", () => {
+    const s = buildSummary(
+      foldFrom([
+        write([
+          counterEvent({ bkitVersion: "4.5.0", parentSha: "aaa" } as Partial<TelemetryEvent>),
+          counterEvent({ bkitVersion: "", parentSha: "bbb" } as Partial<TelemetryEvent>),
+        ]),
+      ]),
+    );
+    // The bash printed `versions: =1, 4.5.0=1` — a nameless bucket.
+    expect(s.versionCounts["unknown"]).toBe(1);
+    expect(s.lines[0]).toContain("unknown=1");
+    expect(s.lines[0]).not.toMatch(/versions: =/);
+  });
+
+  it("reports 0 malformed as a single 0 when nothing is malformed", () => {
+    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    expect(s.malformedLineCount).toBe(0);
+    expect(s.lines[0]).toContain("malformed: 0");
+    expect(s.lines[0]).not.toContain("\n"); // the bash emitted "0\n0" here
+  });
+
+  it("counts malformed lines by parsing, not by regex", () => {
+    // `{}` matches the bash guard /^\{.*\}$/ and would be counted VALID, but it is
+    // not a telemetry row; a truncated line is what the count is actually for.
+    const s = buildSummary(
+      foldFrom([write([counterEvent({ parentSha: "aaa" })], ['{"ts":1,"kind":"coun'])]),
+    );
+    expect(s.malformedLineCount).toBe(1);
+  });
+
+  it("counts per-workflow ENTITIES, so an updated row is not counted twice", () => {
+    const p = write([
+      frictionEvent("k", { ts: 1_000, workflow: "ship" } as Partial<TelemetryEvent>),
+      frictionEvent("k", {
+        ts: 2_000,
+        workflow: "ship",
+        status: "CLOSED",
+      } as Partial<TelemetryEvent>),
+    ]);
+    const s = buildSummary(foldFrom([p]), "ship");
+    expect(s.rowCount).toBe(2); // two lines on disk
+    expect(s.workflowCounts["ship"]).toBe(1); // one entity
+    expect(s.lines.at(-1)).toContain("ship: 1");
+  });
+
+  it("omits the chain line when no workflow is given", () => {
+    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    expect(s.lines.some((l) => l.includes("chain total"))).toBe(false);
+  });
+});
+
 describe("validate — A2-mandatory envelope fields", () => {
   it("accepts a valid compliance event", () => {
     expect(validate(complianceEvent()).ok).toBe(true);

@@ -554,20 +554,7 @@ description: "Design Feature — Autonomous design phase"
 5. Emit telemetry summary read (count/size/fold-time + signal lines):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   if [ -f "$STATS" ]; then
-     ROW_COUNT=$(wc -l < "$STATS" | tr -d ' ')
-     FILE_SIZE=$(wc -c < "$STATS" | tr -d ' ')
-     FOLD_START=$(date +%s%N 2>/dev/null || echo 0)
-     MALFORMED=$(grep -cvE '^\{.*\}$' "$STATS" 2>/dev/null || echo 0)
-     FOLD_END=$(date +%s%N 2>/dev/null || echo 0)
-     FOLD_MS=$(( (FOLD_END - FOLD_START) / 1000000 )) 2>/dev/null || FOLD_MS=0
-     VERSIONS=$(jq -r '.bkitVersion // "unknown"' "$STATS" 2>/dev/null | sort | uniq -c | awk '{printf "%s=%s, ", $2, $1}' | sed 's/, $//')
-     echo "[bkit-telemetry] rows: $ROW_COUNT | size: ${FILE_SIZE}B | fold-time: ~${FOLD_MS}ms | malformed: $MALFORMED | versions: ${VERSIONS:-none}"
-     [ "$ROW_COUNT" -gt 5000 ] && echo "[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded — $ROW_COUNT rows in stats.jsonl; consider archiving." || true
-   else
-     echo "[bkit-telemetry] stats.jsonl not found — no telemetry rows yet"
-   fi
+   pnpm bkit telemetry summary --phase=design || echo "[bkit-telemetry] summary unavailable, skipping"
    ```
 6. Update status and commit:
    ```bash

@@ -742,11 +742,30 @@ export interface TelemetrySummary {
   malformedLineCount: number;
   versionCounts: Record<string, number>;
   maxRowsWarning: boolean;
+  /** Rows per emitting workflow — the chain rollup a close step reports. */
+  workflowCounts: Record<string, number>;
   /** Human-readable report lines. */
   lines: string[];
 }
 
-export function buildSummary(result: FoldFromResult): TelemetrySummary {
+/**
+ * THE telemetry summary. One implementation, called by every workflow close step
+ * via `bkit telemetry summary` — see § the reason it is not inline shell.
+ *
+ * The five workflows each carried their own bash version of this, and every one
+ * was wrong in ways this is not:
+ *   - `MALFORMED=$(grep -cvE '^\{.*\}$' … || echo 0)` prints "0\n0" whenever there
+ *     are NO malformed lines, because `grep -c` exits 1 on zero matches and the
+ *     `|| echo 0` fires on top of grep's own "0". Broken in the common case.
+ *   - `jq -r '.bkitVersion // "unknown"'` buckets an EMPTY version under an empty
+ *     key (`versions: =2`), because jq's `//` substitutes only on null/false and
+ *     `""` is neither.
+ *   - `wc -l` counts LINES, not parsed rows, and a regex is not a JSON parser.
+ * This counts what `parse()` actually parsed, and names the unknown bucket.
+ *
+ * @param workflow when given, adds the per-workflow chain line the close step reports.
+ */
+export function buildSummary(result: FoldFromResult, workflow?: string): TelemetrySummary {
   const versionStr =
     Object.entries(result.versionCounts)
       .map(([v, n]) => `${v}=${n}`)
@@ -759,11 +778,27 @@ export function buildSummary(result: FoldFromResult): TelemetrySummary {
       `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (${MAX_ROWS_BEFORE_ROLLUP}) exceeded — ${result.rowCount} rows in stats.jsonl; consider archiving.`,
     );
   }
+
+  // Counted off the FOLDED state, so these are ENTITIES, not lines — same rule the
+  // spec sets for every reader. The bash version grepped '"workflow":"ship"' across
+  // raw lines, so an updated row counted twice.
+  const workflowCounts: Record<string, number> = {};
+  for (const ev of result.state.values()) {
+    const w = ev.workflow || "unknown";
+    workflowCounts[w] = (workflowCounts[w] ?? 0) + 1;
+  }
+  if (workflow) {
+    lines.push(
+      `[bkit-telemetry] ${workflow}: ${workflowCounts[workflow] ?? 0} | design→ship chain total: ${result.state.size} (from ${result.rowCount} rows)`,
+    );
+  }
+
   return {
     rowCount: result.rowCount,
     malformedLineCount: result.malformedLineCount,
     versionCounts: result.versionCounts,
     maxRowsWarning: result.maxRowsWarning,
+    workflowCounts,
     lines,
   };
 }

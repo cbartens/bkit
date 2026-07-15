@@ -94,7 +94,7 @@ export type Verb =
 // ---------------------------------------------------------------------------
 
 /** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
-export const TELEMETRY_SUBVERBS = ["migrate"] as const;
+export const TELEMETRY_SUBVERBS = ["migrate", "summary"] as const;
 export type TelemetrySubverb = (typeof TELEMETRY_SUBVERBS)[number];
 
 /** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
@@ -398,12 +398,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
 
       // Value-bearing flag: --phase=<design|plan|build|debug|ship>
-      // Used by `bkit comply` to identify the workflow phase being graded.
+      // `bkit comply` — the workflow phase being graded.
+      // `bkit telemetry summary` — the workflow to report a chain rollup for.
       // Rejected for all other verbs.
       if (flag.startsWith("phase=")) {
-        if (verb !== "comply") {
+        if (verb !== "comply" && verb !== "telemetry") {
           console.error(
-            `[bkit] --phase is only valid with the \`comply\` verb. Run \`bkit help\` for usage.`,
+            `[bkit] --phase is only valid with the \`comply\` and \`telemetry\` verbs. Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
