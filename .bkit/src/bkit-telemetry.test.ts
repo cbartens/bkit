@@ -388,6 +388,26 @@ describe("jsonl.md examples — validated against the codec", () => {
     for (const kind of VALID_KINDS) expect(kinds, `no example for kind: ${kind}`).toContain(kind);
   });
 
+  // step = WHERE, subagent = WHO, model = the subagent's own pin. They were
+  // collapsed: `step` held agent names on most rows while `subagent` sat empty on
+  // all 141, costing the harvest two of its five dimensions.
+  it("no example puts an agent name in step", () => {
+    for (const ex of specExamples()) {
+      const step = ex["step"];
+      if (typeof step !== "string") continue;
+      expect(step.startsWith("bkit-"), `step "${step}" is an agent name, not a step`).toBe(false);
+    }
+  });
+
+  it("model appears exactly where subagent does — never on an orchestrator row", () => {
+    for (const ex of specExamples()) {
+      if (!ex["repo"]) continue;
+      expect(Boolean(ex["model"]), `${String(ex["kind"])}: model must be set iff subagent is`).toBe(
+        Boolean(ex["subagent"]),
+      );
+    }
+  });
+
   it("the triaged kinds' examples carry severity and references", () => {
     for (const ex of specExamples()) {
       const kind = ex["kind"] as string;

@@ -107,11 +107,33 @@ export interface TelemetryEnvelope {
   bkitVersion: string;
   /** Emitting workflow: design | plan | build | debug | ship */
   workflow: string;
-  /** Step within the workflow that emitted this row. */
+  /**
+   * The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`,
+   * `ship-close-gate`. A step of the orchestrator, never an agent name — a
+   * subagent's identity goes in `subagent`, and its model in `model`.
+   */
   step: string;
-  /** Emitting subagent, if any. */
+  /**
+   * The SUBAGENT that wrote the row, e.g. `bkit-build-challenge-remediate`.
+   * Absent on orchestrator-written rows (the workflow itself wrote it).
+   *
+   * Distinct from `step` on purpose: `step` is WHERE in the workflow, `subagent`
+   * is WHO. They were conflated — most rows put an agent name in `step` while
+   * `subagent` sat empty on all 141 — which cost the harvest one of the five
+   * dimensions it exists to slice by (repo/workflow/step/subagent/severity), and
+   * made "which agent generates the most rework?" unanswerable.
+   */
   subagent?: string;
-  /** Model of the writing subagent (from its prompt frontmatter `model:`); blank/absent for orchestrator-written rows. */
+  /**
+   * The model that wrote the row, read from the writing subagent's OWN prompt
+   * frontmatter `model:` at call time — the deterministic source bkit already
+   * owns, and the only one that stays true when a prompt is re-pinned.
+   *
+   * Set ONLY on subagent-written rows, i.e. exactly when `subagent` is set. An
+   * orchestrator-written row has no `model`: the session model is the operator's
+   * runtime choice, not a property of the row, and self-reporting it invites the
+   * same nondeterminism the compliance grader exists to avoid.
+   */
   model?: string;
   /**
    * Free-form related context — the JSONL form of the retired `**Related:**`

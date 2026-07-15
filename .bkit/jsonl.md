@@ -47,8 +47,9 @@ Each `kind` lives in ONE file, written by specific processes:
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
 | `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship` (part of the dedup tuple for `compliance`/`counter`). |
-| `step` | `string` | Emitting step, e.g. `build-close-workflow`. |
-| `model` | `string?` | Model that wrote the row — the writing subagent's prompt frontmatter `model:` for subagent-written rows, or the orchestrator's session model for workflow-written rows (`compliance`/`outcome`/`counter`/`friction`). Blank if unknown. |
+| `step` | `string` | The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. A step of the orchestrator — NEVER an agent name. |
+| `subagent` | `string?` | The SUBAGENT that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; ABSENT on orchestrator-written rows. `step` is WHERE, `subagent` is WHO — do not put one in the other. |
+| `model` | `string?` | The model that wrote the row, read from the writing subagent's OWN prompt frontmatter `model:` at call time. Set ONLY where `subagent` is set. NEVER set for orchestrator-written rows — the session model is the operator's runtime choice, not a property of the row. |
 | `references` | `string[]?` | Related context — see § Key & References. ANY pointer that helps a later reader place the row: feature ids, tracker ids, PRs, commit SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. Omit when there is genuinely nothing to point at; do NOT invent links. |
 
 ## Per-Kind Fields
@@ -64,6 +65,21 @@ Each `kind` lives in ONE file, written by specific processes:
 | `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
+
+## Who Wrote It — `step` vs `subagent` vs `model`
+
+Three fields, three different questions. They were collapsed into one, so the harvest lost two of the five dimensions it slices by (`repo`/`workflow`/`step`/`subagent`/`severity`).
+
+<!-- prettier-ignore -->
+| Row written by | `workflow` | `step` | `subagent` | `model` |
+| --- | --- | --- | --- | --- |
+| **The orchestrator** (a workflow itself) | `ship` | `ship-close-gate` | *(absent)* | *(absent)* |
+| **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-challenge` | `bkit-build-challenge-remediate` | that prompt's own `model:` |
+
+- **`step` is never an agent name.** `step: "bkit-telemetry-migrate"` is wrong; that is a `subagent`.
+- **`subagent` is set on EVERY subagent-written row** and absent on orchestrator rows. Blank `subagent` therefore means "the workflow wrote this", not "unknown".
+- **`model` is read from the writing subagent's prompt frontmatter `model:` at call time** — the deterministic value bkit already owns, and the only one that stays true when a prompt is re-pinned to a different model. Set it exactly where `subagent` is set.
+- **NEVER set `model` on an orchestrator row.** The session model is whatever the operator happened to run; it is not a property of the row, and asking a model to self-report it reintroduces the nondeterminism the compliance grader exists to measure away.
 
 ## Key & References
 
@@ -220,7 +236,6 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "ship",
   "step": "ship-close-workflow",
-  "model": "claude-opus-4-8",
   "rule": "no-mirror-edit",
   "result": "pass",
   "phase": "ship",
@@ -233,7 +248,6 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "ship",
   "step": "ship-close-gate",
-  "model": "claude-opus-4-8",
   "prNumber": 412,
   "linesAdded": 120,
   "linesDeleted": 34,
@@ -251,7 +265,6 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "build",
   "step": "build-close-workflow",
-  "model": "claude-opus-4-8",
   "counterName": "BUILD_ATTEMPT",
   "counterValue": 2,
   "counterSource": "shell-bus",
@@ -270,7 +283,6 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "ship",
   "step": "ship-update-docs",
-  "model": "claude-opus-4-8",
   "key": "ship-dev-commit-blocked-by-pre-commit-hook",
   "category": "tool-failure",
   "scope": "bkit-repo",
@@ -294,7 +306,8 @@ Indented here for readability — **on disk each row is a single physical line**
   "repo": "cbartens/bkit",
   "bkitVersion": "4.2.0",
   "workflow": "design",
-  "step": "design-generate",
+  "step": "design-brainstorm",
+  "subagent": "bkit-design-generate",
   "model": "claude-opus-4-8",
   "key": "pnpm-tag-drop-readme-note",
   "type": "issue",
@@ -319,7 +332,8 @@ Indented here for readability — **on disk each row is a single physical line**
   "repo": "cbartens/bkit",
   "bkitVersion": "4.2.0",
   "workflow": "debug",
-  "step": "debug-failure-diagnose",
+  "step": "debug-diagnose",
+  "subagent": "bkit-debug-failure-diagnose",
   "model": "claude-opus-4-8",
   "key": "bkit-install-flips-core-bare",
   "summary": "bkit install flips core.bare=true",
@@ -342,7 +356,8 @@ Indented here for readability — **on disk each row is a single physical line**
   "repo": "cbartens/bkit",
   "bkitVersion": "4.2.0",
   "workflow": "debug",
-  "step": "debug-failure-remediate",
+  "step": "debug-remediate",
+  "subagent": "bkit-debug-failure-remediate",
   "model": "claude-sonnet-4-6",
   "key": "gh-mcp-401-after-token-rotation",
   "summary": "GitHub MCP / gh 401 immediately after a token rotation",
@@ -364,6 +379,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "plan",
   "step": "plan-generate",
+  "subagent": "bkit-plan-generate",
   "model": "claude-opus-4-8",
   "key": "bkit-distribution-via-github-packages",
   "summary": "distribute @cbartens/bkit via the GitHub Packages npm registry",
