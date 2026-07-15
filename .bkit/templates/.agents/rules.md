@@ -8,6 +8,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Local project rules/overrides → `Project Rules` below the bkit-managed block; universal rules stay in-block.
 
@@ -45,6 +46,7 @@
 
 - **Skills:** Full list `.agents/skills.md`. Load only relevant, invoke via `skill` tool.
 - **Docs:** Index `.agents/docs.md`. Lazy-load by phase matrix; pull extras from catalog as warranted.
+- **Authoring:** ALWAYS follow docs `Rules` headers. Describe current state / rules, NOT reasons / history; state what to do; NOT why. ONLY exceptions: Docs where purpose IS the record.
 
 ### Orchestrators & Agents
 

@@ -10,6 +10,7 @@
 > - Blocks below `<!-- bkit:end -->` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
 > - Read-only + idempotent. **Never log PII.**
 > - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 
 ## Debug Fetch
 
