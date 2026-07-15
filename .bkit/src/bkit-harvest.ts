@@ -33,7 +33,14 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fold, identity, parse, type FoldedState, type TelemetryEvent } from "./bkit-telemetry.js";
+import {
+  fold,
+  identity,
+  parse,
+  resolveRepoSlug,
+  type FoldedState,
+  type TelemetryEvent,
+} from "./bkit-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -453,16 +460,27 @@ export function runHarvest(bkitRoot: string): HarvestResult {
 
 /** Convert an absolute consumer path to a repo slug for stamping. */
 export function consumerPathToSlug(consumerPath: string): string {
-  // Try to derive from the last 2 path segments (owner/repo pattern).
-  // Filter empty strings that result from leading/trailing slashes.
+  // The consumer's OWN git remote — the only authoritative source.
+  const slug = resolveRepoSlug(consumerPath);
+  if (slug) return slug;
+
+  // Last resort, and loud. The previous implementation used the last two path
+  // segments unconditionally, which makes the "owner" a directory on whoever's
+  // machine ran the harvest: /Users/x/Documents/GitHub/app-gether-life became
+  // `GitHub/app-gether-life`, and re-cloning to ~/code/ would have silently
+  // minted `code/app-gether-life` as a THIRD identity for the same repo.
+  // `repo` is part of identity() for every kind, so each spelling forks the
+  // entity. Kept only so a remote-less consumer still harvests, never silently.
   const parts = consumerPath
     .replace(/\/+$/, "")
     .split("/")
     .filter((p) => p.length > 0);
-  if (parts.length >= 2) {
-    return parts.slice(-2).join("/");
-  }
-  return parts[parts.length - 1] ?? consumerPath;
+  const fallback = parts[parts.length - 1] ?? consumerPath;
+  console.error(
+    `[bkit-harvest] no git remote at ${consumerPath} — falling back to path-derived slug "${fallback}". ` +
+      `This is NOT an owner/repo slug and will not join rows from the same repo harvested elsewhere.`,
+  );
+  return fallback;
 }
 
 /**

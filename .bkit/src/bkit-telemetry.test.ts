@@ -11,6 +11,8 @@ import {
   VALID_KINDS,
   VALID_SEVERITIES,
   isOpenWork,
+  parseRemoteUrlToSlug,
+  resolveRepoSlug,
   appendLine,
   buildSummary,
   fold,
@@ -206,13 +208,13 @@ describe("severity — per-kind requirement + closed enum", () => {
   it.each(["low", "normal", "critical", "blocker", "advisory", "Critical", ""])(
     "rejects off-enum severity %j",
     (severity) => {
-      const r = validate(deferralEvent("k", { severity } as unknown as Partial<TelemetryEvent>));
+      const r = validate({ ...deferralEvent("k"), severity });
       expect(r.ok).toBe(false);
     },
   );
 
   it("rejects severity on a kind that must not carry it", () => {
-    const r = validate(complianceEvent({ severity: "HIGH" } as unknown as Partial<TelemetryEvent>));
+    const r = validate({ ...complianceEvent(), severity: "HIGH" });
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("do not carry severity");
   });
@@ -395,6 +397,51 @@ describe("jsonl.md examples — validated against the codec", () => {
       // writers to omit it, which is how the Related: graph evaporated.
       expect(ex["references"], `${kind} example lacks references`).toBeDefined();
     }
+  });
+});
+
+// `repo` is in identity() for EVERY kind, so a respelled repo forks the entity —
+// the same power `key` has, except `repo` is derived, not authored, so nobody
+// notices. It was derived three different ways: package.json `name` (an npm name:
+// `@cbartens/bkit`, one char off the slug), the filesystem path (making the owner
+// a folder on the operator's laptop), and freehand by orchestrators.
+describe("repo slug — one resolver, from the git remote", () => {
+  it.each([
+    ["https://github.com/owner/repo.git", "owner/repo"],
+    ["https://github.com/owner/repo", "owner/repo"],
+    ["git@github.com:owner/repo.git", "owner/repo"],
+    ["ssh://git@github.com/owner/repo.git", "owner/repo"],
+    ["  https://github.com/owner/repo.git\n", "owner/repo"],
+  ])("parses %j -> %j", (url, slug) => {
+    expect(parseRemoteUrlToSlug(url)).toBe(slug);
+  });
+
+  it.each(["", "not-a-url", "https://github.com/", "reponame"])(
+    "returns empty rather than guessing for %j",
+    (url) => {
+      expect(parseRemoteUrlToSlug(url)).toBe("");
+    },
+  );
+
+  // The report's two named regression vectors.
+  it("a scoped npm package name must NEVER become the slug", () => {
+    // `@cbartens/bkit` is package.json `name`. It is not a slug, and it is one
+    // character from the real one — so the two spellings fork every entity.
+    expect(parseRemoteUrlToSlug("@cbartens/bkit")).toBe("");
+    expect(parseRemoteUrlToSlug("https://github.com/cbartens/bkit.git")).toBe("cbartens/bkit");
+  });
+
+  it("resolves this repo's real slug from its remote", () => {
+    const root = path.resolve(import.meta.dirname, "..", "..");
+    // Skip gracefully where there is no remote (fresh clone in CI without origin).
+    const slug = resolveRepoSlug(root);
+    if (!slug) return;
+    expect(slug).toMatch(/^[^/@]+\/[^/]+$/);
+    expect(slug.startsWith("@")).toBe(false);
+  });
+
+  it("returns empty for a directory that is not a git repo", () => {
+    expect(resolveRepoSlug(os.tmpdir())).toBe("");
   });
 });
 

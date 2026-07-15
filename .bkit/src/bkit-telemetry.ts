@@ -21,6 +21,7 @@
 // ALL well-formed rows (no version gating) and report row counts per `bkitVersion`
 // so an unexpected version surfaces for triage.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -32,6 +33,64 @@ import * as readline from "node:readline";
 export const MAX_ROWS_BEFORE_ROLLUP = 5000;
 /** Template for archive shards: replace {basename} and {YYYYMM}. */
 export const ARCHIVE_SHARD_TEMPLATE = ".bkit/archive/{basename}.{YYYYMM}.jsonl";
+
+// ---------------------------------------------------------------------------
+// repo — the owner/repo slug, resolved ONE way
+//
+// `repo` is part of identity() for EVERY kind, so a respelled repo FORKS the
+// entity — the same failure the spec warns about for `key`, except `repo` is not
+// authored by anyone: it is derived. It therefore must be derived identically
+// everywhere, from the only authoritative source: the git remote.
+//
+// NOT package.json `name` — that is an npm package name, not a slug
+// (`@cbartens/bkit` vs `cbartens/bkit`). NOT the filesystem path — that makes the
+// "owner" a folder on whoever's laptop ran the tool (`GitHub/app-gether-life`,
+// or `code/app-gether-life` after they reorganise).
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse `owner/repo` out of a git remote URL. Pure — the fiddly half, kept
+ * testable without a git repo.
+ *
+ * Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
+ * (`git@github.com:owner/repo.git`) and `ssh://` URLs. Returns "" when the URL
+ * yields no `owner/repo` pair rather than guessing.
+ */
+export function parseRemoteUrlToSlug(url: string): string {
+  const m = url
+    .trim()
+    .replace(/\.git$/, "")
+    .match(/[/:]([^/:]+\/[^/:]+)$/);
+  return m?.[1] ?? "";
+}
+
+/**
+ * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
+ * remote or no git repo — callers decide the fallback, loudly.
+ *
+ * The env scrub is load-bearing, not hygiene: git hooks export GIT_DIR /
+ * GIT_WORK_TREE / GIT_INDEX_FILE, and leaving them set makes `git -C <path>`
+ * silently answer for the HOOK's repo instead of <path> — so a harvest run from
+ * a hook would stamp every consumer's rows with bkit's own slug.
+ *
+ * spawnSync, not execSync-in-a-try: a non-zero exit is an expected answer here
+ * ("no remote"), not an exception to swallow.
+ */
+export function resolveRepoSlug(cwd: string): string {
+  const env = { ...process.env };
+  delete env["GIT_DIR"];
+  delete env["GIT_WORK_TREE"];
+  delete env["GIT_INDEX_FILE"];
+  delete env["GIT_OBJECT_DIRECTORY"];
+  const res = spawnSync("git", ["remote", "get-url", "origin"], {
+    cwd,
+    encoding: "utf-8",
+    env,
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (res.status !== 0 || typeof res.stdout !== "string") return "";
+  return parseRemoteUrlToSlug(res.stdout);
+}
 
 // ---------------------------------------------------------------------------
 // Shared envelope (A2-mandatory fields on EVERY row, every kind)

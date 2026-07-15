@@ -18,7 +18,7 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
+import { resolveRepoSlug, type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1067,18 +1067,24 @@ function abort(message: string, lines: string[]): MigrateResult {
   };
 }
 
+/**
+ * The repo's `owner/repo` slug for the `repo` envelope field.
+ *
+ * The git remote is the ONLY authoritative source. package.json `name` was used
+ * here previously and is NOT a slug — it is an npm package name, so bkit's own
+ * ledgers were stamped `@cbartens/bkit` against a true slug of `cbartens/bkit`.
+ * One character, but `repo` is part of identity() for every kind, so the two
+ * spellings fork every entity between them.
+ *
+ * No remote (a repo that has never been pushed) -> "unknown/repo", loudly. A
+ * wrong-but-plausible slug is worse than an obviously-absent one: it forks
+ * silently, whereas "unknown/repo" shows up the moment anyone reads the ledger.
+ */
 function detectRepo(cwd: string): string {
-  // Try package.json name
-  const pkgPath = path.join(cwd, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-      if (typeof pkg["name"] === "string" && pkg["name"]) {
-        return pkg["name"] as string;
-      }
-    } catch (_e) {
-      void _e; // ignore: package.json unreadable, fall through to path-based detection
-    }
-  }
+  const slug = resolveRepoSlug(cwd);
+  if (slug) return slug;
+  console.error(
+    `[bkit-telemetry] no git remote at ${cwd} — stamping repo="unknown/repo"; rows will not join a per-repo slice`,
+  );
   return "unknown/repo";
 }
