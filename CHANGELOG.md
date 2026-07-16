@@ -6,6 +6,24 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.6.2] — 2026-07-16
+
+Continues the post-4.6.x reconciliation against the source-of-truth consumer: closes the gap where 4.6.1's script-injection fix — shipped only into new `ci.yml` seeds — never reached existing consumers, and retires three perpetual or false advisories that a hand-maintained Tier-3 CI surfaced. Also scrubs maintainer-internal tracker ids from the shipped telemetry spec.
+
+### Security
+
+- **`ci-yml-run-injection` — a dedicated script-injection advisory for consumers 4.6.1's fix never reached.** 4.6.1 hardened the shipped `ci.yml` template, but `ci.yml` is Tier-3 seed-or-print, so the fix does not back-fill a consumer seeded before it — they keep the vulnerable `MSG="${{ github.event.pull_request.title }}"` with only a generic block-drift nudge (not a security signal). A new detector pattern-matches untrusted input (`${{ github.event.* }}` / `github.head_ref`) interpolated directly into a `run:` shell body — the actual sink — separate from cosmetic drift, and prescribes the `env:`-indirection remediation. Line-based (no YAML dependency): the safe `env:` / `if:` form does not fire and shipped commented stubs stay silent, and the current template is asserted never to trip its own detector.
+
+### Changed
+
+- **`ts-ci-steps` is now an `optional` managed block.** A consumer that hand-maintains its own setup / install / typecheck steps outside the block was perpetually nagged `missing: ts-ci-steps` — a block a Tier-3 `ci.yml` (never rewritten) can never regain, so the advisory could never be resolved. Marked `optional`: a deleted block no longer nags, while a block that is present-but-drifted is still flagged. The skeleton derivation still recognises the marker.
+- **Managed-block drift ignores comment-only lines.** `bkit check`'s Tier-2 / Tier-3 named-block drift compared full block bodies, so a consumer annotating a bkit-owned block (a ticket ref, a rationale) tripped perpetual drift with no override, again on a file bkit never rewrites. Only semantic (non-comment, non-blank) lines are compared now; a changed or commented-out semantic line still gates.
+- **`ci-legacy-scaffold-job-names` surfaces the docs-vs-CI skew.** When `docs/testing.md` (managed, refreshed on upgrade) already names the current jobs while a Tier-3 `ci.yml` still defines the legacy `bkit-decide` / `bkit-tests-migrate` jobs, the advisory now states that docs and CI describe **different** job names — the skew becomes a stated finding instead of one an agent has to notice.
+
+### Fixed
+
+- **The shipped telemetry spec leaked maintainer-internal tracker ids.** `.bkit/jsonl.md`'s `references` examples cited real internal `BAR-###` ids (which resolve to bkit's private tracker) — the same class of leak the 4.6.0 "workflow must never cite an internal label" rule forbids. They are now neutral `ISSUE-###` placeholders; the generic `KN-N` / `DE-N` legacy-ledger scheme, which consumers reuse, is unchanged.
+
 ## [4.6.1] — 2026-07-16
 
 A post-release audit of the two surfaces 4.6.0's pre-release audit ran out of turns on — uninstall footprint and guardrail parity — surfaced a script-injection in the shipped CI template and two uninstall-footprint gaps. Also syncs the CI scaffold and testing doctrine with the source-of-truth consumer's cross-lane file-execution report.
