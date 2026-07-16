@@ -21,7 +21,9 @@
     "!.bkit/scripts",
     "!.bkit/version",
     "!.bkit/advisories.md",
-    "!.bkit/friction.md"
+    "!.bkit/friction.jsonl",
+    "!.bkit/stats.jsonl",
+    "!.bkit/consumers.md"
   ],
   "engines": {
     "node": ">=20"
