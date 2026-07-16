@@ -439,6 +439,29 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// runUninstall — .bkit/version is bkit install-state, removed on full/core uninstall (4.6.3)
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
+  it("deletes .bkit/version on a full/core uninstall (bkit install-state, zero-footprint)", () => {
+    // .bkit/version records no hash for itself, so the generic byte-equal hash-guard used to
+    // preserve it as "consumer-modified" — leaving bkit state behind after a full teardown.
+    writeBkitVersionFile({ pinnedVersion: "1.0.0", tier3Hashes: {} });
+    return runUninstall(["core"], makeCtx()).then(() => {
+      expect(fileExists(".bkit/version")).toBe(false);
+    });
+  });
+
+  it("keeps .bkit/version on a targeted (non-core) uninstall", () => {
+    // It is `module: core`, so a `--claude`-only uninstall never sees it and bkit keeps working.
+    writeBkitVersionFile({ pinnedVersion: "1.0.0", tier3Hashes: {} });
+    return runUninstall(["claude"], makeCtx()).then(() => {
+      expect(fileExists(".bkit/version")).toBe(true);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // runUninstall — idempotency (P2.T8)
 // ---------------------------------------------------------------------------
 

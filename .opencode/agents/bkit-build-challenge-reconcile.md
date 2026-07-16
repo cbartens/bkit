@@ -11,7 +11,7 @@ tools:
   bash: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.6.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 **Scope:** As specified by input and Read / Update / Create section.

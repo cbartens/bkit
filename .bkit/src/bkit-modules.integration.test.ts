@@ -2066,18 +2066,18 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
     expect(result?.detect ?? "").not.toContain("ts-ci-steps");
   });
 
-  it("no drift when a {{TOKEN}} placeholder renders to a per-consumer value", () => {
-    // A real install renders `node-version: {{NODE_VERSION}}` → `node-version: 22`. The raw
-    // template keeps the placeholder, so a naive full-body compare drifts on EVERY fresh
-    // consumer. The token line is a wildcard — no drift.
+  it("no ts-ci-steps drift on a correctly-installed consumer (optional block, consumer-owned)", () => {
+    // A real install renders `node-version: {{NODE_VERSION}}` → `node-version: 22`. ts-ci-steps
+    // is `optional` — the consumer's own toolchain region — so it is never compared for drift.
     const consumer = readTemplate().replace(/\{\{NODE_VERSION\}\}/g, "22");
     writeConsumer(consumer);
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("still flags DRIFT when a NON-placeholder line inside ts-ci-steps is edited", () => {
-    // Render the placeholder (so that line is clean), then pin the setup-node action to a
-    // different SHA — a real bkit-owned edit that must still gate.
+  it("no ts-ci-steps drift even when the consumer customises a step (optional = consumer-owned)", () => {
+    // ts-ci-steps IS the consumer's toolchain; editing a step (here: repin setup-node) must NOT
+    // nag — enforcing content on a Tier-3 block bkit never rewrites was perpetual noise on every
+    // consumer that customised its own CI.
     const consumer = readTemplate()
       .replace(/\{\{NODE_VERSION\}\}/g, "22")
       .replace(
@@ -2085,9 +2085,8 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
         "actions/setup-node@0000000000000000000000000000000000000000",
       );
     writeConsumer(consumer);
-    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(drift?.id).toBe("tier2-text-drift");
-    expect(drift?.detect).toContain("ts-ci-steps");
+    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
   });
 
   it("no ts-ci-steps drift on the --ci skeleton (optional block fully commented)", () => {
@@ -2097,6 +2096,33 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
     writeConsumer(consumer);
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
     expect(result?.detect ?? "").not.toContain("ts-ci-steps");
+  });
+
+  it("no drift when a consumer adds an EXTRA line inside a managed block (subset — extras OK)", () => {
+    // "All the content and more" stays quiet: an added env var is not drift.
+    const consumer = readTemplate().replace(
+      "      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}",
+      "      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}\n      MY_CONSUMER_VAR: '1'",
+    );
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
+
+  it("no drift when a bare structural key (env:) sits outside the marker (gether's layout)", () => {
+    // gether wraps only the bkit assignments in the marker; the bare `env:` key sits just above
+    // it. A bare structural key is not required content — all three assignments remain present.
+    const consumer = readTemplate().replace(/\n( +)env:\n( +TURBO_LOG_LEVEL:)/, "\n$2");
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
+
+  it("still flags DRIFT when a consumer DROPS a required line from a managed block (subset)", () => {
+    // A genuinely missing required assignment still gates.
+    const consumer = readTemplate().replace(/\n +VERBOSE_CI: \$\{\{[^\n]*\}\}/, "");
+    writeConsumer(consumer);
+    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(drift?.id).toBe("tier2-text-drift");
+    expect(drift?.detect).toContain("verbose-ci-env");
   });
 
   it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
