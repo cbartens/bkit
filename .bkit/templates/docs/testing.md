@@ -21,7 +21,7 @@ CI runs the tiers through the bkit scaffold — **one parallel lane (job) per ti
 in one job (full step-by-step in `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE";
 run-level shape in `deployments.md` § Run-level decision matrix):
 
-- **`bkit-decide`** (always-on) computes `run_level` + emits the `bkit-test-plan`
+- **`bkit-tests-scope`** (always-on) computes `run_level` + emits the `bkit-test-plan`
   contract — _what should run_.
 - **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate
   parallel jobs (the shape bkit's own CI and consumers gether/fraser run, not steps in a
@@ -29,13 +29,19 @@ run-level shape in `deployments.md` § Run-level decision matrix):
   emits its own executed-count for the capstone and (coverage tiers) posts its own coverage
   comment. Start with `-static` + `-unit`, add a lane per tier you have (`deployments.md` §
   Parallel test lanes).
-- **`bkit-tests-migrate`** (optional; DB repos) — an independent **sibling** lane
+- **`bkit-tests-migration`** (optional; DB repos) — a **parallel sibling** lane
   that proves every migration replays from an **empty** database (+ the seed loads) on a fresh
   ephemeral instance. Always runs and reports a status, but self-skips the heavy steps when no
   migration/seed source changed; folds into the `bkit-tests-check` capstone (a red replay reds
-  the build). See § Provision backing services fresh.
+  the build). It `needs:` the planner for graph ordering only — the replay itself is never gated
+  on `run_level`. See § Provision backing services fresh.
 - **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
-  `run_live`; drop the whole job if you have no deploy).
+  `run_live`; drop the whole job if you have no deploy). It `needs:` the **planner only** and
+  runs parallel to the test lanes — do **not** gate it behind them. That edge reads as free
+  safety but is the most expensive one in the graph (measured at ~35% of total wall-clock on a
+  real consumer) and buys ~nothing: `@live` is push-only, and a push is post-merge and already
+  PR-validated. A tree that does not compile still cannot go green — `@live`'s own build fails
+  and reds the lane.
 - **`bkit-tests-check`** is the capstone — it `needs:` **all** lanes and fails the run if any tier
   the plan _expected_ was skipped or executed zero, so a green required check means **validated**,
   not merely "nothing failed". Make it the sole branch-protection required check.
@@ -73,7 +79,7 @@ Assign every behaviour its **lowest sufficient tier(s)** — the lowest tier tha
 | Crosses a LOCAL stateful boundary (own DB / own API, no 3rd party) | **Integration** vs a freshly-provisioned instance, no mocks at the boundary |
 | Crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model/LLM, payment, deployed schema, RLS/tenancy) | **@live (golden)** — reaches the real boundary, asserts a boundary-only signal |
 | User-visible UI flow / DOM state | **E2E** |
-| New / changed migration or seed | **fresh-DB replay** (`bkit-tests-migrate`) — replays from empty + the seed loads |
+| New / changed migration or seed | **fresh-DB replay** (`bkit-tests-migration`) — replays from empty + the seed loads |
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
 A plan's `Derived Test Matrix` (`docs/plans/template.md`) is the per-feature application of this rubric: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above — reach the boundary; assert a signal only it can produce; no `as unknown as` at the call-site.
@@ -128,7 +134,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Migration-replay + seed (the fresh-DB gate)
 
-- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migrate` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step, which never replays from zero or runs the seed (`deployments.md` § Applying migrations at deploy time).
+- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migration` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step, which never replays from zero or runs the seed (`deployments.md` § Applying migrations at deploy time).
 - **Assert the seed actually loaded** — check a known row exists. A reset / replay can exit 0 while a conditional insert silently no-ops or the seed aborts mid-file; a green replay is not proof the fixture is present (the seed analog of the hollow-boundary rule).
 - Generate the seed from a **single deterministic source** — a pure data definition with no wall-clock `now()`, no random values, explicit IDs / enums so triggers don't randomise it — and regenerate the checked-in seed file from it. Two hand-maintained copies drift.
 - **Replay-from-empty, not reused-volume.** A bare "start the local stack" can reuse a stale data volume and silently skip newer migrations — it is **not** a freshness proof; only a reset / replay from empty is.
@@ -153,7 +159,7 @@ An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-deni
 
 ## Provision backing services fresh
 
-A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth. bkit's `bkit-tests-migrate` tier (an independent sibling of `bkit-tests` — `bkit-stub:bkit-tests-migrate` in the scaffold reference) is the ready-made home for this gate: it always runs, self-skips when no migration/seed source changed, and folds into the `bkit-tests-check` capstone so a failed replay reds the build.
+A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth. bkit's `bkit-tests-migration` tier (an independent sibling of `bkit-tests` — `bkit-stub:bkit-tests-migration` in the scaffold reference) is the ready-made home for this gate: it always runs, self-skips when no migration/seed source changed, and folds into the `bkit-tests-check` capstone so a failed replay reds the build.
 
 **"Fresh" means replay-from-empty, not a reused volume.** A bare "start the local stack" command often **reuses an existing data volume** and applies only what's missing — a "fresh" start can silently run a months-old schema while reporting success. Only a reset / replay from an **empty** store is a freshness proof. And a green replay is not a green **seed**: assert the seed actually loaded (a known row exists), because the reset can exit 0 while a conditional insert no-ops or the seed aborts mid-file (§ Migration-replay + seed carries the full seed-determinism rules).
 

@@ -1039,18 +1039,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    POLL_BUDGET_S=60; POLL_INTERVAL_S=10
    PUSHED_HEAD=$(git rev-parse HEAD)
    CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
-   echo "[bkit-ci-gate] polling for bkit-decide run on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-   poll_decide() {
+   echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+   poll_dispatch() {
      local out rc
      out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
-       '[.statusCheckRollup[]? | select(.name // .context // "" | test("decide"; "i"))] | length' 2>/dev/null); rc=$?
+       '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length' 2>/dev/null); rc=$?
      [ "$rc" -ne 0 ] && { echo "err"; return; }
      GH_ALL_ERRORED="false"
      [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
    }
    elapsed=0
    while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
      echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
      [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
      sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
@@ -1071,7 +1071,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
          PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
          echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
          while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
            echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
            [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
            sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))

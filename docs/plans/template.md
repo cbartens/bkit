@@ -91,7 +91,7 @@
 | **Integration** | crosses a LOCAL stateful boundary (own DB / API), no mocks at the boundary, fresh instance | API endpoint enforces RLS against a fresh local DB |
 | **@live (golden)** | crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model, payment, deployed schema, RLS) — reach it, assert a ground-truth signal | a real 3rd-party API returns content AND a boundary-only identity |
 | **E2E** | user-visible UI flow / DOM state | user creates an event and sees it in the list |
-| **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migrate`) | migration replays from empty + the seed loads |
+| **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migration`) | migration replays from empty + the seed loads |
 | **Smoke** | post-deploy health of a deployed surface (global observability gate) | deployed health route returns 200 |
 
 One row per behaviour (copy the tier name from the key above verbatim into `Type`):
@@ -103,7 +103,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 | [e.g., Service correctly parses payload] | Unit (Vitest) | `packages/[pkg]/[module].test.ts` |
 | [e.g., API endpoint enforces RLS] | Integration (Vitest) | `packages/api/[feature].integration.test.ts` |
 | [e.g., Real 3rd-party API returns expected shape AND a boundary-only identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
-| [e.g., New migration replays from empty + seed loads] | fresh-DB replay (bkit-tests-migrate) | `supabase/migrations/*` (replayed by `bkit-tests-migrate`) |
+| [e.g., New migration replays from empty + seed loads] | fresh-DB replay (bkit-tests-migration) | `supabase/migrations/*` (replayed by `bkit-tests-migration`) |
 
 ### 👤 ✅ Human Confirmation
 

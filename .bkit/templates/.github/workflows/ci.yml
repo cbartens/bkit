@@ -626,29 +626,63 @@ jobs:
 # [DB] opt-in by stack.
 #
 # WHY: "green" must mean "the planned tests ran and passed", not "nothing failed". A
-# partial/cached/light run is green by construction, NOT validated. bkit-decide plans
+# partial/cached/light run is green by construction, NOT validated. bkit-tests-scope plans
 # what should run; bkit-tests-check enforces it ran. green == validated.
 #
 # ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
 # shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
-# NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo:
-#   bkit-decide                                              always-on, never skips
-#   bkit-tests-static       needs:[decide]                   if: run_level != 'none'  ┐
-#   bkit-tests-unit         needs:[decide]                   if: run_level != 'none'  │ parallel
-#   bkit-tests-integration  needs:[decide]                   if: run_level != 'none'  │ test lanes
-#   bkit-tests-e2e          needs:[decide]                   if: run_level != 'none'  │ (add the
-#   bkit-tests-migrate      needs:[] (independent sibling)   always-on; gated on migration/seed change ┘  tiers you have)
-#   bkit-tests-live         needs:[decide + all test lanes]  if: run_live && every test lane == 'success'
-#   bkit-tests-check        needs:[decide + ALL lanes]       if: ${{ !cancelled() }} — asserts each lane succeeded AND each tier's *_ran > 0
+# NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
+#
+# The graph is FLAT AND WIDE: scope fans out to every lane at once, and the capstone joins them.
+# Nothing waits on anything but the planner, so total wall-clock == the SLOWEST SINGLE LANE.
+#
+#   bkit-tests-scope ─┬─ bkit-tests-static      ─┬─ bkit-tests-check
+#     always-on,       ├─ bkit-tests-unit        │    needs: [scope + ALL lanes]
+#     never skips      ├─ bkit-tests-build       │    if: ${{ !cancelled() }}
+#     (~15s)           ├─ bkit-tests-integration │    asserts each lane succeeded
+#                      ├─ bkit-tests-e2e         │    AND each tier's *_ran > 0
+#                      ├─ bkit-tests-live        │
+#                      └─ bkit-tests-migration  ─┘
+#
+#   every lane:              needs:[bkit-tests-scope]; if: run_level != 'none'
+#   bkit-tests-live:         needs:[bkit-tests-scope]; if: run_live          <- NOT gated on the lanes
+#   bkit-tests-migration:    needs:[bkit-tests-scope] for ORDERING only; the replay itself is
+#                            unconditional (self-skips its heavy steps when no migration/seed changed)
+#
+# DO NOT gate @live behind the test lanes. It reads as free safety and is the most expensive edge
+# in the graph — a consumer measured that one `needs:` edge at ~10 min, ~35% of total wall-clock.
+# It buys ~nothing: @live is PUSH-ONLY, and a push is post-merge and already PR-validated, so
+# "don't spend live quota on a broken tree" has a near-zero hit rate; a tree that doesn't compile
+# still can't false-green, because @live's own build fails and reds the lane. The only cost of
+# ungating is wasted external-API spend on the rare broken push. Re-gate only if your @live spend
+# is expensive enough to flip that trade — and measure before you do.
+#
+# MEASURE THE GRAPH BEFORE OPTIMISING IT. The lesson from the consumer that cut CI 26.7 -> 11.0 min
+# (-59%): every setup-cost lever they tried (browser cache, node_modules cache, composite setup
+# action, fetch-depth) totalled ~52s == 3%. The win was entirely in the DAG — one `needs:` edge.
+# Their "pole" (the lane defining wall-clock) moved three times in one session, and each time the
+# obvious next lever was worth 0.0 min because it targeted a lane that was no longer the pole.
+# Two levers can also be worthless apart and decisive together: ungating @live alone bought +0.9
+# min and a bigger E2E runner alone bought +0.0, because @live stayed the pole either way —
+# together they bought -59%. So: find the pole from real job durations, fix that, re-measure.
+# Corollary: a flaky suite makes this unfalsifiable — you cannot tell a real regression from noise,
+# so fix the flake before you tune the graph.
+#
+# RUNNER SIZE is a lever worth considering for a heavy lane — but only for the POLE. A larger
+# runner (more vCPU/RAM) lets a lane raise its own internal parallelism (test workers, concurrent
+# E2E projects) and can cut a long lane substantially. Scope it to the ONE lane that needs it and
+# leave the rest on the default runner: it is billed at a higher per-minute rate, and spending it
+# on a lane that is not the pole buys literally zero wall-clock. Confirm the rate before adopting.
+# Prefer this only after the DAG is flat — a bigger runner cannot fix a serialised graph.
 #
 # `bkit install`/`upgrade` raises an advisory per `# bkit-stub:` sentinel below;
 # remove a sentinel header to dismiss (uncommenting alone does not).
 #
 # === JOB 1 — planner (always-on) ===
-# bkit-stub:bkit-decide — emits the bkit-test-plan JSON. WHEN: CI has >1 run-type (PR/
+# bkit-stub:bkit-tests-scope — emits the bkit-test-plan JSON. WHEN: CI has >1 run-type (PR/
 # dev-push/release) or any skippable tier. bkit's OWN ci.yml is a single-package (no
 # affected-graph) copy — start there if not a monorepo.
-#   bkit-decide:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: ${{ steps.decide.outputs.plan }} }
+#   bkit-tests-scope:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: ${{ steps.scope.outputs.plan }} }
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
 #       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
@@ -673,13 +707,13 @@ jobs:
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
 #       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (#291; emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
-#       - name: Generate Test Plan           # [U] id: decide. jq bkit-test-plan; validate with has()/!=null
+#       - name: Generate Test Plan           # [U] id: scope. jq bkit-test-plan; validate with has()/!=null
 #       #     (NOT `// empty` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
 #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
 #
 # === JOB 2: the test lanes (static / unit / integration / e2e) — ONE JOB PER TIER ===
-#   each: needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   each: needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
 #   Every tier is its OWN parallel LANE (job), NOT a step. This is what bkit dogfoods (its own
 #   .github/workflows/ci.yml runs bkit-tests-static + bkit-tests-unit + bkit-tests-integration as
 #   separate jobs) and what consumers gether/fraser run (+ bkit-tests-e2e). Separate lanes give each
@@ -743,25 +777,36 @@ jobs:
 # boundaries). Mirrors bkit's own bkit-tests-integration lane + consumers gether/fraser. Self-contained
 # (own checkout/setup/install); gate heavy steps on web_affected; emit integration_ran; the
 # bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
-#   bkit-tests-integration:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   bkit-tests-integration:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
 #   #   own job-level permissions: { actions: read, contents: read, pull-requests: write } for the coverage comment.
 #     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Vitest Integration Tests
 #       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
 #       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
+#
+# === JOB 2d — build lane (optional split of JOB 2's Build All Packages step) ===
+# bkit-stub:bkit-tests-build — [D/M] compile the workspace as its OWN lane rather than as a step
+# inside another lane. WHEN: the build is slow enough that lanes needing it (integration/e2e) are
+# waiting on it, or a compile break should report on its own rather than as a late step failure.
+# Buys ~0 wall-clock on its own (it runs parallel to lanes that don't need it) — the win is
+# TIME-TO-SIGNAL: a compile break reds in its own lane instead of hiding inside a longer one.
+#   bkit-tests-build:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
+#     steps: Checkout / Setup pnpm+Node / Install → Build All Packages (see JOB 2 catalogue).
+#   # Fold into bkit-tests-check's needs:. NOT a test tier — it emits no *_ran count, so the
+#   # capstone asserts its `result` only.
 #
 # === JOB 2c — E2E lane (distribute JOB 2's E2E steps into their OWN job) ===
 # bkit-stub:bkit-tests-e2e — [E] the E2E (Playwright) tier as its OWN parallel lane. WHEN: you have a
 # browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
 # READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
 # bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
-#   bkit-tests-e2e:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 30
+#   bkit-tests-e2e:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 30
 #   #   own job-level permissions block (same three) for the coverage comment.
 #     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
 #       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
 #       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
 #
-# === JOB 2b — migration replay gate (independent sibling of the test lanes) ===
-# bkit-stub:bkit-tests-migrate — [DB] prove every migration replays from an EMPTY database
+# === JOB 2b — migration replay gate (parallel sibling of the test lanes) ===
+# bkit-stub:bkit-tests-migration — [DB] prove every migration replays from an EMPTY database
 # (+ the seed loads) on a fresh ephemeral instance each run. WHEN: you have a migrations dir.
 # Catches what `migrate deploy` / `db push --linked` cannot: a stale-volume migration a warm
 # `start` silently never re-applies, or a seed that aborts on an empty store — invisible until the
@@ -773,7 +818,11 @@ jobs:
 # un-replayed chain is an unverified hole — see docs/testing.md § Provision backing services fresh.
 # NOT in series before bkit-tests — they share no state (each
 # provisions its own DB), so it runs in parallel and JOB 4 folds it into the capstone.
-#   bkit-tests-migrate:  needs:[] (independent sibling); timeout-minutes: 15
+#   bkit-tests-migration:  needs:[bkit-tests-scope]; timeout-minutes: 15
+#   # The scope edge is for GRAPH ORDERING ONLY — it keeps every lane fanning out from one
+#   # planner instead of leaving a stray root. The replay stays UNCONDITIONAL: do NOT add an
+#   # `if:` on run_level. It always runs and always reports; only its heavy steps self-skip
+#   # (via the Detect step below) when no migration/seed source changed.
 #   # ALWAYS runs + reports a status (never a perpetually-pending required check); the heavy steps
 #   # short-circuit when no migration/seed source changed, so a no-DB-change PR is a fast green.
 #     steps:
@@ -787,8 +836,12 @@ jobs:
 #
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
-# want post-deploy @live smoke. Sequential after ALL the test lanes. DROP if no deploy (bkit does).
-#   bkit-tests-live:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e]; if: run_live && every test lane's result=='success'; timeout-minutes: 15
+# want post-deploy @live smoke. Runs PARALLEL to the test lanes, gated only on the planner.
+# DROP if no deploy (bkit does).
+#   bkit-tests-live:  needs:[bkit-tests-scope]; if: run_live; timeout-minutes: 15
+#   # NOT needs:[the test lanes]. That edge is the most expensive one in the graph (~35% of
+#   # wall-clock when measured) and buys ~nothing — see "DO NOT gate @live" in the header above.
+#   # The scope edge stays: it is load-bearing (outputs.plan feeds run_live) and costs ~15s.
 #     steps:
 #       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
 #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
@@ -811,19 +864,25 @@ jobs:
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
 # moment any tier is skippable. ~seconds, no checkout.
-#   bkit-tests-check:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
+#   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migration,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
+#   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
+#   # cannot red the capstone, which is the hollow-green this job exists to prevent.
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
 #       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
-#       #   decide==success; run_level!=none => static+unit==success; web_affected => bkit-tests-integration==success (its LANE result);
+#       #   NAMESPACE TRAP: bkit-tests-scope is the PLANNER, not a test lane, but it shares the bkit-tests-* namespace.
+#       #   Assert its result EXPLICITLY (as below) — a capstone that loops over "every bkit-tests-* lane" skips it,
+#       #   and a scope failure then leaves the capstone GREEN. Same for any external guard policing that namespace:
+#       #   exempt scope BY NAME and point the exemption at this assertion site.
+#       #   bkit-tests-scope==success; run_level!=none => static+unit==success; web_affected => bkit-tests-integration==success (its LANE result);
 #       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
-#       #   bkit-tests-migrate==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
+#       #   bkit-tests-migration==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),
 #       #   live_ran (run_live). A declared tier that exits 0 having run ZERO tests is green-by-construction, NOT validated. A tier with NO
 #       #   entrypoint asserts nothing (a repo with no integration/E2E/@live tier is valid — bkit's own has none). Do NOT count a SHA-cache
 #       #   short-circuit as zero (it was validated on the cached SHA): gate the count assertion on "this run actually executed the tier".
-#       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
+#       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-tests-scope — always green, would not block a tests failure).
 #
 # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
 # a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .bkit/cloud.md.

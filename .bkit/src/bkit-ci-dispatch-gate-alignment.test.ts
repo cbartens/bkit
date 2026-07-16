@@ -93,10 +93,13 @@ describe("bkit-build.md — CI-Dispatch gate presence", () => {
     expect(buildMd).toContain("ciDispatch");
   });
 
-  it("uses case-insensitive fuzzy test(decide; i) — NOT an exact literal name match", () => {
-    expect(buildMd).toContain('test("decide"; "i")');
-    // The exact-literal pattern would be something like '"bkit-decide"' as an equality check;
-    // assert the fuzzy form is present.
+  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
+    expect(buildMd).toContain('test("bkit-tests|decide"; "i")');
+    // Anchoring on one lane's name is what broke when a consumer renamed the planner
+    // bkit-decide -> bkit-tests-scope: the probe matched nothing, so the gate reported
+    // no-ci forever and could no longer catch a genuinely undispatched run. The namespace
+    // survives a lane rename; `decide` stays for consumers still on the old planner name.
+    expect(buildMd).not.toContain('test("decide"; "i")');
   });
 
   it("shared kernel delimiters present", () => {
@@ -134,8 +137,9 @@ describe("bkit-debug.md — CI-Dispatch gate presence", () => {
     expect(ciDispatchMatches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("uses case-insensitive fuzzy test(decide; i) — NOT an exact literal name match", () => {
-    expect(debugMd).toContain('test("decide"; "i")');
+  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
+    expect(debugMd).toContain('test("bkit-tests|decide"; "i")');
+    expect(debugMd).not.toContain('test("decide"; "i")');
   });
 
   it("shared kernel delimiters present (at least once — two kernel sites)", () => {
