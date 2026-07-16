@@ -1643,7 +1643,7 @@ async function main() {
     }
     if (verb === "doctor") {
         LOG_PREFIX = "[bkit-doctor]";
-        console.log(`${LOG_PREFIX} Running read-only advisory scan (no writes)`);
+        console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
         console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
         const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
         const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], { writes: [] }, modules, process.cwd());
@@ -2138,9 +2138,34 @@ async function main() {
     // leaks into what we record. (Tracker is already resolved from package.json below, so the
     // opencode mcp block — which is tracker-dependent — already renders correctly on check.)
     const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
+    // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
+    // package.json; else default to "none".
+    // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
+    // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
+    // `--force` override) was dropped along with install `--force`.
+    // Resolved BEFORE preflight: preflight's tracker-dependent detectors must grade the tracker
+    // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
+    let issueTracker = DEFAULT_ISSUE_TRACKER;
+    {
+        const consumerPkgPath = path.join(process.cwd(), "package.json");
+        if (fs.existsSync(consumerPkgPath)) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
+                const bkitField = pkg.bkit;
+                const stored = parseIssueTracker(bkitField?.issueTracker);
+                if (stored !== null)
+                    issueTracker = stored;
+            }
+            catch {
+                // non-fatal — keep default
+            }
+        }
+        if (tracker !== null)
+            issueTracker = tracker;
+    }
     // --- Phase 1: Preflight (read-only, before any writes) ---
     // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
-    const { blockers, advisories: preflightAdvisories } = runPreflight(effectiveModules, process.cwd());
+    const { blockers, advisories: preflightAdvisories } = runPreflight(effectiveModules, process.cwd(), undefined, issueTracker);
     if (blockers.length > 0) {
         console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
         const blockerBanner = formatChecklist(blockers);
@@ -2187,29 +2212,6 @@ async function main() {
     const advisories = [...preflightAdvisories];
     const ws = { writes: [] };
     const postDispatch = [];
-    // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
-    // package.json; else default to "none".
-    // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
-    // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
-    // `--force` override) was dropped along with install `--force`.
-    let issueTracker = DEFAULT_ISSUE_TRACKER;
-    {
-        const consumerPkgPath = path.join(process.cwd(), "package.json");
-        if (fs.existsSync(consumerPkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
-                const bkitField = pkg.bkit;
-                const stored = parseIssueTracker(bkitField?.issueTracker);
-                if (stored !== null)
-                    issueTracker = stored;
-            }
-            catch {
-                // non-fatal — keep default
-            }
-        }
-        if (tracker !== null)
-            issueTracker = tracker;
-    }
     // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
     // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
     // cloud=cursor requires tracker=linear.

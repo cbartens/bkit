@@ -706,7 +706,7 @@ Usage:
                                  No flags = full removal — ALL modules incl. opt-in add-ons
                                  (renovate/dependabot/cloud/opencode) + core. Consumer-modified
                                  files, the docs/ payload, and generated artefacts
-                                 (.bkit/advisories.md, .bkit/friction.md) are preserved (use
+                                 (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
                                  same module flags as install (e.g. uninstall --tooling); a
                                  targeted uninstall leaves core untouched.
@@ -754,6 +754,12 @@ Usage:
                                  or absent .md.bak ABORTS with ZERO .md deleted. NEVER called
                                  from bkit upgrade — only via this explicit invocation.
                                  --dry-run: show what would be migrated without writing.
+  bkit telemetry summary [--phase=<workflow>]
+                                 Print a rollup of the telemetry ledgers — total row count,
+                                 malformed-row count, and bkitVersion spread. The close
+                                 step of every /bkit-* workflow calls this.
+                                 --phase=<workflow>: scope the rollup to one workflow
+                                 (design|plan|build|debug|ship). Read-only: exits 0.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, and per-rule compliance

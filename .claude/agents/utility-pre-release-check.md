@@ -11,7 +11,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 200
 ---
 
 **Role:** Senior pre-release reviewer — audit the candidate against what bkit advertises.
@@ -25,6 +25,7 @@ maxTurns: 50
 > - **Throwaway only:** Dogfood in a fresh temp consumer from a packed tarball, NEVER the source tree.
 > - **No publish:** Do NOT tag, merge, or push — report only.
 > - **Confirm before claim:** Read the file behind every search hit before recording it.
+> - **Reserve report budget:** The report IS the deliverable — an audit that dies mid-investigation delivers nothing. Track your turn budget; once ~80% is spent, STOP investigating and write the report from what you have. Mark every unfinished thread `UNVERIFIED` rather than inferring its outcome. A partial report that states its gaps beats a lost one.
 
 **Contract:**
 
