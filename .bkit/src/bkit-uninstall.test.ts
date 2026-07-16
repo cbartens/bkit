@@ -11,6 +11,7 @@ import {
   type FileSummary,
 } from "./bkit-uninstall";
 import { serializeBkitVersion, sha256, type BkitVersion } from "./bkit-version";
+import { getTemplatesRoot } from "./bkit-paths";
 
 let tmpDir: string;
 
@@ -366,6 +367,74 @@ describe("runUninstall — round-trip", () => {
     await runUninstall(["cloud"], makeCtx());
     expect(fileExists(".cursor/environment.json")).toBe(true);
     expect(readFile(".cursor/environment.json")).toBe('{"install":"consumer modified"}\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runUninstall — 100%-bkit residual delete + opencode scope render (4.6.2)
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
+  const templatesRoot = getTemplatesRoot();
+  // Exact rendered opencode.json a `--opencode=opencode --tracker=github` install writes.
+  const RENDERED_OPENCODE =
+    JSON.stringify(
+      {
+        mcp: {
+          github: {
+            type: "remote",
+            url: "https://api.githubcopilot.com/mcp/",
+            headers: {
+              Authorization: "Bearer {env:GH_BKIT_TOKEN}",
+              "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects",
+            },
+          },
+        },
+        provider: { opencode: { options: { apiKey: "{env:OPENCODE_API_KEY}" } } },
+      },
+      null,
+      2,
+    ) + "\n";
+
+  it("deletes a 100%-bkit markered-text file (residual == shipped scaffold, not a dead husk)", () => {
+    // .claude/hooks/preflight.sh is a shebang + bkit header wrapping a managed block — 100% bkit.
+    // A pristine install strips to a residual identical to the template scaffold → delete.
+    const rel = ".claude/hooks/preflight.sh";
+    writeFile(rel, fs.readFileSync(path.join(templatesRoot, rel), "utf-8"));
+    return runUninstall(["claude"], makeCtx()).then(() => {
+      expect(fileExists(rel)).toBe(false);
+    });
+  });
+
+  it("preserves a markered-text file when the consumer added content outside the block", () => {
+    const rel = ".claude/hooks/preflight.sh";
+    writeFile(
+      rel,
+      fs.readFileSync(path.join(templatesRoot, rel), "utf-8") + "\n# my custom check\n",
+    );
+    return runUninstall(["claude"], makeCtx()).then(() => {
+      expect(fileExists(rel)).toBe(true);
+      expect(readFile(rel)).toContain("my custom check");
+    });
+  });
+
+  it("deletes opencode.json on full uninstall (renders @@sentinel@@ keys before strip-scope)", () => {
+    const rel = ".opencode/opencode.json";
+    writeFile(rel, RENDERED_OPENCODE);
+    return runUninstall(["opencode"], makeCtx()).then(() => {
+      expect(fileExists(rel)).toBe(false);
+    });
+  });
+
+  it("preserves opencode.json when the consumer added their own key", () => {
+    const rel = ".opencode/opencode.json";
+    const withConsumerKey = JSON.parse(RENDERED_OPENCODE) as Record<string, unknown>;
+    withConsumerKey.theme = "consumer-custom";
+    writeFile(rel, JSON.stringify(withConsumerKey, null, 2) + "\n");
+    return runUninstall(["opencode"], makeCtx()).then(() => {
+      expect(fileExists(rel)).toBe(true);
+      expect(readFile(rel)).toContain("consumer-custom");
+    });
   });
 });
 

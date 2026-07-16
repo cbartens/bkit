@@ -2066,6 +2066,39 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
     expect(result?.detect ?? "").not.toContain("ts-ci-steps");
   });
 
+  it("no drift when a {{TOKEN}} placeholder renders to a per-consumer value", () => {
+    // A real install renders `node-version: {{NODE_VERSION}}` → `node-version: 22`. The raw
+    // template keeps the placeholder, so a naive full-body compare drifts on EVERY fresh
+    // consumer. The token line is a wildcard — no drift.
+    const consumer = readTemplate().replace(/\{\{NODE_VERSION\}\}/g, "22");
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
+
+  it("still flags DRIFT when a NON-placeholder line inside ts-ci-steps is edited", () => {
+    // Render the placeholder (so that line is clean), then pin the setup-node action to a
+    // different SHA — a real bkit-owned edit that must still gate.
+    const consumer = readTemplate()
+      .replace(/\{\{NODE_VERSION\}\}/g, "22")
+      .replace(
+        "actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+        "actions/setup-node@0000000000000000000000000000000000000000",
+      );
+    writeConsumer(consumer);
+    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(drift?.id).toBe("tier2-text-drift");
+    expect(drift?.detect).toContain("ts-ci-steps");
+  });
+
+  it("no ts-ci-steps drift on the --ci skeleton (optional block fully commented)", () => {
+    // A `--ci`-only install comments the whole ts-ci-steps region (deriveCiSkeleton). That is
+    // opt-out, not drift — the optional block with no significant lines is skipped.
+    const consumer = deriveCiSkeleton(readTemplate());
+    writeConsumer(consumer);
+    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
+  });
+
   it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
     // Drop the whole verbose-ci-env block; keep the (optional) main-lag-warning block so the
     // consumer still has bkit markers. Required block missing → flagged (migrates the retired
