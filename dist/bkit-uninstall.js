@@ -494,20 +494,15 @@ export async function runUninstall(modules, ctx) {
     if (moduleList.includes("core")) {
         const scriptsDir = path.join(ctx.cwd, ".bkit", "scripts");
         if (fs.existsSync(scriptsDir)) {
-            try {
-                for (const f of fs.readdirSync(scriptsDir)) {
-                    if (!f.startsWith("bkit-"))
-                        continue;
-                    const rel = path.join(".bkit", "scripts", f);
-                    result.deleted.push(rel);
-                    if (!ctx.dryRun) {
-                        fs.rmSync(path.join(scriptsDir, f), { force: true });
-                        console.log(`${ctx.logPrefix} delete: ${rel}`);
-                    }
+            for (const f of fs.readdirSync(scriptsDir)) {
+                if (!f.startsWith("bkit-"))
+                    continue;
+                const rel = path.join(".bkit", "scripts", f);
+                result.deleted.push(rel);
+                if (!ctx.dryRun) {
+                    fs.rmSync(path.join(scriptsDir, f), { force: true });
+                    console.log(`${ctx.logPrefix} delete: ${rel}`);
                 }
-            }
-            catch (err) {
-                console.error(`${ctx.logPrefix} error cleaning up .bkit/scripts: ${err.message}`);
             }
         }
     }
@@ -528,14 +523,12 @@ export async function runUninstall(modules, ctx) {
         const byDepthDesc = [...dirCandidates].sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
         for (const rel of byDepthDesc) {
             const absDir = path.join(ctx.cwd, rel);
-            try {
-                if (fs.existsSync(absDir) && fs.readdirSync(absDir).length === 0) {
-                    fs.rmdirSync(absDir);
-                    console.log(`${ctx.logPrefix} prune empty dir: ${rel}`);
-                }
-            }
-            catch {
-                // best-effort — a non-empty or vanished dir is fine to leave
+            // rmdirSync removes ONLY an empty dir (throws on non-empty) — the emptiness check
+            // above makes it a no-op on any dir still holding consumer files. Single-threaded, so
+            // the check and the remove cannot race.
+            if (fs.existsSync(absDir) && fs.readdirSync(absDir).length === 0) {
+                fs.rmdirSync(absDir);
+                console.log(`${ctx.logPrefix} prune empty dir: ${rel}`);
             }
         }
     }
