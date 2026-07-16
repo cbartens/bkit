@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v4.6.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer implementing plan tasks step-by-step against checklists and gates.
 **Scope:** As specified by input and Read / Update / Create section.
