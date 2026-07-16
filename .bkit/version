@@ -11,7 +11,7 @@
   },
   "canonicalHashes": {
     "docs/deployments.md": "21e6d8fc2bedff504a577f1b132ea3b5e2bc1b8135aa5863c2a5f53a14cbb028",
-    "docs/testing.md": "656ef880e1bcde36f5230c32d4b5044a2913570608e06e10702b8b070b6fa32b",
+    "docs/testing.md": "ba6f20d398ecd6816cb368bbadc7643ca2fdc06cae0db8106b038f774796bacf",
     ".claude/settings.json": "0a10fe01fd6050fc48e3b52357eb2603a2f149ef90efb286f67661b2ab5eeb7c",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
     ".agents/config.md": "a2baf6bbf3abad625366575d0cd372b38033c7788e7c600ccc0bcc8c0f5b061d",

@@ -19,7 +19,28 @@
 
 CI runs the tiers through the bkit scaffold — **one parallel lane (job) per tier**, not steps
 in one job (full step-by-step in `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE";
-run-level shape in `deployments.md` § Run-level decision matrix):
+run-level shape in `deployments.md` § Run-level decision matrix).
+
+The graph is **flat and wide**: scope fans out to every lane at once, and the capstone joins them.
+Nothing waits on anything but the planner, so **total wall-clock is the slowest single lane**:
+
+```
+  bkit-tests-scope ─┬─ bkit-tests-static      ─┬─ bkit-tests-check
+    always-on,       ├─ bkit-tests-unit        │    needs: [scope + ALL lanes]
+    never skips      ├─ bkit-tests-build       │    if: !cancelled()
+    (~15s)           ├─ bkit-tests-integration │    asserts each lane succeeded
+                     ├─ bkit-tests-e2e         │    AND each tier's *_ran > 0
+                     ├─ bkit-tests-live        │
+                     └─ bkit-tests-migration  ─┘
+
+  every lane:           needs:[bkit-tests-scope]; if: run_level != 'none'
+  bkit-tests-live:      needs:[bkit-tests-scope]; if: run_live      <- NOT gated on the lanes
+  bkit-tests-migration: needs:[bkit-tests-scope] for ORDERING only; the replay itself is
+                        unconditional (self-skips its heavy steps when no migration/seed changed)
+```
+
+Adopt only the lanes your repo has. Add a lane the moment its tier exists; a tier with no lane is
+a tier nothing gates.
 
 - **`bkit-tests-scope`** (always-on) computes `run_level` + emits the `bkit-test-plan`
   contract — _what should run_.
@@ -45,6 +66,53 @@ run-level shape in `deployments.md` § Run-level decision matrix):
 - **`bkit-tests-check`** is the capstone — it `needs:` **all** lanes and fails the run if any tier
   the plan _expected_ was skipped or executed zero, so a green required check means **validated**,
   not merely "nothing failed". Make it the sole branch-protection required check.
+
+### Which resources may each lane touch?
+
+Every lane must **declare** what it is allowed to reach, and the declaration must be enforced by
+what the lane's env actually provides — not by a comment. A lane that _can_ silently reach the
+shared remote instance eventually will, and you find out via cross-run interference, not a failure.
+
+<!-- prettier-ignore -->
+| Lane | Real external APIs | Stateful backing service (DB / cache / queue) | Deployed app |
+| --- | --- | --- | --- |
+| `bkit-tests-static` | none | none | none |
+| `bkit-tests-unit` | none — **mocked** | none | none |
+| `bkit-tests-build` | none | none | none |
+| `bkit-tests-integration` | none — **mocked** | **ephemeral, CI-local, fresh each run** | none |
+| `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** | none |
+| `bkit-tests-e2e` | none — **mocked** | ephemeral **local** (PR) / the migrated shared one (push) | preview / deployed URL |
+| `bkit-tests-live` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
+
+Read the table as the rule, not a description: **`bkit-tests-live` is the only lane permitted to
+spend real external quota**, and **only `-live` and the push-side `-e2e` may touch a shared,
+long-lived instance**. Everything else provisions its own (§ Provision backing services fresh).
+This is what makes the lanes parallel-safe: lanes that own their state cannot contend, so they can
+fan out and raise their own internal parallelism freely.
+
+> [!IMPORTANT]
+> **"Real external API" and "real remote backing service" are two INDEPENDENT axes — never one flag.**
+> This is the most expensive mistake in this doc. A single overloaded gate (`LIVE_API`, `TEST_REAL`,
+> …) meaning _both_ "hit real third-party APIs" _and_ "hit a real remote database" collapses two
+> unrelated needs into one switch. The result on a real consumer: **10 suites that needed only a
+> real DB — no external API at all — sat in the serial, push-only `@live` lane**, where they were
+> invisible on PRs and inflated the very lane that gated CI. Moving them to `-integration` (against
+> an ephemeral local instance) took `@live` from 86 to 44 tests and gave those suites PR coverage
+> they had never had. Gate each axis on the thing it actually needs: an external-boundary test gates
+> on the API credential; a DB test gates on a DB URL — and prefers an **ephemeral** one, which needs
+> no gate at all.
+
+**Moving a suite between lanes takes three edits, and the third is the one that bites.** Rename /
+retag the file, move it to the new lane — **and delete its old gate**. A suite carrying
+`skipIf(!LIVE_API)` that lands in a lane which does not set `LIVE_API` **silently skips forever**:
+the lane is green, the count still looks plausible, and the coverage is simply gone. That is the
+hollow-green class (§ Validated means executed) arriving through the back door. After any lane move,
+assert the destination lane's executed count went **up** by the number of tests you moved.
+
+**A missing gate variable must produce an honest, detectable skip — never a silent pass.** If a
+tier needs a URL or credential the run does not have, it must report as skipped (and, where the tier
+is planned, fail the capstone), not exit 0 having run nothing. Assert this per-file where it matters:
+`numPassedTests >= 1 && numPendingTests === 0` catches both the ghost-green no-op and the quiet skip.
 
 ### Validated means executed, not "didn't fail"
 
@@ -159,7 +227,7 @@ An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-deni
 
 ## Provision backing services fresh
 
-A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth. bkit's `bkit-tests-migration` tier (an independent sibling of `bkit-tests` — `bkit-stub:bkit-tests-migration` in the scaffold reference) is the ready-made home for this gate: it always runs, self-skips when no migration/seed source changed, and folds into the `bkit-tests-check` capstone so a failed replay reds the build.
+A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth. bkit's `bkit-tests-migration` tier (a parallel sibling of the test lanes, gated on the planner for ordering only — `bkit-stub:bkit-tests-migration` in the scaffold reference) is the ready-made home for this gate: it always runs, self-skips when no migration/seed source changed, and folds into the `bkit-tests-check` capstone so a failed replay reds the build.
 
 **"Fresh" means replay-from-empty, not a reused volume.** A bare "start the local stack" command often **reuses an existing data volume** and applies only what's missing — a "fresh" start can silently run a months-old schema while reporting success. Only a reset / replay from an **empty** store is a freshness proof. And a green replay is not a green **seed**: assert the seed actually loaded (a known row exists), because the reset can exit 0 while a conditional insert no-ops or the seed aborts mid-file (§ Migration-replay + seed carries the full seed-determinism rules).
 
