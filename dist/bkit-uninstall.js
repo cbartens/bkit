@@ -104,6 +104,17 @@ function _stripScope(consumer, template) {
  * Build a decision table for all files that would be affected by uninstall.
  * Does NOT perform any writes.
  */
+// Core doctrine files installed by the templates pass (runCoreTemplates), NOT the manifest —
+// so the manifest-driven table never sees them and a full uninstall would orphan bkit's own
+// rules/docs/skills/config. Each carries a bkit managed block (markered-text), so strip-block
+// preserves any consumer content added below `bkit:end`, exactly like the root AGENTS.md.
+// Removed only on a full/core uninstall (gated on core in moduleList below).
+const CORE_TEMPLATE_DOCTRINE = [
+    { path: ".agents/config.md", format: "markered-text", module: "core" },
+    { path: ".agents/docs.md", format: "markered-text", module: "core" },
+    { path: ".agents/rules.md", format: "markered-text", module: "core" },
+    { path: ".agents/skills.md", format: "markered-text", module: "core" },
+];
 export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
         ? [...modules].filter((m) => 
@@ -122,7 +133,10 @@ export function buildDecisionTable(modules, ctx) {
             "cloud",
         ].includes(m))
         : modules;
-    const entries = getInstallManifest(moduleList);
+    const entries = [
+        ...getInstallManifest(moduleList),
+        ...(moduleList.includes("core") ? CORE_TEMPLATE_DOCTRINE : []),
+    ];
     // Read tier3Hashes from .bkit-version
     const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
     const bkitVer = readBkitVersion(versionFilePath);
@@ -470,6 +484,51 @@ export async function runUninstall(modules, ctx) {
             if (!ctx.dryRun) {
                 fs.rmSync(cloudAbs, { force: true });
                 console.log(`${ctx.logPrefix} delete: ${CLAUDE_CLOUD_RELPATH} (generated cloud setup doc)`);
+            }
+        }
+    }
+    // Clean up bkit-owned scripts under .bkit/scripts/ (every shipped script is `bkit-*` and
+    // fully bkit-owned). They install via the core templates pass, not the manifest, so the
+    // table never sees them — glob rather than hardcode names so new scripts are covered. A
+    // full/core uninstall only, symmetric with how the core templates pass installs them.
+    if (moduleList.includes("core")) {
+        const scriptsDir = path.join(ctx.cwd, ".bkit", "scripts");
+        if (fs.existsSync(scriptsDir)) {
+            for (const f of fs.readdirSync(scriptsDir)) {
+                if (!f.startsWith("bkit-"))
+                    continue;
+                const rel = path.join(".bkit", "scripts", f);
+                result.deleted.push(rel);
+                if (!ctx.dryRun) {
+                    fs.rmSync(path.join(scriptsDir, f), { force: true });
+                    console.log(`${ctx.logPrefix} delete: ${rel}`);
+                }
+            }
+        }
+    }
+    // Prune bkit-authored dirs left empty by the deletions above (e.g. .claude/agents,
+    // .github/workflows, .husky, .vale/styles/House, .bkit/scripts). Candidates are the parent
+    // dirs of everything deleted, plus their ancestors; each is removed ONLY when it is actually
+    // empty (never touches a dir still holding consumer files), deepest-first so the removal
+    // cascades up. Skipped in dry-run — nothing was deleted, so nothing is empty to report.
+    if (!ctx.dryRun) {
+        const dirCandidates = new Set();
+        for (const rel of result.deleted) {
+            let dir = path.dirname(rel);
+            while (dir && dir !== "." && dir !== path.sep) {
+                dirCandidates.add(dir);
+                dir = path.dirname(dir);
+            }
+        }
+        const byDepthDesc = [...dirCandidates].sort((a, b) => b.split(path.sep).length - a.split(path.sep).length);
+        for (const rel of byDepthDesc) {
+            const absDir = path.join(ctx.cwd, rel);
+            // rmdirSync removes ONLY an empty dir (throws on non-empty) — the emptiness check
+            // above makes it a no-op on any dir still holding consumer files. Single-threaded, so
+            // the check and the remove cannot race.
+            if (fs.existsSync(absDir) && fs.readdirSync(absDir).length === 0) {
+                fs.rmdirSync(absDir);
+                console.log(`${ctx.logPrefix} prune empty dir: ${rel}`);
             }
         }
     }

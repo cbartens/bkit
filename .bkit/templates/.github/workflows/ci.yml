@@ -105,16 +105,21 @@ jobs:
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MSG="${{ github.event.pull_request.title }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
               echo "turbo_force=1" >> "$GITHUB_OUTPUT"
@@ -330,16 +335,21 @@ jobs:
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            MSG="${{ github.event.pull_request.title }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
               echo "turbo_force=1" >> "$GITHUB_OUTPUT"
@@ -869,12 +879,25 @@ jobs:
 #   # cannot red the capstone, which is the hollow-green this job exists to prevent.
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
+#       # SUGGESTION (optional, NON-BLOCKING) — cross-lane dead-test-file report. The capstone is the
+#       #   ONLY job that needs: every lane, so "did this test file run ANYWHERE" is answerable only
+#       #   here, on the UNION — a file skipped in one lane but executed in another is FINE; only
+#       #   dead-in-EVERY-lane is the bug (a renamed / mis-globbed suite that silently stops running,
+#       #   still green). Wire it: each lane uploads its executed-test-file list as a `test-results-<lane>`
+#       #   artifact; add continue-on-error steps HERE (running before the assert below) to checkout for
+#       #   the on-disk `*.test.*` inventory, download every `test-results-*`, and diff disk-set minus the
+#       #   union-of-executed. Keep it continue-on-error — a diagnostic must NEVER red the required check —
+#       #   and FULL-RUNS-ONLY (PRs run filtered / smoke subsets and any push-only lane is absent, so the
+#       #   PR delta is expected and large; a cry-wolf guard gets disabled). Start report-only (print the
+#       #   inventory, exit 0); flip to an assert later, once the allowlist of legitimately-never-run files
+#       #   is seeded from a real inventory. Adds a checkout + artifact download, so raise timeout-minutes
+#       #   above the seconds a pure aggregator needs.
 #       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
 #       #   NAMESPACE TRAP: bkit-tests-scope is the PLANNER, not a test lane, but it shares the bkit-tests-* namespace.
 #       #   Assert its result EXPLICITLY (as below) — a capstone that loops over "every bkit-tests-* lane" skips it,
 #       #   and a scope failure then leaves the capstone GREEN. Same for any external guard policing that namespace:
 #       #   exempt scope BY NAME and point the exemption at this assertion site.
-#       #   bkit-tests-scope==success; run_level!=none => static+unit==success; web_affected => bkit-tests-integration==success (its LANE result);
+#       #   bkit-tests-scope==success; run_level!=none => static+unit+build==success (build is a lane result, no *_ran count); web_affected => bkit-tests-integration==success (its LANE result);
 #       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
 #       #   bkit-tests-migration==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
