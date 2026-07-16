@@ -5,7 +5,10 @@
     "**/node_modules/**",
     "**/.next/**",
     "**/.turbo/**",
-    "**/*.generated.ts"
+    "**/*.generated.ts",
+    "**/.agents/skills/**",
+    "**/.claude/skills/**",
+    "**/.cursor/skills/**"
   ],
   "plugins": {
     "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"

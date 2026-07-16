@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 **Scope:** As specified by input and Read / Update / Create section.

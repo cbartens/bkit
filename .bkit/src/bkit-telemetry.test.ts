@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ARCHIVE_SHARD_TEMPLATE,
   MAX_ROWS_BEFORE_ROLLUP,
+  SEVERITY_KINDS,
+  TRIAGE_STATUSES,
+  VALID_KINDS,
+  VALID_SEVERITIES,
+  parseRemoteUrlToSlug,
+  resolveGitSha,
+  resolveRepoSlug,
   appendLine,
   buildSummary,
   fold,
@@ -79,6 +86,7 @@ function frictionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     key,
     category: "agent-rework" as const,
     scope: "bkit-repo" as const,
+    severity: "MEDIUM" as const,
     description: "agent reworked step 3",
     ...overrides,
   } as TelemetryEvent;
@@ -90,6 +98,7 @@ function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     key,
     type: "issue" as const,
     category: "agentic",
+    severity: "LOW" as const,
     description: "deferred for later",
     ...overrides,
   } as TelemetryEvent;
@@ -99,7 +108,17 @@ function failureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Tel
   return {
     ...baseEnvelope("failure"),
     key,
+    severity: "HIGH" as const,
     description: "found a bug",
+    ...overrides,
+  } as TelemetryEvent;
+}
+
+function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("decision"),
+    key,
+    summary: "chose the boring option",
     ...overrides,
   } as TelemetryEvent;
 }
@@ -153,6 +172,445 @@ describe("identity — per-kind composite tuples", () => {
 // ---------------------------------------------------------------------------
 // validate() — A2-mandatory fields + kind validation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// severity — required on the triaged kinds, rejected elsewhere (#234)
+//
+// Regression guard: severity was specified in the #234 issue body AND design
+// (line 401, "MUST carry"), reached zero of the five plan files, and shipped as
+// a dead optional envelope field no writer ever emitted. These tests are what
+// make its absence loud instead of silent.
+// ---------------------------------------------------------------------------
+
+describe("severity — per-kind requirement + closed enum", () => {
+  it.each(["friction", "deferral", "failure"] as const)("%s carries severity", (kind) => {
+    expect(SEVERITY_KINDS.has(kind)).toBe(true);
+  });
+
+  it.each(["compliance", "outcome", "counter", "knowledge", "decision"] as const)(
+    "%s does NOT carry severity",
+    (kind) => {
+      expect(SEVERITY_KINDS.has(kind)).toBe(false);
+    },
+  );
+
+  it("VALID_SEVERITIES is exactly CRITICAL|HIGH|MEDIUM|LOW", () => {
+    expect([...VALID_SEVERITIES].sort()).toEqual(["CRITICAL", "HIGH", "LOW", "MEDIUM"]);
+  });
+
+  it.each(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const)("accepts severity %s", (severity) => {
+    expect(validate(deferralEvent("k", { severity } as Partial<TelemetryEvent>)).ok).toBe(true);
+  });
+
+  it.each(["friction", "deferral", "failure"] as const)(
+    "rejects a %s row with severity missing",
+    (kind) => {
+      const e = { ...baseEnvelope(kind), key: "k", description: "d" } as TelemetryEvent;
+      const r = validate(e);
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("severity");
+    },
+  );
+
+  // The old critical|normal|low scale is retired — accepting it would silently
+  // resurrect the vocabulary whose distribution collapsed to its default.
+  it.each(["low", "normal", "critical", "blocker", "advisory", "Critical", ""])(
+    "rejects off-enum severity %j",
+    (severity) => {
+      const r = validate({ ...deferralEvent("k"), severity });
+      expect(r.ok).toBe(false);
+    },
+  );
+
+  it("rejects severity on a kind that must not carry it", () => {
+    const r = validate({ ...complianceEvent(), severity: "HIGH" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry severity");
+  });
+
+  it.each(["OPEN", "TRIAGED", "CLOSED"])("accepts triage status %j on the severity kinds", (s) => {
+    expect(validate({ ...deferralEvent("k"), status: s }).ok).toBe(true);
+  });
+
+  // The free-text statuses the legacy corpus carried (`WORKED_AROUND`, `Resolving`,
+  // a whole sentence) are exactly what this gate stops being written again.
+  it.each(["WORKED_AROUND", "Resolving", "resolved", "open", "ACTIVE", ""])(
+    "rejects off-ladder status %j on a severity kind",
+    (status) => {
+      const r = validate({ ...deferralEvent("k"), status });
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("OPEN|TRIAGED|CLOSED");
+    },
+  );
+
+  // decision is a different axis — the triage ladder must not leak onto it.
+  it.each(["ACTIVE", "SUPERSEDED"])("accepts decision status %j", (s) => {
+    expect(validate({ ...decisionEvent("k"), status: s }).ok).toBe(true);
+  });
+
+  it.each(["OPEN", "CLOSED", "TRIAGED"])("rejects triage status %j on a decision", (status) => {
+    const r = validate({ ...decisionEvent("k"), status });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("ACTIVE|SUPERSEDED");
+  });
+
+  it("rejects status on a kind that must not carry it", () => {
+    const r = validate({ ...complianceEvent(), status: "OPEN" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry status");
+  });
+
+  // parse() stays tolerant: 3 legacy rows carry free-text statuses and must still read.
+  it("parse still reads legacy free-text status rows", () => {
+    const legacy = JSON.stringify({
+      ts: 1_700_000_000_000,
+      kind: "friction",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.2.2",
+      step: "bkit-telemetry-migrate",
+      key: "legacy-free-text-status",
+      description: "d",
+      status: "WORKED_AROUND",
+    });
+    const res = parse(legacy);
+    expect(res.malformedLineCount).toBe(0);
+    expect(res.events).toHaveLength(1);
+  });
+
+  // parse() must stay tolerant: the 44 rows written before this landed have no
+  // severity and must still read. validate() gates writes only (appendLine).
+  it("parse still reads pre-severity rows", () => {
+    const legacy = JSON.stringify({
+      ts: 1_700_000_000_000,
+      kind: "deferral",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.2.2",
+      workflow: "migrate",
+      step: "bkit-telemetry-migrate",
+      key: "pending-factory-reset-uninstall-mode",
+      type: "feature",
+      category: "agentic",
+      description: "Factory-reset uninstall mode",
+      status: "OPEN",
+    });
+    const res = parse(legacy);
+    expect(res.malformedLineCount).toBe(0);
+    expect(res.events).toHaveLength(1);
+    expect(res.events[0]!.key).toBe("pending-factory-reset-uninstall-mode");
+  });
+});
+
+// The spec previously said "skip if an identity-matching row already exists",
+// which forbade the same-key append the instinct loop is built on — so no ledger
+// ever accumulated a second same-key row and confidence/lastConfirmed/
+// recurrenceCount stayed permanently unpopulated. Updating is an APPEND.
+describe("updating a row — supersede by same-key append", () => {
+  it("a later same-key row wins the fold; the earlier one stays as history", () => {
+    const logged = frictionEvent("ship-blocked-by-hook", {
+      ts: 1_700_000_000_000,
+      status: "OPEN",
+    } as Partial<TelemetryEvent>);
+    const closed = frictionEvent("ship-blocked-by-hook", {
+      ts: 1_700_000_009_999,
+      status: "CLOSED",
+      remediation: "commit via a temp branch, then FF-merge dev",
+      recurrenceCount: 2,
+    } as Partial<TelemetryEvent>);
+
+    const state = fold([logged, closed]);
+    expect(state.size).toBe(1);
+    const current = [...state.values()][0] as TelemetryEvent & {
+      status?: string;
+      remediation?: string;
+    };
+    expect(current.status).toBe("CLOSED");
+    expect(current.remediation).toBe("commit via a temp branch, then FF-merge dev");
+    // both rows remain on disk — the history the instinct loop folds over
+    expect([logged, closed]).toHaveLength(2);
+  });
+
+  it("fold is last-wins by ts, not by file order", () => {
+    const newer = frictionEvent("k", { ts: 2_000, status: "CLOSED" } as Partial<TelemetryEvent>);
+    const older = frictionEvent("k", { ts: 1_000, status: "OPEN" } as Partial<TelemetryEvent>);
+    // pass out of order — ts must decide, not array position
+    const state = fold([newer, older]);
+    const current = [...state.values()][0] as TelemetryEvent & { status?: string };
+    expect(current.status).toBe("CLOSED");
+  });
+
+  it("a reworded key forks the entry instead of updating it", () => {
+    const a = frictionEvent("ship-blocked-by-hook", { ts: 1_000 } as Partial<TelemetryEvent>);
+    const b = frictionEvent("ship-blocked-by-precommit-hook", {
+      ts: 2_000,
+    } as Partial<TelemetryEvent>);
+    expect(fold([a, b]).size).toBe(2);
+  });
+});
+
+// TRIAGED = analysed, disposition known, NOT fixed. It rides on exactly the kinds
+// that carry severity, because both express the same property: these three describe
+// open work someone triages. The trap it guards is a reader testing status=="OPEN"
+// and silently retiring everything the moment a sweep looks at it.
+describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
+  it("TRIAGE_STATUSES is exactly OPEN|TRIAGED|CLOSED", () => {
+    expect([...TRIAGE_STATUSES].sort()).toEqual(["CLOSED", "OPEN", "TRIAGED"]);
+  });
+
+  it("the triaged kinds are exactly the severity-carrying kinds", () => {
+    // Same trio by construction — if these ever diverge, one of the two concepts
+    // has been extended without the other and the spec is lying.
+    expect([...SEVERITY_KINDS].sort()).toEqual(["deferral", "failure", "friction"]);
+  });
+
+  it("a triage sweep appends TRIAGED, and the entry stays open", () => {
+    const raised = deferralEvent("k", { ts: 1_000, status: "OPEN" } as Partial<TelemetryEvent>);
+    const triaged = deferralEvent("k", {
+      ts: 2_000,
+      status: "TRIAGED",
+      references: ["#412"],
+    } as Partial<TelemetryEvent>);
+    const current = [...fold([raised, triaged]).values()][0] as TelemetryEvent & {
+      status?: string;
+    };
+    expect(current.status).toBe("TRIAGED");
+    expect(current.references).toEqual(["#412"]);
+  });
+});
+
+// The spec's examples are what agents copy — they are the schema in practice.
+// An example that silently drifts from the codec teaches the wrong shape to every
+// writer, which is precisely how `severity` and `references` were lost: present in
+// the type, absent from what anyone read. Validate them through the REAL codec
+// rather than eyeballing, so the examples cannot rot again.
+describe("jsonl.md examples — validated against the codec", () => {
+  const SPEC = path.resolve(import.meta.dirname, "..", "jsonl.md");
+
+  /** Pull every balanced JSON object out of the spec's ```jsonl fences. */
+  function specExamples(): Array<Record<string, unknown>> {
+    const src = fs.readFileSync(SPEC, "utf-8");
+    const fences = [...src.matchAll(/```jsonl\n([\s\S]*?)```/g)].map((m) => m[1] ?? "");
+    const out: Array<Record<string, unknown>> = [];
+    for (const fence of fences) {
+      let depth = 0;
+      let buf = "";
+      for (const ch of fence) {
+        if (ch === "{") depth++;
+        if (depth > 0) buf += ch;
+        if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            out.push(JSON.parse(buf) as Record<string, unknown>);
+            buf = "";
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  it("every full example row is a valid event", () => {
+    const examples = specExamples();
+    expect(examples.length).toBeGreaterThan(5);
+    for (const ex of examples) {
+      // The § Updating a Row walkthrough trims the envelope for readability and
+      // says so; only full rows are held to validate().
+      if (!ex["repo"]) continue;
+      const r = validate(ex);
+      expect(r.ok, `${String(ex["kind"])} example invalid: ${r.reason}`).toBe(true);
+    }
+  });
+
+  it("every kind has a worked example", () => {
+    const kinds = new Set(specExamples().map((e) => e["kind"]));
+    for (const kind of VALID_KINDS) expect(kinds, `no example for kind: ${kind}`).toContain(kind);
+  });
+
+  // step = WHERE, subagent = WHO, model = the subagent's own pin. They were
+  // collapsed: `step` held agent names on most rows while `subagent` sat empty on
+  // all 141, costing the harvest two of its five dimensions.
+  it("no example puts an agent name in step", () => {
+    for (const ex of specExamples()) {
+      const step = ex["step"];
+      if (typeof step !== "string") continue;
+      expect(step.startsWith("bkit-"), `step "${step}" is an agent name, not a step`).toBe(false);
+    }
+  });
+
+  it("model appears exactly where subagent does — never on an orchestrator row", () => {
+    for (const ex of specExamples()) {
+      if (!ex["repo"]) continue;
+      expect(Boolean(ex["model"]), `${String(ex["kind"])}: model must be set iff subagent is`).toBe(
+        Boolean(ex["subagent"]),
+      );
+    }
+  });
+
+  it("the triaged kinds' examples carry severity and references", () => {
+    for (const ex of specExamples()) {
+      const kind = ex["kind"] as string;
+      if (!ex["repo"] || !SEVERITY_KINDS.has(kind)) continue;
+      expect(ex["severity"], `${kind} example lacks severity`).toBeDefined();
+      // references is the one cross-entry pointer — an example omitting it teaches
+      // writers to omit it, which is how the Related: graph evaporated.
+      expect(ex["references"], `${kind} example lacks references`).toBeDefined();
+    }
+  });
+});
+
+// `repo` is in identity() for EVERY kind, so a respelled repo forks the entity —
+// the same power `key` has, except `repo` is derived, not authored, so nobody
+// notices. It was derived three different ways: package.json `name` (an npm name:
+// `@cbartens/bkit`, one char off the slug), the filesystem path (making the owner
+// a folder on the operator's laptop), and freehand by orchestrators.
+describe("repo slug — one resolver, from the git remote", () => {
+  it.each([
+    ["https://github.com/owner/repo.git", "owner/repo"],
+    ["https://github.com/owner/repo", "owner/repo"],
+    ["git@github.com:owner/repo.git", "owner/repo"],
+    ["ssh://git@github.com/owner/repo.git", "owner/repo"],
+    ["  https://github.com/owner/repo.git\n", "owner/repo"],
+  ])("parses %j -> %j", (url, slug) => {
+    expect(parseRemoteUrlToSlug(url)).toBe(slug);
+  });
+
+  it.each(["", "not-a-url", "https://github.com/", "reponame"])(
+    "returns empty rather than guessing for %j",
+    (url) => {
+      expect(parseRemoteUrlToSlug(url)).toBe("");
+    },
+  );
+
+  // The report's two named regression vectors.
+  it("a scoped npm package name must NEVER become the slug", () => {
+    // `@cbartens/bkit` is package.json `name`. It is not a slug, and it is one
+    // character from the real one — so the two spellings fork every entity.
+    expect(parseRemoteUrlToSlug("@cbartens/bkit")).toBe("");
+    expect(parseRemoteUrlToSlug("https://github.com/cbartens/bkit.git")).toBe("cbartens/bkit");
+  });
+
+  it("resolves this repo's real slug from its remote", () => {
+    const root = path.resolve(import.meta.dirname, "..", "..");
+    // Skip gracefully where there is no remote (fresh clone in CI without origin).
+    const slug = resolveRepoSlug(root);
+    if (!slug) return;
+    expect(slug).toMatch(/^[^/@]+\/[^/]+$/);
+    expect(slug.startsWith("@")).toBe(false);
+  });
+
+  it("returns empty for a directory that is not a git repo", () => {
+    expect(resolveRepoSlug(os.tmpdir())).toBe("");
+  });
+});
+
+// parentSha reached rows as the LITERAL "HEAD~1" on every compliance row bkit ever
+// wrote. Two failures at once: the grader's diff guard rejects non-hex and returns
+// an EMPTY diff (so every diff-based rule passed vacuously while the row still said
+// "pass"), and parentSha is in identity(), so successive runs shared one identity
+// and folded into each other.
+describe("resolveGitSha — parentSha must be a real SHA before it reaches a row", () => {
+  const REPO = path.resolve(import.meta.dirname, "..", "..");
+
+  it("resolves a rev to a hex SHA the grader's guard accepts", () => {
+    const sha = resolveGitSha("HEAD", REPO);
+    if (!sha) return; // no commits (fresh CI clone) — nothing to assert
+    expect(sha).toMatch(/^[0-9a-f]{7,40}$/);
+  });
+
+  it("never returns the rev it was given", () => {
+    const sha = resolveGitSha("HEAD~1", REPO);
+    if (!sha) return;
+    expect(sha).not.toBe("HEAD~1");
+  });
+
+  it("gives DIFFERENT SHAs for different revs — so identity cannot collapse runs", () => {
+    const head = resolveGitSha("HEAD", REPO);
+    const parent = resolveGitSha("HEAD~1", REPO);
+    if (!head || !parent) return;
+    expect(head).not.toBe(parent);
+  });
+
+  it.each(["no-such-rev", "HEAD~99999", ""])("returns empty for unresolvable %j", (rev) => {
+    expect(resolveGitSha(rev, REPO)).toBe("");
+  });
+
+  it("returns empty outside a git repo rather than throwing", () => {
+    expect(resolveGitSha("HEAD", os.tmpdir())).toBe("");
+  });
+});
+
+// ONE summary, called by every workflow close step via `bkit telemetry summary`.
+// The five workflows each carried their own bash copy and every one was wrong:
+//   grep -cvE '…' || echo 0   -> prints "0\n0" when NOTHING is malformed, because
+//                                grep -c exits 1 on zero matches (the common case)
+//   jq '.bkitVersion // "unknown"' -> buckets "" under an EMPTY key, since jq's //
+//                                substitutes only on null/false
+//   wc -l                     -> counts lines, not parsed rows
+describe("buildSummary — the one telemetry summary", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function write(rows: TelemetryEvent[], extraLines: string[] = []): string {
+    const p = path.join(dir, "stats.jsonl");
+    fs.writeFileSync(p, [...rows.map((r) => JSON.stringify(r)), ...extraLines].join("\n") + "\n");
+    return p;
+  }
+
+  it("names the unknown-version bucket instead of leaving it empty", () => {
+    const s = buildSummary(
+      foldFrom([
+        write([
+          counterEvent({ bkitVersion: "4.5.0", parentSha: "aaa" } as Partial<TelemetryEvent>),
+          counterEvent({ bkitVersion: "", parentSha: "bbb" } as Partial<TelemetryEvent>),
+        ]),
+      ]),
+    );
+    // The bash printed `versions: =1, 4.5.0=1` — a nameless bucket.
+    expect(s.versionCounts["unknown"]).toBe(1);
+    expect(s.lines[0]).toContain("unknown=1");
+    expect(s.lines[0]).not.toMatch(/versions: =/);
+  });
+
+  it("reports 0 malformed as a single 0 when nothing is malformed", () => {
+    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    expect(s.malformedLineCount).toBe(0);
+    expect(s.lines[0]).toContain("malformed: 0");
+    expect(s.lines[0]).not.toContain("\n"); // the bash emitted "0\n0" here
+  });
+
+  it("counts malformed lines by parsing, not by regex", () => {
+    // `{}` matches the bash guard /^\{.*\}$/ and would be counted VALID, but it is
+    // not a telemetry row; a truncated line is what the count is actually for.
+    const s = buildSummary(
+      foldFrom([write([counterEvent({ parentSha: "aaa" })], ['{"ts":1,"kind":"coun'])]),
+    );
+    expect(s.malformedLineCount).toBe(1);
+  });
+
+  it("counts per-workflow ENTITIES, so an updated row is not counted twice", () => {
+    const p = write([
+      frictionEvent("k", { ts: 1_000, workflow: "ship" } as Partial<TelemetryEvent>),
+      frictionEvent("k", {
+        ts: 2_000,
+        workflow: "ship",
+        status: "CLOSED",
+      } as Partial<TelemetryEvent>),
+    ]);
+    const s = buildSummary(foldFrom([p]), "ship");
+    expect(s.rowCount).toBe(2); // two lines on disk
+    expect(s.workflowCounts["ship"]).toBe(1); // one entity
+    expect(s.lines.at(-1)).toContain("ship: 1");
+  });
+
+  it("omits the chain line when no workflow is given", () => {
+    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    expect(s.lines.some((l) => l.includes("chain total"))).toBe(false);
+  });
+});
 
 describe("validate — A2-mandatory envelope fields", () => {
   it("accepts a valid compliance event", () => {

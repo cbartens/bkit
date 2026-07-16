@@ -10,6 +10,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Local seed/test fixtures must never run against remote projects.
 

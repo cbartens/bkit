@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpencodeProvider, } from "./bkit-cli.js";
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
+import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
@@ -1445,29 +1446,26 @@ async function main() {
             const cwd = process.cwd();
             const phase = complyPhase ?? "unknown";
             const logPrefix = "[bkit-comply]";
-            // Resolve parentSha from the workflow status ledger (.bkit/stats.jsonl) — look
-            // for the most recent workflow-started row that carried a parentSha. Falls back
-            // to HEAD~1 when none is recorded (keeps grader advisory, not blocking).
-            let parentSha = "HEAD~1";
+            // parentSha MUST be a resolved hex SHA, for two reasons:
+            //   1. diffPaths guards on /^[0-9a-f]{7,40}$/ and returns [] otherwise — so an
+            //      unresolved rev makes every diff-based rule grade an EMPTY diff and pass
+            //      vacuously. It logs, but the row is still written and still says "pass".
+            //   2. parentSha is in identity() for compliance, so an unresolved literal is
+            //      the SAME identity on every run — successive runs fold into one another
+            //      and the history silently collapses.
+            //
+            // The previous code scanned .bkit/stats.jsonl for "the most recent
+            // workflow-started row that carried a parentSha". That row does not exist
+            // there: `workflow-started` is a status.jsonl EVENT TYPE, while stats.jsonl
+            // holds compliance/outcome/counter — and of those, only compliance and counter
+            // carry parentSha, both of which the loop explicitly skipped. So the loop could
+            // never match, the literal "HEAD~1" always won, and every compliance row bkit
+            // has ever written records parentSha "HEAD~1" against an empty diff.
             const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-            if (fs.existsSync(statsPath)) {
-                const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n").filter(Boolean);
-                for (let i = lines.length - 1; i >= 0; i--) {
-                    try {
-                        const row = JSON.parse(lines[i]);
-                        // Exclude self-emitted rows (compliance/counter) so they cannot be
-                        // picked up as a resolved parentSha (RC-1 kind filter).
-                        if (row.kind === "compliance" || row.kind === "counter")
-                            continue;
-                        if (typeof row.parentSha === "string" && row.parentSha.length > 0) {
-                            parentSha = row.parentSha;
-                            break;
-                        }
-                    }
-                    catch {
-                        // skip unparseable rows
-                    }
-                }
+            const parentSha = resolveGitSha("HEAD~1", cwd) || resolveGitSha("HEAD", cwd);
+            if (!parentSha) {
+                console.log(`${logPrefix} cannot resolve a parent SHA (no commits?) — skipping grade`);
+                return;
             }
             console.log(`${logPrefix} Running compliance grader (phase=${phase}, parentSha=${parentSha})`);
             const violations = runGrader({ parentSha, phase, cwd });
@@ -1500,22 +1498,26 @@ async function main() {
         // Always exit 0 — the comply verb is advisory and must never block.
         return;
     }
-    // harvest — cross-repo harvest CLI (WS-4, #234 #233).
-    // Copies consumer .bkit/{stats,friction}.jsonl into .bkit/harvest/; COUNT-ONLY for
-    // docs/{deferrals,failures}.jsonl. Never writes to consumer repos. Fail-open: exits 0.
+    // harvest — cross-repo harvest CLI (WS-4, #234 #233 #343).
+    // Copies consumer .bkit/stats.jsonl and MOVES .bkit/friction.jsonl into harvest/;
+    // COUNT-ONLY for docs/{deferrals,failures}.jsonl. Friction rows are pruned from the
+    // consumer only after they are fsync'd + read back from the store. Fail-open: exits 0.
     // See DE-34 for the shared-entrypoint + crash-isolation contract.
     if (verb === "harvest") {
         try {
-            const { runHarvest } = await import("./bkit-harvest.js");
+            const { runHarvest, HARVEST_DEST_DIR } = await import("./bkit-harvest.js");
             const cwd = process.cwd();
             console.log("[bkit-harvest] Starting cross-repo harvest...");
             const result = runHarvest(cwd);
-            console.log(`[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}`);
+            console.log(`[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`);
             const countOnlyEntries = Object.entries(result.totalCountOnly);
             if (countOnlyEntries.length > 0) {
                 for (const [file, count] of countOnlyEntries) {
                     console.log(`[bkit-harvest] count-only ${file}: ${count} rows (not copied)`);
                 }
+            }
+            if (result.totalPrunedRows > 0) {
+                console.log(`[bkit-harvest] ${result.totalPrunedRows} friction row(s) were REMOVED from consumers and now exist only in ${HARVEST_DEST_DIR}/ — commit it.`);
             }
         }
         catch (err) {
@@ -1531,11 +1533,14 @@ async function main() {
     if (verb === "analysis") {
         try {
             const { runAnalysis } = await import("./bkit-analysis.js");
+            const { HARVEST_DEST_DIR } = await import("./bkit-harvest.js");
             const cwd = process.cwd();
-            // Analyse: bkit's own stats.jsonl + harvested consumer rows
+            // Analyse: bkit's own stats.jsonl + harvested consumer rows.
+            // Harvest dest is sourced from the constant, NOT re-spelled here — these paths
+            // silently found nothing when the dir moved out of .bkit/ (#343).
             const statsPath = path.join(cwd, ".bkit", "stats.jsonl");
-            const harvestStatsPath = path.join(cwd, ".bkit", "harvest", "stats.jsonl");
-            const harvestFrictionPath = path.join(cwd, ".bkit", "harvest", "friction.jsonl");
+            const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
+            const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
             const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
             const paths = [statsPath, harvestStatsPath, harvestFrictionPath, frictionPath].filter((p) => fs.existsSync(p));
             if (paths.length === 0) {
@@ -1560,6 +1565,24 @@ async function main() {
     if (verb === "telemetry") {
         try {
             const { runMigrate } = await import("./bkit-telemetry-migrate.js");
+            // `bkit telemetry summary [--phase <workflow>]` — THE telemetry summary, for
+            // every workflow's close step. Previously each of the five workflows carried
+            // its own bash version, and each was wrong: `grep -c … || echo 0` printed
+            // "0\n0" whenever nothing was malformed (grep exits 1 on zero matches), and
+            // `jq '.bkitVersion // "unknown"'` bucketed empty versions under an empty key
+            // because `//` substitutes only on null/false. One implementation, one answer.
+            if (telemetrySubverb === "summary") {
+                const { foldFrom, buildSummary } = await import("./bkit-telemetry.js");
+                const statsPath = path.join(process.cwd(), ".bkit", "stats.jsonl");
+                if (!fs.existsSync(statsPath)) {
+                    console.log("[bkit-telemetry] stats.jsonl not found — no telemetry rows yet");
+                    return;
+                }
+                const summary = buildSummary(foldFrom([statsPath]), complyPhase ?? undefined);
+                for (const line of summary.lines)
+                    console.log(line);
+                return;
+            }
             if (telemetrySubverb === "migrate") {
                 const pkgPath = path.join(process.cwd(), "package.json");
                 let bkitVersion = "unknown";
@@ -1620,7 +1643,7 @@ async function main() {
     }
     if (verb === "doctor") {
         LOG_PREFIX = "[bkit-doctor]";
-        console.log(`${LOG_PREFIX} Running read-only advisory scan (no writes)`);
+        console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
         console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
         const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
         const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], { writes: [] }, modules, process.cwd());
@@ -2115,9 +2138,34 @@ async function main() {
     // leaks into what we record. (Tracker is already resolved from package.json below, so the
     // opencode mcp block — which is tracker-dependent — already renders correctly on check.)
     const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
+    // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
+    // package.json; else default to "none".
+    // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
+    // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
+    // `--force` override) was dropped along with install `--force`.
+    // Resolved BEFORE preflight: preflight's tracker-dependent detectors must grade the tracker
+    // this run INSTALLS, not the one on disk from the previous run. Read-only — no writes here.
+    let issueTracker = DEFAULT_ISSUE_TRACKER;
+    {
+        const consumerPkgPath = path.join(process.cwd(), "package.json");
+        if (fs.existsSync(consumerPkgPath)) {
+            try {
+                const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
+                const bkitField = pkg.bkit;
+                const stored = parseIssueTracker(bkitField?.issueTracker);
+                if (stored !== null)
+                    issueTracker = stored;
+            }
+            catch {
+                // non-fatal — keep default
+            }
+        }
+        if (tracker !== null)
+            issueTracker = tracker;
+    }
     // --- Phase 1: Preflight (read-only, before any writes) ---
     // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
-    const { blockers, advisories: preflightAdvisories } = runPreflight(effectiveModules, process.cwd());
+    const { blockers, advisories: preflightAdvisories } = runPreflight(effectiveModules, process.cwd(), undefined, issueTracker);
     if (blockers.length > 0) {
         console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
         const blockerBanner = formatChecklist(blockers);
@@ -2164,29 +2212,6 @@ async function main() {
     const advisories = [...preflightAdvisories];
     const ws = { writes: [] };
     const postDispatch = [];
-    // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
-    // package.json; else default to "none".
-    // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
-    // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
-    // `--force` override) was dropped along with install `--force`.
-    let issueTracker = DEFAULT_ISSUE_TRACKER;
-    {
-        const consumerPkgPath = path.join(process.cwd(), "package.json");
-        if (fs.existsSync(consumerPkgPath)) {
-            try {
-                const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
-                const bkitField = pkg.bkit;
-                const stored = parseIssueTracker(bkitField?.issueTracker);
-                if (stored !== null)
-                    issueTracker = stored;
-            }
-            catch {
-                // non-fatal — keep default
-            }
-        }
-        if (tracker !== null)
-            issueTracker = tracker;
-    }
     // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
     // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
     // cloud=cursor requires tracker=linear.

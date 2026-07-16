@@ -93,10 +93,13 @@ describe("bkit-build.md — CI-Dispatch gate presence", () => {
     expect(buildMd).toContain("ciDispatch");
   });
 
-  it("uses case-insensitive fuzzy test(decide; i) — NOT an exact literal name match", () => {
-    expect(buildMd).toContain('test("decide"; "i")');
-    // The exact-literal pattern would be something like '"bkit-decide"' as an equality check;
-    // assert the fuzzy form is present.
+  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
+    expect(buildMd).toContain('test("bkit-tests|decide"; "i")');
+    // Anchoring on one lane's name is what broke when a consumer renamed the planner
+    // bkit-decide -> bkit-tests-scope: the probe matched nothing, so the gate reported
+    // no-ci forever and could no longer catch a genuinely undispatched run. The namespace
+    // survives a lane rename; `decide` stays for consumers still on the old planner name.
+    expect(buildMd).not.toContain('test("decide"; "i")');
   });
 
   it("shared kernel delimiters present", () => {
@@ -134,8 +137,9 @@ describe("bkit-debug.md — CI-Dispatch gate presence", () => {
     expect(ciDispatchMatches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("uses case-insensitive fuzzy test(decide; i) — NOT an exact literal name match", () => {
-    expect(debugMd).toContain('test("decide"; "i")');
+  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
+    expect(debugMd).toContain('test("bkit-tests|decide"; "i")');
+    expect(debugMd).not.toContain('test("decide"; "i")');
   });
 
   it("shared kernel delimiters present (at least once — two kernel sites)", () => {
@@ -342,19 +346,22 @@ describe("retrigger-suppressed sub-reason — maps to unresolved only", () => {
 //      (a) re-hide CI via a [skip ci] commit → empty statusCheckRollup → KN-11
 //      (b) fire a second CI run on the already-confirmed HEAD
 //
-//    Approach: for each gate site, extract the slice of text from
-//    "# ciDispatch verdict is ALWAYS written" down to the end of the gate's
-//    closing `case "$CI_OUTCOME" in unresolved)` line and assert no `git push`
-//    appears in that slice.
+//    Approach: for each gate site, extract the slice of text from the ciDispatch
+//    jq write down to the end of the gate's closing `case "$CI_OUTCOME" in
+//    unresolved)` line and assert no `git push` appears in that slice.
 // ---------------------------------------------------------------------------
 
 // Helper: extract the post-verdict tail for each ciDispatch gate site.
-// Returns an array of slices (one per gate site), each being the lines from
-// "# ciDispatch verdict is ALWAYS written" to the nearest closing
-// `case "$CI_OUTCOME" in unresolved)` line (inclusive).
+// Returns an array of slices (one per gate site), each being the lines from the
+// ciDispatch jq write to the nearest closing `case "$CI_OUTCOME" in unresolved)`
+// line (inclusive).
+//
+// Anchored on the jq write's own arg list, NOT on a comment: `.bkit/workflows.md`
+// § Workflow Authoring Rules bans rationale comments from the workflow files, so a
+// marker comment is deletable-by-policy and would silently vacate this guard.
 function extractPostVerdictSlices(content: string): string[][] {
   const lines = content.split("\n");
-  const VERDICT_MARKER = "# ciDispatch verdict is ALWAYS written";
+  const VERDICT_MARKER = '--arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD"';
   const GATE_END_MARKER = 'case "$CI_OUTCOME" in unresolved)';
   const slices: string[][] = [];
   let searchFrom = 0;

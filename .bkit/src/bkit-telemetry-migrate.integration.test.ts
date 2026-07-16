@@ -4,7 +4,7 @@
  * Test matrix (WS-5 Derived Test Matrix):
  *
  * 1. Real-corpus migration: parses bkit's actual knowledge.md + decisions.md,
- *    produces .jsonl rows where every parsed id appears in an aliases[] (both
+ *    produces .jsonl rows where every parsed id appears in a references[] (both
  *    KN-CORE-{N} and KN-{N}/DE-{N} namespaces). (WS5-T3)
  *
  * 2. Abort-safety + idempotency: parity-mismatch fixture → ABORT, ZERO .md deleted;
@@ -29,8 +29,10 @@ import {
   parseDecisionsMd,
   parsePendingMd,
   parseFrictionMd,
+  parseLegacyStatus,
   runMigrate,
   type MigrateOptions,
+  parseTitleDate,
 } from "./bkit-telemetry-migrate.js";
 
 // Resolve repo root relative to this test file (.bkit/src/ -> repo root)
@@ -143,9 +145,11 @@ const FIXTURE_DE_MD = `<!-- bkit:start -->
 ## DE-2: Second decision (2026-02-01)
 
 - **Category:** infra
-- **Status:** superseded
+- **Status:** superseded by DE-1 — revisited after the 4.0 cutover
 - **Decision:** another decision
 - **Why:** other reason
+- **Discarded:** the vendored fork, and doing nothing
+- **Superseded by:** DE-1
 - **Source:** human
 
 <!-- bkit:end -->
@@ -235,9 +239,9 @@ describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => 
 
     expect(entries.length).toBeGreaterThan(0);
 
-    // Every entry must have a non-empty id in aliases[]
+    // Every entry must have a non-empty id in references[]
     for (const entry of entries) {
-      expect(entry.aliases).toContain(entry.id);
+      expect(entry.references).toContain(entry.id);
       expect(entry.id).toMatch(/^KN-(?:CORE-)?\d+$/);
       expect(entry.key).toBeTruthy();
       expect(entry.summary).toBeTruthy();
@@ -264,7 +268,7 @@ describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => 
     expect(entries.length).toBeGreaterThan(0);
 
     for (const entry of entries) {
-      expect(entry.aliases).toContain(entry.id);
+      expect(entry.references).toContain(entry.id);
       expect(entry.id).toMatch(/^DE-\d+$/);
       expect(entry.key).toBeTruthy();
       expect(entry.summary).toBeTruthy();
@@ -303,6 +307,143 @@ describe("real-corpus: parseFrictionMd parses bkit actual friction.md", () => {
       expect(entry.key).toBeTruthy();
       expect(entry.summary).toBeTruthy();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 2z: keys survive title truncation (#99 corpus-integrity triage)
+// ---------------------------------------------------------------------------
+
+describe("ts: legacy heading date is the fallback when the source carries no ts", () => {
+  it("reads the documented trailing (YYYY-MM-DD)", () => {
+    expect(parseTitleDate("Ship Step 5: merged PR with failing CI run (2026-05-24)")).toBe(
+      Date.UTC(2026, 4, 24),
+    );
+  });
+
+  it("reads the ad-hoc leading YYYY-MM-DD", () => {
+    expect(parseTitleDate("2026-05-30 — re-plan pre-worktree git add would sweep WIP")).toBe(
+      Date.UTC(2026, 4, 30),
+    );
+  });
+
+  it("returns undefined when the heading carries no date", () => {
+    expect(
+      parseTitleDate("Summary subagent wrote plan-summary.md to main checkout"),
+    ).toBeUndefined();
+  });
+
+  it("does not mistake a version or issue number for a date", () => {
+    expect(parseTitleDate("bkit upgrade 4.3.0 aborts (#341)")).toBeUndefined();
+  });
+
+  it("rejects an impossible date rather than rolling it over", () => {
+    expect(parseTitleDate("Something (2026-02-31)")).toBeUndefined();
+    expect(parseTitleDate("Something (2026-13-01)")).toBeUndefined();
+  });
+
+  it("trailing-date heading: cleanTitle still strips the date, so the key is unchanged", () => {
+    const [entry] = parseFrictionMd(
+      "## Ship Step 5: merged PR with failing CI run (2026-05-24)\n\n- **Category:** other\n",
+    );
+    expect(entry?.title).toBe("Ship Step 5: merged PR with failing CI run");
+    expect(entry?.entryTs).toBe(Date.UTC(2026, 4, 24));
+  });
+
+  it("leading-date heading: the date stays IN the title, so the key is unchanged", () => {
+    const [entry] = parseFrictionMd(
+      "## 2026-05-30 — re-plan pre-worktree sweep\n\n- **Category:** other\n",
+    );
+    expect(entry?.title).toBe("2026-05-30 — re-plan pre-worktree sweep");
+    expect(entry?.entryTs).toBe(Date.UTC(2026, 4, 30));
+  });
+});
+
+describe("migrate — friction keys survive title truncation", () => {
+  // Verbatim from app-gether-life's real friction log. The two titles are
+  // byte-identical for their first 71 characters and diverge only at the path
+  // they name, so a key built from title.slice(0, 60) collapses them into one
+  // entity and fold() drops one. A recurrence is titled like the entry it
+  // recurs from, so recurrences — the highest-signal rows — collide most.
+  const COLLIDING_FRICTION_MD = [
+    "<!-- bkit:start -->",
+    "# Friction",
+    "<!-- bkit:end -->",
+    "",
+    "## Plan Step 11: close-workflow STRAY guard rejects protocol-mandated `docs/pending.md` edit (2026-06-16)",
+    "",
+    "- **Category:** other",
+    "- **Workflow:** plan",
+    "- **Step:** 11 (close-workflow) — squash-merge STRAY guard",
+    "- **Description:** The close STRAY guard rejected a doc the protocol mandates.",
+    "- **Status:** `RECOVERED`",
+    "",
+    "## Plan Step 11: close-workflow STRAY guard rejects protocol-mandated `docs/decisions.md` + `docs/pending.md` edits (recurrence of the 527 entry) (2026-06-16)",
+    "",
+    "- **Category:** other",
+    "- **Workflow:** plan",
+    "- **Step:** 11 (close-workflow) — squash-merge STRAY guard",
+    "- **Description:** Recurrence of the same guard rejecting mandated docs.",
+    "- **Status:** `RECOVERED`",
+    "",
+  ].join("\n");
+
+  it("emits two distinct keys for titles that diverge only after char 60", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: COLLIDING_FRICTION_MD,
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    expect(result.frictionRowCount).toBe(2);
+
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l) as { key: string; summary?: string });
+
+    expect(rows).toHaveLength(2);
+    // The defect this pins: both keys were "friction-plan-step-11-close-workflow-
+    // stray-guard-rejects-protocol-ma" before stableKey().
+    expect(rows[0].key).not.toBe(rows[1].key);
+    expect(new Set(rows.map((r) => r.key)).size).toBe(2);
+    // Still readable — the digest only suffixes the human-readable slug.
+    for (const r of rows) {
+      expect(r.key.startsWith("friction-plan-step-11-close-workflow-stray-guard")).toBe(true);
+    }
+  });
+
+  it("leaves short titles unsuffixed", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: [
+        "<!-- bkit:start -->",
+        "# Friction",
+        "<!-- bkit:end -->",
+        "",
+        "## Short title (2026-06-16)",
+        "",
+        "- **Category:** other",
+        "- **Workflow:** ship",
+        "- **Description:** A title under the truncation threshold.",
+        "- **Status:** `RECOVERED`",
+        "",
+      ].join("\n"),
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    const row = JSON.parse(
+      fs.readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8").trim(),
+    ) as { key: string };
+    // No digest suffix: the title (date stripped by normaliseTitle) is under 60 chars.
+    expect(row.key).toBe("friction-short-title");
   });
 });
 
@@ -376,40 +517,254 @@ describe("migrate — happy path fixture", () => {
     expect(frictionRows[0]?.category).toBe("tool-failure");
     expect(frictionRows[0]?.scope).toBe("bkit-repo");
 
-    // Every row must have aliases[] containing the original id
+    // Every row must have references[] containing the original id (the former
+    // aliases[] folded in — see § Key & References in .bkit/jsonl.md)
     const knRows = knJsonl
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as { aliases?: string[]; key?: string; kind?: string });
+      .map((l) => JSON.parse(l) as { references?: string[]; key?: string; kind?: string });
     expect(knRows).toHaveLength(2);
     for (const row of knRows) {
       expect(row.kind).toBe("knowledge");
-      expect(row.aliases).toBeDefined();
-      expect(Array.isArray(row.aliases)).toBe(true);
+      expect(row.references).toBeDefined();
+      expect(Array.isArray(row.references)).toBe(true);
     }
 
-    const allKnAliases = knRows.flatMap((r) => r.aliases ?? []);
-    expect(allKnAliases).toContain("KN-CORE-1");
-    expect(allKnAliases).toContain("KN-1");
+    const allKnReferences = knRows.flatMap((r) => r.references ?? []);
+    expect(allKnReferences).toContain("KN-CORE-1");
+    expect(allKnReferences).toContain("KN-1");
 
     const deRows = deJsonl
       .trim()
       .split("\n")
       .filter(Boolean)
-      .map((l) => JSON.parse(l) as { aliases?: string[]; kind?: string });
+      .map((l) => JSON.parse(l) as { references?: string[]; kind?: string });
     expect(deRows).toHaveLength(2);
     for (const row of deRows) {
       expect(row.kind).toBe("decision");
-      expect(row.aliases).toBeDefined();
+      expect(row.references).toBeDefined();
     }
-    const allDeAliases = deRows.flatMap((r) => r.aliases ?? []);
+    const allDeAliases = deRows.flatMap((r) => r.references ?? []);
     expect(allDeAliases).toContain("DE-1");
     expect(allDeAliases).toContain("DE-2");
 
     // Lookup table must NOT be written — migration leaves only the jsonl behind
     const lookupPath = path.join(dir, "docs", "telemetry-id-lookup.json");
     expect(fs.existsSync(lookupPath)).toBe(false);
+  });
+
+  // Regression guard (#234): the original migration called extractField for 14
+  // fields but never for "Related" or "Severity", so both were dropped on the
+  // floor for every consumer who migrated. These pin that they survive.
+  it("carries the legacy Related: graph into references[]", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { references?: string[]; description?: string });
+
+    // FIXTURE_PENDING_MD's first entry carries `- **Related:** BAR-139`
+    const withRelated = rows.find((r) => (r.references ?? []).includes("BAR-139"));
+    expect(withRelated).toBeDefined();
+
+    // ...and its sibling has no Related: line at all, so it must not invent one.
+    const withoutRelated = rows.find((r) => /pnpm normaliser/.test(r.description ?? ""));
+    expect(withoutRelated?.references ?? []).toEqual([]);
+  });
+
+  // Defect B (#234): the deferral status parser used exact equality, so any status
+  // carrying qualifying prose silently defaulted to OPEN — marking closed work as
+  // outstanding. The friction builder in the same file already did this correctly.
+  // parseLegacyStatus is now shared so the two cannot drift apart again.
+  it.each([
+    ["resolved", "CLOSED"],
+    ["closed", "CLOSED"],
+    ["RESOLVED — closed by the bkit 3.3.0 upgrade", "CLOSED"],
+    ["resolved (#453, 2026-06-03) — migration 20260603150000", "CLOSED"],
+    ["`RECOVERED`", "CLOSED"],
+    ["fixed in #412", "CLOSED"],
+    ["open", "OPEN"],
+    ["deferred", "OPEN"],
+    // "partially-resolved" contains "resolv" but work remains — must stay OPEN.
+    ["partially-resolved — Phase 1 landed, Phase 2 open", "OPEN"],
+    ["in progress", "OPEN"],
+    [undefined, "OPEN"],
+  ])("parseLegacyStatus(%j) -> %s", (input, expected) => {
+    expect(parseLegacyStatus(input as string | undefined)).toBe(expected);
+  });
+
+  it("carries the legacy Description: prose into description, title into summary", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const deferrals = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { summary?: string; description?: string });
+
+    const factoryReset = deferrals.find((r) => /Factory-reset/.test(r.summary ?? ""));
+    expect(factoryReset).toBeDefined();
+    // description must be the **Description:** prose, NOT the heading
+    expect(factoryReset?.description).toContain("Full factory-reset is out-of-scope");
+    expect(factoryReset?.description).not.toBe(factoryReset?.summary);
+
+    const friction = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { summary?: string; description?: string });
+    expect(friction[0]?.summary).toContain("Ship Step 9");
+    expect(friction[0]?.description).toContain("Pre-commit hook refuses commits");
+  });
+
+  // DecisionPayload.alternatives has existed since #234 but nothing populated it:
+  // `Discarded:` was never parsed, so 26 of bkit's 34 decision rows left their
+  // alternatives as prose inside description. `Superseded by:` is a pointer and
+  // belongs in references. The status check here was exact-equality too, so
+  // "superseded by DE-1 — …" silently reported ACTIVE.
+  it("carries Discarded: into alternatives and Superseded by: into references", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "decisions.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map(
+        (l) =>
+          JSON.parse(l) as {
+            references?: string[];
+            alternatives?: string;
+            status?: string;
+            summary?: string;
+          },
+      );
+
+    const de2 = rows.find((r) => (r.references ?? []).includes("DE-2"));
+    expect(de2).toBeDefined();
+    expect(de2?.alternatives).toContain("vendored fork");
+    // `Superseded by: DE-1` is a pointer -> references
+    expect(de2?.references).toContain("DE-1");
+    // prose-qualified status must still resolve to SUPERSEDED, not ACTIVE
+    expect(de2?.status).toBe("SUPERSEDED");
+
+    // DE-1 has no Discarded: line — must not invent one
+    const de1 = rows.find(
+      (r) => (r.references ?? []).includes("DE-1") && r.summary === "First decision",
+    );
+    expect(de1?.alternatives).toBeUndefined();
+    expect(de1?.status).toBe("ACTIVE");
+  });
+
+  // A live friction row's envelope workflow/step ARE where the friction happened
+  // (the orchestrator writing it is the workflow it happened in). Stamping the
+  // migrate transport there instead put migrated rows on a different axis from
+  // live ones and blinded the two dimensions the harvest slices by.
+  it("preserves friction Workflow:/Step: as the envelope workflow/step", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { workflow?: string; step?: string; source?: string });
+
+    // FIXTURE_FRICTION_MD carries `Workflow: ship` / `Step: 9 — Update Docs & Summary`
+    expect(rows[0]?.workflow).toBe("ship");
+    expect(rows[0]?.step).toContain("9");
+    expect(rows[0]?.workflow).not.toBe("migrate");
+    expect(rows[0]?.source).toBe("orchestrator");
+  });
+
+  it("falls back to migrate provenance when the legacy row had no Workflow:/Step:", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: `<!-- bkit:start -->
+
+# Friction
+
+<!-- bkit:end -->
+
+## Bare friction entry with no Workflow or Step (2026-05-11)
+
+- **Category:** other
+- **Scope:** consumer
+- **Description:** something rubbed.
+`,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    const rows = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { workflow?: string; step?: string });
+    expect(rows[0]?.workflow).toBe("migrate");
+    expect(rows[0]?.step).toBe("bkit-telemetry-migrate");
+  });
+
+  it("maps the legacy Severity: scale onto CRITICAL|HIGH|MEDIUM|LOW", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    // Both FIXTURE_PENDING_MD entries are `- **Severity:** low`
+    const deferrals = fs
+      .readFileSync(path.join(dir, "docs", "deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { severity?: string });
+    expect(deferrals).toHaveLength(2);
+    for (const row of deferrals) expect(row.severity).toBe("LOW");
+
+    // friction.md never had a Severity field — unknown maps to the neutral point,
+    // NOT to LOW (which would understate every migrated friction row).
+    const friction = fs
+      .readFileSync(path.join(dir, ".bkit", "friction.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { severity?: string });
+    expect(friction).toHaveLength(1);
+    expect(friction[0]?.severity).toBe("MEDIUM");
   });
 
   it("dry-run: writes nothing, returns expected counts for all four files", async () => {

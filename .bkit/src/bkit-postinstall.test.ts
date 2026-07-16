@@ -961,6 +961,42 @@ describe("detectBkitStubs", () => {
     const ids = detectBkitStubs(tmpDir).map((f) => f.id);
     expect(ids).toContain("bkit-stub-pair-e2e-without-vercel");
   });
+
+  // Legacy scaffold job names. A consumer whose planner is still `bkit-decide` is outside the
+  // bkit-tests-* namespace that the CI-Dispatch Gate polls, so it must be nudged to rename.
+  const writeCi = (body: string) => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), body);
+  };
+
+  it("flags a ci.yml still defining the legacy bkit-decide / bkit-tests-migrate jobs", () => {
+    writeCi(
+      "jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n  bkit-tests-migrate:\n    runs-on: ubuntu-latest\n",
+    );
+    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
+    expect(finding).toBeDefined();
+    // Both legacy names must be named in the detect string, not just the first one found.
+    expect(finding!.detect).toContain("bkit-decide");
+    expect(finding!.detect).toContain("bkit-tests-migrate");
+    // The action must also cover the job-local step id, not just the job name.
+    expect(finding!.action).toContain("id: decide` -> `id: scope");
+  });
+
+  it("does NOT flag a ci.yml already on the current scaffold job names", () => {
+    writeCi(
+      "jobs:\n  bkit-tests-scope:\n    runs-on: ubuntu-latest\n  bkit-tests-migration:\n    runs-on: ubuntu-latest\n",
+    );
+    const ids = detectBkitStubs(tmpDir).map((f) => f.id);
+    expect(ids).not.toContain("ci-legacy-scaffold-job-names");
+  });
+
+  it("does NOT flag the commented scaffold reference (job key must be uncommented)", () => {
+    // The shipped template mentions bkit-decide only inside comments; a repo carrying the
+    // scaffold reference has not defined the legacy job and must stay silent.
+    writeCi("jobs:\n  # bkit-decide:\n  #   runs-on: ubuntu-latest\n");
+    const ids = detectBkitStubs(tmpDir).map((f) => f.id);
+    expect(ids).not.toContain("ci-legacy-scaffold-job-names");
+  });
 });
 
 // ---------------------------------------------------------------------------

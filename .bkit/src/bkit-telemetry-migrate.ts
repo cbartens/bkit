@@ -15,9 +15,10 @@
 // NEVER called from bkit upgrade — only via explicit `bkit telemetry migrate` invocation.
 // This is enforced mechanically by bkit-telemetry-migrate.integration.test.ts (WS5-T2b).
 
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type TelemetryEvent } from "./bkit-telemetry.js";
+import { resolveRepoSlug, type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,8 +89,78 @@ export interface ParsedEntry {
   rootCause?: string;
   /** Fix or rule if found (knowledge only). */
   fix?: string;
-  /** Aliases: the original id(s) to put in aliases[]. */
-  aliases: string[];
+  /**
+   * References: the JSONL form of the legacy `**Related:**` field, plus this
+   * entry's own former id (`KN-14` / `DE-7`) when it had one. Everything the
+   * old ledger knew about how this entry connects to the rest of the repo.
+   */
+  references: string[];
+  /**
+   * Incident time in unix ms, read from the legacy heading — see parseTitleDate.
+   * Undefined when the heading carried no date; the row builder then falls back
+   * to the synthetic `baseTs + idx`.
+   */
+  entryTs?: number;
+}
+
+/**
+ * Split a legacy `**Related:**` value into individual pointers.
+ *
+ * The field was free prose ("BAR-138, BAR-130, `docs/…/design.md`, KN-1"), so
+ * split on commas and keep each item verbatim minus surrounding backticks —
+ * items carry trailing qualifiers ("BAR-142 §A2", "`docs/pending.md` (per-key
+ * deferred)") that are meaning, not noise, and are preserved as written.
+ */
+export function parseRelated(value: string | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((s) => s.trim().replace(/^`|`$/g, "").trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * Map a legacy `**Status:**` value onto OPEN/CLOSED.
+ *
+ * The legacy field was free prose, not a token: `RESOLVED — closed by the bkit
+ * 3.3.0 upgrade`, `resolved (#453, 2026-06-03) — migration 20260603150000`,
+ * `partially-resolved — Phase 1 landed, Phase 2 open`. An exact-equality check
+ * (`raw === "resolved"`) silently defaults every one of those to OPEN, marking
+ * closed work as outstanding. Substring-match instead — the same rule the
+ * friction builder already used, now shared so the two cannot drift again.
+ *
+ * `partially-resolved` deliberately reads as OPEN: work remains. It is matched
+ * BEFORE the resolve check because it contains "resolv" as a substring.
+ */
+export function parseLegacyStatus(value: string | undefined): "OPEN" | "CLOSED" {
+  const raw = (value ?? "open").toLowerCase().replace(/`/g, "").trim();
+  if (/partial|in progress|in-progress|wip/.test(raw)) return "OPEN";
+  return /recover|resolv|clos|fix|done|complet/.test(raw) ? "CLOSED" : "OPEN";
+}
+
+/**
+ * Map a legacy `**Severity:**` value onto the current enum.
+ *
+ * The retired scale was `critical | normal | low`; `normal` is the middle of a
+ * three-point scale, so it lands on MEDIUM rather than HIGH. Legacy entries
+ * with no Severity (the whole of `friction.md`, which never had the field)
+ * default to MEDIUM — the neutral point. This is an explicit unknown->neutral
+ * mapping, NOT a claim about the row; re-triage on next touch.
+ */
+export function mapLegacySeverity(value: string | undefined): TelemetrySeverity {
+  switch (value?.toLowerCase().replace(/`/g, "").trim()) {
+    case "critical":
+      return "CRITICAL";
+    case "high":
+      return "HIGH";
+    case "low":
+      return "LOW";
+    case "normal":
+    case "medium":
+      return "MEDIUM";
+    default:
+      return "MEDIUM";
+  }
 }
 
 /**
@@ -153,8 +224,11 @@ export function parsePendingMd(content: string): ParsedEntry[] {
     const description = extractField(entryBody, "Description") ?? title;
     const workaround = extractField(entryBody, "Workaround");
     const source = extractField(entryBody, "Source");
+    // Both were silently dropped before #234's severity/references restoration.
+    const severity = mapLegacySeverity(extractField(entryBody, "Severity"));
+    const references = parseRelated(extractField(entryBody, "Related"));
 
-    const key = slugify(`pending-${title.slice(0, 60)}`);
+    const key = stableKey("pending", title);
     entries.push({
       id: key,
       key,
@@ -164,7 +238,7 @@ export function parsePendingMd(content: string): ParsedEntry[] {
       detail: entryBody.length > 0 ? entryBody : undefined,
       category,
       status,
-      aliases: [],
+      references,
       // reuse known fields; pending-specific fields stored in body
       rootCause: undefined,
       fix: workaround,
@@ -176,8 +250,15 @@ export function parsePendingMd(content: string): ParsedEntry[] {
         _type?: string;
         _workaround?: string;
         _source?: string;
+        _severity?: TelemetrySeverity;
+        _description?: string;
       }
     )._type = type;
+    (entries[entries.length - 1] as ParsedEntry & { _severity?: TelemetrySeverity })._severity =
+      severity;
+    // Was parsed and then discarded — the row builder emitted the title instead.
+    (entries[entries.length - 1] as ParsedEntry & { _description?: string })._description =
+      description;
     (entries[entries.length - 1] as ParsedEntry & { _workaround?: string })._workaround =
       workaround;
     (entries[entries.length - 1] as ParsedEntry & { _source?: string })._source = source;
@@ -229,19 +310,22 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
     const scope = extractField(entryBody, "Scope") ?? "bkit-repo";
     const description = extractField(entryBody, "Description") ?? title;
     const remediation = extractField(entryBody, "Suggested fix");
-    const recovery = extractField(entryBody, "Recovery");
     const status = extractField(entryBody, "Status")?.replace(/`/g, "").trim();
     const confidenceStr = extractField(entryBody, "Confidence");
     const lastConfirmedStr = extractField(entryBody, "Last-confirmed");
 
-    const key = slugify(`friction-${title.slice(0, 60)}`);
+    const key = stableKey("friction", title);
     const entry: ParsedEntry & {
       _scope?: string;
       _remediation?: string;
-      _recovery?: string;
       _status?: string;
+      _source?: string;
+      _workflow?: string;
+      _step?: string;
       _confidence?: string;
       _lastConfirmed?: string;
+      _severity?: TelemetrySeverity;
+      _description?: string;
     } = {
       id: key,
       key,
@@ -250,10 +334,21 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       summary: title,
       detail: entryBody.length > 0 ? entryBody : undefined,
       category,
-      aliases: [],
+      // Was parsed and then discarded — the row builder emitted the title instead.
+      _description: description,
+      _source: extractField(entryBody, "Source"),
+      // WHERE the friction happened. For a live friction row the orchestrator
+      // writes exactly this into the envelope workflow/step, so preserving them
+      // keeps migrated rows on the same axis as live ones — see buildFrictionRow.
+      _workflow: extractField(entryBody, "Workflow"),
+      _step: extractField(entryBody, "Step"),
+      references: parseRelated(extractField(entryBody, "Related")),
+      // The legacy friction.md format had no Severity field at all, so this is
+      // always the unknown->neutral default rather than a migrated value.
+      _severity: mapLegacySeverity(extractField(entryBody, "Severity")),
+      entryTs: parseTitleDate(titleRaw),
       _scope: scope,
       _remediation: remediation,
-      _recovery: recovery,
       _status: status,
       _confidence: confidenceStr,
       _lastConfirmed: lastConfirmedStr,
@@ -315,6 +410,13 @@ function parseMdEntries(content: string, headingRe: RegExp): ParsedEntry[] {
     const rationale = extractField(body, "Why") ?? extractField(body, "Rationale");
     const rootCause = extractField(body, "Root cause");
     const fix = extractField(body, "Fix or rule");
+    // `Discarded:` -> DecisionPayload.alternatives. The payload field has existed
+    // since #234 but nothing ever populated it: 26 of bkit's 34 decision rows had
+    // their alternatives left as prose inside `description`.
+    const alternatives = extractField(body, "Discarded");
+    // `Superseded by: DE-12` is a POINTER to another entry, so it belongs in
+    // references (`status: SUPERSEDED` records the state; this records by what).
+    const supersededBy = extractField(body, "Superseded by");
 
     // Build summary from title (clean trailing date/supersession markers)
     const summary = cleanTitle(title);
@@ -322,11 +424,20 @@ function parseMdEntries(content: string, headingRe: RegExp): ParsedEntry[] {
     // Build detail from body (preserve for agent readability)
     const detail = body.length > 0 ? body : undefined;
 
-    // Build key: id-normalised-title slug
-    const keySlug = slugify(`${id}-${summary.slice(0, 60)}`);
+    // Build key: id-normalised-title slug.
+    // Safe to embed the legacy id HERE (unlike an agent minting a fresh DE-{N}):
+    // migration is a one-shot deterministic read of a static .md, so two runs
+    // cannot race to claim the same number.
+    const keySlug = stableKey(id, summary);
 
-    // Aliases: the original ID(s) — both short and CORE form preserved
-    const aliases: string[] = [id];
+    // References: the entry's own legacy id FIRST, then everything its
+    // `**Related:**` field pointed at. Both were dropped by the original
+    // migration — the id survived in aliases[], the Related: graph did not.
+    const references: string[] = [
+      id,
+      ...parseRelated(extractField(body, "Related")),
+      ...parseRelated(supersededBy),
+    ];
 
     entries.push({
       id,
@@ -340,8 +451,10 @@ function parseMdEntries(content: string, headingRe: RegExp): ParsedEntry[] {
       rationale,
       rootCause,
       fix,
-      aliases,
+      references,
     });
+    (entries[entries.length - 1] as ParsedEntry & { _alternatives?: string })._alternatives =
+      alternatives;
   }
 
   return entries;
@@ -352,6 +465,32 @@ function extractField(body: string, fieldName: string): string | undefined {
   const re = new RegExp(`\\*\\*${fieldName}[^*]*\\*\\*:?\\s*(.+?)(?:\\n|$)`, "i");
   const m = re.exec(body);
   return m ? m[1]?.trim() : undefined;
+}
+
+/**
+ * Incident time carried by a legacy heading, as unix ms — or undefined.
+ *
+ * `friction.md` used two conventions: the documented trailing `(YYYY-MM-DD)` and
+ * an ad-hoc leading `YYYY-MM-DD — `. Both are read.
+ *
+ * The heading is NOT rewritten here. `cleanTitle` already removes the trailing
+ * form, and the leading form is part of the title `stableKey` hashes — stripping
+ * it would re-key the row, so a re-migration would mint new entities instead of
+ * updating the existing ones.
+ */
+export function parseTitleDate(titleRaw: string): number | undefined {
+  const m =
+    /\((\d{4})-(\d{2})-(\d{2})\)\s*$/.exec(titleRaw) ?? /^(\d{4})-(\d{2})-(\d{2})\b/.exec(titleRaw);
+  if (!m) return undefined;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return undefined;
+  const ms = Date.UTC(y, mo - 1, d);
+  // Date.UTC rolls invalid days over (Feb 31 -> Mar 3); reject rather than lie.
+  const back = new Date(ms);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) {
+    return undefined;
+  }
+  return ms;
 }
 
 function cleanTitle(title: string): string {
@@ -368,6 +507,22 @@ function slugify(text: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+/**
+ * Key that survives title truncation. `slugify(prefix-title.slice(0, 60))` is not
+ * unique: two entries whose titles diverge only after char 60 collapse to one key,
+ * and `fold()` keeps only the last — so the store silently holds one entity where
+ * the log had two. Recurrence entries are the most exposed, because a recurrence is
+ * titled like the original it recurs from; the real case was the two "Plan Step 11:
+ * close-workflow STRAY guard rejects protocol-mandated ..." entries, which differ
+ * only at char 61+. The digest is appended ONLY when truncation actually discards
+ * characters, so short titles keep a clean, readable key.
+ */
+function stableKey(prefix: string, title: string): string {
+  const slug = slugify(`${prefix}-${title.slice(0, 60)}`);
+  if (title.length <= 60) return slug;
+  return `${slug}-${createHash("sha256").update(title).digest("hex").slice(0, 7)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +542,7 @@ function buildKnowledgeRow(
     workflow: "migrate",
     step: "bkit-telemetry-migrate",
     key: entry.key,
-    aliases: entry.aliases,
+    references: entry.references,
     summary: entry.summary,
     description: entry.detail,
     rootCause: entry.rootCause,
@@ -400,8 +555,11 @@ function buildDecisionRow(
   opts: { repo: string; bkitVersion: string; baseTs: number; idx: number },
 ): TelemetryEvent {
   const ts = opts.baseTs + opts.idx;
-  const statusValue: "ACTIVE" | "SUPERSEDED" =
-    entry.status === "superseded" ? "SUPERSEDED" : "ACTIVE";
+  // Substring, not equality — `superseded by DE-12` / `superseded — …` are real
+  // legacy spellings and an exact match silently reports them as ACTIVE.
+  const statusValue: "ACTIVE" | "SUPERSEDED" = /supersed/i.test(entry.status ?? "")
+    ? "SUPERSEDED"
+    : "ACTIVE";
   return {
     ts,
     kind: "decision",
@@ -410,9 +568,10 @@ function buildDecisionRow(
     workflow: "migrate",
     step: "bkit-telemetry-migrate",
     key: entry.key,
-    aliases: entry.aliases,
+    references: entry.references,
     summary: entry.summary,
     rationale: entry.rationale,
+    alternatives: (entry as ParsedEntry & { _alternatives?: string })._alternatives,
     description: entry.detail,
     status: statusValue,
   } as TelemetryEvent;
@@ -422,14 +581,17 @@ function buildDeferralRow(
   entry: ParsedEntry,
   opts: { repo: string; bkitVersion: string; baseTs: number; idx: number },
 ): TelemetryEvent {
-  const e = entry as ParsedEntry & { _type?: string; _workaround?: string; _source?: string };
+  const e = entry as ParsedEntry & {
+    _type?: string;
+    _workaround?: string;
+    _source?: string;
+    _severity?: TelemetrySeverity;
+    _description?: string;
+  };
   const rawType = e._type ?? "issue";
   const type: "issue" | "feature" = rawType === "feature" ? "feature" : "issue";
-  const rawStatus = (entry.status ?? "open").toLowerCase();
-  const status: "OPEN" | "CLOSED" =
-    rawStatus === "resolved" || rawStatus === "closed" ? "CLOSED" : "OPEN";
   return {
-    ts: opts.baseTs + opts.idx,
+    ts: entry.entryTs ?? opts.baseTs + opts.idx,
     kind: "deferral",
     repo: opts.repo,
     bkitVersion: opts.bkitVersion,
@@ -438,10 +600,15 @@ function buildDeferralRow(
     key: entry.key,
     type,
     category: entry.category ?? "other",
-    description: entry.summary,
+    severity: e._severity ?? "MEDIUM",
+    // Title -> summary, prose -> description. Emitting the title as `description`
+    // (and dropping the parsed prose) retained ~40% of the legacy content.
+    summary: entry.summary,
+    description: e._description ?? entry.summary,
     remediation: e._workaround,
     source: e._source,
-    status,
+    status: parseLegacyStatus(entry.status),
+    references: entry.references,
   } as TelemetryEvent;
 }
 
@@ -452,10 +619,14 @@ function buildFrictionRow(
   const e = entry as ParsedEntry & {
     _scope?: string;
     _remediation?: string;
-    _recovery?: string;
     _status?: string;
+    _source?: string;
+    _workflow?: string;
+    _step?: string;
     _confidence?: string;
     _lastConfirmed?: string;
+    _severity?: TelemetrySeverity;
+    _description?: string;
   };
   const rawCat = e.category ?? "other";
   const VALID_CATS = new Set([
@@ -481,25 +652,31 @@ function buildFrictionRow(
     if (!isNaN(d)) lastConfirmed = d;
   }
   const status: "OPEN" | "CLOSED" | undefined =
-    e._status === undefined
-      ? undefined
-      : /recover|resolv|clos|fix|done/i.test(e._status)
-        ? "CLOSED"
-        : "OPEN";
+    e._status === undefined ? undefined : parseLegacyStatus(e._status);
   return {
-    ts: opts.baseTs + opts.idx,
+    ts: entry.entryTs ?? opts.baseTs + opts.idx,
     kind: "friction",
     repo: opts.repo,
     bkitVersion: opts.bkitVersion,
-    workflow: "migrate",
-    step: "bkit-telemetry-migrate",
+    // WHERE the friction happened, not who transported the row. A live friction
+    // row's envelope workflow/step ARE the workflow/step the friction occurred in
+    // (the orchestrator writing it is the workflow it happened in), so stamping
+    // "migrate" here put every migrated row on a different axis from every live
+    // one and blinded exactly the workflow/step dimensions the harvest slices by.
+    // Falls back to the migrate provenance only when the legacy row had neither.
+    workflow: e._workflow ?? "migrate",
+    step: e._step ?? "bkit-telemetry-migrate",
     key: entry.key,
     category,
     scope,
-    description: entry.summary,
+    severity: e._severity ?? "MEDIUM",
+    // Title -> summary, prose -> description (was emitting the title as description).
+    summary: entry.summary,
+    description: e._description ?? entry.summary,
     remediation: e._remediation,
-    recovery: e._recovery,
+    source: e._source,
     status,
+    references: entry.references,
     confidence,
     lastConfirmed,
   } as TelemetryEvent;
@@ -918,18 +1095,24 @@ function abort(message: string, lines: string[]): MigrateResult {
   };
 }
 
+/**
+ * The repo's `owner/repo` slug for the `repo` envelope field.
+ *
+ * The git remote is the ONLY authoritative source. package.json `name` was used
+ * here previously and is NOT a slug — it is an npm package name, so bkit's own
+ * ledgers were stamped `@cbartens/bkit` against a true slug of `cbartens/bkit`.
+ * One character, but `repo` is part of identity() for every kind, so the two
+ * spellings fork every entity between them.
+ *
+ * No remote (a repo that has never been pushed) -> "unknown/repo", loudly. A
+ * wrong-but-plausible slug is worse than an obviously-absent one: it forks
+ * silently, whereas "unknown/repo" shows up the moment anyone reads the ledger.
+ */
 function detectRepo(cwd: string): string {
-  // Try package.json name
-  const pkgPath = path.join(cwd, "package.json");
-  if (fs.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-      if (typeof pkg["name"] === "string" && pkg["name"]) {
-        return pkg["name"] as string;
-      }
-    } catch (_e) {
-      void _e; // ignore: package.json unreadable, fall through to path-based detection
-    }
-  }
+  const slug = resolveRepoSlug(cwd);
+  if (slug) return slug;
+  console.error(
+    `[bkit-telemetry] no git remote at ${cwd} — stamping repo="unknown/repo"; rows will not join a per-repo slice`,
+  );
   return "unknown/repo";
 }

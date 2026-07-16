@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds an opencode host for non-Anthropic backends — seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), and `zen` (opencode-native gateway, alias `go`; auth via `OPENCODE_API_KEY`) — same harness, only the inference backend changes (see `.bkit/providers.md` § Hosts + Providers).
+**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds an opencode host for non-Anthropic backends — seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), and `opencode` (opencode-native Zen gateway; auth via `OPENCODE_API_KEY`) — same harness, only the inference backend changes (see `.bkit/providers.md` § Hosts + Providers).
 
 This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/prompts.md`.
 
@@ -184,7 +184,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
 | `.agents/{rules,docs,skills}.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment (via templates pass — NOT the additive payload copy) |
-| `.bkit/friction.md`, `.bkit/.env.example` | core | `.bkit/templates/.bkit/` | Tier 2 html-comment / Tier 3 seed |
+| `.bkit/.env.example` | core | `.bkit/templates/.bkit/` | Tier 3 seed |
 | `.agents/` + `.bkit/` (payload cleanup/migration pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, the moved reference docs) and migrates `.agents/{.bkit-version,.env,.env.example,friction.md}` → `.bkit/` for old-layout consumers (content-preserving) |
 | `.bkit/version` | core | package.json version | Written LAST (so partial installs are detectable) |
 | `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
@@ -310,7 +310,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.agents/skills.md` | Installed skills registry |
 | `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs |
 | `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks (repo-local, not seeded) |
-| `.bkit/friction.md` | Friction log — orchestrator-observed recovery moments |
+| `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Appended by the phase workflows at runtime (not seeded); drained by `bkit harvest`, and by nothing else. Row shape: `.bkit/jsonl.md`. |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
 | `.bkit/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
 | `.bkit/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |

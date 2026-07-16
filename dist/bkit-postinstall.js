@@ -702,39 +702,44 @@ const BKIT_STUBS = [
     // These ship commented in the FULL CI SCAFFOLD REFERENCE block at the end of the
     // template ci.yml. Order matters when adopting — see that block.
     {
-        id: "bkit-decide",
+        id: "bkit-tests-scope",
         file: ".github/workflows/ci.yml",
-        description: "Promote run-level detection into a standalone always-on `bkit-decide` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live), consumed by every tier via `fromJSON(needs.bkit-decide.outputs.plan).<field>`. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo.",
+        description: "Promote run-level detection into a standalone always-on `bkit-tests-scope` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live), consumed by every tier via `fromJSON(needs.bkit-tests-scope.outputs.plan).<field>`. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo. NAME: this job was called `bkit-decide` before; keep the name inside the bkit-tests-* namespace so bkit's CI-Dispatch Gate (which polls for any bkit-tests-* check on the pushed HEAD) can see it. NAMESPACE TRAP: it is the PLANNER, not a test lane — any capstone/guard that treats every bkit-tests-* job as a lane must exempt it BY NAME and assert its result explicitly, or a scope failure goes unasserted and the capstone stays green.",
     },
     {
         id: "affected-graph",
         file: ".github/workflows/ci.yml",
-        description: "Inside bkit-decide, replace any frozen path-allowlist with `turbo query affected --packages` so run_level / web_affected track the real dependency blast radius. Monorepo-only — drop for single-package repos. Capture turbo stdout/stderr SEPARATELY: `2>&1` merges turbo's banner into the JSON and jq silently falls back to [] (a ghost-green run).",
+        description: "Inside bkit-tests-scope, replace any frozen path-allowlist with `turbo query affected --packages` so run_level / web_affected track the real dependency blast radius. Monorepo-only — drop for single-package repos. Capture turbo stdout/stderr SEPARATELY: `2>&1` merges turbo's banner into the JSON and jq silently falls back to [] (a ghost-green run).",
     },
     {
         id: "bkit-tests-live",
         file: ".github/workflows/ci.yml",
-        description: "Add a push-only @live canary job (`needs: [bkit-decide, bkit-tests]`; `if: ...run_live && needs.bkit-tests.result == 'success'`) running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design).",
+        description: "Add a push-only @live canary job (`needs: [bkit-tests-scope]`; `if: ...run_live`) running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design). DO NOT gate this lane behind the other test lanes: that `needs:` edge is measured as the single most expensive edge in the whole graph (a consumer clocked it at ~10 min of pure wall-clock, ~35% of total CI). It buys almost nothing — @live is push-only, and a push is post-merge and already PR-validated, so the 'don't spend live quota on a broken tree' case has a near-zero hit rate; a tree that does not compile still cannot false-green, because @live's own build fails and reds the lane. The cost of ungating is wasted external-API spend on the rare broken push. If your @live spend is expensive enough that this trade flips, add the gate back deliberately — but measure it first.",
     },
     {
         id: "bkit-tests-check",
         file: ".github/workflows/ci.yml",
-        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). With one lane per tier (recommended — the shape bkit/gether/fraser run), `needs:` EVERY test lane and assert each lane's `result` + its `<tier>_ran` count > 0 when planned (see bkit's own bkit-tests-check assert_ran); a repo that keeps tiers as steps asserts via `steps.<tier>.outcome` + step-emitted counts instead.",
+        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-tests-scope (which is always green). With one lane per tier (recommended — the shape bkit/gether/fraser run), `needs:` EVERY test lane and assert each lane's `result` + its `<tier>_ran` count > 0 when planned (see bkit's own bkit-tests-check assert_ran); a repo that keeps tiers as steps asserts via `steps.<tier>.outcome` + step-emitted counts instead. ALSO assert bkit-tests-scope's own `result` explicitly: it sits in `needs:` and in the bkit-tests-* namespace but is NOT a test lane, so a per-lane loop skips it and a scope failure would leave the capstone green.",
     },
     {
-        id: "bkit-tests-migrate",
+        id: "bkit-tests-migration",
         file: ".github/workflows/ci.yml",
-        description: "Add an independent sibling job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before the test lanes (they share no state).",
+        description: "Add a `bkit-tests-migration` job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Wire it `needs: [bkit-tests-scope]` for graph ordering ONLY — the replay itself stays unconditional, never gated on run_level. Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before the test lanes (they share no state).",
     },
     {
         id: "bkit-tests-integration",
         file: ".github/workflows/ci.yml",
-        description: "Add the integration tier as its OWN parallel lane (job) — `bkit-tests-integration`, NOT a step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra boundaries). This is the shape bkit's own CI and consumers gether/fraser run — separate lanes give each tier its own honest coverage number, executed-count, and permissions. Wiring: needs:[bkit-decide]; if run_level != 'none'; self-contained (own checkout/setup/install); gate the heavy steps on web_affected; emit `integration_ran` (vitest --reporter=json) so bkit-tests-check can assert it ran > 0. The bkit-stub:coverage integration report (davelosert, name: integration, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`.",
+        description: "Add the integration tier as its OWN parallel lane (job) — `bkit-tests-integration`, NOT a step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra boundaries). This is the shape bkit's own CI and consumers gether/fraser run — separate lanes give each tier its own honest coverage number, executed-count, and permissions. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install); gate the heavy steps on web_affected; emit `integration_ran` (vitest --reporter=json) so bkit-tests-check can assert it ran > 0. The bkit-stub:coverage integration report (davelosert, name: integration, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`.",
     },
     {
         id: "bkit-tests-e2e",
         file: ".github/workflows/ci.yml",
-        description: "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: needs:[bkit-decide]; if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
+        description: "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
+    },
+    {
+        id: "bkit-tests-build",
+        file: ".github/workflows/ci.yml",
+        description: "Split the workspace compile into its OWN lane (job) — `bkit-tests-build` — instead of a `Build All Packages` step inside another lane. WHEN: the build is slow enough that lanes needing it are waiting on it, or a compile break should report on its own. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install). Fold it into bkit-tests-check's `needs:`. This buys ~0 wall-clock on its own — it runs parallel to lanes that do not need it — so adopt it for TIME-TO-SIGNAL (a compile break reds in its own lane rather than hiding as a late step in a longer one), not as a speed lever. NOT a test tier: it emits no `<tier>_ran` count, so the capstone asserts its `result` only.",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -785,6 +790,23 @@ export function detectBkitStubs(cwd) {
     // is still present (still disabled).
     const ciContent = readOnce(".github/workflows/ci.yml");
     if (ciContent) {
+        // Legacy scaffold job names. `bkit-decide` predates the bkit-tests-* namespace and is
+        // INVISIBLE to bkit's CI-Dispatch Gate, which polls the pushed HEAD for any bkit-tests-*
+        // check: a repo whose planner is still called `bkit-decide` matches only via the gate's
+        // legacy `decide` alternation, and a repo that renamed it to anything else (e.g. a bare
+        // `scope`) matches nothing at all — the gate then reports no-ci on every build and silently
+        // loses its ability to catch a genuinely undispatched run. Detected on the uncommented job
+        // key, so a repo that merely carries the commented scaffold reference does not fire this.
+        const hasLegacyJob = (jobName) => new RegExp(`(^|\\n)\\s{2}${jobName}:\\s*(\\n|$)`).test(ciContent);
+        const legacyJobs = ["bkit-decide", "bkit-tests-migrate"].filter(hasLegacyJob);
+        if (legacyJobs.length > 0) {
+            findings.push({
+                id: "ci-legacy-scaffold-job-names",
+                severity: "advisory",
+                detect: `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — renamed in the current scaffold.`,
+                action: "Rename `bkit-decide` -> `bkit-tests-scope` and `bkit-tests-migrate` -> `bkit-tests-migration` (job key, `name:`, and every `needs:` / `fromJSON(needs.<job>.outputs.plan)` reference). ALSO rename the planner's plan-emitting step `id: decide` -> `id: scope` and its `steps.decide.outputs.plan` reader in the job's `outputs:` block — the id is job-local, so this is a self-contained edit with no cross-job fan-out. WHY: every scaffold job then shares the bkit-tests-* namespace that bkit's CI-Dispatch Gate polls to confirm CI dispatched for a pushed HEAD. THEN: bkit-tests-scope is the planner, NOT a test lane, but it now lives in the lane namespace — make sure your capstone still asserts its `result` explicitly and that any guard looping over bkit-tests-* jobs exempts it by name, or a scope failure leaves the capstone green. Branch protection is unaffected (the required check stays bkit-tests-check).",
+            });
+        }
         // Match a YAML step name uncommented (leading `- name:` not preceded by `#`).
         const isStepEnabled = (stepName) => {
             const re = new RegExp(`(^|\\n)\\s*- name:\\s*${stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
@@ -2278,7 +2300,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             action: "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
                 "    Settings → Branches → Add rule → Branch name pattern: main\n" +
                 "    - Require a pull request before merging\n" +
-                "    - Require status checks: bkit-tests-check (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-decide, it is always green)\n" +
+                "    - Require status checks: bkit-tests-check (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-tests-scope, it is always green)\n" +
                 "    - Do not allow bypassing the above settings (enforce for admins)\n" +
                 "    - Require linear history; block force-pushes and deletions\n\n" +
                 "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +

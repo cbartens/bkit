@@ -21,6 +21,7 @@
 // ALL well-formed rows (no version gating) and report row counts per `bkitVersion`
 // so an unexpected version surfaces for triage.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -32,6 +33,91 @@ import * as readline from "node:readline";
 export const MAX_ROWS_BEFORE_ROLLUP = 5000;
 /** Template for archive shards: replace {basename} and {YYYYMM}. */
 export const ARCHIVE_SHARD_TEMPLATE = ".bkit/archive/{basename}.{YYYYMM}.jsonl";
+
+// ---------------------------------------------------------------------------
+// repo — the owner/repo slug, resolved ONE way
+//
+// `repo` is part of identity() for EVERY kind, so a respelled repo FORKS the
+// entity — the same failure the spec warns about for `key`, except `repo` is not
+// authored by anyone: it is derived. It therefore must be derived identically
+// everywhere, from the only authoritative source: the git remote.
+//
+// NOT package.json `name` — that is an npm package name, not a slug
+// (`@cbartens/bkit` vs `cbartens/bkit`). NOT the filesystem path — that makes the
+// "owner" a folder on whoever's laptop ran the tool (`GitHub/app-gether-life`,
+// or `code/app-gether-life` after they reorganise).
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse `owner/repo` out of a git remote URL. Pure — the fiddly half, kept
+ * testable without a git repo.
+ *
+ * Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
+ * (`git@github.com:owner/repo.git`) and `ssh://` URLs. Returns "" when the URL
+ * yields no `owner/repo` pair rather than guessing.
+ */
+export function parseRemoteUrlToSlug(url: string): string {
+  const m = url
+    .trim()
+    .replace(/\.git$/, "")
+    .match(/[/:]([^/:]+\/[^/:]+)$/);
+  return m?.[1] ?? "";
+}
+
+/** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
+function gitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env["GIT_DIR"];
+  delete env["GIT_WORK_TREE"];
+  delete env["GIT_INDEX_FILE"];
+  delete env["GIT_OBJECT_DIRECTORY"];
+  return env;
+}
+
+/**
+ * Resolve a rev (`HEAD~1`, a branch, a tag) to a full hex SHA. "" if it does not
+ * resolve — e.g. `HEAD~1` in a repo with one commit.
+ *
+ * `parentSha` MUST be resolved before it reaches a row. It is part of identity()
+ * for compliance and counter, so an unresolved literal like "HEAD~1" is the SAME
+ * identity on every run and successive runs fold into each other. It is also what
+ * the grader diffs against, and the diff guard rejects anything non-hex — silently
+ * grading an empty diff, which passes every diff-based rule vacuously.
+ */
+export function resolveGitSha(rev: string, cwd: string): string {
+  const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], {
+    cwd,
+    encoding: "utf-8",
+    env: gitEnv(),
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (res.status !== 0 || typeof res.stdout !== "string") return "";
+  const sha = res.stdout.trim();
+  return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
+}
+
+/**
+ * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
+ * remote or no git repo — callers decide the fallback, loudly.
+ *
+ * The env scrub is load-bearing, not hygiene: git hooks export GIT_DIR /
+ * GIT_WORK_TREE / GIT_INDEX_FILE, and leaving them set makes `git -C <path>`
+ * silently answer for the HOOK's repo instead of <path> — so a harvest run from
+ * a hook would stamp every consumer's rows with bkit's own slug.
+ *
+ * spawnSync, not execSync-in-a-try: a non-zero exit is an expected answer here
+ * ("no remote"), not an exception to swallow.
+ */
+export function resolveRepoSlug(cwd: string): string {
+  const res = spawnSync("git", ["remote", "get-url", "origin"], {
+    cwd,
+    encoding: "utf-8",
+    env: gitEnv(),
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (res.status !== 0 || typeof res.stdout !== "string") return "";
+  return parseRemoteUrlToSlug(res.stdout);
+}
 
 // ---------------------------------------------------------------------------
 // Shared envelope (A2-mandatory fields on EVERY row, every kind)
@@ -48,18 +134,49 @@ export interface TelemetryEnvelope {
   bkitVersion: string;
   /** Emitting workflow: design | plan | build | debug | ship */
   workflow: string;
-  /** Step within the workflow that emitted this row. */
+  /**
+   * The WORKFLOW STEP the row was emitted at, e.g. `build-close-workflow`,
+   * `ship-close-gate`. A step of the orchestrator, never an agent name — a
+   * subagent's identity goes in `subagent`, and its model in `model`.
+   */
   step: string;
-  /** Emitting subagent, if any. */
+  /**
+   * The SUBAGENT that wrote the row, e.g. `bkit-build-challenge-remediate`.
+   * Absent on orchestrator-written rows (the workflow itself wrote it).
+   *
+   * Distinct from `step` on purpose: `step` is WHERE in the workflow, `subagent`
+   * is WHO. They were conflated — most rows put an agent name in `step` while
+   * `subagent` sat empty on all 141 — which cost the harvest one of the five
+   * dimensions it exists to slice by (repo/workflow/step/subagent/severity), and
+   * made "which agent generates the most rework?" unanswerable.
+   */
   subagent?: string;
-  /** Model of the writing subagent (from its prompt frontmatter `model:`); blank/absent for orchestrator-written rows. */
+  /**
+   * The model that wrote the row, read from the writing subagent's OWN prompt
+   * frontmatter `model:` at call time — the deterministic source bkit already
+   * owns, and the only one that stays true when a prompt is re-pinned.
+   *
+   * Set ONLY on subagent-written rows, i.e. exactly when `subagent` is set. An
+   * orchestrator-written row has no `model`: the session model is the operator's
+   * runtime choice, not a property of the row, and self-reporting it invites the
+   * same nondeterminism the compliance grader exists to avoid.
+   */
   model?: string;
-  /** Severity where applicable. */
-  severity?: string;
-  /** Outbound links (issues, PRs, SHAs, FIDs, paths, sibling ts). */
+  /**
+   * Free-form related context — the JSONL form of the retired `**Related:**`
+   * field. Holds ANY pointer that helps a later reader place this row: feature
+   * ids, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, sibling `ts`,
+   * and this row's OWN former ledger id (`KN-14`, `DE-7`) when it was migrated
+   * off the `.md` ledgers.
+   *
+   * Deliberately NOT split into an identity field vs a link field. The design's
+   * separate `aliases[]` ("I AM KN-14") was folded in here after the sequential
+   * `DE-{N}` scheme proved un-mintable under concurrency — two workflows read
+   * the same max from their own base commit and mint the same id, so an alias
+   * could not be a reliable identity anyway (9 collided in a live consumer
+   * ledger). `ts` is the id; everything else is a pointer.
+   */
   references?: string[];
-  /** This entry's OWN former id(s) — e.g. "KN-14", "DE-7". */
-  aliases?: string[];
   /**
    * Explicit written-once logical key for instinct-loop kinds
    * (friction / deferral / failure / knowledge / decision).
@@ -93,6 +210,58 @@ export const VALID_KINDS: Set<string> = new Set([
   "knowledge",
   "decision",
 ]);
+
+/**
+ * Triage severity — carried by the three author-written kinds whose rows are
+ * triaged by a human or a later agent (friction / deferral / failure).
+ *
+ * Deliberately the SAME vocabulary the challenge + audit prompts already assign
+ * to their findings, so `@bkit-build-challenge-remediate` passes a blocked
+ * finding's severity straight through to its deferral row instead of re-deriving
+ * it. NOT the preflight `blocker`/`advisory` scale (that gates `bkit install`,
+ * a different axis), and NOT the pre-JSONL `critical|normal|low` scale — the
+ * latter's authored distribution collapsed to its default (19 low / 2 normal /
+ * 0 critical of 21 rows in the old `docs/pending.md`), carrying no signal.
+ *
+ * Absent on machine-generated kinds (compliance / outcome / counter) and on
+ * knowledge / decision, which have no triage severity.
+ */
+export type TelemetrySeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+export const VALID_SEVERITIES: Set<string> = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+
+/**
+ * Kinds that carry `severity` — and, identically, the kinds that carry the
+ * OPEN/TRIAGED/CLOSED ladder. Both express the same property: these three are
+ * the author-written kinds that describe OPEN WORK someone triages. Keep in
+ * sync with the payload interfaces below.
+ */
+export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "failure"]);
+
+/**
+ * The triage ladder, shared by the SEVERITY_KINDS trio (friction/deferral/failure).
+ *
+ * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
+ * fixed -> `CLOSED` dealt with (fixed, refuted, or established as not ours).
+ *
+ * `TRIAGED` exists because analysing something and fixing it are different events,
+ * often far apart. Without it a sweep that works out exactly what an entry is, and
+ * where its fix belongs, has nowhere to put that: recording `CLOSED` is a lie, and
+ * leaving `OPEN` discards the analysis and invites the next sweep to redo it.
+ *
+ * `TRIAGED` IS STILL OPEN WORK. Readers counting open entries — a CI gate on open
+ * CRITICAL failures, an audit debt lens, an age report — MUST count it. Only
+ * `CLOSED` is done.
+ *
+ * NOT on knowledge (no status — a lesson is not work) or decision (`ACTIVE`/
+ * `SUPERSEDED` is a lifecycle, a different axis entirely).
+ */
+export type TriageStatus = "OPEN" | "TRIAGED" | "CLOSED";
+
+export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"]);
+
+/** The decision lifecycle — a separate axis from the triage ladder. */
+export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
@@ -135,9 +304,20 @@ export interface OutcomePayload {
   correctiveCommits?: number;
   /** Number of PR review iterations. */
   reviewIterations?: number;
-  /** Count of deferrals emitted during this run. */
+  /**
+   * The repo's CUMULATIVE count of distinct deferrals at ship time — folded
+   * entities, not lines. Per-cycle is the DELTA against the previous outcome
+   * row (see newFailuresThisRun / isErrorRun in bkit-analysis.ts).
+   */
   deferrals: number;
-  /** Count of failures emitted during this run. */
+  /**
+   * The repo's CUMULATIVE count of distinct failures at ship time — folded
+   * entities, not lines. Per-cycle is the DELTA against the previous outcome row.
+   *
+   * A total, NOT this run's discoveries: a raw count would mark every run after
+   * the first-ever bug as an error run forever. Readers MUST diff consecutive
+   * rows rather than test this absolutely.
+   */
   failures: number;
   /** Sweep verdict from ship deferred-sweep step. */
   sweepVerdict?: string;
@@ -176,10 +356,26 @@ export interface FrictionPayload {
     | "destructive-backout"
     | "other";
   scope: "bkit-repo" | "consumer" | "universal";
+  /** How much this friction hurts — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
+  /** Short title. `description` carries the prose; without this the title has nowhere to live. */
+  summary?: string;
   description: string;
   remediation?: string;
-  recovery?: string;
-  status?: "OPEN" | "CLOSED" | string;
+  /** Who observed it: agent | human | phase | orchestrator. Mirrors DeferralPayload.source. */
+  source?: string;
+  /**
+   * `OPEN` raised, cause unknown -> `TRIAGED` analysed, disposition known, not yet
+   * fixed -> `CLOSED` dealt with (fixed, refuted, or not ours to fix).
+   *
+   * `TRIAGED` exists because analysing a friction and fixing it are different events,
+   * often months apart, and collapsing them loses the interval. Appending it as its own
+   * same-`key` row makes that interval fall out of the ledger the same way the close does
+   * (see § Updating a Row): the entry's `ts` is when it was raised, the TRIAGED row's `ts`
+   * is when someone worked out what it was, the CLOSED row's `ts` is when it was fixed.
+   * Carry the disposition in `references` (the issue, the Fix N, or why it is not ours).
+   */
+  status?: TriageStatus | string;
   confidence?: number;
   lastConfirmed?: number;
   recurrenceCount?: number;
@@ -189,19 +385,30 @@ export interface FrictionPayload {
 export interface DeferralPayload {
   type: "issue" | "feature";
   category: string;
+  /** Triage severity of the deferred work — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
+  /** Short title. `description` carries the prose; without this the title has nowhere to live. */
+  summary?: string;
   description: string;
   remediation?: string;
   source?: string;
-  status?: "OPEN" | "CLOSED";
+  /** OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work. */
+  status?: TriageStatus;
 }
 
 // failure — keyed by explicit `key` field
 export interface FailurePayload {
   summary?: string;
+  /** Triage severity of the discovered bug — see TelemetrySeverity. */
+  severity: TelemetrySeverity;
   description: string;
   rootCause?: string;
   remediation?: string;
-  status?: "OPEN" | "CLOSED" | string;
+  /**
+   * OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work
+   * — a diagnosed bug is not a fixed bug.
+   */
+  status?: TriageStatus | string;
 }
 
 // knowledge — keyed by explicit `key` field (P5)
@@ -308,6 +515,44 @@ export function validate(event: unknown): ValidationResult {
 
   // kind-specific payload validation (minimal — structural check)
   const kind = e["kind"] as TelemetryKind;
+
+  // severity — required on the triaged author-written kinds, rejected elsewhere.
+  // Enforced on write only; `parse` stays tolerant so pre-severity rows still read.
+  if (SEVERITY_KINDS.has(kind)) {
+    if (e["severity"] === undefined || e["severity"] === null) {
+      return { ok: false, reason: `${kind} row missing required field: severity` };
+    }
+    if (!VALID_SEVERITIES.has(e["severity"] as string)) {
+      return {
+        ok: false,
+        reason: `${kind} severity must be one of CRITICAL|HIGH|MEDIUM|LOW (got: ${String(e["severity"])})`,
+      };
+    }
+  } else if (e["severity"] !== undefined) {
+    return { ok: false, reason: `${kind} rows do not carry severity` };
+  }
+
+  // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
+  // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+  // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+  if (SEVERITY_KINDS.has(kind)) {
+    if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"] as string)) {
+      return {
+        ok: false,
+        reason: `${kind} status must be one of OPEN|TRIAGED|CLOSED (got: ${String(e["status"])})`,
+      };
+    }
+  } else if (kind === "decision") {
+    if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"] as string)) {
+      return {
+        ok: false,
+        reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+      };
+    }
+  } else if (e["status"] !== undefined) {
+    return { ok: false, reason: `${kind} rows do not carry status` };
+  }
+
   if (kind === "compliance") {
     if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
       return { ok: false, reason: "compliance row missing required payload fields" };
@@ -515,11 +760,30 @@ export interface TelemetrySummary {
   malformedLineCount: number;
   versionCounts: Record<string, number>;
   maxRowsWarning: boolean;
+  /** Rows per emitting workflow — the chain rollup a close step reports. */
+  workflowCounts: Record<string, number>;
   /** Human-readable report lines. */
   lines: string[];
 }
 
-export function buildSummary(result: FoldFromResult): TelemetrySummary {
+/**
+ * THE telemetry summary. One implementation, called by every workflow close step
+ * via `bkit telemetry summary` — see § the reason it is not inline shell.
+ *
+ * The five workflows each carried their own bash version of this, and every one
+ * was wrong in ways this is not:
+ *   - `MALFORMED=$(grep -cvE '^\{.*\}$' … || echo 0)` prints "0\n0" whenever there
+ *     are NO malformed lines, because `grep -c` exits 1 on zero matches and the
+ *     `|| echo 0` fires on top of grep's own "0". Broken in the common case.
+ *   - `jq -r '.bkitVersion // "unknown"'` buckets an EMPTY version under an empty
+ *     key (`versions: =2`), because jq's `//` substitutes only on null/false and
+ *     `""` is neither.
+ *   - `wc -l` counts LINES, not parsed rows, and a regex is not a JSON parser.
+ * This counts what `parse()` actually parsed, and names the unknown bucket.
+ *
+ * @param workflow when given, adds the per-workflow chain line the close step reports.
+ */
+export function buildSummary(result: FoldFromResult, workflow?: string): TelemetrySummary {
   const versionStr =
     Object.entries(result.versionCounts)
       .map(([v, n]) => `${v}=${n}`)
@@ -532,11 +796,27 @@ export function buildSummary(result: FoldFromResult): TelemetrySummary {
       `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (${MAX_ROWS_BEFORE_ROLLUP}) exceeded — ${result.rowCount} rows in stats.jsonl; consider archiving.`,
     );
   }
+
+  // Counted off the FOLDED state, so these are ENTITIES, not lines — same rule the
+  // spec sets for every reader. The bash version grepped '"workflow":"ship"' across
+  // raw lines, so an updated row counted twice.
+  const workflowCounts: Record<string, number> = {};
+  for (const ev of result.state.values()) {
+    const w = ev.workflow || "unknown";
+    workflowCounts[w] = (workflowCounts[w] ?? 0) + 1;
+  }
+  if (workflow) {
+    lines.push(
+      `[bkit-telemetry] ${workflow}: ${workflowCounts[workflow] ?? 0} | design→ship chain total: ${result.state.size} (from ${result.rowCount} rows)`,
+    );
+  }
+
   return {
     rowCount: result.rowCount,
     malformedLineCount: result.malformedLineCount,
     versionCounts: result.versionCounts,
     maxRowsWarning: result.maxRowsWarning,
+    workflowCounts,
     lines,
   };
 }

@@ -43,7 +43,7 @@ export function parseCloudVariant(value) {
 // telemetry — sub-verb for bkit telemetry <subverb>
 // ---------------------------------------------------------------------------
 /** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
-export const TELEMETRY_SUBVERBS = ["migrate"];
+export const TELEMETRY_SUBVERBS = ["migrate", "summary"];
 /** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
 export function parseTelemetrySubverb(value) {
     return typeof value === "string" && TELEMETRY_SUBVERBS.includes(value)
@@ -242,11 +242,12 @@ export function parseArgs(argv) {
                 continue;
             }
             // Value-bearing flag: --phase=<design|plan|build|debug|ship>
-            // Used by `bkit comply` to identify the workflow phase being graded.
+            // `bkit comply` — the workflow phase being graded.
+            // `bkit telemetry summary` — the workflow to report a chain rollup for.
             // Rejected for all other verbs.
             if (flag.startsWith("phase=")) {
-                if (verb !== "comply") {
-                    console.error(`[bkit] --phase is only valid with the \`comply\` verb. Run \`bkit help\` for usage.`);
+                if (verb !== "comply" && verb !== "telemetry") {
+                    console.error(`[bkit] --phase is only valid with the \`comply\` and \`telemetry\` verbs. Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
                 const value = flag.slice("phase=".length);
@@ -508,7 +509,7 @@ Usage:
                                  No flags = full removal — ALL modules incl. opt-in add-ons
                                  (renovate/dependabot/cloud/opencode) + core. Consumer-modified
                                  files, the docs/ payload, and generated artefacts
-                                 (.bkit/advisories.md, .bkit/friction.md) are preserved (use
+                                 (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
                                  same module flags as install (e.g. uninstall --tooling); a
                                  targeted uninstall leaves core untouched.
@@ -533,27 +534,40 @@ Usage:
                                  rows to .bkit/stats.jsonl. Fail-open: always exits 0.
                                  Valid phases: design, plan, build, debug, ship.
   bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
-                                 and .bkit/friction.jsonl into .bkit/harvest/ (COUNT-ONLY
+                                 and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
                                  for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from .bkit/consumers.md. Never
-                                 writes to any consumer repo. Deduplicates by per-kind
-                                 composite identity. Advisory + fail-open: exits 0.
+                                 Reads consumer paths from .bkit/consumers.md.
+                                 DESTRUCTIVE: harvested friction rows are REMOVED from
+                                 the consumer, but only after they are fsync'd and read
+                                 back from harvest/. stats.jsonl is never modified.
+                                 harvest/ accumulates and is never cleared — commit it,
+                                 as it is the only record of pruned rows. Never commits
+                                 in any repo. Deduplicates by per-kind composite
+                                 identity. Advisory + fail-open: exits 0.
   bkit telemetry migrate [--dry-run]
                                  Migrate docs/knowledge.md + docs/decisions.md to
                                  docs/knowledge.jsonl + docs/decisions.jsonl (kind:"knowledge"
                                  and kind:"decision" rows). Parity-gated + destructive: ports
-                                 each entry with its KN-N/DE-N id in aliases[], verifies
+                                 each entry with its KN-N/DE-N id + legacy Related:
+                                 graph in references[], its Severity and its
+                                 Description prose, verifies
                                  row-count parity against a transient .md.bak, then DELETES
                                  the .md ONLY after parity is confirmed (idempotent: re-run
                                  is a no-op if migration already completed). A parity mismatch
                                  or absent .md.bak ABORTS with ZERO .md deleted. NEVER called
                                  from bkit upgrade — only via this explicit invocation.
                                  --dry-run: show what would be migrated without writing.
+  bkit telemetry summary [--phase=<workflow>]
+                                 Print a rollup of the telemetry ledgers — total row count,
+                                 malformed-row count, and bkitVersion spread. The close
+                                 step of every /bkit-* workflow calls this.
+                                 --phase=<workflow>: scope the rollup to one workflow
+                                 (design|plan|build|debug|ship). Read-only: exits 0.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, and per-rule compliance
                                  rate over kind:"compliance" rows. Reads from
-                                 .bkit/harvest/ and .bkit/stats.jsonl. Advisory +
+                                 harvest/ and .bkit/stats.jsonl. Advisory +
                                  inform-only: exits 0.
   bkit help                     Print this message.
 

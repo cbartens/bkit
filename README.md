@@ -14,7 +14,7 @@ Three things that change how you work:
 
 Beyond the pipeline and its tracker integration, every `bkit install` wires in the engineering scaffolding a repo needs on day one:
 
-- **A CI scaffold where green means validated.** A four-job GitHub Actions pipeline — `bkit-decide` (plans what should run) → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check` — whose always-on capstone fails the build if any tier the plan expected was skipped. "CI is green" stops meaning "nothing visibly failed" and starts meaning "the planned tests actually ran and passed"; the capstone is the single branch-protection required check, so a partial, cached, or light run can't pass as validated. Direct pushes auto-escalate to a full run. The complete multi-tier scaffold ships documented step-by-step in the seeded `ci.yml`, ready to adopt as the project grows.
+- **A CI scaffold where green means validated.** A flat, wide GitHub Actions pipeline — `bkit-tests-scope` (plans what should run) fans out to every lane at once (`static` / `unit` / `build` / `integration` / `e2e` / `live` / `migration`), and the always-on `bkit-tests-check` capstone joins them and fails the build if any tier the plan expected was skipped. Nothing waits on anything but the planner, so total wall-clock is the slowest single lane, not the sum of the tiers. "CI is green" stops meaning "nothing visibly failed" and starts meaning "the planned tests actually ran and passed"; the capstone is the single branch-protection required check, so a partial, cached, or light run can't pass as validated. Direct pushes auto-escalate to a full run. The complete multi-tier scaffold ships documented step-by-step in the seeded `ci.yml`, ready to adopt as the project grows.
 - **Quality gates, local and CI in lockstep.** Typecheck, Prettier, a Vale prose linter, an LLM-slop scanner, actionlint, and a mirror/drift gate run in the seeded pre-commit / pre-push hooks **and** in CI — the same commands in both places, so a green local push is a green CI run.
 - **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, shipped already configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, and CVE alerts that bypass the weekly schedule.
 - **Cloud agents.** Opt-in autonomous routing: when CI finishes, a Claude Code or Cursor cloud agent picks up automatically — `bkit-ship` on green, `bkit-debug` on red — with no local session running.
@@ -298,7 +298,7 @@ Vercel runs its own `pnpm install` in a fresh build container and cannot run a p
    }
    ```
 
-   If a legacy git-shim `installCommand` is present (`git config --global url."https://x-access-token:$GH_BKIT_TOKEN_INSTALL@github.com/cbartens/bkit/".insteadOf …`), remove it — the `pnpm config set` line replaces it entirely. (This is a registry-auth shim, not the obsolete git-auth shim; see `docs/decisions.md` DE-31.)
+   If a legacy git-shim `installCommand` is present (`git config --global url."https://x-access-token:$GH_BKIT_TOKEN_INSTALL@github.com/cbartens/bkit/".insteadOf …`), remove it — the `pnpm config set` line replaces it entirely. (This is a registry-auth shim, not the obsolete git-auth shim; see `docs/decisions.jsonl` DE-31.)
 
 3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
 
@@ -353,7 +353,7 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 
 Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). It writes nothing and **exits 1 when any managed-file write would occur** in an installed module — a Tier-2 JSON deep-containment or markered-block drift, or a whole-file byte-equal mismatch — or when the rendered prompts/workflows carry a stale managed-version marker (#256). The gate covers the **installed** module set ({core, claude, cursor, ci, lint, git-hooks} plus **opencode**, each detected by sentinel files). opencode is gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — the render inputs fall back to the installed provider (`package.json` `bkit.opencodeProvider`, the authoritative signal for the `opencode` gateway; all installed providers are tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so a clean install across providers checks green (no false drift). The remaining **opt-in** modules (renovate/dependabot/cloud) are NOT drift-gated, and the host agent/command mirrors are untracked force-overwrites that surface as the `bkit-rendered-prompts-stale` blocker rather than in the writeset. See `docs/knowledge.md` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). It changes no managed file (it does regenerate the `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in an installed module — a Tier-2 JSON deep-containment or markered-block drift, or a whole-file byte-equal mismatch — or when the rendered prompts/workflows carry a stale managed-version marker (#256). The gate covers the **installed** module set ({core, claude, cursor, ci, lint, git-hooks} plus **opencode**, each detected by sentinel files). opencode is gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — the render inputs fall back to the installed provider (`package.json` `bkit.opencodeProvider`, the authoritative signal for the `opencode` gateway; all installed providers are tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so a clean install across providers checks green (no false drift). The remaining **opt-in** modules (renovate/dependabot/cloud) are NOT drift-gated, and the host agent/command mirrors are untracked force-overwrites that surface as the `bkit-rendered-prompts-stale` blocker rather than in the writeset. See `docs/knowledge.jsonl` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
 
 **`PreflightFinding` shape** — the stable contract for downstream tooling:
 
@@ -399,7 +399,7 @@ All three decisions are reversible — re-run the install with the relevant flag
 
 ## Doctor
 
-`bkit doctor` is a **read-only diagnostic verb** — runs Phase 1 preflight + Phase 3 token-surface detectors without writing any files and exits 0.
+`bkit doctor` is a **diagnostic verb** — runs Phase 1 preflight + Phase 3 token-surface detectors and exits 0. It changes no managed file, but like `bkit check` it regenerates the `.bkit/advisories.md` artifact recording what the scan found (creating `.bkit/` if absent, so a repo that has never installed bkit gains that one file).
 
 ```bash
 # Diagnose drift without running install
@@ -460,7 +460,7 @@ Running `bkit uninstall` twice is safe — subsequent runs skip absent files and
 
 ### What a full uninstall preserves
 
-A bare uninstall removes bkit-managed files and strips bkit-managed blocks, but is **not** a guaranteed zero-footprint wipe. It deliberately leaves: the `docs/` reference payload (consumer-editable, often customised); any file the consumer has modified (Tier-3 hash mismatch → preserved); and generated artefacts that are not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.md`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; the generated artefacts and `docs/` are still yours to delete by hand.
+A bare uninstall removes bkit-managed files and strips bkit-managed blocks, but is **not** a guaranteed zero-footprint wipe. It deliberately leaves: the `docs/` reference payload (consumer-editable, often customised); any file the consumer has modified (Tier-3 hash mismatch → preserved); and generated artefacts that are not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.jsonl`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; the generated artefacts and `docs/` are still yours to delete by hand.
 
 ## Phase 3 exit-1 and recovery
 

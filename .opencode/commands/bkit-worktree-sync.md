@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -13,7 +13,7 @@ $ARGUMENTS
 **Purpose:** Review and merge agent worktree commits into the IDE's current branch. Human-triggered only — agent never invokes this autonomously.
 
 > [!CAUTION]
-> This command ALWAYS asks for confirmation before merging. It never auto-merges. Read the commit log before confirming.
+> Read the commit log before confirming. NEVER auto-merge; ALWAYS ask for confirmation before merging.
 
 ## Step 1 — Verify Context
 
@@ -27,7 +27,7 @@ $ARGUMENTS
 
 1. `git -C "$REPO_ROOT" status --porcelain` → capture output as `LOCAL_STATUS`.
 2. **If** `LOCAL_STATUS` is empty → skip to Step 3.
-3. Auto-commit dirty paths on the IDE's current branch using the same path-exclusion filter as pre-worktree (prevents merge from clobbering uncommitted edits, skips junk):
+3. Auto-commit dirty paths on the IDE's current branch, excluding junk:
 
    ```bash
    git -C "$REPO_ROOT" status --short
@@ -81,7 +81,7 @@ Enter choice:
 
 **If** human chose `r` (rebase):
 
-1. `git fetch origin dev` (ensure base is current).
+1. `git fetch origin dev`.
 2. Explain: Rebase cherry-picks Claude's commits onto the current branch. This rewrites history — only safe if `{WORKTREE_BRANCH}` has not been pushed to a shared remote yet (or you are force-pushing a personal branch).
 3. Ask for final confirmation before proceeding.
 4. `git rebase --onto {CURRENT_BRANCH} origin/dev .worktrees/{FID}/{WORKTREE_BRANCH}` (or equivalent cherry-pick sequence).

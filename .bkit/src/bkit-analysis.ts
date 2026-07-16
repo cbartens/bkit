@@ -179,12 +179,35 @@ const SIZE_BUCKETS: Array<{ label: string; min: number; max: number }> = [
   { label: "XL (1000+)", min: 1000, max: Infinity },
 ];
 
-function isErrorRun(row: OutcomeRow): boolean {
+/**
+ * Per-run NEW failures = this row's cumulative total minus the previous row's.
+ *
+ * `outcome.failures` is the repo's CUMULATIVE distinct-failure count at ship
+ * time, so testing it absolutely (`row.failures > 0`) marks every run after the
+ * repo's first-ever bug as an error run, forever — the regression would read
+ * 100% error at every size and the size signal would vanish entirely.
+ *
+ * Previous = the newest outcome row for the SAME repo strictly before this one.
+ * Rows from other repos are irrelevant (each repo has its own ledger), and the
+ * first row for a repo has no predecessor, so its total IS its delta.
+ *
+ * Clamped at 0: totals can fall when a triage sweep folds duplicate keys away,
+ * and "fewer known bugs than last time" is not an error run.
+ */
+export function newFailuresThisRun(row: OutcomeRow, allRows: OutcomeRow[]): number {
+  const previous = allRows
+    .filter((r) => r.repo === row.repo && r.ts < row.ts)
+    .sort((a, b) => b.ts - a.ts)[0];
+  if (!previous) return row.failures;
+  return Math.max(0, row.failures - previous.failures);
+}
+
+function isErrorRun(row: OutcomeRow, allRows: OutcomeRow[]): boolean {
   return (
     (row.ciTrySuccess !== undefined && row.ciTrySuccess > 1) ||
     (row.correctiveCommits !== undefined && row.correctiveCommits > 0) ||
     (row.reviewIterations !== undefined && row.reviewIterations > 1) ||
-    row.failures > 0
+    newFailuresThisRun(row, allRows) > 0
   );
 }
 
@@ -214,7 +237,7 @@ export function computeRegression(rows: OutcomeRow[]): RegressionResult {
     for (const bucket of buckets) {
       if (lines >= bucket.minLines && lines <= bucket.maxLines) {
         bucket.count++;
-        if (isErrorRun(row)) {
+        if (isErrorRun(row, rows)) {
           bucket.errorCount++;
         }
         break;

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Observability
 
@@ -10,6 +10,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - **Never log PII.** Scrub sensitive fields at the source.
 > - Observability never blocks business logic.
@@ -30,13 +31,14 @@ All bkit CLI output uses bracketed context prefixes:
 
 ```
 console.error("[bkit-install] {Message}", {payload})
-console.error("[bkit-preflight] {Message}", {payload})
 console.error("[bkit-modules] {Message}", {payload})
 console.error("[bkit-comply] {Message}", {payload})
 console.error("[bkit-telemetry] {Message}", {payload})
 ```
 
 The `[{Context}]` brackets are load-bearing — any log-drain or grep-based alerting in consumer CI pipelines parsing bkit output depends on this pattern. NEVER drop the brackets.
+
+Prefix per emitting surface — one per verb or subsystem, named for the module, NOT the phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]`. Add a new prefix only alongside a new module; reuse the owning module's prefix otherwise.
 
 ### `[bkit-comply]` prefix
 
@@ -58,9 +60,13 @@ The `bkit harvest` CLI uses the `[bkit-harvest]` prefix for all stderr log lines
 - `[bkit-harvest] Harvesting: {path}` — emitted per consumer as harvest begins.
 - `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — per-file result for COPY ledgers.
 - `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — per-file result for COUNT-ONLY ledgers.
+- `[bkit-harvest] {path}/.bkit/{file} — pruned N harvested row(s)` — rows REMOVED from a consumer after being durably stored (friction only).
 - `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped (path not found, timeout, etc.).
-- `[bkit-harvest] Done — total rows collected: N, after dedup: M` — harvest summary.
+- `[bkit-harvest] Done — total rows collected: N, after dedup: M, pruned from consumers: P` — harvest summary.
+- `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — emitted whenever P > 0; the window where an uncommitted store is the sole copy.
 - `[bkit-harvest] harvest error (fail-open): {message}` — unhandled error in harvest dispatch (exits 0).
+
+A `pruned` line with no preceding `copied` line for the same file would mean rows were deleted without being stored — that ordering is enforced in code (copy → fsync → read back → prune), so treat it as a bug worth investigating, not noise.
 
 ### `[bkit-analysis]` prefix
 
@@ -91,6 +97,7 @@ Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces a
 | `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
 | `detectNpmrcLegacyAuthToken` | `.npmrc` legacy `_authToken` line — migration nudge (401s on pnpm >=10.34.3) |
 | `detectGhSecret` | GitHub Actions secret |
+| `detectCiYmlMissingTokenEnv` | `ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
 | `detectVercelEnv` | Vercel preview and production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.

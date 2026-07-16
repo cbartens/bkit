@@ -6,6 +6,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - One row per concern. Update when an IDE adds/changes a feature.
 > - Anything not listed here = identical across hosts; install copies byte-identical.

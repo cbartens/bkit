@@ -4,6 +4,7 @@
 //   "Harvest dedupes by per-`kind` composite `(ts, repo, …)` across repeat runs;
 //    tolerant `parse` skips half-written tail"
 
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -243,17 +244,54 @@ describe("Harvest tolerant-tail: half-written tail is skipped+counted (WS4-T2)",
   });
 });
 
-describe("consumerPathToSlug", () => {
-  it("returns last two path segments as owner/repo", () => {
-    expect(consumerPathToSlug("/Users/chris/GitHub/acme/my-app")).toBe("acme/my-app");
+// `repo` is part of identity() for EVERY kind, so each spelling of a repo forks
+// every entity under it. This resolver must therefore agree with every other
+// producer of `repo`, which means: the git remote, and nothing else.
+//
+// The previous implementation took the last two path segments, making the OWNER a
+// directory on the operator's machine. Its tests passed because the fixture path
+// (`/Users/chris/GitHub/acme/my-app`) was shaped so the bug looked correct — a
+// real checkout is `/Users/x/Documents/GitHub/app-gether-life`, which yielded
+// `GitHub/app-gether-life` against a true slug of `gether-life/app-gether-life`.
+describe("consumerPathToSlug — resolves from the consumer's git remote", () => {
+  /** A real git repo at `dir` with `origin` set to `remote`. */
+  function makeRepoWithRemote(dir: string, remote: string): string {
+    fs.mkdirSync(dir, { recursive: true });
+    const opts = { cwd: dir, stdio: "ignore" as const };
+    execSync("git init -q", opts);
+    execSync(`git remote add origin ${remote}`, opts);
+    return dir;
+  }
+
+  it("uses the remote, NOT the path — even under a dir named GitHub", () => {
+    const dir = makeRepoWithRemote(
+      path.join(tmpDir, "Documents", "GitHub", "app-gether-life"),
+      "https://github.com/gether-life/app-gether-life.git",
+    );
+    // The path would have produced `GitHub/app-gether-life`.
+    expect(consumerPathToSlug(dir)).toBe("gether-life/app-gether-life");
   });
 
-  it("handles trailing slash", () => {
-    expect(consumerPathToSlug("/Users/chris/GitHub/acme/my-app/")).toBe("acme/my-app");
+  it("is stable when the checkout moves", () => {
+    // Same repo, two locations: the slug must not change, or history forks.
+    const a = makeRepoWithRemote(
+      path.join(tmpDir, "Documents", "GitHub", "my-app"),
+      "git@github.com:acme/my-app.git",
+    );
+    const b = makeRepoWithRemote(
+      path.join(tmpDir, "code", "my-app"),
+      "git@github.com:acme/my-app.git",
+    );
+    expect(consumerPathToSlug(a)).toBe("acme/my-app");
+    expect(consumerPathToSlug(b)).toBe(consumerPathToSlug(a));
   });
 
-  it("returns last segment when only one segment", () => {
-    expect(consumerPathToSlug("/my-app")).toBe("my-app");
+  it("falls back to the bare dir name when there is no remote — never an invented owner", () => {
+    const dir = path.join(tmpDir, "Documents", "GitHub", "no-remote-app");
+    fs.mkdirSync(dir, { recursive: true });
+    // A last-resort value that is obviously not a slug beats a plausible wrong
+    // one: `GitHub/no-remote-app` would look real and fork silently.
+    expect(consumerPathToSlug(dir)).toBe("no-remote-app");
   });
 });
 

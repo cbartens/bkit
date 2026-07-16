@@ -9,7 +9,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 **Purpose:** Remove a agent worktree (and optionally its feature branch) once its changes have been merged or abandoned. Human-triggered only — agent never invokes this autonomously.
 
 > [!CAUTION]
-> This command always shows what will be deleted and never removes branches without asking. Check ahead/behind status before pruning unsync'd work.
+> Check ahead/behind status before pruning unsync'd work. ALWAYS show what will be deleted; NEVER remove a branch without asking.
 
 ## Parse Arguments
 
@@ -71,7 +71,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
    ```
 
    **If** human says `y`:
-   - `git branch -d {WORKTREE_BRANCH}` (safe delete — rejects if unmerged).
+   - `git branch -d {WORKTREE_BRANCH}`.
    - **If** `-d` fails (unmerged) → ask: `Branch has unmerged changes. Force delete? [y/N]:` → **If** `y` → `git branch -D {WORKTREE_BRANCH}`.
 
 9. Print:

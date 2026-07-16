@@ -20,6 +20,7 @@
 // Version provenance: every row records the emitting `bkitVersion`. Readers ingest
 // ALL well-formed rows (no version gating) and report row counts per `bkitVersion`
 // so an unexpected version surfaces for triage.
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
@@ -29,6 +30,88 @@ import * as readline from "node:readline";
 export const MAX_ROWS_BEFORE_ROLLUP = 5000;
 /** Template for archive shards: replace {basename} and {YYYYMM}. */
 export const ARCHIVE_SHARD_TEMPLATE = ".bkit/archive/{basename}.{YYYYMM}.jsonl";
+// ---------------------------------------------------------------------------
+// repo — the owner/repo slug, resolved ONE way
+//
+// `repo` is part of identity() for EVERY kind, so a respelled repo FORKS the
+// entity — the same failure the spec warns about for `key`, except `repo` is not
+// authored by anyone: it is derived. It therefore must be derived identically
+// everywhere, from the only authoritative source: the git remote.
+//
+// NOT package.json `name` — that is an npm package name, not a slug
+// (`@cbartens/bkit` vs `cbartens/bkit`). NOT the filesystem path — that makes the
+// "owner" a folder on whoever's laptop ran the tool (`GitHub/app-gether-life`,
+// or `code/app-gether-life` after they reorganise).
+// ---------------------------------------------------------------------------
+/**
+ * Parse `owner/repo` out of a git remote URL. Pure — the fiddly half, kept
+ * testable without a git repo.
+ *
+ * Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
+ * (`git@github.com:owner/repo.git`) and `ssh://` URLs. Returns "" when the URL
+ * yields no `owner/repo` pair rather than guessing.
+ */
+export function parseRemoteUrlToSlug(url) {
+    const m = url
+        .trim()
+        .replace(/\.git$/, "")
+        .match(/[/:]([^/:]+\/[^/:]+)$/);
+    return m?.[1] ?? "";
+}
+/** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
+function gitEnv() {
+    const env = { ...process.env };
+    delete env["GIT_DIR"];
+    delete env["GIT_WORK_TREE"];
+    delete env["GIT_INDEX_FILE"];
+    delete env["GIT_OBJECT_DIRECTORY"];
+    return env;
+}
+/**
+ * Resolve a rev (`HEAD~1`, a branch, a tag) to a full hex SHA. "" if it does not
+ * resolve — e.g. `HEAD~1` in a repo with one commit.
+ *
+ * `parentSha` MUST be resolved before it reaches a row. It is part of identity()
+ * for compliance and counter, so an unresolved literal like "HEAD~1" is the SAME
+ * identity on every run and successive runs fold into each other. It is also what
+ * the grader diffs against, and the diff guard rejects anything non-hex — silently
+ * grading an empty diff, which passes every diff-based rule vacuously.
+ */
+export function resolveGitSha(rev, cwd) {
+    const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", `${rev}^{commit}`], {
+        cwd,
+        encoding: "utf-8",
+        env: gitEnv(),
+        stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (res.status !== 0 || typeof res.stdout !== "string")
+        return "";
+    const sha = res.stdout.trim();
+    return /^[0-9a-f]{7,40}$/.test(sha) ? sha : "";
+}
+/**
+ * Resolve a repo's `owner/repo` slug from its git remote. "" when there is no
+ * remote or no git repo — callers decide the fallback, loudly.
+ *
+ * The env scrub is load-bearing, not hygiene: git hooks export GIT_DIR /
+ * GIT_WORK_TREE / GIT_INDEX_FILE, and leaving them set makes `git -C <path>`
+ * silently answer for the HOOK's repo instead of <path> — so a harvest run from
+ * a hook would stamp every consumer's rows with bkit's own slug.
+ *
+ * spawnSync, not execSync-in-a-try: a non-zero exit is an expected answer here
+ * ("no remote"), not an exception to swallow.
+ */
+export function resolveRepoSlug(cwd) {
+    const res = spawnSync("git", ["remote", "get-url", "origin"], {
+        cwd,
+        encoding: "utf-8",
+        env: gitEnv(),
+        stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (res.status !== 0 || typeof res.stdout !== "string")
+        return "";
+    return parseRemoteUrlToSlug(res.stdout);
+}
 export const VALID_KINDS = new Set([
     "compliance",
     "outcome",
@@ -39,6 +122,17 @@ export const VALID_KINDS = new Set([
     "knowledge",
     "decision",
 ]);
+export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+/**
+ * Kinds that carry `severity` — and, identically, the kinds that carry the
+ * OPEN/TRIAGED/CLOSED ladder. Both express the same property: these three are
+ * the author-written kinds that describe OPEN WORK someone triages. Keep in
+ * sync with the payload interfaces below.
+ */
+export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
+export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
+/** The decision lifecycle — a separate axis from the triage ladder. */
+export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors bkit-status.ts's tuple dedupe approach.
@@ -95,6 +189,44 @@ export function validate(event) {
     }
     // kind-specific payload validation (minimal — structural check)
     const kind = e["kind"];
+    // severity — required on the triaged author-written kinds, rejected elsewhere.
+    // Enforced on write only; `parse` stays tolerant so pre-severity rows still read.
+    if (SEVERITY_KINDS.has(kind)) {
+        if (e["severity"] === undefined || e["severity"] === null) {
+            return { ok: false, reason: `${kind} row missing required field: severity` };
+        }
+        if (!VALID_SEVERITIES.has(e["severity"])) {
+            return {
+                ok: false,
+                reason: `${kind} severity must be one of CRITICAL|HIGH|MEDIUM|LOW (got: ${String(e["severity"])})`,
+            };
+        }
+    }
+    else if (e["severity"] !== undefined) {
+        return { ok: false, reason: `${kind} rows do not carry severity` };
+    }
+    // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
+    // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+    // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
+    if (SEVERITY_KINDS.has(kind)) {
+        if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"])) {
+            return {
+                ok: false,
+                reason: `${kind} status must be one of OPEN|TRIAGED|CLOSED (got: ${String(e["status"])})`,
+            };
+        }
+    }
+    else if (kind === "decision") {
+        if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"])) {
+            return {
+                ok: false,
+                reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+            };
+        }
+    }
+    else if (e["status"] !== undefined) {
+        return { ok: false, reason: `${kind} rows do not carry status` };
+    }
     if (kind === "compliance") {
         if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {
             return { ok: false, reason: "compliance row missing required payload fields" };
@@ -256,7 +388,24 @@ export function appendLine(event) {
         throw new Error(`[bkit-telemetry] appendLine: invalid event — ${v.reason}`);
     return JSON.stringify(event);
 }
-export function buildSummary(result) {
+/**
+ * THE telemetry summary. One implementation, called by every workflow close step
+ * via `bkit telemetry summary` — see § the reason it is not inline shell.
+ *
+ * The five workflows each carried their own bash version of this, and every one
+ * was wrong in ways this is not:
+ *   - `MALFORMED=$(grep -cvE '^\{.*\}$' … || echo 0)` prints "0\n0" whenever there
+ *     are NO malformed lines, because `grep -c` exits 1 on zero matches and the
+ *     `|| echo 0` fires on top of grep's own "0". Broken in the common case.
+ *   - `jq -r '.bkitVersion // "unknown"'` buckets an EMPTY version under an empty
+ *     key (`versions: =2`), because jq's `//` substitutes only on null/false and
+ *     `""` is neither.
+ *   - `wc -l` counts LINES, not parsed rows, and a regex is not a JSON parser.
+ * This counts what `parse()` actually parsed, and names the unknown bucket.
+ *
+ * @param workflow when given, adds the per-workflow chain line the close step reports.
+ */
+export function buildSummary(result, workflow) {
     const versionStr = Object.entries(result.versionCounts)
         .map(([v, n]) => `${v}=${n}`)
         .join(", ") || "none";
@@ -266,11 +415,23 @@ export function buildSummary(result) {
     if (result.maxRowsWarning) {
         lines.push(`[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (${MAX_ROWS_BEFORE_ROLLUP}) exceeded — ${result.rowCount} rows in stats.jsonl; consider archiving.`);
     }
+    // Counted off the FOLDED state, so these are ENTITIES, not lines — same rule the
+    // spec sets for every reader. The bash version grepped '"workflow":"ship"' across
+    // raw lines, so an updated row counted twice.
+    const workflowCounts = {};
+    for (const ev of result.state.values()) {
+        const w = ev.workflow || "unknown";
+        workflowCounts[w] = (workflowCounts[w] ?? 0) + 1;
+    }
+    if (workflow) {
+        lines.push(`[bkit-telemetry] ${workflow}: ${workflowCounts[workflow] ?? 0} | design→ship chain total: ${result.state.size} (from ${result.rowCount} rows)`);
+    }
     return {
         rowCount: result.rowCount,
         malformedLineCount: result.malformedLineCount,
         versionCounts: result.versionCounts,
         maxRowsWarning: result.maxRowsWarning,
+        workflowCounts,
         lines,
     };
 }

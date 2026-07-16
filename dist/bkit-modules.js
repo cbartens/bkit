@@ -1553,6 +1553,14 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   form. Add your own generated dirs the same way (e.g. "**/.svelte-kit/**",
   "**/.nuxt/**", "**/out/**").
 
+  IMPORTANT — vendored skill ignores: ensure your "ignores" array also carries
+  "**/.agents/skills/**", "**/.claude/skills/**" and "**/.cursor/skills/**".
+  Installed skills are third-party code you do not own and will not fix, but
+  slop-scan scans them like any source file, so their findings inflate your
+  score and any skill you add or update reads as net-new slop in slop:delta.
+  These paths match the vendored-skill exemptions bkit already ships for
+  prettier (.prettierignore) and Vale (.vale.ini).
+
   --- begin bkit reference slop-scan.config.json ---
 {{TEMPLATE_CONTENT}}
   --- end bkit reference slop-scan.config.json ---

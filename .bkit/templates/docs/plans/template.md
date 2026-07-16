@@ -91,7 +91,7 @@
 | **Integration** | crosses a LOCAL stateful boundary (own DB / API), no mocks at the boundary, fresh instance | API endpoint enforces RLS against a fresh local DB |
 | **@live (golden)** | crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model, payment, deployed schema, RLS) — reach it, assert a ground-truth signal | a real 3rd-party API returns content AND a boundary-only identity |
 | **E2E** | user-visible UI flow / DOM state | user creates an event and sees it in the list |
-| **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migrate`) | migration replays from empty + the seed loads |
+| **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migration`) | migration replays from empty + the seed loads |
 | **Smoke** | post-deploy health of a deployed surface (global observability gate) | deployed health route returns 200 |
 
 One row per behaviour (copy the tier name from the key above verbatim into `Type`):
@@ -103,7 +103,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 | [e.g., Service correctly parses payload] | Unit (Vitest) | `packages/[pkg]/[module].test.ts` |
 | [e.g., API endpoint enforces RLS] | Integration (Vitest) | `packages/api/[feature].integration.test.ts` |
 | [e.g., Real 3rd-party API returns expected shape AND a boundary-only identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
-| [e.g., New migration replays from empty + seed loads] | fresh-DB replay (bkit-tests-migrate) | `supabase/migrations/*` (replayed by `bkit-tests-migrate`) |
+| [e.g., New migration replays from empty + seed loads] | fresh-DB replay (bkit-tests-migration) | `supabase/migrations/*` (replayed by `bkit-tests-migration`) |
 
 ### 👤 ✅ Human Confirmation
 
@@ -183,8 +183,8 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 - [ ] **Package Management:** Verify `package.json` for required packages. Ensure `pnpm-lock.yaml` syncs cleanly.
 - [ ] **Dependency Versions:** Run `pnpm outdated` and spot-check CLI versions (`npx supabase --version`, `npx tsc --version`, `pnpm --version`). Flag any outdated dependencies that may silently block or break implementation. Many infrastructure errors stem from version mismatches between CLI tools and their backend services.
 - [ ] **User Context:** Verify read/write access to required files. Request any missing user information up front.
-- [ ] **Pending Blockers:** Query Linear for open issues (label `blocker`) relevant to this feature.
-- [ ] **Project Context:** Check `docs/knowledge.md` and `docs/decisions.md` for relevant patterns, established decisions, and known gotchas.
+- [ ] **Pending Blockers:** Query the configured issue tracker for open issues (label `blocker`) relevant to this feature.
+- [ ] **Project Context:** Check `docs/knowledge.jsonl` and `docs/decisions.jsonl` for relevant patterns, established decisions, and known gotchas.
 - [ ] **Testing & Quality:** Ensure testing strategy aligns with rules in `docs/testing.md`.
 - [ ] **Prerequisite Plans:** List `docs/plans/...` plans that must be fully executed and verified BEFORE this one.
 
@@ -272,8 +272,8 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 <!-- prettier-ignore -->
 | File | Change required |
 | --- | --- |
-| `docs/knowledge.md` | [learnings, gotchas] |
-| `docs/decisions.md` | [architecture decisions] |
+| `docs/knowledge.jsonl` | [learnings, gotchas] |
+| `docs/decisions.jsonl` | [architecture decisions] |
 | `docs/architecture.md` | [topology/component changes] |
 | `docs/data-schema.md` | [new tables/columns] |
 | `docs/data-pipeline.md` | [pipeline changes] |
@@ -299,9 +299,9 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 > [\!IMPORTANT]
 > **Continuous Execution:** Work through this runbook autonomously. Do not pause for user permission at any Gate. Continuously check off `[x]` tasks as you go.
-> **Blockers:** If a task cannot be completed, **DO NOT fail silently**. Create a Linear issue (label `blocker`) with context before stopping.
+> **Blockers:** If a task cannot be completed, **DO NOT fail silently**. Create a tracker issue (label `blocker`) with context before stopping, via the configured tracker MCP.
 > **Step Isolation:** Do NOT jump ahead. Complete each task fully (including its specific verification and checking its box) before starting the exact next task in the list.
-> **Progress Updates:** After checking off each major task, post a structured summary as a Linear comment on the issue per `.claude/workflows/conventions.md`.
+> **Progress Updates:** After checking off each major task, post a structured summary as a comment on the issue via the configured tracker MCP (`.agents/rules.md` § Tracker MCP).
 
 **Implementation Tasks (Examples):**
 
@@ -345,7 +345,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 - [ ] **Update existing tests:** Review/adjust unit, integration, and E2E tests for new changes aligned with `docs/testing.md`.
 - [ ] **Write new tests:** Draft tests covering new functionality per Testing Strategy. For Playwright, use `e2e/datafactory/` for test data and follow the `storageState` auth conventions above.
 - [ ] **Verify observability:** Ensure new feature is observable per `docs/observability.md` — structured `console.error("[Context] Message", payload)` for error paths, correlation IDs (`family_id`, `user_id`, `job_id`) propagated in Inngest events, and CDC-tracked tables include audit triggers. Update `docs/observability.md` if new log names, labels, or tracing scopes are introduced.
-- [ ] **Update documentation:** Natively integrate new logic/schemas into `docs/architecture.md`, `docs/data-pipeline.md`, `docs/data-schema.md`, `docs/knowledge.md` and `docs/decisions.md`. Rewrite prose to maintain ground-truth; DO NOT append lazy bullet points.
+- [ ] **Update documentation:** Natively integrate new logic/schemas into `docs/architecture.md`, `docs/data-pipeline.md`, `docs/data-schema.md`, `docs/knowledge.jsonl` and `docs/decisions.jsonl`. Rewrite prose to maintain ground-truth; DO NOT append lazy bullet points.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
@@ -366,7 +366,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 - [ ] **Run all tests:** Execute locally. Pass `pnpm test` and `TEST_REAL_APIS=true pnpm test:integration`. Fix all failures before Gate 4.
 
 > [\!IMPORTANT]
-> **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and its reference repos) and `docs/knowledge.md`. Halt if stuck.
+> **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and its reference repos) and `docs/knowledge.jsonl`. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 

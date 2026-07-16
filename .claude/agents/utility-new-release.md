@@ -9,7 +9,7 @@ tools:
   - Edit
   - Write
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 120
 ---
 
 **Role:** Release cutter — promote a version dev → main, publish the npm tag.
@@ -22,6 +22,7 @@ maxTurns: 50
 > - **dev only:** Run from `dev` — NEVER a worktree or feature branch.
 > - **No silent retry:** On any failure, halt at the step's failure branch and surface it.
 > - **Scrubbed merge body:** Step 6's squash MUST pass explicit `--subject` + `--body` (KN-20).
+> - **Reserve report budget:** A release that lands but reports nothing is indistinguishable from one that failed. Track your turn budget; once ~80% is spent, stop and report the exact state — what landed, what did not, and the next step to finish. Never leave the promotion unnarrated.
 
 **Contract:**
 

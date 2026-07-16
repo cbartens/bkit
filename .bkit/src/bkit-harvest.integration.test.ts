@@ -1,12 +1,17 @@
 // bkit-harvest.integration.test.ts — boundary: filesystem/consumer repo.
 //
-// Tests that harvest COPIES consumer .bkit/*.jsonl and NEVER writes/truncates
-// the consumer repo (consumer file mtime + content unchanged after harvest).
+// Tests the split contract (#343): harvest COPIES consumer .bkit/stats.jsonl (never
+// modified) and MOVES .bkit/friction.jsonl (harvested rows pruned from the consumer).
 // Ground-truth = real filesystem stat, no mock.
 //
-// WS4-T1 Derived Test Matrix row:
-//   "Harvest COPIES consumer `.bkit/*.jsonl` and NEVER writes/truncates the consumer
-//   repo (consumer file mtime + content unchanged)"
+// WS4-T1 Derived Test Matrix row (as amended by #343):
+//   "Harvest COPIES consumer `.bkit/stats.jsonl` and NEVER writes/truncates it; harvest
+//   MOVES `.bkit/friction.jsonl`, pruning ONLY rows durably present in the store"
+//
+// The pruning tests below are load-bearing, not incidental. Once harvest deletes from a
+// consumer, the store is the ONLY copy of those rows until the caller commits — so the
+// properties that keep that safe (store accumulates, malformed lines are never pruned,
+// unharvested rows survive) are the difference between a harvest and a data-loss bug.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -20,6 +25,7 @@ import {
   HARVEST_DEST_DIR,
   fileUnchanged,
   harvestConsumer,
+  pruneConsumerFile,
   runHarvest,
   snapshotFile,
 } from "./bkit-harvest";
@@ -106,8 +112,11 @@ function makeBkitRoot(basePath: string, consumers: string[]): string {
 // WS4-T1 Boundary test: consumer file content + mtime unchanged after harvest
 // ---------------------------------------------------------------------------
 
-describe("Harvest boundary: consumer file mtime + content unchanged (WS4-T1)", () => {
-  it("does not write/truncate consumer .bkit/*.jsonl (mtime + content preserved)", () => {
+// stats.jsonl stays copy-only; friction.jsonl became a MOVE in #343 (harvested rows are
+// pruned from the consumer). This describe block asserts BOTH halves of that split —
+// it previously asserted friction was unchanged too, which is the contract #343 reversed.
+describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () => {
+  it("never modifies consumer stats.jsonl, and prunes only harvested friction rows", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     // Use distinct prNumbers so the two stats rows have different identity and survive dedup
     const statsContent =
@@ -137,8 +146,15 @@ describe("Harvest boundary: consumer file mtime + content unchanged (WS4-T1)", (
     // Ground-truth filesystem assertions — no mocks
     expect(statsAfter).not.toBeNull();
     expect(frictionAfter).not.toBeNull();
+
+    // stats.jsonl: COPY-ONLY — byte-identical after harvest
     expect(fileUnchanged(statsBefore!, statsAfter!)).toBe(true);
-    expect(fileUnchanged(frictionBefore!, frictionAfter!)).toBe(true);
+
+    // friction.jsonl: MOVED — the harvested row is gone, file emptied (not deleted)
+    expect(fileUnchanged(frictionBefore!, frictionAfter!)).toBe(false);
+    expect(frictionAfter!.content.trim()).toBe("");
+    expect(result.consumers[0]!.prunedRows["friction.jsonl"]).toBe(1);
+    expect(result.totalPrunedRows).toBe(1);
 
     // bkit central store gained the copied rows
     const harvestStatsPath = path.join(bkitRoot, HARVEST_DEST_DIR, "stats.jsonl");
@@ -146,9 +162,137 @@ describe("Harvest boundary: consumer file mtime + content unchanged (WS4-T1)", (
     const harvestContent = fs.readFileSync(harvestStatsPath, "utf-8");
     expect(harvestContent.trim().split("\n").length).toBe(2); // 2 rows copied
 
+    // The pruned friction row survives in the store — it exists NOWHERE else now
+    const harvestFrictionPath = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
+    expect(fs.readFileSync(harvestFrictionPath, "utf-8")).toContain("fk-1");
+
     expect(result.consumers).toHaveLength(1);
     expect(result.consumers[0]!.skipped).toBe(false);
     expect(result.consumers[0]!.copiedRows).toBe(3); // 2 stats + 1 friction
+  });
+
+  // THE data-loss regression. Before #343 runHarvest unlinked the dest files and rebuilt
+  // from scratch each run. Combined with pruning, run 2 would delete the store (the only
+  // copy) and then re-copy from the now-empty consumer, shredding every harvested row.
+  it("ACCUMULATES the store across runs — a second harvest never destroys pruned rows", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": frictionRow(1_700_000_000_003, "fk-1") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const harvestFrictionPath = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
+
+    // Run 1: row is copied to the store, then pruned from the consumer.
+    runHarvest(bkitRoot);
+    expect(fs.readFileSync(harvestFrictionPath, "utf-8")).toContain("fk-1");
+    expect(
+      fs.readFileSync(path.join(consumerPath, ".bkit", "friction.jsonl"), "utf-8").trim(),
+    ).toBe("");
+
+    // Run 2: the consumer is now empty. The store MUST still hold fk-1.
+    const second = runHarvest(bkitRoot);
+    expect(fs.readFileSync(harvestFrictionPath, "utf-8")).toContain("fk-1");
+    expect(second.totalPrunedRows).toBe(0); // nothing left to prune — idempotent
+  });
+
+  it("never prunes a malformed line — a half-written tail is not ours to delete", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    const halfWritten = '{"ts":1700000000009,"kind":"fricti';
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": frictionRow(1_700_000_000_003, "fk-1") + "\n" + halfWritten + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+
+    runHarvest(bkitRoot);
+
+    // The harvested row is gone; the unparseable tail survives verbatim.
+    const after = fs.readFileSync(path.join(consumerPath, ".bkit", "friction.jsonl"), "utf-8");
+    expect(after).not.toContain("fk-1");
+    expect(after).toContain(halfWritten);
+  });
+
+  it("prunes ONLY harvested rows — a row appended during harvest survives", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": frictionRow(1_700_000_000_003, "fk-1") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+
+    // Copy fk-1 into the store WITHOUT pruning, then simulate the consumer appending
+    // fk-late while the harvest was mid-flight.
+    harvestConsumer(consumerPath, bkitRoot);
+    fs.appendFileSync(frictionPath, frictionRow(1_700_000_000_004, "fk-late") + "\n", "utf-8");
+
+    runHarvest(bkitRoot);
+
+    // fk-late was harvested by the runHarvest pass, so both are legitimately pruned;
+    // the point is that the prune is identity-matched, never a blanket truncate.
+    const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8");
+    expect(store).toContain("fk-1");
+    expect(store).toContain("fk-late");
+  });
+
+  it("leaves an unharvested row in place when it is not in the store", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": frictionRow(1_700_000_000_003, "fk-1") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const consumerSlug = "test-owner/consumer-app"; // rows carry their own repo stamp
+
+    // The store holds a DIFFERENT row than the one on disk.
+    const { removed } = pruneConsumerFile(
+      path.join(consumerPath, ".bkit", "friction.jsonl"),
+      consumerSlug,
+      {
+        rows: new Set([frictionRow(1_700_000_000_009, "fk-SOMETHING-ELSE")]),
+        identities: new Set(["friction test-owner/consumer-app fk-SOMETHING-ELSE"]),
+      },
+    );
+
+    expect(removed).toBe(0);
+    expect(fs.readFileSync(path.join(consumerPath, ".bkit", "friction.jsonl"), "utf-8")).toContain(
+      "fk-1",
+    );
+  });
+
+  // Regression for a real data-loss bug found against live consumer data (#343).
+  // Friction `key`s are truncated (~68 chars), so two genuinely different entries can
+  // share a key -> one identity. `fold` keeps only the last, so an identity-gated prune
+  // deleted BOTH from the consumer while the store kept ONE — destroying the loser.
+  // The prune gate is therefore content, not identity.
+  it("never prunes a row that lost the dedup fold to an identity collision", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    // Same key + same repo => same identity, but genuinely different rows.
+    const earlier = JSON.stringify({
+      ...JSON.parse(frictionRow(1_700_000_000_001, "dup-key")),
+      description: "first distinct entry",
+    });
+    const later = JSON.stringify({
+      ...JSON.parse(frictionRow(1_700_000_000_002, "dup-key")),
+      description: "second distinct entry",
+    });
+    makeConsumerRepo(consumerPath, {
+      ".bkit/friction.jsonl": earlier + "\n" + later + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+
+    const result = runHarvest(bkitRoot);
+
+    // The store keeps only the fold winner...
+    const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8");
+    expect(store).toContain("second distinct entry");
+    expect(store).not.toContain("first distinct entry");
+
+    // ...so the loser MUST still be in the consumer. It exists nowhere else.
+    const consumerAfter = fs.readFileSync(
+      path.join(consumerPath, ".bkit", "friction.jsonl"),
+      "utf-8",
+    );
+    expect(consumerAfter).toContain("first distinct entry");
+    expect(consumerAfter).not.toContain("second distinct entry"); // stored, so pruned
+    expect(result.totalPrunedRows).toBe(1);
   });
 
   it("does not write to missing consumer paths (skips gracefully)", () => {
@@ -189,6 +333,35 @@ describe("Harvest boundary: consumer file mtime + content unchanged (WS4-T1)", (
     // Verify count-only result (no prose file in harvest dest)
     const harvestDeferralsPath = path.join(bkitRoot, HARVEST_DEST_DIR, "deferrals.jsonl");
     expect(fs.existsSync(harvestDeferralsPath)).toBe(false); // NOT copied
+  });
+
+  // A consumer's triage pass closes a deferral by APPENDING a same-key row with
+  // status CLOSED (jsonl.md § Updating a Row). Counting raw lines would report
+  // that one deferral as two and inflate the dimensional counts with every pass.
+  it("counts ENTITIES not rows — a triage update does not inflate the count", () => {
+    const consumerPath = path.join(tmpDir, "consumer-triaged");
+    const opened = deferralRow(1_700_000_001_000, "defer-1");
+    // triage: same key, later ts, now closed + carrying a reference to the PR
+    const closed = makeRow("deferral", 1_700_000_009_000, {
+      key: "defer-1",
+      type: "issue",
+      category: "agentic",
+      description: "test deferral",
+      status: "CLOSED",
+      references: ["PR-412"],
+    });
+    const untouched = deferralRow(1_700_000_001_001, "defer-2");
+
+    makeConsumerRepo(consumerPath, {
+      ".bkit/stats.jsonl": statsRow(1_700_000_000_001) + "\n",
+      "docs/deferrals.jsonl": [opened, closed, untouched].join("\n") + "\n",
+    });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const res = harvestConsumer(consumerPath, bkitRoot);
+
+    // 3 rows on disk, but only 2 real deferrals
+    expect(res.countOnlyRawRows["deferrals.jsonl"]).toBe(3);
+    expect(res.countOnlyRows["deferrals.jsonl"]).toBe(2);
   });
 
   it("does not copy .env or any file outside the named .jsonl ledgers", () => {
