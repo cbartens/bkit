@@ -94,11 +94,11 @@ As an orchestrator, omit `subagent` and `model`.
 
 <!-- prettier-ignore -->
 ```jsonl
-"references": ["681", "BAR-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "DE-7", "1718900000600"]
+"references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "DE-7", "1718900000600"]
 ```
 
-- Feature ids / `{FID}`, tracker ids (`BAR-217`), PRs, commit SHAs, file paths, a sibling row's `ts`, and — on rows migrated off the `.md` ledgers — that row's own legacy `KN-N`/`DE-N` id.
-- Keep each item as the source wrote it; trailing qualifiers (`BAR-142 §A2`) are meaning, not noise.
+- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, a sibling row's `ts`, and — on rows migrated off the `.md` ledgers — that row's own legacy `KN-N`/`DE-N` id.
+- Keep each item as the source wrote it; trailing qualifiers (`ISSUE-142 §A2`) are meaning, not noise.
 - No separate identity field: `ts` is the id, everything in `references` is a pointer — including a legacy id.
 - Omit when there is nothing to point at.
 
@@ -165,9 +165,9 @@ One deferral, three rows, in append order — raised, analysed, closed (envelope
 
 <!-- prettier-ignore -->
 ```jsonl
-{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["BAR-131"] }
-{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["BAR-131", "#268", "README.md"] }
-{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["BAR-131", "#268", "PR-412", "e93da12"] }
+{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
+{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "#268", "README.md"] }
+{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "#268", "PR-412", "e93da12"] }
 ```
 
 Same `key` throughout makes them one entry; `fold` returns only the third. Each `ts` is dated, so "how long open" and "time to fix" fall out of the ledger.
@@ -310,7 +310,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "remediation": "note the pin workaround in the README install snippet",
   "source": "phase",
   "status": "OPEN",
-  "references": ["BAR-131", "BAR-130", "README.md"]
+  "references": ["ISSUE-131", "ISSUE-130", "README.md"]
 }
 ```
 
@@ -378,6 +378,6 @@ Indented here for readability — **on disk each row is a single physical line**
   "rationale": "eliminates four friction classes of the git-dep model: two-surface git auth, the CI auth shim, the prepare:tsc OOM trap, and pnpm dropping the version pin",
   "alternatives": "npmjs.org public (package is private), continue git-dep, Releases tarball, vendor per-consumer, dual-publish git+registry",
   "status": "ACTIVE",
-  "references": ["DE-3", "BAR-138", "BAR-130", "package.json", ".github/workflows/release.yml", "KN-1"]
+  "references": ["DE-3", "ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml", "KN-1"]
 }
 ```

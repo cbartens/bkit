@@ -6,6 +6,25 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.6.2] — 2026-07-16
+
+Continues the post-4.6.x reconciliation against the source-of-truth consumer: closes the gap where 4.6.1's script-injection fix — shipped only into new `ci.yml` seeds — never reached existing consumers, and retires three perpetual or false advisories that a hand-maintained Tier-3 CI surfaced. Also scrubs maintainer-internal tracker ids from the shipped telemetry spec.
+
+### Security
+
+- **`ci-yml-run-injection` — a dedicated script-injection advisory for consumers 4.6.1's fix never reached.** 4.6.1 hardened the shipped `ci.yml` template, but `ci.yml` is Tier-3 seed-or-print, so the fix does not back-fill a consumer seeded before it — they keep the vulnerable `MSG="${{ github.event.pull_request.title }}"` with only a generic block-drift nudge (not a security signal). A new detector pattern-matches untrusted input (`${{ github.event.* }}` / `github.head_ref`) interpolated directly into a `run:` shell body — the actual sink — separate from cosmetic drift, and prescribes the `env:`-indirection remediation. Line-based (no YAML dependency): the safe `env:` / `if:` form does not fire and shipped commented stubs stay silent, and the current template is asserted never to trip its own detector.
+
+### Changed
+
+- **`ts-ci-steps` is now an `optional` managed block.** A consumer that hand-maintains its own setup / install / typecheck steps outside the block was perpetually nagged `missing: ts-ci-steps` — a block a Tier-3 `ci.yml` (never rewritten) can never regain, so the advisory could never be resolved. Marked `optional`: a deleted block no longer nags, while a block that is present-but-drifted is still flagged. The skeleton derivation still recognises the marker.
+- **Managed-block drift ignores comments, rendered `{{TOKEN}}` placeholders, and the opt-out skeleton.** `bkit check`'s Tier-2 / Tier-3 named-block drift compared full block bodies, so three false positives fired perpetually on a file bkit never rewrites: (a) a consumer annotating a bkit-owned block (a ticket ref, a rationale) tripped drift; (b) EVERY correctly-installed consumer drifted on a rendered placeholder line (`node-version: {{NODE_VERSION}}` → `node-version: 22`, since the compare used the raw template); (c) a `--ci`-only consumer drifted on the intentionally-commented `ts-ci-steps` skeleton. Now only semantic lines are compared, a `{{TOKEN}}` line is a per-consumer wildcard (`${{ … }}` GitHub Actions expressions still gate), and an `optional` block a consumer emptied to comments is treated as opted out. A changed or commented-out semantic line still gates.
+- **`ci-legacy-scaffold-job-names` surfaces the docs-vs-CI skew.** When `docs/testing.md` (managed, refreshed on upgrade) already names the current jobs while a Tier-3 `ci.yml` still defines the legacy `bkit-decide` / `bkit-tests-migrate` jobs, the advisory now states that docs and CI describe **different** job names — the skew becomes a stated finding instead of one an agent has to notice.
+
+### Fixed
+
+- **The shipped docs leaked maintainer-internal tracker ids.** `.bkit/jsonl.md`'s `references` examples cited real internal `BAR-###` ids (which resolve to bkit's private tracker) — the same class of leak the 4.6.0 "workflow must never cite an internal label" rule forbids — and the illustrative `BAR-###` in `.bkit/trackers.md`, `.bkit/workflows/bkit-design.md`, and `.bkit/workflows.md` did the same. All are now neutral `ISSUE-###` / `TEAM-###` placeholders; the generic `KN-N` / `DE-N` legacy-ledger scheme, which consumers reuse, is unchanged.
+- **A full `bkit uninstall` orphaned 100%-bkit files.** `.opencode/opencode.json` was left holding bkit's `mcp` + `provider` blocks (a `{env:GH_BKIT_TOKEN}`-referencing config), and the `.claude` / `.cursor` `preflight.sh` hooks plus `.cursor/rules/00-shared-rules.mdc` were left as dead shells — bkit's own header stripped down to a husk. opencode.json's scope-strip now renders the template's `@@…@@` sentinel keys with the consumer's own tracker + provider before comparing (so the rendered `github` / provider keys line up and strip), and a markered-text file whose post-strip residual equals the shipped scaffold is deleted rather than left as a husk. A consumer who added content outside the block still strips unequal → preserved.
+
 ## [4.6.1] — 2026-07-16
 
 A post-release audit of the two surfaces 4.6.0's pre-release audit ran out of turns on — uninstall footprint and guardrail parity — surfaced a script-injection in the shipped CI template and two uninstall-footprint gaps. Also syncs the CI scaffold and testing doctrine with the source-of-truth consumer's cross-lane file-execution report.

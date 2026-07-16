@@ -22,11 +22,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import { stripManagedBlock, } from "./bkit-tiers.js";
-import { getInstallManifest } from "./bkit-manifest.js";
+import { getInstallManifest, } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
-import { removeOpencodeProviderBlock } from "./bkit-modules.js";
+import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
 import { CLAUDE_CLOUD_RELPATH } from "./bkit-cloud-env.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
@@ -62,6 +62,33 @@ function detectMarkerStyle(content) {
 //
 // Consumer-only keys at any level are preserved byte-identical.
 // ---------------------------------------------------------------------------
+/**
+ * Detect the tracker bkit seeded into opencode.json from its mcp keys. The template ships an
+ * `@@OPENCODE_TRACKER_MCP@@` sentinel KEY that renders to `github` / `linear` at install, so a
+ * strip-scope keyed on the raw template never matches — these detectors let uninstall render the
+ * template the same way the install did before stripping. Keyed on bkit's known tracker names so
+ * a consumer-added mcp server is never mistaken for bkit's.
+ */
+function detectOpencodeTracker(doc) {
+    const mcp = doc.mcp;
+    if (mcp !== null && typeof mcp === "object" && !Array.isArray(mcp)) {
+        if ("github" in mcp)
+            return "github";
+        if ("linear" in mcp)
+            return "linear";
+    }
+    return "none";
+}
+/** Detect the opencode provider key bkit seeded (the first `provider` block key). */
+function detectOpencodeProvider(doc) {
+    const provider = doc.provider;
+    if (provider !== null && typeof provider === "object" && !Array.isArray(provider)) {
+        const keys = Object.keys(provider);
+        if (keys.length > 0)
+            return keys[0];
+    }
+    return "opencode";
+}
 export function stripTier2JsonScope(consumerDoc, templateDoc) {
     const out = JSON.parse(JSON.stringify(consumerDoc));
     _stripScope(out, templateDoc);
@@ -367,8 +394,16 @@ export async function runUninstall(modules, ctx) {
                                 break;
                             }
                             const raw = fs.readFileSync(absPath, "utf-8");
-                            const templateRaw = fs.readFileSync(templatePath, "utf-8");
                             const consumerDoc = JSON.parse(raw);
+                            let templateRaw = fs.readFileSync(templatePath, "utf-8");
+                            // opencode.json ships `@@OPENCODE_*@@` sentinel KEYS that render to the consumer's
+                            // tracker / provider at install; strip-scope keyed on the RAW template never matches
+                            // the rendered keys, so bkit's mcp + provider blocks (a token-referencing config)
+                            // survive a full uninstall. Render the template with the consumer's OWN tracker +
+                            // provider first so the keys line up and the bkit-owned scope strips cleanly.
+                            if (templateRaw.includes("@@OPENCODE_TRACKER_MCP@@")) {
+                                templateRaw = renderOpencodeJson(templatePath, detectOpencodeTracker(consumerDoc), detectOpencodeProvider(consumerDoc));
+                            }
                             const templateDoc = JSON.parse(templateRaw);
                             const stripped = stripTier2JsonScope(consumerDoc, templateDoc);
                             const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
@@ -399,7 +434,25 @@ export async function runUninstall(modules, ctx) {
                             const nonBlank = stripped.split("\n").filter((l) => l.trim().length > 0);
                             const isMarkdown = /\.mdc?$/.test(summary.file);
                             const isLoneHeadingHusk = isMarkdown && nonBlank.length === 1 && /^#{1,6}\s+\S/.test(nonBlank[0].trim());
-                            if (stripped.trim().length === 0 || isLoneHeadingHusk) {
+                            // A file whose post-strip residual equals the bkit-seeded scaffold OUTSIDE the block
+                            // (i.e. the template stripped the same way) carries NO genuine consumer content — it is
+                            // 100% bkit-authored (hook shells left with only a shebang/header, a `.mdc` frontmatter
+                            // shell, a pristine prompts.md). Delete it rather than leave a dead husk (zero-footprint).
+                            // A consumer who added content outside the block strips UNEQUAL → preserved. Read is
+                            // covered by the enclosing try/catch — no separate error-obscuring catch.
+                            const normResidual = (s) => s
+                                .split("\n")
+                                .map((l) => l.replace(/[ \t]+$/, ""))
+                                .join("\n")
+                                .trim();
+                            let isBkitOnlyScaffold = false;
+                            const markeredTemplatePath = path.join(getTemplatesRoot(), summary.file);
+                            if (fs.existsSync(markeredTemplatePath)) {
+                                const templateContent = fs.readFileSync(markeredTemplatePath, "utf-8");
+                                const templateStripped = stripManagedBlock(templateContent, detectMarkerStyle(templateContent) ?? style);
+                                isBkitOnlyScaffold = normResidual(stripped) === normResidual(templateStripped);
+                            }
+                            if (stripped.trim().length === 0 || isLoneHeadingHusk || isBkitOnlyScaffold) {
                                 // File is now empty (or a bkit-seeded heading husk) → delete it
                                 fs.rmSync(absPath, { force: true });
                                 result.deleted.push(summary.file);

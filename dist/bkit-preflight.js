@@ -720,6 +720,20 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
     if (consumerBlocks.size === 0)
         return null;
+    // Significant lines = load-bearing block content: non-blank, non-comment. Comments are
+    // non-load-bearing ("comments explain why, not what"), so a consumer annotating a managed
+    // block with a ticket ref or rationale must not trip perpetual drift on a Tier-3 file bkit
+    // never rewrites; a changed or commented-out semantic line still gates.
+    const significantLines = (body) => body.split("\n").filter((line) => {
+        const t = line.trim();
+        return t !== "" && !t.startsWith("#") && !t.startsWith("//") && !t.startsWith("<!--");
+    });
+    // A template line carrying a bkit `{{TOKEN}}` renders to a per-consumer value at install
+    // (`node-version: {{NODE_VERSION}}` -> `node-version: 22`), so it is a wildcard, not drift —
+    // else every correctly-installed consumer drifts forever on the placeholder line. `${{ … }}`
+    // is a GitHub Actions expression, NOT a bkit token — the negative lookbehind keeps those
+    // literal so an edit inside one still gates.
+    const hasBkitToken = (line) => /(?<!\$)\{\{[^}]+\}\}/.test(line);
     const missing = [];
     const drifted = [];
     for (const [name, tBlock] of templateBlocks) {
@@ -730,7 +744,20 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
                 missing.push(label);
             continue;
         }
-        if (cBlock.body !== tBlock.body)
+        const c = significantLines(cBlock.body);
+        // An `optional` block the consumer has emptied / fully commented out (e.g. the `--ci`-only
+        // ts-ci-steps skeleton) is opted out, not drift.
+        if (tBlock.optional && c.length === 0)
+            continue;
+        const t = significantLines(tBlock.body);
+        // Line-aligned compare: consumer block = rendered template block, so a structural change
+        // (added/removed line) or an edited non-placeholder line is real drift.
+        let differs = c.length !== t.length;
+        for (let i = 0; !differs && i < t.length; i++) {
+            if (!hasBkitToken(t[i]) && c[i] !== t[i])
+                differs = true;
+        }
+        if (differs)
             drifted.push(label);
     }
     if (missing.length === 0 && drifted.length === 0)

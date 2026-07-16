@@ -90,4 +90,4 @@ The `issue-update-status` block reads `package.json` `bkit.githubProject` = `{ o
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry a team prefix (e.g. `BAR-123`) — FID inherits it (`bar-123-slug`). GitHub FIDs are numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. Linear has no separate project board — issue state (`In Progress` / `In Review` / `Done`) carries the status, so `issue-update-status` is a no-op.
+Linear `ISSUE_ID`s carry a team prefix (e.g. `TEAM-123`) — FID inherits it (`team-123-slug`). GitHub FIDs are numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. Linear has no separate project board — issue state (`In Progress` / `In Review` / `Done`) carries the status, so `issue-update-status` is a no-op.
