@@ -182,29 +182,6 @@ Not on `knowledge` (no status) or `decision` (`ACTIVE`/`SUPERSEDED` is a lifecyc
 
 Readers count ENTITIES, never lines — `fold` first.
 
-## Migrated Rows Are Not Evidence On Every Axis
-
-Rows imported by `bkit telemetry migrate` from the legacy `friction.md` carry transport values on some
-axes. Measured on `harvest/friction.jsonl` (2026-07-15, 257 rows / 156 entities) — read these before
-ranking anything by them:
-
-- **`ts` is now the real incident date on migrated rows** — backfilled 2026-07-15 from the legacy heading
-  (`## Title (YYYY-MM-DD)`), which `parseTitleDate` reads and the row builder prefers over the synthetic
-  `baseTs + idx`. 183 of 257 rows were corrected; span is now 2026-05-24..2026-07-15. The 74 untouched are
-  live rows whose `ts` was already correct, plus 2 legacy entries whose heading carried no date.
-- **`severity` is `MEDIUM` on every migrated friction row.** `friction.md` never had the field, so
-  `mapLegacySeverity` maps unknown -> neutral by design. It is a placeholder, NOT a triage judgement —
-  do not read P0/P1 out of it. Re-triage on next touch.
-- **`step` is the transport on 76 rows** (`step:"bkit-telemetry-migrate"`), so step-based clustering
-  under-counts. Only ~25 of those carry a recoverable step hint in `summary`.
-- **Recurrence is not counted.** No occurrence field exists: a recurrence is titled differently
-  (`"... (recurrence of the 527 entry)"`), so `stableKey` gives it a NEW key and it folds to a SEPARATE
-  entity. Frequency is therefore unrepresentable — a cluster's entity count is a count of _reports_, not
-  of _occurrences_. The only recurrence signal is prose.
-
-Same-key append is an UPDATE, not a second occurrence: of the 101 two-row entities, every pair differs
-only in `references`, `ts`, `status` — a create plus a triage stamp.
-
 ## These Ledgers Are Inputs, Not a Diary
 
 `docs/deferrals.jsonl` and `docs/failures.jsonl` are a backlog of real work — deferred scope and known bugs, machine-readable, `severity` to rank by, `ts` to age by. READ them:

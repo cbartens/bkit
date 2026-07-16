@@ -93,7 +93,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
-6. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
+6. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): ship aborted bkit [skip ci]"`.
@@ -366,7 +366,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Update: Conflicted source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
-2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
+2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
 4. **If** `RESOLVE_VERDICT` = PASS → `rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"`. **Else** → **Failure Path**.
 5. Update status and commit:
@@ -470,7 +470,7 @@ description: "Ship Feature — Autonomous merge and archive"
    fi
    ```
    **If** assertion fails → **Failure Path**.
-4. Re-check CI against the PR head about to merge — Step 2's read is stale once the head moves, and a query failure is NOT a pass:
+4. Re-check CI against the PR head about to merge:
    ```bash
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
      PRE_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
@@ -539,7 +539,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Merge attempt incremented (`MERGE_ATTEMPT` + 1)
 - [ ] HEAD-Subject Assertion passed
-- [ ] PR head CI re-checked at `PRE_HEAD` (`completed` + `success`; query failure is NOT a pass)
+- [ ] PR head CI re-checked at `PRE_HEAD` (`completed` and `success`; query failure is NOT pass)
 - [ ] PR merge attempted
 - [ ] State extracted (`state`, MERGED or not)
 - [ ] Verdict extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
@@ -560,7 +560,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
-2. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
+2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 4. Update status and commit:
    ```bash
@@ -611,7 +611,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
-4. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
+4. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 6. Update status and commit:
    ```bash
@@ -725,7 +725,7 @@ description: "Ship Feature — Autonomous merge and archive"
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-4. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty, resolved under the working directory supplied in the dispatch Context; do NOT trust the subagent's reported path. **If** any file empty → **Failure Path**.
+4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 5. Derive `UPDATE_DOCS_VERDICT`:
    ```bash
    COMPLETED_HIT=$(grep -c "docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/.*{FID}" docs/completed.md || echo 0)
