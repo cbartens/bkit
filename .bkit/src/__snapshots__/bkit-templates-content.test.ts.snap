@@ -108,16 +108,21 @@ jobs:
         id: detect
         env:
           GH_TOKEN: \${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          EVENT_NAME: \${{ github.event_name }}
+          REF: \${{ github.ref }}
         run: |
-          if [ "\${{ github.event_name }}" = "pull_request" ]; then
-            MSG="\${{ github.event.pull_request.title }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
-          if [ "\${{ github.event_name }}" = "push" ] && [ "\${{ github.ref }}" = "refs/heads/dev" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
               echo "turbo_force=1" >> "$GITHUB_OUTPUT"
@@ -333,16 +338,21 @@ jobs:
         id: detect
         env:
           GH_TOKEN: \${{ github.token }}
+          # User-controlled text (PR title) arrives via env: (runtime expansion,
+          # injection-safe) — never inlined into the run: body.
+          PR_TITLE: \${{ github.event.pull_request.title }}
+          EVENT_NAME: \${{ github.event_name }}
+          REF: \${{ github.ref }}
         run: |
-          if [ "\${{ github.event_name }}" = "pull_request" ]; then
-            MSG="\${{ github.event.pull_request.title }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
           else
             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
-          if [ "\${{ github.event_name }}" = "push" ] && [ "\${{ github.ref }}" = "refs/heads/dev" ]; then
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
               echo "turbo_force=1" >> "$GITHUB_OUTPUT"

@@ -128,6 +128,41 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry!.format).toBe("markered-text");
     expect(entry!.decision).toBe("strip-block");
   });
+
+  it("core .agents/ doctrine files get a strip-block entry (they install via the templates pass, not the manifest)", () => {
+    // Regression: .agents/{config,docs,rules,skills}.md install via runCoreTemplates and were
+    // in no manifest, so uninstall/--nuke could not remove them — a full uninstall orphaned
+    // bkit's own doctrine. They carry a managed block, so strip-block (preserve consumer content
+    // below bkit:end) is the treatment, matching AGENTS.md.
+    for (const rel of [
+      ".agents/config.md",
+      ".agents/docs.md",
+      ".agents/rules.md",
+      ".agents/skills.md",
+    ]) {
+      writeFile(rel, "<!-- bkit:start -->\nbkit doctrine\n<!-- bkit:end -->\n# consumer note\n");
+    }
+    const table = buildDecisionTable(["core"], makeCtx());
+    for (const rel of [
+      ".agents/config.md",
+      ".agents/docs.md",
+      ".agents/rules.md",
+      ".agents/skills.md",
+    ]) {
+      const entry = table.find((r) => r.file === rel);
+      expect(entry, `${rel} should be in the decision table under core`).toBeDefined();
+      expect(entry!.decision).toBe("strip-block");
+      expect(entry!.format).toBe("markered-text");
+    }
+  });
+
+  it("core .agents/ doctrine files are NOT swept by a targeted (non-core) uninstall", () => {
+    // Core-gated: a `uninstall --claude` (no core) must leave the .agents/ doctrine untouched,
+    // symmetric with how the core templates pass installs them.
+    writeFile(".agents/rules.md", "<!-- bkit:start -->\nbkit doctrine\n<!-- bkit:end -->\n");
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === ".agents/rules.md")).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
