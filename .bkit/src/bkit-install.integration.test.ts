@@ -1727,6 +1727,20 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/at least one module flag/i);
   });
 
+  it("bare `bkit` (no command) prints usage and exits 2 (usage error)", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run([]);
+    expect(r.status).toBe(2);
+    expect(`${r.stdout}\n${r.stderr}`).toMatch(/bkit install/);
+  });
+
+  it("explicit `bkit help` prints the same usage and exits 0", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["help"]);
+    expect(r.status).toBe(0);
+    expect(`${r.stdout}\n${r.stderr}`).toMatch(/bkit install/);
+  });
+
   it("`bkit check --claude` (stray module flag) errors", () => {
     if (!fs.existsSync(tsxPath())) return;
     const r = run(["check", "--claude"]);

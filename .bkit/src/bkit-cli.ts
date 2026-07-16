@@ -691,7 +691,9 @@ Usage:
                                  a bare \`bkit install\` errors (name the modules below).
                                  Hosts compose: --claude --cursor --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
-                                 module flags). Exits 1 on drift. This is the CI gate.
+                                 module flags). Exits 1 when a managed file needs
+                                 re-rendering; Tier-3 (seed-or-print, e.g. ci.yml) drift
+                                 is an advisory (non-blocking). The CI gate.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use

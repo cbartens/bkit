@@ -1431,6 +1431,13 @@ async function runSelfBump(flags, cwd) {
 }
 async function main() {
     const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, renovateRunner, complyPhase, telemetrySubverb, telemetryMigrateFlags, } = parseArgs(process.argv.slice(2));
+    // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
+    // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
+    // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
+    if (process.argv.slice(2).length === 0) {
+        printUsage();
+        process.exit(2);
+    }
     if (verb === "help") {
         printUsage();
         return;
