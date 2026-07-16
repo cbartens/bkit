@@ -23,7 +23,7 @@
 > - **Category:** {one of above}
 > - **Artifacts:** `docs/plans/{YYYYMM}/{plan}.md`
 > - **Summary:** what shipped (2–4 dense sentences)
-> - **Related:** Linear IDs BAR-{N}, PRs PR-{N}, Commits {SHA}, Decisions DE-{N}, Knowledge KN-{N}, paths, etc
+> - **Related:** tracker issue IDs, PRs, commit SHAs, decision / knowledge ledger `ts` ids, paths, etc
 > ```
 
 <!-- bkit:end -->

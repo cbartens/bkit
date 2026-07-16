@@ -51,3 +51,4 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/notes.md` | — | — | — | — | — | Human scratchpad — pre-formalized workflow/process gap observations. **Human-written only; agents do NOT append.** Promote entries to `docs/deferrals.jsonl` or a plan. |

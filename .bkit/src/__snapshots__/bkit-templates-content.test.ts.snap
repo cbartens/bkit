@@ -46,7 +46,7 @@ jobs:
     # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
     # registry mapping; \`pnpm config set\` writes the shell-expanded literal token into
     # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
-    # install step also keeps its own env: block for explicitness and the BAR-138 tests.
+    # install step also keeps its own env: block for explicitness and for the tests that assert it.
     env:
       TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}

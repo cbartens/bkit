@@ -277,7 +277,7 @@ The shipped config:
 
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency. bkit ships that self-hosted path as a first-class opt-in (`--renovate=self`), primarily for repos that OOM on Mend's 3 GB runner — see § Self-hosted Renovate (GitHub Actions alternative to Mend) below.
 
-(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — `bkit-auto` will not dispatch on them by design. See `security.md` § Supply-Chain.)
+(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. See `security.md` § Supply-Chain.)
 
 ### Renovate read-auth for the private package
 

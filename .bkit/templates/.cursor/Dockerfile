@@ -8,7 +8,7 @@
 #   - System deps (curl, ca-certificates baseline; add libpq, ruby, etc.)
 #   - Per-repo dev tooling (Playwright, Supabase CLI, AWS CLI, etc.)
 #
-# Edit canonical via `.agents/templates/.cursor/Dockerfile` in the bkit repo;
+# Edit canonical via `.bkit/templates/.cursor/Dockerfile` in the bkit repo;
 # never edit this generated mirror directly in consumer repos.
 
 # Base image digest-pinned — an `ubuntu:26.04` tag is mutable, so pinning the digest keeps builds

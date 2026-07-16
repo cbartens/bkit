@@ -31,13 +31,14 @@ All bkit CLI output uses bracketed context prefixes:
 
 ```
 console.error("[bkit-install] {Message}", {payload})
-console.error("[bkit-preflight] {Message}", {payload})
 console.error("[bkit-modules] {Message}", {payload})
 console.error("[bkit-comply] {Message}", {payload})
 console.error("[bkit-telemetry] {Message}", {payload})
 ```
 
 The `[{Context}]` brackets are load-bearing — any log-drain or grep-based alerting in consumer CI pipelines parsing bkit output depends on this pattern. NEVER drop the brackets.
+
+Prefix per emitting surface — one per verb or subsystem, named for the module, NOT the phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]`. Add a new prefix only alongside a new module; reuse the owning module's prefix otherwise.
 
 ### `[bkit-comply]` prefix
 
@@ -96,6 +97,7 @@ Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces a
 | `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
 | `detectNpmrcLegacyAuthToken` | `.npmrc` legacy `_authToken` line — migration nudge (401s on pnpm >=10.34.3) |
 | `detectGhSecret` | GitHub Actions secret |
+| `detectCiYmlMissingTokenEnv` | `ci.yml` install step lacks the token `env:` wiring — blocker when `.npmrc` authenticates to GH Packages but the step is unwired |
 | `detectVercelEnv` | Vercel preview and production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.

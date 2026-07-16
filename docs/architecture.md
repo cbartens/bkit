@@ -32,7 +32,7 @@ No server, no database, no network service. bkit is a build-time / developer-exp
 cbartens/bkit (this repo)
 ├── .bkit/src/              # TypeScript source for the bkit CLI
 │   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3 + staging primitives
-│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | help)
+│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | cursor | opencode | comply | harvest | analysis | telemetry | help)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
@@ -45,6 +45,10 @@ cbartens/bkit (this repo)
 │   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
+│   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
+│   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
+│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` env block by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   ├── bkit-config-migrate.ts # Content-preserving relocation of consumer debug-fetch blocks docs/observability.md -> .agents/config.md (#334). MOVE, never transform; wired into BOTH install and upgrade (separate engines)
 │   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
 │   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
 │   ├── bkit-telemetry.ts   # Unified JSONL telemetry codec — TelemetryEvent union, parse/fold/foldFrom/validate/appendLine, ARCHIVE_SHARD_TEMPLATE (#234 WS-1)
@@ -99,6 +103,11 @@ CLI verbs:
 - `pnpm bkit status` (v4.0.0+) — read-only; prints each installed host (claude / cursor / opencode) and its configured provider.
 - `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
 - `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict). Module-scoped to installed modules (v4.0.0+). Re-renders at the **currently installed** version (offline). `--to=<version>` / `--latest` (#296) additionally bump `@cbartens/bkit` (`pnpm add`) then re-exec the freshly-installed binary to re-render and re-pin in one atomic step — so a version bump can never drift from its rendered mirrors; a bare `pnpm add` does not re-render.
+- `pnpm bkit comply --phase <p>` (#234 WS-2) — compliance grader over `git diff parentSha..HEAD`; advisory-only, fail-open (never gates).
+- `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; pulls consumer telemetry into `harvest/`. COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes drained rows from the consumer), count-only for `docs/{deferrals,failures}.jsonl`. Never commits in any repo.
+- `pnpm bkit analysis` (#234 WS-4) — counts/rates/elapsed over the harvested store; size↔outcome regression, per-rule compliance rate, rollup shard writer.
+- `pnpm bkit telemetry <migrate|summary>` (#234 WS-5) — `migrate` is the one-time parity-gated legacy `.md` → `.jsonl` port (`--dry-run`).
+- `pnpm bkit cursor` / `pnpm bkit opencode` — launch the host app with `.bkit/.env` merged into its environment (macOS GUI apps do not inherit the login-shell / direnv env).
 
 ## Consumer Integration Model
 
@@ -126,7 +135,7 @@ Workflow/prompt SOURCES are NOT shipped into the consumer `.agents/`; they live 
 
 - `.claude/commands/` and `.claude/agents/` — byte-identical copies of `.bkit/workflows/` and `.bkit/prompts/`
 - `.cursor/commands/` and `.cursor/agents/` — T1/T2/T3-transformed copies for Cursor compatibility
-- `.opencode/commands/` and `.opencode/agents/` and `.opencode/opencode.json` and `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`)
+- `.opencode/commands/` and `.opencode/agents/` and `.opencode/opencode.json` and `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`). See `docs/technology.md` § Execution Hosts.
 
 Every rendered agent/command file — and every bkit-managed `docs/*.md` block (the first line of its `bkit:start` region, via the `{{BKIT_MANAGED_MARKER}}` token) — carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install` / `upgrade` (v4.0.0+). When a marker drifts from the installed version, `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (docs, scoped to the canonical doc set, never consumer plans). These two gates are **branch-scoped** (`isOnProtectedBranch`): a hard-failing `blocker` on `main` / `dev` (or a PR into them, via `GITHUB_BASE_REF`), and a non-blocking `advisory` on feature branches — because a stale render is almost always _inherited_ from a base where bkit was bumped without an atomic re-render, not created by the feature branch. The advisory is still surfaced in the checklist so the drift is visible; it just no longer blocks an intermediate push.
 

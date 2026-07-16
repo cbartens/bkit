@@ -277,7 +277,7 @@ The shipped config:
 
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency. bkit ships that self-hosted path as a first-class opt-in (`--renovate=self`), primarily for repos that OOM on Mend's 3 GB runner — see § Self-hosted Renovate (GitHub Actions alternative to Mend) below.
 
-(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — `bkit-auto` will not dispatch on them by design. See `security.md` § Supply-Chain.)
+(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. See `security.md` § Supply-Chain.)
 
 ### Renovate read-auth for the private package
 
@@ -432,7 +432,7 @@ Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: re
 
 ### Pre-push checklist
 
-Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `bkit-tests-static` lane (gates 1, 3-7) and `bkit-tests-unit` lane (gate 2):
+Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `bkit-tests-static` lane (gates 1, 3-8) and `bkit-tests-unit` lane (gate 2):
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
@@ -444,8 +444,11 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 | 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `.bkit/scripts/bkit-slop-delta.sh` materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
 | 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
 | 7 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 8 | Workflow lint | `pnpm lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
 
-**Revert-branch bypass:** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–7 (prose, slop:delta, bkit check, and source-repo check:dist) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
+**CI-suppressor HEAD guard (pre-push, before any gate):** on a non-`dev`/`main` branch whose HEAD carries `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]`, the hook probes `gh pr list --head <branch> --state open`. Open PR found → **BLOCKED** (its checks would stay vacuously green); fix by adding a clean trigger commit and re-pushing. No open PR → allowed, so sanctioned `[skip ci]` pushes (mid-loop status, abort handover) are never blocked. `gh` unavailable → warn and allow (this is a backstop for MANUAL pushes — rebase + force-push, post-close commits; the workflow CI-Dispatch Gate covers the push it makes at close).
+
+**Revert-branch bypass:** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–8 (prose, slop:delta, bkit check, source-repo check:dist, and lint:workflows) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
 
 Pre-commit (`.husky/pre-commit`) runs `pnpm lint-staged && pnpm lint:prose` — fast staged-file gates that fire earlier in the cycle, not at push time. The enforcing slop gate moved to pre-push (`pnpm slop:delta`, Gate 5); `pnpm lint:slop` (`slop-scan scan`) is report-only and is no longer wired into a hook. CI re-runs prose and slop:delta in the `bkit-tests-static` lane for belt-and-braces.
 
@@ -462,10 +465,10 @@ Source-repo only. Any TypeScript change under `.bkit/src/*.ts` MUST be accompani
 
 ### `.husky/pre-push` bkit check gate
 
-`.husky/pre-push` is **Tier 3 (seed-or-print)** — bkit writes the file once on first install and never overwrites it. It carries no `# bkit:start` / `# bkit:end` markers. The consumer template (`.bkit/templates/.husky/pre-push`) ships `pnpm bkit check < /dev/null` so consumers detect managed-file drift before push. The bkit source repo's `.husky/pre-push` additionally has `pnpm bkit check < /dev/null` and `pnpm check:dist < /dev/null` appended directly (not via markers) — those lines catch `.agents/*` edits that weren't mirrored via `bkit install` and verify `dist/` is not stale.
+`.husky/pre-push` is **Tier 3 (seed-or-print)** — bkit writes the file once on first install and never overwrites it. It carries no `# bkit:start` / `# bkit:end` markers. The consumer template (`.bkit/templates/.husky/pre-push`) ships `pnpm bkit check < /dev/null` so consumers detect managed-file drift before push. The bkit source repo's `.husky/pre-push` additionally has `pnpm bkit check < /dev/null`, `pnpm check:dist < /dev/null` and `pnpm lint:workflows < /dev/null` appended directly (not via markers) — those lines catch `.agents/*` edits that weren't mirrored via `bkit install`, verify `dist/` is not stale, and actionlint the workflows.
 
 - The bkit-repo-only additions are plain lines at the bottom of the source-repo copy of the file; they are not in the consumer template and never reach consumer repos.
-- Fix on failure: run `pnpm bkit install` (for drift), or `pnpm build && git add dist/` (for dist staleness); stage and commit; then push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
+- Fix on failure: run `pnpm bkit install` (for drift), or `pnpm build && git add dist/` (for dist staleness), or fix the flagged workflow (for actionlint); stage and commit; then push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
 
 ### Renovate — fencing bkit's own footprint
 
@@ -482,7 +485,9 @@ See § Renovate activation above for consumer-reported dashboard noise.
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token AND must result in a confirmed `bkit-tests-scope` CI run dispatched for the pushed HEAD. Enforcement: the **CI-Dispatch Gate** in `.bkit/workflows.md` § "CI-Dispatch Gate" — a two-part gate: (1) pre-push HEAD-subject deny-list fast-fail; (2) post-push outcome poll that confirms a `bkit-tests-scope` run exists in `statusCheckRollup`, self-heals once with a clean `re-trigger` commit if none appears, and terminates with a named verdict (`dispatched` / `self-healed` / `no-ci` / `unresolved`). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token AND must result in a confirmed CI run dispatched for the pushed HEAD. Enforcement: the **CI-Dispatch Gate** in `.bkit/workflows.md` § "CI-Dispatch Gate" — a two-part gate: (1) pre-push HEAD-subject deny-list fast-fail; (2) post-push outcome poll (`poll_dispatch`) that confirms a run exists in `statusCheckRollup`, self-heals once with a clean `re-trigger` commit if none appears, and terminates with a named verdict (`dispatched` / `self-healed` / `no-ci` / `unresolved`). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+
+**The poll anchors on the `bkit-tests` NAMESPACE, not a lane name** — `test("bkit-tests|decide"; "i")` (the `decide` alternate matches legacy consumer scaffolds). Anchoring on any single job name is PROHIBITED: a consumer renaming the planner takes the probe to zero matches, and the gate then reports `no-ci` on every run while silently losing its ability to catch a genuinely undispatched one. Cross-file alignment of the shared kernel is asserted by `bkit-ci-dispatch-gate-alignment.test.ts`; consumers still on `bkit-decide` / `bkit-tests-migrate` are nudged by the `ci-legacy-scaffold-job-names` install/check advisory.
 
 **Gate sites (2, not 3):** build Gate 18 (close-workflow push); debug Gate 10 PR-mode (close-workflow push, sub-step 3) and LOCAL-mode (create-pr push, sub-step 9). Ship is OUT — ship keeps its pre-existing `SQUASH_SHA`-poll gate at Step 13; adding a CI-Dispatch Gate there would mask the "essential tests skipped" signal.
 

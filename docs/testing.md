@@ -289,9 +289,9 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 
 ## Stack
 
-- **Runner:** Vitest 2 (`pnpm test` → `vitest run`).
-- **Test files** colocated with source under `.bkit/src/`. No separate `tests/` tree.
-- **No mocking framework.** Prefer real filesystem against `os.tmpdir()` over mocked `fs`. `vi.spyOn(process, "exit", ...)` only where production code calls `process.exit(1)` (T1/T2/T3 hard-fails).
+- **Runner:** Vitest 4 (`pnpm test` → `vitest run`). Shell tier: bats (`pnpm test:bats` → `bats tests/*.bats`).
+- **Test files** colocated with source under `.bkit/src/`. The `tests/` tree holds only what cannot be colocated: bats shell tests (`tests/*.bats`) and committed consumer fixtures (`tests/fixtures/`).
+- **No mocking framework.** Prefer real filesystem against `os.tmpdir()` over mocked `fs`. `vi.spyOn(process, "exit", ...)` only where production code calls `process.exit(1)` (T1/T2/T3 hard-fails). Module mocks are the narrow exception — `bkit-postinstall.test.ts` mocks `node:child_process` via `vi.hoisted`; a new function reaching that boundary must be added to the mock or the suite throws.
 
 ## Tiers
 
@@ -416,13 +416,19 @@ Use the project-local `tsx` binary directly. Do NOT invoke `node --import tsx/re
 ```ts
 const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
 if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
-const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
-  cwd: tmpDir,
-  encoding: "utf-8",
-  timeout: 60_000,
-});
+const result = spawnSync(
+  tsxBin,
+  [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+  {
+    cwd: tmpDir,
+    encoding: "utf-8",
+    timeout: 60_000,
+  },
+);
 expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 ```
+
+`install` requires >= 1 module flag (v4.0.0+) — a bare `install` exits 1, as do the dropped `--full` / `--core` / `--lint` / `--git-hooks` / `--renovate` / `--dependabot` / `--cloud` flags. Spawn with the explicit module set under test.
 
 Always assert at least one positive signal (a known log prefix like `[bkit-install]`, an exit code 0 with reason in the failure message, or a written-file existence) — otherwise a binary-not-found exit-1 would pass vacuously.
 
@@ -452,11 +458,11 @@ This pattern applies to ANY test that verifies a read-only invariant against a r
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev` / `main` and PRs into them — **one parallel lane per tier**, dogfooding the separate-lane shape consumers run. bkit has no browser/DB/deploy, so there is no `bkit-tests-e2e` / `-migration` / `-live`:
+`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev` / `main` and PRs into them — a **flat DAG**: `bkit-tests-scope` fans out to every lane, the capstone joins them, so wall-clock == the slowest single lane. bkit has no browser/DB/deploy, so there is no `bkit-tests-build` / `-e2e` / `-migration` / `-live`:
 
-1. **`bkit-tests-scope`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON and a `$GITHUB_STEP_SUMMARY` table.
-2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane: `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
-3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): `vitest run --coverage` over the unit suite (`--exclude '**/*.integration.test.ts'`), **scoped per tier** via `--coverage.include` to the logic surface (all `.bkit/src` except the `bkit-modules` data registry), with a JSON reporter emitting `tests_ran`. **Gated on branch coverage** via a per-run `--coverage.thresholds.branches` flag (currently `65`, set just below current and ratcheted up; the flag lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action`. Needs the job-level `permissions:` block (`actions: read` and `contents: read` and `pull-requests: write`). Same SHA-cache short-circuit as static.
+1. **`bkit-tests-scope`** (always-on planner; no `if:`, never skips) — reads markers, computes `run_level` (`[skip ci]` → none, a hard veto over any force marker; `[force build]` / `[force full]` / PR / `workflow_dispatch` / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light; `commits/{sha}/pulls` API error → full, run-to-be-safe), emits the `bkit-test-plan` JSON via `steps.scope.outputs.plan` and a `$GITHUB_STEP_SUMMARY` table. It is the PLANNER, not a test lane, but it lives in the `bkit-tests-*` namespace — any guard treating every `bkit-tests-*` job as a lane must exempt it BY NAME.
+2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane, run on a CLEAN tree (no test artifacts): `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). Checks out at `fetch-depth: 0` so slop delta can materialise the PR base as a worktree. Vale is installed in-lane (pinned tarball, sha256-verified before extract, then `vale sync`) — the runner has none and `.vale/styles/` is gitignored, so without it `pnpm lint:prose` guard-skips and the prose gate is silently dead. Also carries the non-blocking promotion-lag warning on `dev` pushes (see `docs/deployments.md` § Promotion-lag warning). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
+3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane: runs `pnpm test:coverage:unit`, then the bats shell tier (`npx --yes bats tests/*.bats` — the counter-bus retry-gating helpers and the telemetry fail-open contract, logic vitest cannot reach because it sources `.bkit/scripts/*.sh`). The gate command itself lives in the `test:coverage:unit` **package.json script** — unit suite (`--exclude '**/*.integration.test.ts'`), `--coverage.include` scoped to the logic surface (all `.bkit/src` except the `bkit-modules` data registry), and the branch-coverage floor `--coverage.thresholds.branches` (currently `65`, set just below current and ratcheted up; it lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). **SINGLE SOURCE:** `/bkit-build`'s pre-PR gate runs the SAME script, so a coverage drop fails in the worktree before this lane sees it — bump the threshold in `package.json` and both callers move together. The CI step only appends the JSON reporter emitting `tests_ran`. On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action` (skipped on fork PRs — read-only token). Needs the job-level `permissions:` block (`actions: read` and `contents: read` and `pull-requests: write`) — job-level permissions REPLACE the workflow-level block, so `actions: read` must be re-declared for the SHA-cache `gh run list`. Same SHA-cache short-circuit as static.
 4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules` / `install` / `upgrade` / `uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold — a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumers (gether/fraser) run it and dogfoods the shipped scaffold. Own job-level `permissions:` and SHA-cache.
 5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-tests-scope` succeeded and, when `run_level != none`, `bkit-tests-static` and `bkit-tests-unit` and `bkit-tests-integration` all succeeded **and unit and integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
