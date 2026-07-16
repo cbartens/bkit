@@ -720,44 +720,41 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
     if (consumerBlocks.size === 0)
         return null;
-    // Significant lines = load-bearing block content: non-blank, non-comment. Comments are
-    // non-load-bearing ("comments explain why, not what"), so a consumer annotating a managed
-    // block with a ticket ref or rationale must not trip perpetual drift on a Tier-3 file bkit
-    // never rewrites; a changed or commented-out semantic line still gates.
-    const significantLines = (body) => body.split("\n").filter((line) => {
-        const t = line.trim();
-        return t !== "" && !t.startsWith("#") && !t.startsWith("//") && !t.startsWith("<!--");
-    });
-    // A template line carrying a bkit `{{TOKEN}}` renders to a per-consumer value at install
-    // (`node-version: {{NODE_VERSION}}` -> `node-version: 22`), so it is a wildcard, not drift —
-    // else every correctly-installed consumer drifts forever on the placeholder line. `${{ … }}`
-    // is a GitHub Actions expression, NOT a bkit token — the negative lookbehind keeps those
-    // literal so an edit inside one still gates.
+    // Significant lines = load-bearing block content: non-blank, non-comment, trimmed (indentation
+    // is not semantic). Comments explain why, not what, so annotating a block never trips drift.
+    const significantLines = (body) => body
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((t) => t !== "" && !t.startsWith("#") && !t.startsWith("//") && !t.startsWith("<!--"));
+    // A required line is real bkit content the consumer must retain. A bare YAML mapping key (`env:`)
+    // is structural scaffolding — a consumer with the child assignments has the structure wherever
+    // it placed the marker. A `{{TOKEN}}` line renders per-consumer, so it can never be matched
+    // literally. Neither counts as content for drift. (`${{ … }}` is a GitHub Actions expression,
+    // NOT a bkit token — the negative lookbehind keeps those enforced.)
+    const isStructural = (line) => /^[A-Za-z0-9_.-]+:$/.test(line);
     const hasBkitToken = (line) => /(?<!\$)\{\{[^}]+\}\}/.test(line);
+    const requiredLines = (body) => significantLines(body).filter((l) => !isStructural(l) && !hasBkitToken(l));
     const missing = [];
     const drifted = [];
     for (const [name, tBlock] of templateBlocks) {
         const label = name || "(default block)";
+        // An `optional` block is fully consumer-owned: bkit seeds it but never flags missing OR drift.
+        // `ts-ci-steps` IS the consumer's Node/TS toolchain region (the template says "adapt these to
+        // your stack") — enforcing its content was perpetual noise on a Tier-3 file bkit never
+        // rewrites. A hand-maintained toolchain that dropped the block is opted out, not broken.
+        if (tBlock.optional)
+            continue;
         const cBlock = consumerBlocks.get(name);
         if (!cBlock) {
-            if (!tBlock.optional)
-                missing.push(label);
+            missing.push(label);
             continue;
         }
-        const c = significantLines(cBlock.body);
-        // An `optional` block the consumer has emptied / fully commented out (e.g. the `--ci`-only
-        // ts-ci-steps skeleton) is opted out, not drift.
-        if (tBlock.optional && c.length === 0)
-            continue;
-        const t = significantLines(tBlock.body);
-        // Line-aligned compare: consumer block = rendered template block, so a structural change
-        // (added/removed line) or an edited non-placeholder line is real drift.
-        let differs = c.length !== t.length;
-        for (let i = 0; !differs && i < t.length; i++) {
-            if (!hasBkitToken(t[i]) && c[i] !== t[i])
-                differs = true;
-        }
-        if (differs)
+        // Subset / presence: the block drifts only if the consumer is MISSING a required bkit line.
+        // Extras, reordering, re-indentation, comments, and marker placement (`env:` inside vs outside
+        // the marker) are all fine — a consumer that has all the bkit content "and more" stays quiet;
+        // a genuinely dropped or edited required line still gates.
+        const consumerLines = new Set(significantLines(cBlock.body));
+        if (requiredLines(tBlock.body).some((l) => !consumerLines.has(l)))
             drifted.push(label);
     }
     if (missing.length === 0 && drifted.length === 0)

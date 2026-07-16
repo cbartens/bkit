@@ -230,6 +230,22 @@ export function buildDecisionTable(modules, ctx) {
                 break;
             }
             case "byte-equal-text": {
+                // .bkit/version is bkit's own install-state manifest (pinnedVersion + tier3Hashes), never
+                // consumer content. It records no hash for itself, so the generic hash-guard preserves it
+                // as "consumer-modified" — leaving bkit state behind after a full teardown. It is
+                // `module: core`, so it only reaches this table on a full/core uninstall; delete it there
+                // (zero-footprint). A targeted (non-core) uninstall never sees it, so the modules that
+                // remain keep working. Execution reads tier3Hashes into memory before the delete loop, so
+                // removing this file mid-loop cannot affect any other file's decision.
+                if (entry.path === ".bkit/version") {
+                    table.push({
+                        file: entry.path,
+                        decision: "delete",
+                        reason: "bkit install-state manifest — removed on full/core uninstall",
+                        format: "byte-equal-text",
+                    });
+                    break;
+                }
                 if (ctx.force) {
                     table.push({
                         file: entry.path,
