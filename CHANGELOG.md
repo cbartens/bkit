@@ -6,6 +6,19 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.6.3] — 2026-07-16
+
+Follows the 4.6.2 pre-release audit's two remaining advisory-only findings — and a broader realisation from running `bkit check` against real consumers (gether, fraser): bkit was flagging content drift on managed CI blocks that consumers legitimately own and customise.
+
+### Changed
+
+- **Managed-block drift is now a presence check, not exact-match.** `bkit check` flagged `drifted: <block>` whenever a consumer's bkit-managed `ci.yml` block differed from the shipped template byte-for-byte — even when the consumer had every required line and merely added their own, reordered, re-indented, or wrapped the marker around a different span. A real consumer hit this with its three `verbose-ci-env` env vars **byte-identical** to the template, drifting only because it placed the bare `env:` key just outside the marker. On a Tier-3 file bkit never rewrites, that is perpetual noise on every consumer that customises its own CI. Drift now fires only when a REQUIRED line — real bkit content, excluding comments, bare structural YAML keys (`env:`), and per-consumer `{{TOKEN}}` placeholders — is MISSING from the consumer's block. "All the content and more" stays quiet; a genuinely dropped or edited required line still gates.
+- **`ts-ci-steps` is fully consumer-owned.** The `optional` block flag (only `ts-ci-steps` carries it) now suppresses **drift as well as "missing"** — it IS the consumer's Node/TS toolchain region (the template says "adapt these to your stack"), so enforcing its content was noise. The critical gates it wraps (`bkit check`, `slop:delta`, actionlint, registry auth) each have their own dedicated presence advisory, so nothing is lost. Supersedes 4.6.2's per-line placeholder wildcard for this block.
+
+### Fixed
+
+- **`.bkit/version` was orphaned by a full uninstall.** bkit's own install-state manifest (pinnedVersion + tier3Hashes) records no hash for itself, so the byte-equal hash-guard preserved it as "consumer-modified" — leaving bkit state behind after a full teardown. It is now removed on a full/core uninstall (bkit-authored state, never consumer content); a targeted `uninstall --claude` still leaves it so bkit keeps working for the modules that remain.
+
 ## [4.6.2] — 2026-07-16
 
 Continues the post-4.6.x reconciliation against the source-of-truth consumer: closes the gap where 4.6.1's script-injection fix — shipped only into new `ci.yml` seeds — never reached existing consumers, and retires three perpetual or false advisories that a hand-maintained Tier-3 CI surfaced. Also scrubs maintainer-internal tracker ids from the shipped telemetry spec.
