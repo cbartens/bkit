@@ -1815,7 +1815,11 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // valid YAML whose Node/TS step bodies are inert, copy-to-adapt examples — a non-Node
 // consumer (`--ci` without `--typescript`) gets a workflow that runs trivially green.
 // ---------------------------------------------------------------------------
-const CI_TS_REGION_START = /^\s*#\s*bkit:start ts-ci-steps\s*$/;
+// Tolerate the `optional` block flag (extractNamedBlocks parses it; see detectTier2TextDrift):
+// the ts-ci-steps region is marked `optional` so a consumer that hand-maintains its toolchain
+// outside the block is not perpetually nagged for a "missing" block on a Tier-3 file bkit never
+// rewrites. The skeleton derivation must still recognise the marker to comment the region.
+const CI_TS_REGION_START = /^\s*#\s*bkit:start ts-ci-steps(?:\s+optional)?\s*$/;
 const CI_TS_REGION_END = /^\s*#\s*bkit:end ts-ci-steps\s*$/;
 export function deriveCiSkeleton(content) {
     const lines = content.split("\n");

@@ -720,6 +720,17 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
     if (consumerBlocks.size === 0)
         return null;
+    // Comments inside a managed block are non-load-bearing ("comments explain why, not what") —
+    // a consumer annotating a block with a ticket ref or rationale must not trip perpetual drift
+    // on a Tier-3 file bkit never rewrites. Compare only the semantic (non-comment, non-blank)
+    // lines; a changed or commented-out semantic line still gates.
+    const significant = (body) => body
+        .split("\n")
+        .filter((line) => {
+        const t = line.trim();
+        return t !== "" && !t.startsWith("#") && !t.startsWith("//") && !t.startsWith("<!--");
+    })
+        .join("\n");
     const missing = [];
     const drifted = [];
     for (const [name, tBlock] of templateBlocks) {
@@ -730,7 +741,7 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
                 missing.push(label);
             continue;
         }
-        if (cBlock.body !== tBlock.body)
+        if (significant(cBlock.body) !== significant(tBlock.body))
             drifted.push(label);
     }
     if (missing.length === 0 && drifted.length === 0)

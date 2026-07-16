@@ -31,6 +31,7 @@ import {
   detectGhaFloatingTags,
   detectBkitCloudYmlAlwaysTrueGate,
   detectCiYmlMissingActionlint,
+  detectCiYmlRunInjection,
   detectCiYmlCapstoneContractDrift,
   detectTaggedTestsWithoutCiHome,
   detectRunLevelsNotComposed,
@@ -980,6 +981,26 @@ describe("detectBkitStubs", () => {
     expect(finding!.detect).toContain("bkit-tests-migrate");
     // The action must also cover the job-local step id, not just the job name.
     expect(finding!.action).toContain("id: decide` -> `id: scope");
+  });
+
+  it("surfaces the docs-vs-ci skew when managed docs already name the current jobs", () => {
+    writeCi("jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n");
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "testing.md"),
+      "The bkit-tests-scope planner emits the run plan.\n",
+    );
+    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
+    expect(finding).toBeDefined();
+    expect(finding!.detect).toContain("docs/testing.md");
+    expect(finding!.detect).toMatch(/DIFFERENT job names/);
+  });
+
+  it("omits the docs-skew clause when docs/testing.md is absent", () => {
+    writeCi("jobs:\n  bkit-decide:\n    runs-on: ubuntu-latest\n");
+    const finding = detectBkitStubs(tmpDir).find((f) => f.id === "ci-legacy-scaffold-job-names");
+    expect(finding).toBeDefined();
+    expect(finding!.detect).not.toContain("docs/testing.md");
   });
 
   it("does NOT flag a ci.yml already on the current scaffold job names", () => {
@@ -2135,6 +2156,109 @@ describe("detectCiYmlMissingActionlint", () => {
   it("returns null when an actionlint step is already present", () => {
     writeCi(MANAGED_NO_ACTIONLINT + '      - run: "$RUNNER_TEMP/actionlint" -color\n');
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCiYmlRunInjection — GHA script-injection sink (untrusted input in run:)
+// ---------------------------------------------------------------------------
+
+describe("detectCiYmlRunInjection", () => {
+  function writeCi(content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+  }
+  const MARKERS =
+    "name: CI\n" +
+    "jobs:\n" +
+    "  bkit-tests:\n" +
+    "    runs-on: ubuntu-latest\n" +
+    "    # bkit:start verbose-ci-env\n" +
+    "    # bkit:end verbose-ci-env\n" +
+    "    steps:\n";
+
+  it("returns null when ci.yml is absent", () => {
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
+  });
+
+  it("returns null when ci.yml has no bkit markers (consumer-owned)", () => {
+    writeCi(
+      "name: CI\njobs:\n  test:\n    steps:\n" +
+        '      - run: |\n        MSG="${{ github.event.pull_request.title }}"\n',
+    );
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
+  });
+
+  it("fires on an untrusted expression inlined into a run: block body", () => {
+    writeCi(
+      MARKERS +
+        "      - name: Detect Direct Push\n" +
+        "        run: |\n" +
+        '          MSG="${{ github.event.pull_request.title }}"\n' +
+        '          echo "$MSG"\n',
+    );
+    const f = detectCiYmlRunInjection(tmpDir);
+    expect(f?.id).toBe("ci-yml-run-injection");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("SECURITY");
+    expect(f?.detect).toContain("github.event.pull_request.title");
+  });
+
+  it("fires on an inline run: with the sink on the same line", () => {
+    writeCi(MARKERS + '      - run: echo "${{ github.event.issue.title }}"\n');
+    expect(detectCiYmlRunInjection(tmpDir)?.id).toBe("ci-yml-run-injection");
+  });
+
+  it("fires on github.head_ref inlined into a run: body", () => {
+    writeCi(MARKERS + "      - run: |\n" + '          git checkout "${{ github.head_ref }}"\n');
+    expect(detectCiYmlRunInjection(tmpDir)?.id).toBe("ci-yml-run-injection");
+  });
+
+  it("returns null for the safe env-indirection form", () => {
+    writeCi(
+      MARKERS +
+        "      - name: Detect Direct Push\n" +
+        "        env:\n" +
+        "          PR_TITLE: ${{ github.event.pull_request.title }}\n" +
+        "        run: |\n" +
+        '          MSG="$PR_TITLE"\n',
+    );
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
+  });
+
+  it("returns null when github.event.* appears only in env: / if: (not a run: body)", () => {
+    writeCi(
+      MARKERS +
+        "      - name: Guard\n" +
+        "        if: github.event.pull_request.title != ''\n" +
+        "        env:\n" +
+        "          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}\n" +
+        "        run: echo hi\n",
+    );
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
+  });
+
+  it("does not scan a YAML-commented stub (github.base_ref reference stays silent)", () => {
+    writeCi(
+      MARKERS +
+        "      # - name: Migrations Guard\n" +
+        "      #   run: |\n" +
+        '      #     git fetch origin "${{ github.base_ref }}"\n',
+    );
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
+  });
+
+  it("does NOT trip on the shipped ci.yml template (already env-indirected)", () => {
+    const tplPath = path.resolve(
+      import.meta.dirname,
+      "..",
+      "templates",
+      ".github",
+      "workflows",
+      "ci.yml",
+    );
+    writeCi(fs.readFileSync(tplPath, "utf-8"));
+    expect(detectCiYmlRunInjection(tmpDir)).toBeNull();
   });
 });
 

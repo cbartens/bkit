@@ -409,6 +409,19 @@ describe("deriveCiSkeleton (#265)", () => {
     const input = "jobs:\n  build:\n    steps:\n      - run: echo hi\n";
     expect(deriveCiSkeleton(input)).toBe(input);
   });
+
+  it("recognises the `optional` block flag on the start marker", () => {
+    const input = [
+      "    steps:",
+      "      # bkit:start ts-ci-steps optional",
+      "      - name: Install Dependencies",
+      "        run: pnpm install",
+      "      # bkit:end ts-ci-steps",
+    ].join("\n");
+    const out = deriveCiSkeleton(input);
+    expect(out).toContain("      # - name: Install Dependencies"); // body still commented
+    expect(out).toContain("      # bkit:start ts-ci-steps optional"); // marker retained verbatim
+  });
 });
 
 describe("module dispatch: --full ≡ no flags (writeset equality)", () => {
@@ -2013,6 +2026,44 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
     const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
     expect(drift?.id).toBe("tier2-text-drift");
     expect(drift?.detect).toContain("verbose-ci-env");
+  });
+
+  it("no drift when a consumer adds a comment annotation inside a managed block", () => {
+    // Comments inside a managed block are non-load-bearing — a consumer annotating the block
+    // with a ticket ref / rationale must not trip perpetual drift on a Tier-3 file bkit never
+    // rewrites. Only semantic (non-comment) lines are compared.
+    const consumer = readTemplate().replace(
+      "    # bkit:end verbose-ci-env",
+      "      # consumer note: ticket PROJ-42 tracks the verbose-ci rollout\n    # bkit:end verbose-ci-env",
+    );
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
+
+  it("still flags DRIFT when a consumer comments OUT a semantic line in a managed block", () => {
+    // Commenting out a required env var removes a semantic line → still caught (the comment
+    // exclusion must not become an escape hatch for disabling bkit-owned content).
+    const consumer = readTemplate().replace(
+      /^(\s*)VERBOSE_CI: \$\{\{[^\n]*\}\}/m,
+      "$1# VERBOSE_CI: (disabled by consumer)",
+    );
+    writeConsumer(consumer);
+    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(drift?.id).toBe("tier2-text-drift");
+    expect(drift?.detect).toContain("verbose-ci-env");
+  });
+
+  it("does NOT flag MISSING when the optional ts-ci-steps block is absent (hand-maintained toolchain)", () => {
+    // ts-ci-steps ships `optional`: a consumer that maintains its own setup/install/typecheck
+    // steps outside the block (and deletes the block) must NOT be perpetually nagged "missing"
+    // on a Tier-3 file bkit never rewrites. Other required blocks remain intact.
+    const consumer = readTemplate().replace(
+      /\n\s*# bkit:start ts-ci-steps optional\n[\s\S]*?# bkit:end ts-ci-steps\n/g,
+      "\n",
+    );
+    writeConsumer(consumer);
+    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
   });
 
   it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
