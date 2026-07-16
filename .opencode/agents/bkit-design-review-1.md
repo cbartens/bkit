@@ -14,7 +14,7 @@ tools:
   websearch: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.6.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing whether a design is buildable with the approved stack.
 **Scope:** As specified by input and Read / Update / Create section.
