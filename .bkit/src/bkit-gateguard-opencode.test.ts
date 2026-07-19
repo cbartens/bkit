@@ -219,16 +219,27 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("gateguard opencode plugin — advisory mode (default)", () => {
-  it("emits investigation checklist on first write to a file", async () => {
+  it("emits reuse checklist on first write to a NEW (nonexistent) file", async () => {
     const session = newSession();
-    const { hookInput, output } = writeHookInput("src/foo.ts", session);
+    const { hookInput, output } = writeHookInput("src/foo-does-not-exist.ts", session);
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
     expect(result.stderrCaptured).toContain("[bkit GateGuard]");
-    expect(result.stderrCaptured).toContain("foo.ts");
+    expect(result.stderrCaptured).toContain("foo-does-not-exist.ts");
+    expect(result.stderrCaptured).toContain("Bolt-on drift");
+  });
+
+  it("emits investigation checklist on a write to an EXISTING file", async () => {
+    const session = newSession();
+    const { hookInput, output } = writeHookInput("package.json", session);
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.threw).toBe(false);
     expect(result.stderrCaptured).toContain("investigation");
+    expect(result.stderrCaptured).not.toContain("Bolt-on drift");
   });
 
   it("emits investigation checklist on first edit to a file", async () => {

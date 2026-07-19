@@ -41,6 +41,7 @@ tools:
    - Narrative: 2–3 sentences, user POV (NOT system POV).
    - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
+   - Process Sketch: Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps.
 8. Preserve strongest approaches. Consolidate Decisions.
 9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
@@ -68,6 +69,10 @@ tools:
 ### Key Edge Cases
 
 [Design-shaping cases only — concurrency, conflict resolution, failure modes, cross-feature interactions; initially set to `PENDING`.]
+
+### Process Sketch
+
+[Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps. Initially set to `PENDING`.]
 
 ## Architecture
 

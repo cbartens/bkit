@@ -6,6 +6,9 @@
 // investigation happens BEFORE the edit (LLM self-review is weak; the act of
 // investigating is what changes the output). A second class of paths — quality-
 // gate configs — gets a stronger "fix the code, don't weaken the gate" advisory.
+// New-file advisory: a Write to a not-yet-existing path is where bolt-on drift is
+// born. Nudge reuse-over-duplicate (rules.md "Improve over duplicate") instead of
+// the read-this-file checklist, which does not fit a file that does not exist yet.
 //
 // CONTRACT — do not regress:
 //   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. The
@@ -74,6 +77,18 @@ function investigationChecklist(filePath) {
     `- Confirm external data contracts (DB schemas, APIs / SDKs) changes affect (verify actual shape, do NOT assume).\n` +
     `- Confirm user instructions or plan tasks changes serve (quote them, do NOT trust memory).\n` +
     `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
+  );
+}
+
+function reuseChecklist(filePath) {
+  const base = path.basename(filePath);
+  return (
+    `[bkit GateGuard] New file \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE adding:\n` +
+    `- Confirm existing code does NOT already provide capability (grep / read source, do NOT assume).\n` +
+    `- Confirm existing code CANNOT be reused / extended to provide capability (grep / read source, do NOT assume).\n` +
+    `- Confirm anything code supersedes is deleted, NOT left as duplicate work (verify removal, do NOT assume).\n` +
+    `- Confirm location / naming fits project architecture / topology / standards (grep / read source, do NOT assume).\n` +
+    `Bolt-on drift starts here; evolve existing code first. Advisory — proceed once satisfied.`
   );
 }
 
@@ -162,7 +177,13 @@ function main() {
   if (alreadyWarned(sessionId, filePath)) return;
 
   const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  const context = gated ? configAdvisory(filePath) : investigationChecklist(filePath);
+  // A Write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
+  const context = gated
+    ? configAdvisory(filePath)
+    : isNewFile
+      ? reuseChecklist(filePath)
+      : investigationChecklist(filePath);
 
   if (mode === "deny") {
     emit({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: context });
