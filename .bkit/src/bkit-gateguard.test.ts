@@ -108,6 +108,38 @@ describe("gateguard hook — advisory (default mode)", () => {
   });
 });
 
+describe("gateguard hook — reuse advisory (new-file Write)", () => {
+  it("emits a reuse/anti-duplicate checklist for a Write to a new (nonexistent) path", () => {
+    const r = run({
+      session_id: newSession(),
+      tool_name: "Write",
+      tool_input: { file_path: "src/brand-new-does-not-exist.ts" },
+    });
+    expect(r.status).toBe(0);
+    const ctx = hookOutput(r)["additionalContext"] as string;
+    expect(ctx).toContain("Bolt-on drift");
+    expect(ctx).not.toContain("the investigation itself");
+  });
+
+  it("a Write to an EXISTING path gets the investigation checklist, not reuse", () => {
+    const r = run({
+      session_id: newSession(),
+      tool_name: "Write",
+      tool_input: { file_path: "package.json" },
+    });
+    const ctx = hookOutput(r)["additionalContext"] as string;
+    expect(ctx).toContain("the investigation itself");
+    expect(ctx).not.toContain("Bolt-on drift");
+  });
+
+  it("an Edit to a nonexistent path stays on the investigation checklist (reuse is Write-only)", () => {
+    const r = run(editPayload("src/edit-nonexistent.ts", newSession()));
+    const ctx = hookOutput(r)["additionalContext"] as string;
+    expect(ctx).toContain("the investigation itself");
+    expect(ctx).not.toContain("Bolt-on drift");
+  });
+});
+
 describe("gateguard hook — config protection (item D)", () => {
   it("emits the gate-config advisory for tsconfig.json", () => {
     const r = run(editPayload("tsconfig.json", newSession()));

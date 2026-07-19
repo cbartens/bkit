@@ -141,8 +141,13 @@ export function identity(event) {
     switch (event.kind) {
         case "compliance":
             return `compliance ${event.repo} ${event.workflow} ${event.parentSha} ${event.rule}`;
-        case "outcome":
-            return `outcome ${event.repo} ${event.prNumber}`;
+        case "outcome": {
+            // One run row per workflow run: keyed by (repo, workflow, parentSha).
+            // Back-compat: pre-generalization ship rows carry no parentSha, so fall
+            // back to prNumber (then ts) — old ship rows stay uniquely keyed per PR.
+            const anchor = event.parentSha ?? (event.prNumber !== undefined ? `pr${event.prNumber}` : `ts${event.ts}`);
+            return `outcome ${event.repo} ${event.workflow} ${anchor}`;
+        }
         case "counter":
             return `counter ${event.repo} ${event.workflow} ${event.parentSha} ${event.counterName}`;
         case "friction":
@@ -233,8 +238,8 @@ export function validate(event) {
         }
     }
     if (kind === "outcome") {
+        // Every workflow run carries these; `prNumber` is ship-only (see below).
         const numFields = [
-            "prNumber",
             "linesAdded",
             "linesDeleted",
             "linesChanged",
@@ -247,6 +252,27 @@ export function validate(event) {
         for (const f of numFields) {
             if (typeof e[f] !== "number") {
                 return { ok: false, reason: `outcome missing or invalid numeric field: ${f}` };
+            }
+        }
+        // prNumber — ship-only, optional; validate only when present.
+        if (e["prNumber"] !== undefined && typeof e["prNumber"] !== "number") {
+            return { ok: false, reason: "outcome prNumber must be a number when present" };
+        }
+        // parentSha — the run's identity anchor; optional (absent on legacy ship rows).
+        if (e["parentSha"] !== undefined && typeof e["parentSha"] !== "string") {
+            return { ok: false, reason: "outcome parentSha must be a string when present" };
+        }
+        // Optional per-run numeric metrics: validate type only when present.
+        for (const f of [
+            "frictionAdded",
+            "deferralsAdded",
+            "failuresAdded",
+            "correctiveCommits",
+            "reviewIterations",
+            "ciTrySuccess",
+        ]) {
+            if (e[f] !== undefined && typeof e[f] !== "number") {
+                return { ok: false, reason: `outcome ${f} must be a number when present` };
             }
         }
         // coverage is optional + per-tier; validate structure only when present.
@@ -388,52 +414,155 @@ export function appendLine(event) {
         throw new Error(`[bkit-telemetry] appendLine: invalid event — ${v.reason}`);
     return JSON.stringify(event);
 }
-/**
- * THE telemetry summary. One implementation, called by every workflow close step
- * via `bkit telemetry summary` — see § the reason it is not inline shell.
- *
- * The five workflows each carried their own bash version of this, and every one
- * was wrong in ways this is not:
- *   - `MALFORMED=$(grep -cvE '^\{.*\}$' … || echo 0)` prints "0\n0" whenever there
- *     are NO malformed lines, because `grep -c` exits 1 on zero matches and the
- *     `|| echo 0` fires on top of grep's own "0". Broken in the common case.
- *   - `jq -r '.bkitVersion // "unknown"'` buckets an EMPTY version under an empty
- *     key (`versions: =2`), because jq's `//` substitutes only on null/false and
- *     `""` is neither.
- *   - `wc -l` counts LINES, not parsed rows, and a regex is not a JSON parser.
- * This counts what `parse()` actually parsed, and names the unknown bucket.
- *
- * @param workflow when given, adds the per-workflow chain line the close step reports.
- */
-export function buildSummary(result, workflow) {
-    const versionStr = Object.entries(result.versionCounts)
+// Per-metric baseline: compare THIS run to the previous N runs of the SAME workflow.
+/** Rolling-baseline window (median over the previous N same-workflow runs). */
+export const RUN_BASELINE_WINDOW = 5;
+/** Below this many prior runs the median is noise — show `n/a` instead. */
+const RUN_BASELINE_MIN = 3;
+/** Seconds → compact human duration: `45s` · `33m` · `2h11m`. */
+export function humanizeDuration(sec) {
+    if (!Number.isFinite(sec) || sec < 0)
+        return `${sec}s`;
+    if (sec < 60)
+        return `${Math.round(sec)}s`;
+    if (sec < 3600)
+        return `${Math.round(sec / 60)}m`;
+    const h = Math.floor(sec / 3600);
+    const m = Math.round((sec % 3600) / 60);
+    return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+/** Median (lower-middle for even counts, matching computeElapsedStats). null if empty. */
+function median(nums) {
+    if (nums.length === 0)
+        return null;
+    const s = [...nums].sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)] ?? null;
+}
+function versionSpread(versionCounts) {
+    return (Object.entries(versionCounts)
         .map(([v, n]) => `${v}=${n}`)
-        .join(", ") || "none";
-    const lines = [
-        `[bkit-telemetry] rows: ${result.rowCount} | malformed: ${result.malformedLineCount} | versions: ${versionStr}`,
-    ];
-    if (result.maxRowsWarning) {
-        lines.push(`[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (${MAX_ROWS_BEFORE_ROLLUP}) exceeded — ${result.rowCount} rows in stats.jsonl; consider archiving.`);
-    }
-    // Counted off the FOLDED state, so these are ENTITIES, not lines — same rule the
-    // spec sets for every reader. The bash version grepped '"workflow":"ship"' across
-    // raw lines, so an updated row counted twice.
+        .join(", ") || "none");
+}
+/**
+ * Ledger-health readout — the parse-integrity line kept as a footer. Preserves the
+ * `rows` / `malformed:` / `versions:` tokens that replaced five wrong bash copies
+ * (grep -c printing "0\n0" on zero matches; jq's `//` bucketing "" under an empty
+ * key; wc -l counting lines not parsed rows).
+ */
+function ledgerLine(result) {
+    return `[bkit-telemetry] ledger: ${result.rowCount} rows · malformed: ${result.malformedLineCount} · versions: ${versionSpread(result.versionCounts)}`;
+}
+/**
+ * THE per-workflow telemetry report, emitted at each workflow's close step and
+ * injected into the tracker close comment (`bkit telemetry summary --phase=<w>`).
+ *
+ * Scoped STRICTLY to the one workflow — never the design→…→ship chain (this #234
+ * follow-up supersedes the original "ship reports the whole chain" note). For the
+ * given workflow it shows THIS run's generalized `outcome` (run) row against
+ * `med·N` = the median of that workflow's previous N runs (rolling, outlier-robust
+ * because durations are right-skewed), a secondary compliance line, and the ledger
+ * footer. Fields absent on the run row are omitted — a metric shows only when the
+ * workflow actually produced it.
+ *
+ * Without a workflow it degrades to the ledger-health line alone.
+ */
+export function workflowTelemetry(result, workflow) {
+    const events = [...result.state.values()];
+    // Folded ENTITY count per workflow (not raw lines) — an updated row folds to one.
     const workflowCounts = {};
-    for (const ev of result.state.values()) {
+    for (const ev of events) {
         const w = ev.workflow || "unknown";
         workflowCounts[w] = (workflowCounts[w] ?? 0) + 1;
     }
-    if (workflow) {
-        lines.push(`[bkit-telemetry] ${workflow}: ${workflowCounts[workflow] ?? 0} | design→ship chain total: ${result.state.size} (from ${result.rowCount} rows)`);
-    }
-    return {
+    const base = {
         rowCount: result.rowCount,
         malformedLineCount: result.malformedLineCount,
         versionCounts: result.versionCounts,
         maxRowsWarning: result.maxRowsWarning,
         workflowCounts,
-        lines,
+        workflow,
     };
+    const maxRowsLines = result.maxRowsWarning
+        ? [
+            `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (${MAX_ROWS_BEFORE_ROLLUP}) exceeded — ${result.rowCount} rows in stats.jsonl; consider archiving.`,
+        ]
+        : [];
+    // No workflow → ledger-health readout only.
+    if (!workflow) {
+        return { ...base, lines: [ledgerLine(result), ...maxRowsLines] };
+    }
+    // This workflow's run rows (generalized outcome), oldest → newest.
+    const runs = events
+        .filter((e) => e.kind === "outcome" && e.workflow === workflow)
+        .sort((a, b) => a.ts - b.ts);
+    const cur = runs.at(-1);
+    const prev = runs.slice(0, -1).slice(-RUN_BASELINE_WINDOW);
+    const repo = cur?.repo ?? events[0]?.repo ?? "unknown/repo";
+    // Rendered as a Markdown table so it drops straight into the tracker comment
+    // (no code fence needed) — GitHub/Linear render it natively.
+    const lines = [`**${workflow} close** · ${repo}`, ""];
+    const tableRows = [];
+    const row = (label, self, med) => {
+        tableRows.push(`| ${label} | ${self} | ${med} |`);
+    };
+    if (cur) {
+        // med·N: median of the previous runs that carry the field, `—` until there are
+        // at least RUN_BASELINE_MIN of them (1–2 samples is noise, not a baseline).
+        const medCell = (key, fmt = String) => {
+            const vals = prev.map((r) => r[key]).filter((v) => typeof v === "number");
+            if (vals.length < RUN_BASELINE_MIN)
+                return "—";
+            const m = median(vals);
+            return m === null ? "—" : fmt(m);
+        };
+        // Core metrics — always shown.
+        row("durationSeconds", `${cur.durationSeconds} (${humanizeDuration(cur.durationSeconds)})`, medCell("durationSeconds", (n) => `${n} (${humanizeDuration(n)})`));
+        row("linesChanged", `${cur.linesChanged} (+${cur.linesAdded}/-${cur.linesDeleted})`, medCell("linesChanged"));
+        row("filesChanged", `${cur.filesChanged}`, medCell("filesChanged"));
+        // Conditional metrics — shown only when this run carries them.
+        if (cur.taskCount > 0)
+            row("taskCount", `${cur.taskCount}`, medCell("taskCount"));
+        if (typeof cur.reviewIterations === "number")
+            row("reviewIterations", `${cur.reviewIterations}`, medCell("reviewIterations"));
+        if (typeof cur.correctiveCommits === "number")
+            row("correctiveCommits", `${cur.correctiveCommits}`, medCell("correctiveCommits"));
+        if (typeof cur.ciTrySuccess === "number")
+            row("ciTrySuccess", `${cur.ciTrySuccess}${cur.ciTrySuccess === 1 ? " (first-try)" : ""}`, medCell("ciTrySuccess"));
+        // Instinct-loop deltas — frictionAdded is the featured signal (shown even at 0).
+        if (typeof cur.frictionAdded === "number")
+            row("frictionAdded", `${cur.frictionAdded}`, medCell("frictionAdded"));
+        if (typeof cur.deferralsAdded === "number")
+            row("deferralsAdded", `${cur.deferralsAdded}`, medCell("deferralsAdded"));
+        if (typeof cur.failuresAdded === "number")
+            row("failuresAdded", `${cur.failuresAdded}`, medCell("failuresAdded"));
+    }
+    // Compliance — this run's rows. The `outcome` and `compliance` rows are written
+    // at different points in a close (different HEADs → different parentSha), so we
+    // DON'T match on the run row's parentSha: we take the newest same-workflow
+    // compliance group (its parentSha) as "this run".
+    const complianceRows = events.filter((e) => e.kind === "compliance" && e.workflow === workflow);
+    const compSha = complianceRows.slice().sort((a, b) => b.ts - a.ts)[0]?.parentSha;
+    if (compSha) {
+        const comp = complianceRows.filter((c) => c.parentSha === compSha);
+        const pass = comp.filter((c) => c.result === "pass").length;
+        const fail = comp.filter((c) => c.result === "fail").length;
+        const na = comp.filter((c) => c.result === "n/a").length;
+        const denom = pass + fail + na;
+        const rate = denom > 0 ? Math.round((pass / denom) * 100) : 0;
+        row("compliance", `${pass} pass · ${fail} fail · ${na} n/a (${rate}%)`, "—");
+    }
+    // Attempts — the newest same-workflow *_ATTEMPT counter (this run).
+    const attempt = events
+        .filter((e) => e.kind === "counter" && e.workflow === workflow && /_ATTEMPT$/.test(e.counterName))
+        .sort((a, b) => b.ts - a.ts)[0];
+    if (attempt)
+        row("attempts", `${attempt.counterName} ${attempt.counterValue}`, "—");
+    if (tableRows.length > 0) {
+        lines.push(`| metric | this run | med·${RUN_BASELINE_WINDOW} |`, "| --- | --- | --- |", ...tableRows, "");
+    }
+    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
+    lines.push(...maxRowsLines);
+    return { ...base, lines };
 }
 // Re-export readline for potential streaming use (optional)
 export { readline };

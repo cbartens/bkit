@@ -1635,6 +1635,14 @@ async function main() {
     telemetryMigrateFlags,
   } = parseArgs(process.argv.slice(2));
 
+  // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
+  // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
+  // prints the same usage and exits 0. parseArgs still defaults no-args to the "help" verb.
+  if (process.argv.slice(2).length === 0) {
+    printUsage();
+    process.exit(2);
+  }
+
   if (verb === "help") {
     printUsage();
     return;
@@ -1644,7 +1652,7 @@ async function main() {
   // Runs `runGrader` over `git diff parentSha..HEAD`, appends `kind:"compliance"`
   // rows to `.bkit/stats.jsonl`, and logs violations.  Always exits 0 (fail-open);
   // callers MUST use the pinned idiom:
-  //   `pnpm bkit comply --phase <phase> || echo "[bkit-comply] grader unavailable, skipping"`
+  //   `pnpm bkit comply --phase=<phase> || echo "[bkit-comply] grader unavailable, skipping"`
   // See DE-34 for the shared-entrypoint + crash-isolation contract.
   if (verb === "comply") {
     try {
@@ -1798,13 +1806,13 @@ async function main() {
       // `jq '.bkitVersion // "unknown"'` bucketed empty versions under an empty key
       // because `//` substitutes only on null/false. One implementation, one answer.
       if (telemetrySubverb === "summary") {
-        const { foldFrom, buildSummary } = await import("./bkit-telemetry.js");
+        const { foldFrom, workflowTelemetry } = await import("./bkit-telemetry.js");
         const statsPath = path.join(process.cwd(), ".bkit", "stats.jsonl");
         if (!fs.existsSync(statsPath)) {
           console.log("[bkit-telemetry] stats.jsonl not found — no telemetry rows yet");
           return;
         }
-        const summary = buildSummary(foldFrom([statsPath]), complyPhase ?? undefined);
+        const summary = workflowTelemetry(foldFrom([statsPath]), complyPhase ?? undefined);
         for (const line of summary.lines) console.log(line);
         return;
       }

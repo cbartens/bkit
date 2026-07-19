@@ -19,9 +19,10 @@
 - **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
 - **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
 - **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
+- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work. If in doubt, treat as in-scope and FINISH.
 - **Scope discipline:** ONLY do what requests ask. NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do NOT bundle.
 - **No speculative scope:** ONLY build for requirements at hand (YAGNI). NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
-- **Investigate before implementing:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
+- **Investigate before implementing:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice {current year}`. Prefer official docs / discovered code over custom.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 - **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, NOT mandate. NEVER skip human gates (design / plan HARD STOP, production merge). Steps inside `/bkit-*` workflows are PRE-APPROVED by human; do NOT request confirmation.
 - **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human approval is a gate, not a goal.
@@ -89,6 +90,7 @@
 - **CI on push (to `dev` / `main`):** PR lanes plus `@live` canary tests against deployed URL.
 - **Debug (on demand):** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
 - **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
+- **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **Secrets from direnv:** ALWAYS check direnv first `direnv exec . printenv {VAR}` before asking for secrets / tokens / env vars. ONLY ask when genuinely absent.

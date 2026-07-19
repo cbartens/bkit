@@ -15,7 +15,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing whether a design is buildable with the approved stack.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -46,7 +46,7 @@ maxTurns: 50
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Ecosystem search: For each major capability the design requires:
    - Search `{framework/runtime} {capability} built-in` → does the stack already solve it?
-   - Search `{problem} best practice 2026` → standard ecosystem approach?
+   - Search `{problem} best practice {current year}` → standard ecosystem approach?
    - Check official docs for the relevant framework/library.
    - Record per finding: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification).
    - **If** an existing solution covers >80% of the requirement → recommend it over custom code and note the remaining 20% gap.

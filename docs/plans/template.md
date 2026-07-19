@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # [Plan Title] Implementation Plan
 
@@ -13,13 +13,17 @@
 > 2. NEVER trust session memory or previous conversation history.
 > 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
+> [!IMPORTANT]
+> **Docs & stack are project-resolved.** Core docs are named inline below; other docs are resolved per project, and no specific stack is assumed.
+>
+> - **Docs:** Universal/core docs (`.agents/docs.md` § Universal Documents — architecture, technology, data-schema, security, design, testing, deployments, observability, and the knowledge/decisions/deferrals/failures ledgers) are named directly below. For any OTHER domain, consult `.agents/docs.md` and cite the specific project doc inline; skip domains your project has no doc for; never invent a path. Never name a doc's internal section (a project's doc may not carry it).
+> - **Stack:** Any concrete tool named below is an **example only**, not a requirement. Swap Vercel / Supabase / Inngest / etc for your project's actual stack; drop rows and checks that do not apply.
+
 ## Context & Goals
 
 [High-level overview of problem/feature. Why is it necessary?]
 
-**Success Criteria:**
-
-- [1-3 bullet points defining "done" (e.g., "Users can upload profile pictures").]
+> Success criteria live ONCE in `Acceptance Scenario → Success Criteria`; each runbook task carries its own `Done when`. Do NOT restate a success list here.
 
 **Related Issues:**
 
@@ -33,7 +37,7 @@
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 > This is the testable contract for the feature. Everything below — implementation, tests, verification — is derived from what you confirm here. If this is wrong, everything downstream is wrong.
 >
-> **You do NOT need to read the rest of this plan.** Focus here. The agent handles the rest.
+> **You only need to read the 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). The agent handles the rest.
 
 ### Spec — what good looks like _(canonical; both design and plan phases follow this)_
 
@@ -42,6 +46,7 @@
 
 - **Narrative:** 1–2 sentences, user POV (not system POV). Describes what the user does and what they get back.
 - **Success Criteria:** <=5 bullets, each measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT implementation steps (e.g. "call API, render component"). If design doc lists fewer or more, prefer the smallest set that still proves the feature works.
+- **Process Sketch _(design produces; plan inherits / refines)_:** the SAME happy-path scenario (`Concrete Example`) and branches (`Edge Cases`) rendered as a glanceable `WHEN X → THEN Y` flow — process, NOT prose; reuse those exact examples, do NOT invent new ones. 3–7 lines so a human sense-checks the top-level process without reading prose. Outcomes, NOT implementation steps.
 - **Key Edge Cases _(design phase produces; plan phase inherits)_:** Design-shaping only — concurrency, conflict resolution, failure modes, cross-feature interactions. NOT trivial input validation (the plan adds those).
 - **Edge Cases _(plan phase)_:** Inherits design's Key Edge Cases verbatim + adds plan-level cases (validation, error paths, boundary conditions).
 - **Concrete Example _(plan phase only)_:** Specific user role + starting state + numbered steps + observable outcome. One scenario, not a list.
@@ -56,6 +61,16 @@
 ### Success Criteria _(inherited from design — do not rewrite)_
 
 [Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Success Criteria. Design-missing → use fallback string per Spec above.]
+
+### Process Sketch _(inherited from design — plan may refine)_
+
+> The `Concrete Example` (happy path) and `Edge Cases` (branches) in process form — the SAME examples, as `WHEN X → THEN Y` not prose. Do NOT invent new examples. Sense-check the top-level process HERE without reading the prose below. Outcomes, not implementation steps.
+
+- **WHEN** [trigger / user action] **→ THEN** [observable outcome]
+- **WHEN** [next step] **→ THEN** [outcome]
+- **IF** [edge case / failure — mirrors an Edge Cases row] **→ THEN** [handling]
+
+_notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN** it is queued and a receipt shown; **IF** the file is malformed **→ THEN** it is rejected inline and nothing is queued.
 
 ### Concrete Example _(plan expands from design)_
 
@@ -79,7 +94,9 @@
 
 ### Derived Test Matrix
 
-> Each row → one Agent Execution Runbook task. Assign each behaviour its tier(s) using the **tier-selection rubric** in `docs/testing.md` § "Which tier does a behaviour need?" (a behaviour may need more than one). Boundary rows carry that doc's rigor — reach the real boundary and assert a ground-truth signal, `@live` for external / deployed boundaries; do not restate those rules here.
+> Each row → one Agent Execution Runbook task. Assign each behaviour its tier(s) using the **tier-selection rubric** in `docs/testing.md` (a behaviour may need more than one). Boundary rows carry that doc's rigor — reach the real boundary and assert a ground-truth signal, `@live` for external / deployed boundaries; do not restate those rules here.
+>
+> **Discrimination (no false-green):** each row's assertion MUST observe the **affected** surface and would FAIL if the behaviour were broken — never assert transport status (200/201) or a derived proxy surface, never mock away the boundary under test.
 
 **Tier key** — use these exact tier names in the `Type` column (they MUST match `docs/testing.md`); pick the **lowest tier that actually exercises** the behaviour (a behaviour may need several):
 
@@ -107,7 +124,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -118,7 +135,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 > [!CAUTION]
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
-> Review proposed names and breaking changes below. This is the only other section requiring your attention.
+> Review proposed names and breaking changes below.
 
 [Proposed names: pages, files, DB tables, routes, API contracts. Breaking changes, DB structure diffs, global layout changes. Use IMPORTANT/WARNING/CAUTION alerts. If none, write "None".]
 
@@ -131,9 +148,29 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ---
 
+## 👤 ⚠️ Open Questions & Assumptions — HUMAN REVIEW REQUIRED
+
+> [!CAUTION]
+> **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
+> Unknowns needing a decision, and assumptions this plan relies on. Each unresolved question is a risk — a wrong assumption breaks everything downstream. If none, write "None".
+
+- **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
+- **Open question:** [decision needed] → [who / how to resolve]
+
+### 👤 ✅ Human Confirmation
+
+- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+
+> [!CAUTION]
+> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
+
+---
+
 ## Alternative Approaches & Recommendations
 
 [Document rejected paths and why. List future phase recommendations.]
+
+**Selection rule:** pick the approach with the best quality-of-end-state, NOT the smallest diff / lowest cost-of-change. In-scope work = complete or explicitly moved to `Out of Scope` — no 90% solutions or silent shortcuts.
 
 ## Out of Scope
 
@@ -161,16 +198,16 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Security & Privacy
 
-> Reference: `docs/security.md` § Security Checklist for New Features. Check all that apply; skip inapplicable rows.
+> Reference: `docs/security.md`. Check all that apply; skip inapplicable rows.
 
-- [ ] **New API route** — `requireFamilyMember`/`requireFamilyMemberHono` applied? Rate-limited if auth-adjacent?
-- [ ] **New DB table/column** — RLS enabled deny-by-default? Family-scoped via `family_members` join?
-- [ ] **Role-gated mutation** — `familyRole` checked at API layer (not RLS alone)?
-- [ ] **User input** — Zod schema in your validators package? `schema.parse()` called in handler?
-- [ ] **PII** — absent from logs? CDC trigger updated if new column on monitored table?
-- [ ] **Redirect URL** — validated via `isAllowedRedirect()`?
-- [ ] **Webhook** — signature verified? Secret in env schema?
-- [ ] **New secret/env var** — added to `packages/env/src/index.ts`? Stored in GCP Secret Manager?
+- [ ] **New API route** — auth guard applied (e.g. a `requireMember`-style check)? Rate-limited if auth-adjacent?
+- [ ] **New DB table/column** — row-level security enabled deny-by-default? Tenant-scoped (e.g. via a membership join)?
+- [ ] **Role-gated mutation** — role checked at the API layer (not RLS alone)?
+- [ ] **User input** — validated by a schema (e.g. Zod) with `parse()` called in the handler?
+- [ ] **PII** — absent from logs? Audit/CDC trigger updated if a new column lands on a monitored table?
+- [ ] **Redirect URL** — validated against an allow-list?
+- [ ] **Webhook** — signature verified? Secret declared in the env schema?
+- [ ] **New secret/env var** — added to the env schema? Stored in the project's secret manager (e.g. GCP Secret Manager / Vercel env)?
 
 _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
@@ -181,20 +218,21 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 ### Core (always verify)
 
 - [ ] **Package Management:** Verify `package.json` for required packages. Ensure `pnpm-lock.yaml` syncs cleanly.
-- [ ] **Dependency Versions:** Run `pnpm outdated` and spot-check CLI versions (`npx supabase --version`, `npx tsc --version`, `pnpm --version`). Flag any outdated dependencies that may silently block or break implementation. Many infrastructure errors stem from version mismatches between CLI tools and their backend services.
+- [ ] **Dependency Versions:** Run `pnpm outdated` and spot-check CLI versions (`npx tsc --version`, `pnpm --version`, plus any stack CLIs — e.g. `npx supabase --version`). Flag any outdated dependencies that may silently block or break implementation. Many infrastructure errors stem from version mismatches between CLI tools and their backend services.
+- [ ] **Existing-solution search (reuse over duplicate):** grep/read for existing implementations of this capability; prefer extending them. Search `{framework} {capability} built-in` / `{problem} best practice {current year}` before writing custom. Every planned `[NEW]` artifact must justify why an existing one can't be evolved.
 - [ ] **User Context:** Verify read/write access to required files. Request any missing user information up front.
 - [ ] **Pending Blockers:** Query the configured issue tracker for open issues (label `blocker`) relevant to this feature.
 - [ ] **Project Context:** Check `docs/knowledge.jsonl` and `docs/decisions.jsonl` for relevant patterns, established decisions, and known gotchas.
-- [ ] **Testing & Quality:** Ensure testing strategy aligns with rules in `docs/testing.md`.
+- [ ] **Testing & Quality:** Ensure testing strategy aligns with `docs/testing.md`.
 - [ ] **Prerequisite Plans:** List `docs/plans/...` plans that must be fully executed and verified BEFORE this one.
 
 ### Conditional (verify only when applicable)
 
-- [ ] **Secrets & Env Vars** _(new API keys / third-party credentials)_: Verify GCP Secret Manager. Fallback to Vercel env vars. Check GCP Service Account IAM roles.
-- [ ] **Schema State** _(any DB reads/writes)_: Confirm exact database state (`docs/data-schema.md`) before finalizing ORM logic.
-- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (monorepo topology). For UI: `docs/design.md`; for mobile: `docs/setup.md` §6. Reference repos at `/Users/christian/Documents/GitHub/create-t3-turbo` and `/Users/christian/Documents/GitHub/next-hono-drizzle`.
-- [ ] **Observability** _(new log points, CDC tables, or OTel spans)_: Verify logging, tracing, and audit conventions align with `docs/observability.md`. Ensure `console.error` structured format, correlation IDs, and CDC/OTel patterns are followed.
-- [ ] **Notifications** _(user-facing alerts or toasts)_: Check `docs/notifications.md` for tier classification (1=inline, 2=toast, 3=persistent bell).
+- [ ] **Secrets & Env Vars** _(new API keys / third-party credentials)_: Verify the project's secret store (e.g. GCP Secret Manager, Vercel env vars) and any service-account / IAM roles.
+- [ ] **Schema State** _(any DB reads/writes)_: Confirm exact database state against `docs/data-schema.md` before finalizing data-access logic.
+- [ ] **Architecture & UI** _(new files, routes, or UI components)_: Validate strict adherence to `docs/architecture.md` (topology); for UI/mobile, `docs/design.md`. Consult any reference repos those docs name.
+- [ ] **Observability** _(new log points, audit tables, or trace spans)_: Verify logging, tracing, and audit conventions align with `docs/observability.md` — e.g. structured `console.error`, correlation IDs, and any CDC/OTel patterns it defines.
+- [ ] **Notifications** _(user-facing alerts or toasts)_: Check the project's notifications doc, if any (resolve via `.agents/docs.md`), for tier classification (e.g. 1=inline, 2=toast, 3=persistent bell).
 
 ### 🔒 Gate 1: Prerequisites Check
 
@@ -202,11 +240,15 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 - [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
 - [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [ ] **Security & Privacy checked:** All applicable `Security & Privacy` rows verified (or "None" justified).
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
 
 ## Data Schema Integration
 
 [Define how this feature interacts with the existing database schema and what changes are required.]
+
+**Invariant conformance** _(multi-store or privileged writes)_: every mutation path maintains every store a read surface depends on, under a compatible privilege, with the returned error actually checked (never swallowed). If a write can fail on privilege/constraint, the plan says how that failure surfaces — not a silent 200.
 
 ### Data Schema Usage (Inputs & Outputs)
 
@@ -218,7 +260,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 ### Data Schema Changes
 
-[List any new tables, new fields, or modifications to existing fields that need to be added to `docs/data-schema.md`. e.g.,
+[List any new tables, new fields, or modifications to existing fields that need to be recorded in `docs/data-schema.md`. e.g.,
 
 - **ADD:** `items.new_field` (type: text)
 - **MODIFY:** `users.role` (added enum value)]
@@ -227,22 +269,24 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 ## Architecture & Component Changes
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers.]
-**CRITICAL:** Justify new file locations using `docs/architecture.md` monorepo topology.
-**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/design.md` and `docs/setup.md` §6.
-**CRITICAL:** Use file search to verify `[MODIFY]` files exist. Otherwise list as `[NEW]`.
-**CRITICAL:** Explicitly include backend actions to execute newly created Zod schema validations (`schema.parse`).
-**CRITICAL:** Observability is automated via Log Drains/CDC (`docs/data-pipeline.md`). You **MUST** mandate `console.error("[Context] Message", payload)` for edge cases escaping auto-capture (orphaned records, fallbacks, API aborts). See `docs/observability.md` for naming conventions, severity mapping, correlation IDs, and vendor label taxonomy.
+**CRITICAL:** Justify new file locations using `docs/architecture.md` topology.
+**CRITICAL:** Prefer `[MODIFY]` (extend existing) over `[NEW]`. Every `[NEW]` MUST state **why an existing artifact can't be evolved** — no parallel reimplementation of an existing capability. Anything it supersedes goes in `Supersession Inventory` as `DELETE`.
+**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/design.md`.
+**CRITICAL:** Use file search to verify `[MODIFY]` files exist (otherwise `[NEW]`). Before changing any exported symbol / signature / contract, grep its callers / importers / dependent schemas / API consumers and list the blast radius — never assume it.
+**CRITICAL:** Explicitly include backend actions to execute newly created schema validations (e.g. Zod `schema.parse`).
+**CRITICAL:** NEVER weaken a gate to pass: no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / deleted assertions / empty `catch` / error-swallowing / mocking-away the unit under test. Fix root causes; a genuinely-warranted per-file opt-out needs explicit human sign-off.
+**CRITICAL:** Where observability is automated (e.g. log drains / CDC), you **MUST** still mandate `console.error("[Context] Message", payload)` for edge cases escaping auto-capture (orphaned records, fallbacks, API aborts). See `docs/observability.md` for naming conventions, severity mapping, correlation IDs, and label taxonomy.
 
 ### Database Migrations
 
-[Define new tables/columns/RLS (`db:diff`). **Do not run `db push` to Dev/Main.** Migrations are pushed **automatically by the Supabase GitHub App Branching Integration** upon PR merge.]
+[Define new tables/columns/RLS (`db:diff`). **Do not run `db push` to Dev/Main.** Migrations are applied by your migration/branching integration (e.g. the Supabase GitHub branching app) upon PR merge — follow `docs/deployments.md`.]
 
-> [\!WARNING]
-> **If adding/removing columns on `users`, `families`, or `user_channels` (CDC-monitored tables):**
+> [!WARNING]
+> **If adding/removing columns on CDC/audit-monitored tables (e.g. `users` and the other tenant tables your project monitors):**
 >
-> 1. Update `knownSafeColumns` in `packages/observability/tests/cdc-schema-assurance.integration.test.ts`.
-> 2. If column contains PII → update `notify_telemetry_audit()` trigger to scrub it.
-> 3. See `docs/data-schema.md` § CDC Audit Triggers for full checklist.
+> 1. Update the monitored-column allow-list in the schema-assurance test (e.g. a `knownSafeColumns` list).
+> 2. If a column contains PII → update the audit trigger to scrub it.
+> 3. See `docs/data-schema.md` for the full checklist.
 
 ### [Component Area 1]
 
@@ -255,7 +299,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 #### [NEW] `path/to/file.ext`
 
-- [Detail purpose, RLS policies, Zod validation, naming.]
+- [Detail purpose, access/RLS policies, input validation (e.g. Zod), naming.]
 
 #### [DELETE] `path/to/file.ext`
 
@@ -263,31 +307,30 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 ### Cron Jobs & Scheduled Tasks
 
-[Define Vercel cron, pg_cron, or Inngest tasks. Must include updating `docs/data-cron-jobs.md`.]
+[Define scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). Record them in the project's cron/scheduled-jobs doc if it has one (resolve via `.agents/docs.md`).]
 
 ## Documentation Updates
 
-> Index: `.agents/docs.md`. Treat as code changes — rewrite prose, no lazy bullet appends.
+> List only docs this change actually touches; delete the rest. Core docs named below; for any OTHER affected doc resolve it via `.agents/docs.md`. Treat as code changes — rewrite prose, no lazy bullet appends.
 
 <!-- prettier-ignore -->
-| File | Change required |
+| Doc | Change required |
 | --- | --- |
 | `docs/knowledge.jsonl` | [learnings, gotchas] |
 | `docs/decisions.jsonl` | [architecture decisions] |
 | `docs/architecture.md` | [topology/component changes] |
 | `docs/data-schema.md` | [new tables/columns] |
-| `docs/data-pipeline.md` | [pipeline changes] |
 | `docs/testing.md` | [new test files/patterns] |
 | `docs/observability.md` | [new log names/spans] |
 
-_Remove rows with no change. Add rows for any other affected docs._
+_Delete rows with no change; add a row per other affected doc (resolve via `.agents/docs.md`)._
 
 ## Rollback Strategy
 
 <!-- prettier-ignore -->
 | Axis | Action | Notes |
 | --- | --- | --- |
-| **DB** | [Migration to revert; safe if additive-only] | `npx supabase db push --linked` after reverting file |
+| **DB** | [Migration to revert; safe if additive-only] | re-apply via your migration CLI (e.g. `npx supabase db push --linked`) after reverting the file |
 | **Code** | [Git revert SHA or feature flag to disable] | `git revert {COMMIT}` |
 | **Risk window** | [Gap between DB migration merge and code deploy] | [e.g., "~2 min Vercel build — migration must be additive"] |
 
@@ -297,9 +340,10 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 [Chronological, step-by-step checklist guiding implementation. **MANDATORY**]
 
-> [\!IMPORTANT]
+> [!IMPORTANT]
 > **Continuous Execution:** Work through this runbook autonomously. Do not pause for user permission at any Gate. Continuously check off `[x]` tasks as you go.
 > **Blockers:** If a task cannot be completed, **DO NOT fail silently**. Create a tracker issue (label `blocker`) with context before stopping, via the configured tracker MCP.
+> **Never drop work silently:** append deferred / out-of-scope items to `docs/deferrals.jsonl` and discovered bugs to `docs/failures.jsonl` (`.bkit/jsonl.md` format; check existing entries first).
 > **Step Isolation:** Do NOT jump ahead. Complete each task fully (including its specific verification and checking its box) before starting the exact next task in the list.
 > **Progress Updates:** After checking off each major task, post a structured summary as a comment on the issue via the configured tracker MCP (`.agents/rules.md` § Tracker MCP).
 
@@ -315,58 +359,46 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Testing & Documentation`.
 
+- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` justified against extending an existing artifact; no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to make a gate pass.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off against the plan.
 
-> [\!IMPORTANT]
-> **Testing Strategy (See `docs/testing.md`):**
+> [!IMPORTANT]
+> **Testing Strategy** (see `docs/testing.md`):
 >
-> - **Backend Pipeline logic MUST be tested in Vitest only**. No Playwright for webhooks/APIs. Mock HTTP and assert DB natively.
-> - **End-to-End Integration Testing**: Core data pipelines require writing at least 1 integration test firing the API vs local DB _without_ ORM/DB mocking (`npm run test:integration`).
-> - **Playwright strictly for UI tests**. Do not use Playwright E2E unless clicking visual DOM components.
+> - **Backend / pipeline logic** — test at the unit/integration tier (e.g. Vitest), not through a browser. Mock HTTP and assert against the real datastore natively.
+> - **End-to-end integration** — core data paths need at least 1 integration test firing the real API against a local DB _without_ ORM/DB mocking.
+> - **Browser E2E for UI only** (e.g. Playwright) — don't drive a browser for non-visual logic.
 >
-> **Playwright E2E Conventions (MANDATORY for new tests):**
->
-> - **Authentication:** A `setup` project (`e2e/auth.setup.ts`) logs in once and saves `storageState` to `playwright/.auth/user.json`. All tests in the `chromium` project **automatically start pre-authenticated** — do NOT add manual login logic.
-> - **Unauthenticated Tests:** Tests for sign-in, sign-up, or account deletion MUST opt out of shared auth:
->   ```typescript
->   import { test, expect } from "@playwright/test"; // NOT from './fixtures'
->   test.use({ storageState: { cookies: [], origins: [] } });
->   ```
-> - **Data Factory:** All test data MUST be generated via `e2e/datafactory/` modules. Never construct inline strings. Use typed factories with overrides to isolate what each test is verifying:
->   ```typescript
->   import { eventData, transientUser } from "./datafactory";
->   const event = eventData({ location: "Custom Venue" }); // override only what matters
->   ```
-> - **New factories:** If your feature introduces a new data type, add a new factory module to `e2e/datafactory/` and re-export it from the barrel `index.ts`.
+> **Browser E2E conventions** — follow the project's test-auth and data-factory conventions (see `docs/testing.md`). Typically: a shared `setup` project logs in once and reuses stored auth state (tests for sign-in / sign-up / account-deletion opt out explicitly), and all test data comes from typed factories with per-test overrides rather than inline strings.
 
 **Mandatory Tasks (Testing & Documentation):**
 
 - [ ] **Verify test coverage against Derived Test Matrix:** Every row in `Acceptance Scenario → Derived Test Matrix` must have a corresponding test task checked off below. Add tasks if any row is uncovered.
 - [ ] **Update existing tests:** Review/adjust unit, integration, and E2E tests for new changes aligned with `docs/testing.md`.
-- [ ] **Write new tests:** Draft tests covering new functionality per Testing Strategy. For Playwright, use `e2e/datafactory/` for test data and follow the `storageState` auth conventions above.
-- [ ] **Verify observability:** Ensure new feature is observable per `docs/observability.md` — structured `console.error("[Context] Message", payload)` for error paths, correlation IDs (`family_id`, `user_id`, `job_id`) propagated in Inngest events, and CDC-tracked tables include audit triggers. Update `docs/observability.md` if new log names, labels, or tracing scopes are introduced.
-- [ ] **Update documentation:** Natively integrate new logic/schemas into `docs/architecture.md`, `docs/data-pipeline.md`, `docs/data-schema.md`, `docs/knowledge.jsonl` and `docs/decisions.jsonl`. Rewrite prose to maintain ground-truth; DO NOT append lazy bullet points.
+- [ ] **Write new tests:** Draft tests covering new functionality per Testing Strategy — reuse the project's data factories and auth-state conventions (above) for browser tests.
+- [ ] **Verify observability:** Ensure the new feature is observable per `docs/observability.md` — e.g. structured `console.error("[Context] Message", payload)` for error paths, correlation IDs propagated through your event pipeline, and audit triggers on monitored tables. Update `docs/observability.md` if new log names, labels, or tracing scopes are introduced.
+- [ ] **Update documentation:** Natively integrate new logic/schemas into every affected doc — `docs/architecture.md`, `docs/data-schema.md`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, plus any others (resolve via `.agents/docs.md`) — as applicable. Rewrite prose to maintain ground-truth; DO NOT append lazy bullet points.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Verification Plan`.
 
-- [ ] **Docs updated:** Every row in `📚 Documentation Updates` completed. `.agents/docs.md` still accurate.
+- [ ] **Docs updated:** Every row in `Documentation Updates` completed. `.agents/docs.md` still accurate.
 - [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** Run `tsc --noEmit` and ESLint to catch syntax/typing/import errors before testing.
-- [ ] **Test Synchronization:** [List existing E2E/Playwright tests to update synchronously to prevent CI failures.]
-- [ ] **Build Configuration:** [Add new mock files/test configs to `exclude` array in `tsconfig.json` to protect Vercel builds.]
+- [ ] **Full local gate suite:** Run the project's complete local gate set — typecheck (`tsc --noEmit`), lint, `format:check`, prose, `slop:delta`, and `bkit check` — plus the unit + in-process integration tests. Do NOT weaken any gate to pass (see the anti-suppression CRITICAL under Architecture & Component Changes).
+- [ ] **Test Synchronization:** [List existing E2E tests (e.g. Playwright) to update synchronously to prevent CI failures.]
+- [ ] **Build Configuration:** [Add new mock files/test configs to `exclude` array in `tsconfig.json` to protect production builds.]
 - [ ] **[Test Type] (`path/to/test.spec.ts`):** [Describe flows/unit/E2E additions. Note data hygiene needs.]
-- [ ] **Apply local migrations:** If new migration files were created, run `npx supabase db push --local` to apply them to the local Docker DB. Without this, integration tests (e.g., CDC schema assurance) will fail against the stale local schema.
-- [ ] **Run all tests:** Execute locally. Pass `pnpm test` and `TEST_REAL_APIS=true pnpm test:integration`. Fix all failures before Gate 4.
+- [ ] **Apply local migrations:** If new migration files were created, apply them to your local DB (e.g. `npx supabase db push --local`). Without this, integration tests (e.g. schema assurance) will fail against the stale local schema.
+- [ ] **Run all tests:** Execute locally. Pass the unit and integration suites (e.g. `pnpm test` and `pnpm test:integration`). Fix all failures before Gate 4.
 
-> [\!IMPORTANT]
-> **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and its reference repos) and `docs/knowledge.jsonl`. Halt if stuck.
+> [!IMPORTANT]
+> **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and any reference repos it names) and `docs/knowledge.jsonl`. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
@@ -376,8 +408,8 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 ### Manual Verification
 
-> [\!WARNING]
-> **Dashboard Ban:** Proactively use local CLIs (`gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
+> [!WARNING]
+> **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
 - [ ] **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
 

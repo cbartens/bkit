@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -44,6 +44,7 @@ maxTurns: 50
    - Narrative: 2–3 sentences, user POV (NOT system POV).
    - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
+   - Process Sketch: Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps.
 8. Preserve strongest approaches. Consolidate Decisions.
 9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
@@ -71,6 +72,10 @@ maxTurns: 50
 ### Key Edge Cases
 
 [Design-shaping cases only — concurrency, conflict resolution, failure modes, cross-feature interactions; initially set to `PENDING`.]
+
+### Process Sketch
+
+[Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps. Initially set to `PENDING`.]
 
 ## Architecture
 

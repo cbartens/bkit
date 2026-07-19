@@ -14,7 +14,8 @@ import {
   resolveGitSha,
   resolveRepoSlug,
   appendLine,
-  buildSummary,
+  workflowTelemetry,
+  humanizeDuration,
   fold,
   foldFrom,
   identity,
@@ -134,9 +135,13 @@ describe("identity — per-kind composite tuples", () => {
     expect(id).toBe("compliance cbartens/bkit build abc123 no-mirror-edit");
   });
 
-  it("outcome: keyed by (repo, prNumber)", () => {
-    const e = outcomeEvent();
-    expect(identity(e)).toBe("outcome cbartens/bkit 42");
+  it("outcome: keyed by (repo, workflow, parentSha) — prNumber fallback when no parentSha", () => {
+    // Generalized per-workflow run row (#234): the run's parentSha is the anchor.
+    const withSha = outcomeEvent({ parentSha: "deadbeef" } as Partial<TelemetryEvent>);
+    expect(identity(withSha)).toBe("outcome cbartens/bkit build deadbeef");
+    // Back-compat: a legacy ship row with no parentSha falls back to its prNumber.
+    const legacy = outcomeEvent();
+    expect(identity(legacy)).toBe("outcome cbartens/bkit build pr42");
   });
 
   it("counter: keyed by (repo, workflow, parentSha, counterName)", () => {
@@ -545,7 +550,7 @@ describe("resolveGitSha — parentSha must be a real SHA before it reaches a row
 //   jq '.bkitVersion // "unknown"' -> buckets "" under an EMPTY key, since jq's //
 //                                substitutes only on null/false
 //   wc -l                     -> counts lines, not parsed rows
-describe("buildSummary — the one telemetry summary", () => {
+describe("workflowTelemetry — ledger-health readout (no workflow)", () => {
   let dir: string;
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-"));
@@ -561,7 +566,7 @@ describe("buildSummary — the one telemetry summary", () => {
   }
 
   it("names the unknown-version bucket instead of leaving it empty", () => {
-    const s = buildSummary(
+    const s = workflowTelemetry(
       foldFrom([
         write([
           counterEvent({ bkitVersion: "4.5.0", parentSha: "aaa" } as Partial<TelemetryEvent>),
@@ -576,7 +581,7 @@ describe("buildSummary — the one telemetry summary", () => {
   });
 
   it("reports 0 malformed as a single 0 when nothing is malformed", () => {
-    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    const s = workflowTelemetry(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
     expect(s.malformedLineCount).toBe(0);
     expect(s.lines[0]).toContain("malformed: 0");
     expect(s.lines[0]).not.toContain("\n"); // the bash emitted "0\n0" here
@@ -585,7 +590,7 @@ describe("buildSummary — the one telemetry summary", () => {
   it("counts malformed lines by parsing, not by regex", () => {
     // `{}` matches the bash guard /^\{.*\}$/ and would be counted VALID, but it is
     // not a telemetry row; a truncated line is what the count is actually for.
-    const s = buildSummary(
+    const s = workflowTelemetry(
       foldFrom([write([counterEvent({ parentSha: "aaa" })], ['{"ts":1,"kind":"coun'])]),
     );
     expect(s.malformedLineCount).toBe(1);
@@ -600,14 +605,15 @@ describe("buildSummary — the one telemetry summary", () => {
         status: "CLOSED",
       } as Partial<TelemetryEvent>),
     ]);
-    const s = buildSummary(foldFrom([p]), "ship");
+    const s = workflowTelemetry(foldFrom([p]), "ship");
     expect(s.rowCount).toBe(2); // two lines on disk
     expect(s.workflowCounts["ship"]).toBe(1); // one entity
-    expect(s.lines.at(-1)).toContain("ship: 1");
+    expect(s.workflow).toBe("ship");
+    expect(s.lines[0]).toContain("**ship close**"); // scoped to the one workflow
   });
 
   it("omits the chain line when no workflow is given", () => {
-    const s = buildSummary(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
+    const s = workflowTelemetry(foldFrom([write([counterEvent({ parentSha: "aaa" })])]));
     expect(s.lines.some((l) => l.includes("chain total"))).toBe(false);
   });
 });
@@ -735,7 +741,7 @@ describe("fold — composite-identity dedup", () => {
     const e3 = outcomeEvent({ ts: 3000, prNumber: 11 } as Partial<TelemetryEvent>);
     const state = fold([e1, e2, e3]);
     expect(state.size).toBe(2);
-    const pr10 = state.get("outcome cbartens/bkit 10");
+    const pr10 = state.get("outcome cbartens/bkit build pr10");
     expect((pr10 as typeof e2).linesAdded).toBe(999);
   });
 
@@ -964,10 +970,10 @@ describe("foldFrom — synthetic archive shard", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildSummary — per-workflow summary signals
+// workflowTelemetry — per-workflow summary signals
 // ---------------------------------------------------------------------------
 
-describe("buildSummary — per-workflow summary signals", () => {
+describe("workflowTelemetry — per-workflow summary signals", () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -983,7 +989,7 @@ describe("buildSummary — per-workflow summary signals", () => {
     fs.writeFileSync(hotPath, appendLine(complianceEvent()) + "\n");
 
     const foldResult = foldFrom([hotPath]);
-    const summary = buildSummary(foldResult);
+    const summary = workflowTelemetry(foldResult);
     expect(summary.rowCount).toBe(1);
     expect(summary.malformedLineCount).toBe(0);
     expect(summary.versionCounts["4.1.4"]).toBe(1);
@@ -1004,12 +1010,109 @@ describe("buildSummary — per-workflow summary signals", () => {
     fs.writeFileSync(hotPath, lines.join("\n") + "\n");
 
     const foldResult = foldFrom([hotPath]);
-    const summary = buildSummary(foldResult);
+    const summary = workflowTelemetry(foldResult);
     expect(summary.maxRowsWarning).toBe(true);
     const warningLine = summary.lines.find(
       (l) => l.includes("[bkit-telemetry]") && l.includes("MAX_ROWS_BEFORE_ROLLUP"),
     );
     expect(warningLine).toBeDefined();
     expect(warningLine).toContain("WARNING");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// workflowTelemetry — this-run + med·5 rolling baseline (#234 follow-up)
+// ---------------------------------------------------------------------------
+
+describe("workflowTelemetry — this-run vs med·5 baseline", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wft-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  function writeStats(rows: TelemetryEvent[]): string {
+    const p = path.join(dir, "stats.jsonl");
+    fs.writeFileSync(p, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return p;
+  }
+
+  it("shows THIS run's values against med·5 of the previous same-workflow runs", () => {
+    // Six build runs; newest (ts 1005) is THIS run. Previous five durations
+    // [600,1200,1800,2400,3000] → median 1800 (30m). This run 1980 (33m).
+    const runs = [600, 1200, 1800, 2400, 3000, 1980].map((dur, i) =>
+      outcomeEvent({
+        ts: 1000 + i,
+        parentSha: `sha${i}`,
+        durationSeconds: dur,
+        frictionAdded: i, // prev five: [0,1,2,3,4] → median 2; this run 5
+      } as Partial<TelemetryEvent>),
+    );
+    const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
+    expect(s.lines).toContain("| metric | this run | med·5 |"); // Markdown table
+    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
+    expect(dline).toContain("1980 (33m)"); // this run
+    expect(dline).toContain("1800 (30m)"); // med·5 of the previous runs
+    const fline = s.lines.find((l) => l.startsWith("| frictionAdded "));
+    expect(fline).toContain("5"); // this run frictionAdded
+    expect(fline).toMatch(/\b2\b/); // med·5 of [0,1,2,3,4]
+  });
+
+  it("prints — for the baseline until at least 3 prior runs exist", () => {
+    const runs = [1000, 2000].map((dur, i) =>
+      outcomeEvent({
+        ts: 1000 + i,
+        parentSha: `s${i}`,
+        durationSeconds: dur,
+      } as Partial<TelemetryEvent>),
+    );
+    const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
+    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
+    expect(dline).toContain("2000"); // this run present
+    expect(dline).toContain("—"); // only one prior → no baseline
+  });
+
+  it("omits absent conditional metrics but shows frictionAdded even at 0", () => {
+    // outcomeEvent carries no reviewIterations/ciTrySuccess/correctiveCommits.
+    const run = outcomeEvent({ parentSha: "x", frictionAdded: 0 } as Partial<TelemetryEvent>);
+    const s = workflowTelemetry(foldFrom([writeStats([run])]), "build");
+    expect(s.lines.some((l) => l.startsWith("| frictionAdded "))).toBe(true);
+    expect(s.lines.some((l) => l.startsWith("| reviewIterations "))).toBe(false);
+    expect(s.lines.some((l) => l.startsWith("| ciTrySuccess "))).toBe(false);
+  });
+
+  it("adds a this-run compliance line matched by parentSha", () => {
+    const run = outcomeEvent({ parentSha: "sha-run", frictionAdded: 1 } as Partial<TelemetryEvent>);
+    const rows = [
+      run,
+      complianceEvent({
+        parentSha: "sha-run",
+        result: "pass",
+        rule: "no-mirror-edit",
+      } as Partial<TelemetryEvent>),
+      complianceEvent({
+        parentSha: "sha-run",
+        result: "fail",
+        rule: "skip-ci-not-head",
+      } as Partial<TelemetryEvent>),
+    ];
+    const s = workflowTelemetry(foldFrom([writeStats(rows)]), "build");
+    const cline = s.lines.find((l) => l.startsWith("| compliance "));
+    expect(cline).toContain("1 pass");
+    expect(cline).toContain("1 fail");
+    expect(cline).toContain("(50%)");
+  });
+});
+
+describe("humanizeDuration", () => {
+  it.each([
+    [45, "45s"],
+    [480, "8m"],
+    [1980, "33m"],
+    [3600, "1h"],
+    [7860, "2h11m"],
+  ])("formats %i seconds as %s", (sec, expected) => {
+    expect(humanizeDuration(sec)).toBe(expected);
   });
 });

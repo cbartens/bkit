@@ -494,7 +494,9 @@ Usage:
                                  a bare \`bkit install\` errors (name the modules below).
                                  Hosts compose: --claude --cursor --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
-                                 module flags). Exits 1 on drift. This is the CI gate.
+                                 module flags). Exits 1 when a managed file needs
+                                 re-rendering; Tier-3 (seed-or-print, e.g. ci.yml) drift
+                                 is an advisory (non-blocking). The CI gate.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
@@ -558,11 +560,14 @@ Usage:
                                  from bkit upgrade — only via this explicit invocation.
                                  --dry-run: show what would be migrated without writing.
   bkit telemetry summary [--phase=<workflow>]
-                                 Print a rollup of the telemetry ledgers — total row count,
-                                 malformed-row count, and bkitVersion spread. The close
-                                 step of every /bkit-* workflow calls this.
-                                 --phase=<workflow>: scope the rollup to one workflow
-                                 (design|plan|build|debug|ship). Read-only: exits 0.
+                                 Per-workflow telemetry report: THIS run's metrics
+                                 (duration, size, friction/deferrals/failures added,
+                                 compliance) against med·5 — the median of the previous 5
+                                 same-workflow runs. The close step of every /bkit-*
+                                 workflow calls this and posts it to the tracker comment.
+                                 --phase=<workflow>: the workflow to report
+                                 (design|plan|build|debug|ship). Without it, prints the
+                                 ledger-health line only. Read-only: exits 0.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, and per-rule compliance

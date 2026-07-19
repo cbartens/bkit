@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer gating a ship on intended-vs-actual completeness and resurfacing declared deferred work.
 **Scope:** As specified by input and Read / Update / Create section.

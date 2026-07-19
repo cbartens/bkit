@@ -30,7 +30,7 @@ Each `kind` lives in ONE file, written by specific processes:
 | Kind | File | Written by |
 | --- | --- | --- |
 | `compliance` | `.bkit/stats.jsonl` | `bkit comply` grader at each workflow close step |
-| `outcome` | `.bkit/stats.jsonl` | `/bkit-ship` close-gate (one row per PR) |
+| `outcome` | `.bkit/stats.jsonl` | every workflow at its close (one run row per workflow run; keyed by `repo`+`workflow`+`parentSha`) |
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design/plan/build/debug/ship) on observed friction |
 | `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover` |
@@ -47,7 +47,7 @@ Each `kind` lives in ONE file, written by specific processes:
 | `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
-| `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship` (part of the dedup tuple for `compliance`/`counter`). |
+| `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship` (part of the dedup tuple for `compliance`/`counter`/`outcome`). |
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
@@ -59,11 +59,11 @@ Each `kind` lives in ONE file, written by specific processes:
 | Kind | Fields (beyond envelope) |
 | --- | --- |
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
-| `outcome` | `prNumber:number`, `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at ship time, folded — not lines; per-cycle is the delta against the previous `outcome` row), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
+| `outcome` | `parentSha?` (run anchor), `prNumber:number?` (ship-only), `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `correctiveCommits:number?`, `reviewIterations:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at close, folded — not lines; per-cycle is the delta against the previous `outcome` row), `frictionAdded:number?`, `deferralsAdded:number?`, `failuresAdded:number?` (per-run deltas — rows THIS run added to each ledger, counted from `workflow`+`ts>=`workflow-started), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
-| `friction` | `key`, `category:"human-confirm"\|"permission-prompt"\|"agent-rework"\|"manual-install"\|"tool-failure"\|"destructive-backout"\|"other"`, `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row). |
-| `deferral` | `key`, `type:"issue"\|"feature"`, `category`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
-| `failure` | `key`, `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
+| `friction` | `key`, `category` (§ Categories), `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row), `confidence?:number`, `lastConfirmed?:number`, `recurrenceCount?:number`. |
+| `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
+| `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 
@@ -143,6 +143,41 @@ Where a kind has BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): 
 - NOT the `bkit install` preflight `blocker`/`advisory` scale — a different axis.
 - Pick the level the ROW earns. A ledger where every row is `LOW` is as useless as no severity at all.
 
+## Categories
+
+Free-form string; pick the closest term, `other` if none fit. `deferral` + `failure` use the domain set; `friction` uses the friction set — do NOT mix.
+
+**Domain — `deferral` + `failure`:**
+
+<!-- prettier-ignore -->
+| Term | Covers |
+| --- | --- |
+| `agentic` | agent / workflow / prompt / orchestration behaviour |
+| `correctness` | logic / behaviour bugs in shipped code |
+| `testing` | tests, coverage, flaky / intermittent tests (see note below) |
+| `infra` | CI, build, packaging, distribution, deploy, environment |
+| `tooling` | CLI, dev scripts, local tooling |
+| `observability` | logging, telemetry, tracing, metrics |
+| `security` | auth, secrets, input validation, data exposure |
+| `architecture` | structural / design |
+| `docs` | documentation |
+| `other` | none of the above |
+
+**Flaky / intermittent tests** are a `failure` row with `category:"testing"`: `key` = spec path + test title, minted once; every re-observation is a same-`key` append (§ Updating a Row), so flake-count = the same-`key` row count and first / last `ts` = first- / last-seen. Do NOT add a pass-rate or counter field.
+
+**Friction — `friction`:**
+
+<!-- prettier-ignore -->
+| Term | Covers |
+| --- | --- |
+| `human-confirm` | human confirmation prompt |
+| `permission-prompt` | tool / permission approval prompt |
+| `agent-rework` | agent redo / self-correction |
+| `manual-install` | manual dependency / tool install |
+| `tool-failure` | tool / command error |
+| `destructive-backout` | reverted a destructive action |
+| `other` | none of the above |
+
 ## Updating a Row
 
 These fields change after first write:
@@ -153,24 +188,13 @@ These fields change after first write:
 | `status` | work closes (`OPEN` -> `CLOSED`), or a decision is `SUPERSEDED`. |
 | `remediation` | the fix is known — usually AFTER the row was logged mid-workflow. |
 | `severity` | re-triage says it was worse or milder than first thought. |
-| `confidence` | the same thing recurs (raise) or is contradicted (lower). |
-| `lastConfirmed` | re-observed. |
-| `recurrenceCount` | it happens again. |
+| `confidence` | (`friction` only) the same thing recurs (raise) or is contradicted (lower). |
+| `lastConfirmed` | (`friction` only) re-observed. |
+| `recurrenceCount` | (`friction` only) it happens again. |
 
 **Update by APPENDING a new row with the SAME `key`, never by editing the old line.** `fold()` takes last-wins by `ts`; the older rows remain as history. A recurrence and an update are the same operation.
 
-Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry.
-
-One deferral, three rows, in append order — raised, analysed, closed (envelope fields trimmed for readability; on disk each is a full single-line row):
-
-<!-- prettier-ignore -->
-```jsonl
-{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
-{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "#268", "README.md"] }
-{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "#268", "PR-412", "e93da12"] }
-```
-
-Same `key` throughout makes them one entry; `fold` returns only the third. Each `ts` is dated, so "how long open" and "time to fix" fall out of the ledger.
+Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry. Same `key` throughout makes the rows one entry; `fold` returns only the last, so "how long open" and "time to fix" fall out of the dated `ts` values. The row-update lifecycle in § Examples shows one deferral as three appended rows — raised, analysed, closed.
 
 **Triage** — sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that has moved on — is this operation: append a same-`key` row with `status: "CLOSED"`, the `references` you now have (PR, commit, closing issue), and a re-triaged `severity` if it earned one.
 
@@ -200,7 +224,7 @@ Identity is this tuple, NOT bare `ts`:
 | Kind | Identity tuple |
 | --- | --- |
 | `compliance` | `(repo, workflow, parentSha, rule)` |
-| `outcome` | `(repo, prNumber)` |
+| `outcome` | `(repo, workflow, parentSha)` — `prNumber`/`ts` fallback on legacy rows |
 | `counter` | `(repo, workflow, parentSha, counterName)` |
 | `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` | `(kind, repo, key)` |
 
@@ -215,7 +239,7 @@ No separate schema version — `bkitVersion` is the only version stamp. Readers 
 
 ## Examples
 
-Indented here for readability — **on disk each row is a single physical line** (see § Write Idiom). One example per ledger:
+Indented here for readability — **on disk each row is a single physical line** (see § Write Idiom). One example per ledger, then a row-update lifecycle. Each shows every field its kind allows — including the `?`-optional ones (§ Per-Kind Fields) a real row omits when they do not apply:
 
 `.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`):
 
@@ -230,6 +254,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "step": "ship-close-workflow",
   "rule": "no-mirror-edit",
   "result": "pass",
+  "evidence": "no mirror files present in the diff",
   "phase": "ship",
   "parentSha": "a1b2c3d"
 }
@@ -240,6 +265,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "bkitVersion": "4.2.0",
   "workflow": "ship",
   "step": "ship-close-gate",
+  "parentSha": "a1b2c3d",
   "prNumber": 412,
   "linesAdded": 120,
   "linesDeleted": 34,
@@ -247,8 +273,16 @@ Indented here for readability — **on disk each row is a single physical line**
   "filesChanged": 7,
   "taskCount": 5,
   "durationSeconds": 2400,
+  "ciTrySuccess": 1,
+  "correctiveCommits": 0,
+  "reviewIterations": 1,
   "deferrals": 1,
-  "failures": 0
+  "failures": 0,
+  "frictionAdded": 1,
+  "deferralsAdded": 1,
+  "failuresAdded": 0,
+  "sweepVerdict": "clean",
+  "coverage": { "unit": { "lines": 87.4, "branches": 79.1, "functions": 90.2, "statements": 87.0 }, "integration": { "lines": 68.3 }, "e2e": { "lines": 41.5 } }
 }
 {
   "ts": 1718900000200,
@@ -284,6 +318,9 @@ Indented here for readability — **on disk each row is a single physical line**
   "remediation": "commit via a temp branch (docs/ship-{FID}) from dev in a temp worktree, then FF-merge dev",
   "source": "orchestrator",
   "status": "OPEN",
+  "confidence": 0.9,
+  "lastConfirmed": 1721578400000,
+  "recurrenceCount": 2,
   "references": ["342", "docs/plans/202607/342-injection-hardening-plan.md"]
 }
 ```
@@ -328,6 +365,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "subagent": "bkit-debug-failure-diagnose",
   "model": "claude-opus-4-8",
   "key": "bkit-install-flips-core-bare",
+  "category": "tooling",
   "summary": "bkit install flips core.bare=true",
   "severity": "HIGH",
   "description": "`pnpm bkit install` leaves git config core.bare=true, which breaks git checkout/status afterward",
@@ -375,9 +413,19 @@ Indented here for readability — **on disk each row is a single physical line**
   "model": "claude-opus-4-8",
   "key": "bkit-distribution-via-github-packages",
   "summary": "distribute @cbartens/bkit via the GitHub Packages npm registry",
+  "description": "move @cbartens/bkit off the github: git-dep install onto the GitHub Packages npm registry",
   "rationale": "eliminates four friction classes of the git-dep model: two-surface git auth, the CI auth shim, the prepare:tsc OOM trap, and pnpm dropping the version pin",
   "alternatives": "npmjs.org public (package is private), continue git-dep, Releases tarball, vendor per-consumer, dual-publish git+registry",
   "status": "ACTIVE",
   "references": ["DE-3", "ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml", "KN-1"]
 }
+```
+
+Row-update lifecycle — the same `pnpm-tag-drop-readme-note` deferral as three appended rows, raised -> analysed -> closed; same `key`, so `fold` returns only the last, and the dated `ts` values give "how long open" and "time to fix". Envelope fields trimmed to show the delta; on disk each is a full single-line row:
+
+<!-- prettier-ignore -->
+```jsonl
+{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
+{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "#268", "README.md"] }
+{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "#268", "PR-412", "e93da12"] }
 ```

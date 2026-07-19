@@ -1,7 +1,7 @@
 ---
 description: "Ship Feature — Autonomous merge and archive"
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
@@ -20,6 +20,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 > - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+> - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -376,7 +377,9 @@ description: "Ship Feature — Autonomous merge and archive"
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$RESOLVE_VERDICT" \
      '{type:"step-done", workflow:"ship", step:"ship-conflict-resolve", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve"
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve${AUTO_ROUTE_SUFFIX}"
    ```
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
@@ -490,10 +493,12 @@ description: "Ship Feature — Autonomous merge and archive"
      (
        cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
        git fetch origin dev "feat/{FID}"
+       AUTO_ROUTE_SUFFIX=""
+       echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
        if [ "$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)" = "CONFLICTING" ] \
           && git merge-tree --write-tree origin/dev "origin/feat/{FID}" >/dev/null 2>&1; then
          echo "GitHub reports CONFLICTING but git merges origin/dev into feat/{FID} cleanly — refreshing the PR head to force a mergeability recompute" >&2
-         git -C "{WORKTREE_PATH}" merge origin/dev -m "chore({FID}): sync dev" \
+         git -C "{WORKTREE_PATH}" merge origin/dev -m "chore({FID}): sync dev${AUTO_ROUTE_SUFFIX}" \
            && git -C "{WORKTREE_PATH}" push origin "feat/{FID}"
        fi
        gh pr update-branch {PR_NUMBER} 2>/dev/null || true
@@ -732,13 +737,7 @@ description: "Ship Feature — Autonomous merge and archive"
    if [ "$COMPLETED_HIT" -gt 0 ]; then UPDATE_DOCS_VERDICT=PASS; else UPDATE_DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-6. Emit telemetry summary:
-   ````bash
-   SUMMARY="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"
-   TELEMETRY_SUMMARY=$(pnpm bkit telemetry summary --phase=ship 2>&1 || echo "[bkit-telemetry] summary unavailable, skipping")
-   printf '\n## Telemetry Summary\n\n```\n%s\n```\n' "$TELEMETRY_SUMMARY" >> "$SUMMARY"
-   ````
-7. Update status and commit:
+6. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -750,14 +749,14 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -- docs/ && git commit --allow-empty -m "docs({FID}): update-docs-summary" -- docs/
    ```
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. Route:
+8. Route:
    - **If** `UPDATE_DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
    - **If** `UPDATE_DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -873,7 +872,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 1. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
    ```bash
-   pnpm bkit comply --phase ship || echo "[bkit-comply] grader unavailable, skipping"
+   pnpm bkit comply --phase=ship || echo "[bkit-comply] grader unavailable, skipping"
    ```
 2. Assert squash-merge CI run finished and its test tiers passed:
    ```bash
@@ -948,6 +947,10 @@ description: "Ship Feature — Autonomous merge and archive"
    else
      DURATION_S=0
    fi
+   SHIP_START_MS=$(( ${START_S:-0} * 1000 ))
+   FRICTION_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/.bkit/friction.jsonl" 2>/dev/null || echo "0"); FRICTION_ADDED=$((FRICTION_ADDED + 0))
+   DEFERRALS_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_ADDED=$((DEFERRALS_ADDED + 0))
+   FAILURES_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_ADDED=$((FAILURES_ADDED + 0))
    COVERAGE=null
    for COV_TIER in unit integration e2e; do
      COV_SUMMARY="$REPO_ROOT/coverage/$COV_TIER/coverage-summary.json"
@@ -960,6 +963,7 @@ description: "Ship Feature — Autonomous merge and archive"
      --arg repo "$REPO_SLUG" \
      --arg bkitVersion "$BKIT_VER" \
      --arg step "ship-close-workflow" \
+     --arg parentSha "$PARENT_SHA" \
      --argjson prNumber "{PR_NUMBER}" \
      --argjson linesAdded "$LINES_ADDED" \
      --argjson linesDeleted "$LINES_DELETED" \
@@ -969,8 +973,11 @@ description: "Ship Feature — Autonomous merge and archive"
      --argjson durationSeconds "$DURATION_S" \
      --argjson deferrals "$DEFERRALS_COUNT" \
      --argjson failures "$FAILURES_COUNT" \
+     --argjson frictionAdded "$FRICTION_ADDED" \
+     --argjson deferralsAdded "$DEFERRALS_ADDED" \
+     --argjson failuresAdded "$FAILURES_ADDED" \
      --argjson coverage "$COVERAGE" \
-     '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | (if $coverage != null then .coverage = $coverage else . end)' \
+     '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
@@ -986,13 +993,17 @@ description: "Ship Feature — Autonomous merge and archive"
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/ship-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
    printf '%s\n' "$ARTIFACTS"
+   TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=ship) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
+   printf '\n%s\n' "$TELEMETRY"
    ```
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 13 — Close Workflow
-   Artifacts:
+   #### Artifacts
    {ARTIFACTS}
+   #### Telemetry
+   {TELEMETRY}
    ```
 7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
