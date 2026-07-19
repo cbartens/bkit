@@ -1044,7 +1044,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 1. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
    ```bash
-   pnpm bkit comply --phase ship || echo "[bkit-comply] grader unavailable, skipping"
+   pnpm bkit comply --phase=ship || echo "[bkit-comply] grader unavailable, skipping"
    ```
 2. Assert squash-merge CI run finished and its test tiers passed:
    ```bash

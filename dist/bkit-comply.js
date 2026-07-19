@@ -3,7 +3,7 @@
 // Implements the #232 (consolidated into #234) grader:
 //   - Pure functions over `git diff parentSha..HEAD` + filesystem state.
 //   - Deterministic, advisory (NEVER gating). Fail-open: callers use the idiom
-//     `pnpm bkit comply --phase {p} || echo "[bkit-comply] grader unavailable, skipping"`.
+//     `pnpm bkit comply --phase={p} || echo "[bkit-comply] grader unavailable, skipping"`.
 //   - Emits one `kind:"compliance"` row per run×rule into `.bkit/stats.jsonl`.
 //   - Surfaces violations in ship-summary.md.
 //

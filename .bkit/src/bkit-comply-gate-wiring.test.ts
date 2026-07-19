@@ -2,7 +2,7 @@
 //
 // Done-when contract (WS2-T6):
 //   - Every wired close gate contains the PINNED fail-open idiom:
-//     `pnpm bkit comply --phase {phase} || echo "[bkit-comply] grader unavailable, skipping"`
+//     `pnpm bkit comply --phase={phase} || echo "[bkit-comply] grader unavailable, skipping"`
 //   - No invocation sits on its own line under a bare `set -e` block that would
 //     defeat the `|| echo` guard.
 //   - Rollout: every workflow close is wired. design/plan/build/debug grade via
@@ -107,8 +107,8 @@ function noUnguardedComplyUnderSetE(content: string): { ok: boolean; violation?:
 describe("bkit-ship.md — comply gate wiring (ship-only rollout)", () => {
   const content = readWorkflow("bkit-ship.md");
 
-  it("contains at least one pnpm bkit comply --phase ship invocation", () => {
-    expect(content).toContain("pnpm bkit comply --phase ship");
+  it("contains at least one pnpm bkit comply --phase=ship invocation", () => {
+    expect(content).toContain("pnpm bkit comply --phase=ship");
   });
 
   it("every comply invocation carries the || echo fail-open guard on the same line", () => {
@@ -129,8 +129,8 @@ describe("bkit-ship.md — comply gate wiring (ship-only rollout)", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("the comply invocation specifies --phase ship", () => {
-    expect(content).toContain("--phase ship");
+  it("the comply invocation specifies --phase=ship", () => {
+    expect(content).toContain("--phase=ship");
   });
 });
 
@@ -148,8 +148,8 @@ function readScript(name: string): string {
 describe("bkit-workflow-telemetry.sh — comply grader wiring", () => {
   const script = readScript("bkit-workflow-telemetry.sh");
 
-  it("invokes pnpm bkit comply --phase for the passed workflow", () => {
-    expect(script).toContain('pnpm bkit comply --phase "$WF"');
+  it("invokes pnpm bkit comply --phase= for the passed workflow", () => {
+    expect(script).toContain('pnpm bkit comply --phase="$WF"');
   });
 
   it("guards the comply invocation with || echo on the same line", () => {

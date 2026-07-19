@@ -12,7 +12,7 @@ Generalises the workflow telemetry that landed in 4.6.0 from a build-only summar
 
 ### Added
 
-- **A reusable workflow-telemetry script.** `.bkit/scripts/bkit-workflow-telemetry.sh <workflow> <yyyymm> <fid>` centralises the run-row write, the `bkit comply` grade, and the summary emit that the five phase workflows previously each open-coded as divergent inline bash — one command, one behaviour. (records #234)
+- **A reusable workflow-telemetry script.** `.bkit/scripts/bkit-workflow-telemetry.sh <workflow> <yyyymm> <fid>` centralises the run-row write, the `bkit comply` grade, and the summary emit for the design / plan / build / debug workflows — one command in place of four divergent inline-bash blocks (ship keeps its own richer inline write). (records #234)
 
 ### Changed
 

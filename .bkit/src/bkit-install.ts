@@ -1652,7 +1652,7 @@ async function main() {
   // Runs `runGrader` over `git diff parentSha..HEAD`, appends `kind:"compliance"`
   // rows to `.bkit/stats.jsonl`, and logs violations.  Always exits 0 (fail-open);
   // callers MUST use the pinned idiom:
-  //   `pnpm bkit comply --phase <phase> || echo "[bkit-comply] grader unavailable, skipping"`
+  //   `pnpm bkit comply --phase=<phase> || echo "[bkit-comply] grader unavailable, skipping"`
   // See DE-34 for the shared-entrypoint + crash-isolation contract.
   if (verb === "comply") {
     try {

@@ -22,7 +22,7 @@ _keys() { # <file> <jq-filter>
   printf '%s' "${n:-0}"
 }
 
-pnpm bkit comply --phase "$WF" >&2 || echo "[bkit-comply] grader unavailable, skipping" >&2
+pnpm bkit comply --phase="$WF" >&2 || echo "[bkit-comply] grader unavailable, skipping" >&2
 
 BASE_SHA=$(jq -rs --arg w "$WF" '[.[]|select(.type=="workflow-started" and .workflow==$w)]|last|.parentSha // ""' "$STATUS" 2>/dev/null || echo "")
 START_AT=$(jq -rs --arg w "$WF" '[.[]|select(.type=="workflow-started" and .workflow==$w)]|last|.at // ""' "$STATUS" 2>/dev/null || echo "")
