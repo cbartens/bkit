@@ -62,6 +62,7 @@
     ".bkit/scripts/bkit-slop-type-suppression.mjs": "f9eb65fe10286e59e81950e7f9e980a2b04ebce8b4485344bf3b698eba91934b",
     ".github/workflows/renovate.yml": "b7ae6892521643844ad0d69d4f337b8853d97bf803d73d346fabd4867c6d55e4",
     ".bkit/scripts/bkit-counter-bus-config.sh": "cafabcb93ed66c83e15e4b54f96b126a24e6cf4b539334b21df1a2d52cd5ca45",
-    ".bkit/scripts/bkit-counter-bus.sh": "8b3c0ab2e6e19585c872c6bb82126cc42944a1665ebf2ae4e6c197072b35b815"
+    ".bkit/scripts/bkit-counter-bus.sh": "8b3c0ab2e6e19585c872c6bb82126cc42944a1665ebf2ae4e6c197072b35b815",
+    ".bkit/scripts/bkit-workflow-telemetry.sh": "f174f42c0371b2e2ca298d6f7b70295b93fd998f7a75cff027380bb11bebcb1a"
   }
 }

@@ -1806,13 +1806,13 @@ async function main() {
       // `jq '.bkitVersion // "unknown"'` bucketed empty versions under an empty key
       // because `//` substitutes only on null/false. One implementation, one answer.
       if (telemetrySubverb === "summary") {
-        const { foldFrom, buildSummary } = await import("./bkit-telemetry.js");
+        const { foldFrom, workflowTelemetry } = await import("./bkit-telemetry.js");
         const statsPath = path.join(process.cwd(), ".bkit", "stats.jsonl");
         if (!fs.existsSync(statsPath)) {
           console.log("[bkit-telemetry] stats.jsonl not found — no telemetry rows yet");
           return;
         }
-        const summary = buildSummary(foldFrom([statsPath]), complyPhase ?? undefined);
+        const summary = workflowTelemetry(foldFrom([statsPath]), complyPhase ?? undefined);
         for (const line of summary.lines) console.log(line);
         return;
       }

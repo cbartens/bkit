@@ -98,7 +98,7 @@ Re-runnable: source workflows carry the wired variants; switching trackers (`--t
 
 - **`git push --force-with-lease` on the personal branch:** the Step 2 `git rebase origin/dev` rewrites SHAs, so a plain push is non-fast-forward. Mirrors `rules.md` § Force push. Never applies to `dev` / `main`.
 - **`BKIT_VER` reads `pinnedVersion`, not `version`,** and takes the `[ -z … ] &&` fallback rather than a piped one: a pipeline's status is its LAST command's, so a `| tr … || echo` fallback never fires on a failed grep.
-- **`deferrals` / `failures` on the ship `outcome` row are a CUMULATIVE count of DISTINCT `key`s, not lines:** rows update by appending a same-`key` row (§ Updating a Row in `.bkit/jsonl.md`), so `wc -l` double-counts a deferral the moment triage closes it. Readers derive this cycle from the delta against the previous outcome row — see `newFailuresThisRun` in `bkit-analysis.ts`.
+- **`deferrals` / `failures` on the `outcome` row are a CUMULATIVE count of DISTINCT `key`s, not lines:** rows update by appending a same-`key` row (§ Updating a Row in `.bkit/jsonl.md`), so `wc -l` double-counts a deferral the moment triage closes it. Readers derive this cycle from the delta against the previous outcome row — see `newFailuresThisRun` in `bkit-analysis.ts`.
 - **CI-Dispatch kernel constants:** `POLL_BUDGET_S` / `POLL_INTERVAL_S` give ATTEMPTS = BUDGET / INTERVAL = 6. `poll_dispatch` echoes `found` / `none` / `err` and never `set -e`s out. Self-heal is capped at 1 and asserts the re-trigger suffix matches the close-workflow suffix. The `ciDispatch` verdict is always written onto the step-done record as an additive field.
 - **Open-PR pre-flight (EC-1 in #261):** a blind `gh pr create` on a branch with an existing open PR errors, triggers retry, then Failure Path — so build detects it first. Idempotent-resume (reuse the existing PR instead of Failure Path) is not built.
 - **Build's close-workflow push does not trigger CI** — no PR exists yet; `gh pr create` on the pushed HEAD is the single CI-triggering event.
@@ -557,19 +557,20 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 ### `bkit [auto route]` Marker Propagation
 
-`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-cloud.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**) — ONLY when the issue carried `bkit:auto` at close time. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
+`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-cloud.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**), and re-carried onto any later bkit-driven commit that can become the CI-triggering feat-branch HEAD — the ship **dev-sync merge** (`chore({FID}): sync dev`) and **conflict-resolve** commit — ONLY when the issue carried `bkit:auto`. The re-carry is required because the gate reads `head_commit.message` of a single commit (the feat-branch HEAD), so any unmarked commit landing on top of the marked close-workflow commit buries the marker; the ship dev-sync merge is the bkit-driven analogue of an ad-hoc `merge origin/dev` that unblocks CI. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
 
 **Placement logic (mode-dependent):**
 
 - `/bkit-build` Step 18: a `bkit:auto` presence re-read happens BEFORE the close-workflow commit. If `bkit:auto` present → commit subject = `chore({FID}): close-workflow bkit [auto route]`. This close-workflow commit IS the feat-branch HEAD that fires CI → free-tier gate checks `head_commit.message` for `bkit [auto route]`.
 - `/bkit-debug` Step 12 (PR-mode): same pattern — `bkit:auto` re-read before the close-workflow commit (Step 12 sub-step 3). Marker on close-workflow commit. The create-pr commit (Step 12 sub-step 9) does NOT run in PR-mode (`TRIGGER_PR=0`).
 - `/bkit-debug` Step 12 (local-mode): `bkit:auto` re-read before the create-pr commit (Step 12 sub-step 9). Marker on create-pr commit (the CI-triggering HEAD in local-mode, not close-workflow).
+- `/bkit-ship` Step 4 (conflict-resolve) and Step 6 (dev-sync merge): both re-derive `AUTO_ROUTE_SUFFIX` from the Step-1 `LABELS` read (`echo "${LABELS:-}" | grep -q 'bkit:auto'`, fail-closed to empty) and append it to the commit / merge subject — so an opted-in branch keeps the marker when either commit becomes the CI-triggering feat-branch HEAD instead of the original close-workflow commit. Ship does not do a fresh MCP re-read here (the ship-start `LABELS` is the opt-in signal); the cloud gate's in-job `bkit:auto` re-check remains the live kill switch.
 
 **Why the re-read must precede the commit (R2-1/R2-2 ordering fix):** the existing kill-switch re-read at build Step 18 sub-step 4 / debug Step 12 sub-step 11 runs AFTER the commit + push — it cannot source the marker on a commit that already exists. A fresh `bkit:auto` read BEFORE the commit construction is the authoritative "at close time" signal.
 
 **Coexistence with `bkit [verbose ci]`:** in debug local-mode, both markers may appear on the same commit subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. The HEAD-Subject Assertion treats both as legitimate (neither is a suppressor). The two-tier CI gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — the `bkit [verbose ci]` suffix does not interfere.
 
-**Cleanup:** the marker is self-clearing per push — only close-workflow + debug re-trigger commits carry it; all other workflow commits never have it. No PR-title edit needed (unlike `bkit [verbose ci]` in debug PR-mode); the CI auto-route fires on the commit message, not the PR title.
+**Cleanup:** the marker is self-clearing per push — only close-workflow, debug re-trigger, and ship dev-sync / conflict-resolve commits carry it; all other workflow commits never have it. No PR-title edit needed (unlike `bkit [verbose ci]` in debug PR-mode); the CI auto-route fires on the commit message, not the PR title.
 
 ### `bkit [verbose ci]` Marker Propagation
 
@@ -957,6 +958,7 @@ Precedence: `bkit [force build]` on head commit wins.
 | `chore({FID}): close-workflow` (build Step 18 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
 | `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
+| `chore({FID}): conflict-resolve` (ship Step 4) / `chore({FID}): sync dev` (ship Step 6 dev-sync merge) — opted-in | none / `bkit [auto route]` (conditional on `bkit:auto`, from Step-1 `LABELS`) — re-carries the marker onto the feat-branch HEAD so a bkit-driven conflict / dev-sync merge does not bury it (the ad-hoc `merge origin/dev` that buried it in a consumer is the human analogue) |
 
 **CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject. The CI-Dispatch Gate below is the enforcement mechanism — see § CI-Dispatch Gate.
 
@@ -1203,7 +1205,7 @@ Orchestrator behavior:
 - **Found-bug:** NEVER silently drop a discovered bug → append a `kind:"failure"` row to `docs/failures.jsonl` immediately.
 - **Friction/stats:** workflows write `friction` rows to `.bkit/friction.jsonl` and `counter`/`compliance`/`outcome` rows to `.bkit/stats.jsonl` at close/summary steps.
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates a workflow.
-- **Summary read:** close steps emit a `[bkit-telemetry]` summary line (rows / size / malformed / per-`bkitVersion` counts); `> 5000` rows → grep-able `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
+- **Summary read:** each workflow's close writes its run row, grades compliance, then posts a per-workflow telemetry report (this run's metrics vs `med·5` — the median of the previous 5 same-workflow runs) into the tracker comment; `> 5000` rows in `stats.jsonl` → grep-able `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
 
 ## Authoring Checklist for New / Refined Workflows
 

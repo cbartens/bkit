@@ -5,11 +5,9 @@
 //     `pnpm bkit comply --phase {phase} || echo "[bkit-comply] grader unavailable, skipping"`
 //   - No invocation sits on its own line under a bare `set -e` block that would
 //     defeat the `|| echo` guard.
-//   - Per-phase rollout decision: ship-only (smallest-first).
-//
-// Rollout decision (WS2-T6): ship-only first.
-//   Design, plan, build, debug workflows do NOT carry the comply invocation yet.
-//   This test asserts the current wired set and will be extended phase-by-phase.
+//   - Rollout: every workflow close is wired. design/plan/build/debug grade via
+//     the shared `.bkit/scripts/bkit-workflow-telemetry.sh` at their close step;
+//     ship inline at its close gate — each feeding the per-workflow telemetry report.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -137,17 +135,46 @@ describe("bkit-ship.md — comply gate wiring (ship-only rollout)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Non-wired workflows — rollout decision: ship-only (design/plan/build/debug not yet wired)
+// Non-ship workflows — comply runs from the shared close script
+// (.bkit/scripts/bkit-workflow-telemetry.sh), invoked at each workflow's close.
 // ---------------------------------------------------------------------------
 
-const NON_WIRED_PHASES = ["design", "plan", "build", "debug"] as const;
+const NON_SHIP_PHASES = ["design", "plan", "build", "debug"] as const;
 
-describe("non-wired workflows — comply NOT yet wired (ship-only rollout, WS2-T6 decision)", () => {
-  for (const phase of NON_WIRED_PHASES) {
-    it(`bkit-${phase}.md does NOT contain pnpm bkit comply (not yet wired)`, () => {
-      const content = readWorkflow(`bkit-${phase}.md`);
-      // This assertion documents the current rollout state.
-      // When a phase is wired, move it to the wired describe block above.
+function readScript(name: string): string {
+  return fs.readFileSync(path.resolve(__dirname, "../scripts", name), "utf8");
+}
+
+describe("bkit-workflow-telemetry.sh — comply grader wiring", () => {
+  const script = readScript("bkit-workflow-telemetry.sh");
+
+  it("invokes pnpm bkit comply --phase for the passed workflow", () => {
+    expect(script).toContain('pnpm bkit comply --phase "$WF"');
+  });
+
+  it("guards the comply invocation with || echo on the same line", () => {
+    expect(findComplyInvocations(script).length).toBeGreaterThan(0);
+    expect(allInvocationsAreGuarded(script)).toBe(true);
+  });
+
+  it("comply guard uses the [bkit-comply] prefix", () => {
+    for (const ctx of findComplyInvocations(script)) expect(ctx).toContain("[bkit-comply]");
+  });
+
+  it("has no unguarded comply under a bare set -e", () => {
+    expect(noUnguardedComplyUnderSetE(script).ok).toBe(true);
+  });
+});
+
+describe("non-ship workflows — invoke the close script, no inline comply", () => {
+  for (const phase of NON_SHIP_PHASES) {
+    const content = readWorkflow(`bkit-${phase}.md`);
+
+    it(`bkit-${phase}.md invokes bkit-workflow-telemetry.sh ${phase} at close`, () => {
+      expect(content).toContain(`bkit-workflow-telemetry.sh" ${phase} `);
+    });
+
+    it(`bkit-${phase}.md has no inline pnpm bkit comply (delegated to the script)`, () => {
       expect(content).not.toContain("pnpm bkit comply");
     });
   }

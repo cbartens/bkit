@@ -42,7 +42,8 @@ export interface OutcomeRow {
   ts: number;
   repo: string;
   bkitVersion: string;
-  prNumber: number;
+  /** Ship-only: the merged PR number. Absent on non-ship workflow run rows (#234). */
+  prNumber?: number;
   linesAdded: number;
   linesDeleted: number;
   linesChanged: number;
