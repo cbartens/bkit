@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 **Scope:** As specified by input and Read / Update / Create section.

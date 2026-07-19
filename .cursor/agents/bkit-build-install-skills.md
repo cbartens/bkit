@@ -8,7 +8,7 @@ tools:
   - Glob
   - Bash
 ---
-<!-- bkit:managed v4.6.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -6,6 +6,26 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.7.0] — 2026-07-19
+
+Generalises the workflow telemetry that landed in 4.6.0 from a build-only summary into a per-workflow run ledger every phase emits, and overhauls the plan template to be documentation- and stack-agnostic so it reads the same in any consumer repo. Two workflow/CLI fixes round it out: a dirty primary checkout no longer strands a worktree cut, and `bkit check`'s help text plus a bare `bkit` invocation now match documented behaviour.
+
+### Added
+
+- **A reusable workflow-telemetry script.** `.bkit/scripts/bkit-workflow-telemetry.sh <workflow> <yyyymm> <fid>` centralises the run-row write, the `bkit comply` grade, and the summary emit that the five phase workflows previously each open-coded as divergent inline bash — one command, one behaviour. (records #234)
+
+### Changed
+
+- **Telemetry is now a per-workflow run row, rendered as a Markdown table at Close.** The build-only `outcome` summary generalises to a run row keyed by repo + workflow + parent SHA (`prNumber` optional), and every workflow's Close Workflow step now emits `THIS run vs med·5` — the rolling median of the previous five same-workflow runs — as a Markdown table into the MCP tracker comment, with per-run `frictionAdded` / `deferralsAdded` / `failuresAdded` deltas. Each workflow captures its own base SHA at start so it diffs only its own change, and the summary moved out of `*-summary.md` into the titled tracker comment (Artifacts / Telemetry subheadings). (records #234)
+- **The plan template is documentation- and stack-agnostic.** `docs/plans/template.md` names only the core, universal docs inline (everything else resolves through `.agents/docs.md`), drops doc-section anchors, and demotes stack tools to `e.g.` examples — so it reads the same whatever a consumer's docs layout or stack is. It now also reflects the universal `rules.md` guarantees (anti-suppression + blast-radius CRITICALs, `[NEW]`-must-justify-vs-extend reuse discovery, deferrals/failures ledgers, the full local gate suite, human-gated Open Questions), shifts audit discrimination left into the test matrix, and adds a `Process Sketch` (WHEN X then Y) form for acceptance scenarios and edge cases. Alerts render as boxes and the year is a `{current year}` placeholder. (#354 #355 #356)
+- **A new-file Write now draws a reuse / anti-duplicate advisory.** GateGuard (the `.claude` + `.opencode` mirrors) nudges toward extending an existing module before adding a new file — branching on the non-existent path — while the existing hook contract is unchanged.
+- **`docs/design.md` is restored as a core shipped doc.** Reverses its earlier removal: the template and the `.agents/docs.md` row are back, and `bkit install` auto-seeds it.
+- **`bkit check` help and a bare `bkit` invocation match documented behaviour.** The help text no longer claims `bkit check` unconditionally "Exits 1 on drift" — it exits 1 only when a managed file needs re-rendering, while Tier-3 seed-or-print drift (e.g. `ci.yml`) stays a non-blocking advisory (exit 0), matching `docs/deployments.md`. A bare `bkit` with no command now prints usage and exits 2 (usage error) instead of 0; an explicit `bkit help` / `--help` still exits 0.
+
+### Fixed
+
+- **A dirty or unpushed primary checkout no longer halts a worktree cut.** Design / plan / build Step 2 now states explicitly that a dirty or unpushed primary must not halt or route to the Failure Path — cut `feat/{FID}` off `origin/dev` and proceed — instead of an agent bailing at a dirty tree before it has even started.
+
 ## [4.6.3] — 2026-07-16
 
 Follows the 4.6.2 pre-release audit's two remaining advisory-only findings — and a broader realisation from running `bkit check` against real consumers (gether, fraser): bkit was flagging content drift on managed CI blocks that consumers legitimately own and customise.
