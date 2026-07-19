@@ -576,10 +576,71 @@ function walkRepoForHomeCheck(dir, testFiles, packageJsons, depth = 0) {
 // Matches the tag inside the title argument of it / test / describe / bench / suite,
 // including `.only` / `.skip` / `.each(table)` chains and ' " ` quotes.
 const TEST_DEF_TITLE = /\b(?:it|test|describe|bench|suite)(?:\.\w+)*\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
-function tagUsedInTestTitle(text, tag) {
+// Mark every byte that sits inside a string, template literal, or comment. A REAL
+// test definition's `it`/`describe` keyword is code (mask 0); a keyword that appears
+// INSIDE a string is a fixture — a tag-linter package embeds sample test source as a
+// string literal (`const F = \`describe("@live X", …)\``) to lint it, and the title
+// regex, scanning raw text, would otherwise read the fixture's inner title as a real
+// tagged test. Skipping masked keyword positions rejects those without risk of a
+// false negative: real, runnable tests are never authored inside a quote.
+//
+// `'`/`"` strings terminate at end-of-line (unescaped newlines are illegal in them
+// anyway); only template literals span lines. This bounds any mis-lex from an exotic
+// regex literal that happens to contain a lone quote to its own line, so it can never
+// swallow a later real test def. Regex literals are otherwise treated as plain code —
+// a regex containing a test-definition keyword + quoted title is not a real construct.
+function stringCommentMask(text) {
+    const mask = new Uint8Array(text.length);
+    const n = text.length;
+    let i = 0;
+    while (i < n) {
+        const c = text[i];
+        if (c === "/" && text[i + 1] === "/") {
+            while (i < n && text[i] !== "\n")
+                mask[i++] = 1;
+            continue;
+        }
+        if (c === "/" && text[i + 1] === "*") {
+            mask[i++] = 1;
+            mask[i++] = 1;
+            while (i < n && !(text[i] === "*" && text[i + 1] === "/"))
+                mask[i++] = 1;
+            if (i < n) {
+                mask[i++] = 1;
+                mask[i++] = 1;
+            }
+            continue;
+        }
+        if (c === '"' || c === "'" || c === "`") {
+            const singleLine = c !== "`";
+            mask[i++] = 1;
+            while (i < n) {
+                if (text[i] === "\\") {
+                    mask[i++] = 1;
+                    if (i < n)
+                        mask[i++] = 1;
+                    continue;
+                }
+                if (text[i] === c) {
+                    mask[i++] = 1;
+                    break;
+                }
+                if (singleLine && text[i] === "\n")
+                    break; // unterminated — stop at line end
+                mask[i++] = 1;
+            }
+            continue;
+        }
+        i++;
+    }
+    return mask;
+}
+function tagUsedInTestTitle(text, tag, mask) {
     TEST_DEF_TITLE.lastIndex = 0;
     let m;
     while ((m = TEST_DEF_TITLE.exec(text)) !== null) {
+        if (mask[m.index])
+            continue; // keyword sits inside a string/comment — a fixture, not a real test
         if (m[2].includes(tag))
             return true;
     }
@@ -639,13 +700,15 @@ export function detectTaggedTestsWithoutCiHome(cwd) {
         catch {
             continue;
         }
+        let mask = null; // lazily built on the first tag that survives fast-reject
         for (const { tag, script } of TAG_SCRIPT_HOMES) {
             if (!declaredScripts.has(script))
                 continue; // convention not active for this tag
             if (!text.includes(tag))
                 continue; // fast reject before the title-context regex
-            if (!tagUsedInTestTitle(text, tag))
-                continue; // tag must be in a test TITLE, not a comment/other string
+            mask ??= stringCommentMask(text);
+            if (!tagUsedInTestTitle(text, tag, mask))
+                continue; // tag must be in a real test TITLE, not a comment/string/fixture
             const pj = nearestPkg(path.dirname(file));
             if (!pj)
                 continue;
@@ -990,10 +1053,16 @@ export function detectTurboIntegrationInputs(cwd) {
     return findings;
 }
 /**
- * Detect whether the consumer's `test:integration` script asserts real-service
- * runtime env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A script
- * that silently mocks integration tests passes CI without exercising real
- * services — the worst-case ghost-green from KN-23. Returns null if no script.
+ * Detect whether the consumer's `test:integration` lane asserts real-service runtime
+ * env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A lane that silently mocks
+ * integration tests passes CI without exercising real services — the worst-case
+ * ghost-green from KN-23. Returns null if no `test:integration` script.
+ *
+ * The gating can legitimately live at any of three layers, so all three are inspected
+ * before flagging a no-op lane: (1) the script string itself, (2) the CI workflow job
+ * that invokes `test:integration` (a deliberately env-agnostic script keeps local runs
+ * from forcing real-API mode, provisioning instead at the lane), (3) the vitest
+ * integration config the script points at (home of the documented in-file guard).
  */
 export function detectTestIntegrationEnv(cwd) {
     const pkgPath = path.join(cwd, "package.json");
@@ -1009,8 +1078,6 @@ export function detectTestIntegrationEnv(cwd) {
     const script = pkg.scripts?.["test:integration"];
     if (!script)
         return null;
-    // Hints of real-service gating in the script body OR in the script chain
-    // (consumers commonly wrap real-API setup in a sibling script).
     const realServiceHints = [
         "TEST_REAL_APIS",
         "SUPABASE_SERVICE_ROLE",
@@ -1018,15 +1085,46 @@ export function detectTestIntegrationEnv(cwd) {
         "service_role",
         "supabase start",
     ];
-    if (realServiceHints.some((hint) => script.includes(hint)))
+    const hasHint = (t) => realServiceHints.some((h) => t.includes(h));
+    // 1. Script body / chain (consumers commonly wrap real-API setup in a sibling script).
+    if (hasHint(script))
         return null;
+    // 2. CI workflow lane: a workflow file that BOTH invokes `test:integration` AND
+    //    provisions a real-service hint is the lane doing the gating — the correct pattern
+    //    for an intentionally env-agnostic script (`supabase start` + `TEST_REAL_APIS` +
+    //    service-role export around `turbo run test:integration`).
+    const workflowsDir = path.join(cwd, ".github", "workflows");
+    if (fs.existsSync(workflowsDir) && fs.statSync(workflowsDir).isDirectory()) {
+        for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
+            if (!entry.isFile() || !/\.ya?ml$/.test(entry.name))
+                continue;
+            const wf = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
+            if (wf.includes("test:integration") && hasHint(wf))
+                return null;
+        }
+    }
+    // 3. vitest integration config the script points at (or a conventional default) —
+    //    where consumers document/enforce the per-file `TEST_REAL_APIS` guard.
+    const configFromScript = /--config[=\s]+(\S+)/.exec(script)?.[1];
+    const configCandidates = [
+        ...(configFromScript ? [configFromScript] : []),
+        "vitest.integration.config.ts",
+        "vitest.integration.config.mts",
+        "vitest.integration.config.js",
+    ];
+    for (const rel of configCandidates) {
+        const cfgPath = path.join(cwd, rel);
+        if (fs.existsSync(cfgPath) && hasHint(fs.readFileSync(cfgPath, "utf-8")))
+            return null;
+    }
     return {
         id: "test-integration-env-not-asserted",
         severity: "advisory",
-        detect: "`package.json#scripts.test:integration` exists but the script body shows no real-service env gating (TEST_REAL_APIS=true, SUPABASE_SERVICE_ROLE, or `supabase start` chain).",
-        action: "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Add an explicit gate to the script, for example:\n\n" +
-            '    "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n\n' +
-            "Or chain a real-service preflight (e.g. `supabase start && vitest run …`). If the absence is intentional (pure-mock integration suite), add a comment in the script and dismiss this advisory by tagging the package — there is no auto-suppress mechanism yet.",
+        detect: "`package.json#scripts.test:integration` exists, but no real-service env gating (TEST_REAL_APIS, SUPABASE_SERVICE_ROLE, service-role URL, or a `supabase start` chain) was found in the script, the CI workflow lane that runs it, or the vitest integration config.",
+        action: "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
+            '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
+            "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
+            "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
     };
 }
 /**

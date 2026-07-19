@@ -1110,6 +1110,54 @@ describe("detectTestIntegrationEnv", () => {
     );
     expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
   });
+
+  it("returns null when the CI workflow lane provisions the real-service env", () => {
+    // Script is intentionally env-agnostic (keeps local runs from forcing real-API mode);
+    // the ci.yml job that runs test:integration provisions the env instead.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts --passWithNoTests"}}',
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "jobs:",
+        "  integration:",
+        "    env:",
+        '      TEST_REAL_APIS: "true"',
+        "    steps:",
+        "      - run: env -u SUPABASE_PROJECT_ID npx supabase start",
+        "      - run: turbo run test:integration",
+      ].join("\n"),
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when the vitest integration config documents the in-file guard", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts"}}',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "vitest.integration.config.ts"),
+      "// Integration tests run only when TEST_REAL_APIS=true. Guard is in each test file.\n",
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("still fires when a workflow runs test:integration but provisions no real-service env", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts"}}',
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "jobs:\n  integration:\n    steps:\n      - run: turbo run test:integration\n",
+    );
+    expect(detectTestIntegrationEnv(tmpDir)!.id).toBe("test-integration-env-not-asserted");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2392,6 +2440,20 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     const f = detectTaggedTestsWithoutCiHome(tmpDir);
     expect(f?.id).toBe("tagged-tests-no-ci-home");
     expect(f?.action).toContain("packages/utils");
+  });
+  it("returns null when @live only appears inside a fixture string literal (tag-linter package)", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("tooling/eslint", { test: "vitest run" }); // tag-linter, no test:live
+    // A tag-linter embeds sample test source as a template-literal fixture to lint it —
+    // the inner `describe(...)`/`it(...)` is a string, not a runnable @live test.
+    writeTest(
+      "tooling/eslint/rule.test.ts",
+      [
+        'const FIXTURE = `describe.skipIf(!LIVE_API)("@live Families", () => { it("x", () => {}); })`;',
+        'it("flags a mislabelled live-tier fixture", () => { expect(lint(FIXTURE)).toHaveLength(1); });',
+      ].join("\n"),
+    );
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
   });
 });
 
