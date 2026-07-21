@@ -1602,6 +1602,34 @@ async function main() {
                     console.log(line);
                 return;
             }
+            // `bkit telemetry validate` — read-only alias-collision scan. Exits 1 on a
+            // collision (one DE-<n>/KN-<n> claimed by unrelated rows) — the loud signal
+            // the merge=union append never surfaces. WARNs (exit 0) on minted keys.
+            if (telemetrySubverb === "validate") {
+                const { lintLedgers } = await import("./bkit-telemetry-lint.js");
+                const result = lintLedgers(process.cwd());
+                for (const line of result.lines)
+                    console.log(line);
+                if (!result.ok)
+                    process.exitCode = 1;
+                return;
+            }
+            // `bkit telemetry normalise [--dry-run]` — one-shot, idempotent rewrite off
+            // the retired sequential-alias scheme (parity-gated; original untouched on abort).
+            if (telemetrySubverb === "normalise") {
+                const { runNormalise } = await import("./bkit-telemetry-normalise.js");
+                const result = await runNormalise({
+                    cwd: process.cwd(),
+                    dryRun: telemetryMigrateFlags.dryRun,
+                });
+                for (const line of result.lines)
+                    console.log(line);
+                if (!result.ok && result.error) {
+                    console.error(`[bkit-telemetry] normalise failed: ${result.error}`);
+                    process.exitCode = 1;
+                }
+                return;
+            }
             if (telemetrySubverb === "migrate") {
                 const pkgPath = path.join(process.cwd(), "package.json");
                 let bkitVersion = "unknown";
@@ -1628,7 +1656,7 @@ async function main() {
                 }
             }
             else {
-                console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate`);
+                console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate, summary, validate, normalise`);
             }
         }
         catch (err) {

@@ -51,7 +51,7 @@ Each `kind` lives in ONE file, written by specific processes:
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
-| `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. See § Key & References. |
+| `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, a sibling `ts`. See § Key & References. |
 
 ## Per-Kind Fields
 
@@ -87,19 +87,19 @@ As an orchestrator, omit `subagent` and `model`.
 
 `key` = a written-once stable slug; recurrence = a same-`key` append.
 
-- **Mint it from the CONTENT, never from a counter.** A descriptive slug (`gh-mcp-401-after-token-rotation`), optionally prefixed with the driving issue (`681-e2e-parallelism-via-runner-matrix`).
-- **NEVER a sequential `DE-{N}`/`KN-{N}`.** `ts` is the id. Concurrent workflows read the same max from their own base commit and mint the same number.
+- **Mint it from the CONTENT, never from a counter.** A descriptive slug (`gh-mcp-401-after-token-rotation`), optionally prefixed with the driving issue (`681-e2e-parallelism-via-runner-matrix`). A counter-derived number is un-mintable under concurrency — two workflows read the same max off their own base commit and mint the same one, so it collides silently and can never be a stable id.
+- **Cite the `key`.** It is the identity other rows, docs, and memory point at; `ts` is the tiebreaker. A content slug cannot collide the way a shared counter can.
 
 `references` = free-form pointers to whatever places this row:
 
 <!-- prettier-ignore -->
 ```jsonl
-"references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "DE-7", "1718900000600"]
+"references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "1718900000600"]
 ```
 
-- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, a sibling row's `ts`, and — on rows migrated off the `.md` ledgers — that row's own legacy `KN-N`/`DE-N` id.
+- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, a sibling row's `ts`.
 - Keep each item as the source wrote it; trailing qualifiers (`ISSUE-142 §A2`) are meaning, not noise.
-- No separate identity field: `ts` is the id, everything in `references` is a pointer — including a legacy id.
+- No separate identity field: `ts` is the id, everything in `references` is a pointer.
 - Omit when there is nothing to point at.
 
 ## Friction Is a Drained Queue — the one non-append-only ledger
@@ -394,7 +394,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "description": "401 from the GitHub MCP server or gh despite a freshly-rotated, valid, correctly-scoped PAT in .bkit/.env",
   "rootCause": "the MCP server captures GH_MCP_TOKEN at process launch, so a mid-session rotation leaves it holding the dead token",
   "remediation": "restart/reload the MCP server after rotating; for a one-off CLI, prefix `direnv exec . gh …`",
-  "references": ["KN-CORE-1", ".bkit/.env", "DE-35"]
+  "references": ["ISSUE-137", ".bkit/.env"]
 }
 ```
 
@@ -417,7 +417,7 @@ Indented here for readability — **on disk each row is a single physical line**
   "rationale": "eliminates four friction classes of the git-dep model: two-surface git auth, the CI auth shim, the prepare:tsc OOM trap, and pnpm dropping the version pin",
   "alternatives": "npmjs.org public (package is private), continue git-dep, Releases tarball, vendor per-consumer, dual-publish git+registry",
   "status": "ACTIVE",
-  "references": ["DE-3", "ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml", "KN-1"]
+  "references": ["ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml"]
 }
 ```
 

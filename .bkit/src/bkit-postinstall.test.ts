@@ -25,6 +25,7 @@ import {
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
   detectDevDepsNeedFetch,
+  detectLedgerAliasCollisions,
   detectBkitStubs,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
@@ -2752,5 +2753,52 @@ describe("isOnProtectedBranch", () => {
     // tmpDir is a fresh mkdtemp dir, not a git work tree → git HEAD resolution
     // fails → null → treated as protected so an unknown env never downgrades.
     expect(isOnProtectedBranch(tmpDir)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectLedgerAliasCollisions — DE-<n>/KN-<n> silent-duplicate-id advisory
+// (fs-only; no child_process, so it runs under the mocked module unchanged)
+// ---------------------------------------------------------------------------
+
+describe("detectLedgerAliasCollisions", () => {
+  function writeDecisions(rows: object[]): void {
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "decisions.jsonl"),
+      rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
+    );
+  }
+  const base = {
+    ts: 1,
+    kind: "decision",
+    repo: "acme/app",
+    workflow: "plan",
+    bkitVersion: "4.5.0",
+  };
+
+  it("advisory when one DE-<n> is claimed by unrelated rows", () => {
+    writeDecisions([
+      { ...base, key: "de-114-sentry", aliases: ["DE-114"] },
+      { ...base, key: "de-114-e2e-parallelism", aliases: ["DE-114"] },
+    ]);
+    const f = detectLedgerAliasCollisions(tmpDir);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("ledger-alias-collisions");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("DE-114");
+    expect(f?.action).toContain("bkit telemetry normalise");
+  });
+
+  it("null when the ledgers are clean (no collisions)", () => {
+    writeDecisions([
+      { ...base, key: "de-3-distribution", workflow: "migrate" },
+      { ...base, key: "content-slug-decision" },
+    ]);
+    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
+  });
+
+  it("null when no ledgers exist", () => {
+    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
   });
 });

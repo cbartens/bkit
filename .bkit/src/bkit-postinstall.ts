@@ -26,6 +26,7 @@ import {
 } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
+import { lintLedgers } from "./bkit-telemetry-lint.js";
 
 export type { PreflightFinding };
 
@@ -2514,6 +2515,32 @@ export function detectManagedDocsStale(
 // ---------------------------------------------------------------------------
 
 /**
+ * DE-<n>/KN-<n> alias collisions in the key-bearing ledgers — one number claimed
+ * by more than one unrelated row. The retired "scan-highest-and-increment" scheme
+ * let two concurrent workflows mint the same id off the same base commit, and
+ * `merge=union` appended both silently (their slug `key`s differ, so nothing
+ * conflicts). A bare citation of that number then resolves ambiguously. Advisory,
+ * never a blocker: it is pre-existing ledger data, not an install fault, and the
+ * fix (`bkit telemetry normalise`) is the consumer's to run. Read-only fs scan.
+ */
+export function detectLedgerAliasCollisions(cwd: string): PreflightFinding | null {
+  const { collisions } = lintLedgers(cwd);
+  if (collisions.length === 0) return null;
+  const sample = collisions
+    .slice(0, 5)
+    .map((c) => `${c.id} (${c.keys.length} rows)`)
+    .join(", ");
+  const more = collisions.length > 5 ? `, and ${collisions.length - 5} more` : "";
+  return {
+    id: "ledger-alias-collisions",
+    severity: "advisory",
+    detect: `${collisions.length} DE-<n>/KN-<n> alias collision(s) in docs/decisions.jsonl / docs/knowledge.jsonl — one id claimed by unrelated rows, so a bare citation is ambiguous: ${sample}${more}.`,
+    action:
+      "Run `bkit telemetry normalise` to demote each number to references[] and re-key the colliding rows (parity-gated + idempotent), then cite the slug `key` (not the bare number) going forward. Verify first with `bkit telemetry validate`.",
+  };
+}
+
+/**
  * Re-run token-surface + ci.yml + vale-sync + devDeps detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
@@ -2831,6 +2858,11 @@ export function runPostInstallCheck(
   // devDeps need fetch
   const devDeps = detectDevDepsNeedFetch(ws);
   if (devDeps) phase3.push(devDeps);
+
+  // DE-<n>/KN-<n> alias collisions in the key-bearing ledgers (silent duplicate ids
+  // from the retired scan-highest-and-increment scheme). Read-only fs scan.
+  const ledgerCollisions = detectLedgerAliasCollisions(cwd);
+  if (ledgerCollisions) phase3.push(ledgerCollisions);
 
   // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
   // Wired here in Phase 3 — scaffolds (.bkit/.env.example, .envrc) only exist
