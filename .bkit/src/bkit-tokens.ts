@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { getPkgRoot } from "./bkit-paths.js";
 import { managedVersionMarker } from "./bkit-version.js";
+import { DEFAULT_RUNNER, parseRunnerLabel } from "./bkit-manifest.js";
 
 export interface TokenMap {
   NODE_VERSION: string;
@@ -21,6 +22,15 @@ export interface TokenMap {
   // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it
   // — applyTokens computes the marker on demand when the placeholder is present.
   BKIT_MANAGED_MARKER?: string;
+  // Configurable `runs-on` labels for bkit-managed canonical workflows (#362).
+  // RENOVATE_RUNNER → `.github/workflows/renovate.yml`; CLOUD_RUNNER →
+  // `.github/workflows/bkit-cloud.yml` (both the claude + opencode jobs share one
+  // label). Resolved from `bkit.runners` in the consumer package.json (per-workflow
+  // key → `runners.default` → literal `ubuntu-latest`). Optional so existing bare
+  // TokenMap literals need not set them — applyTokens falls back to DEFAULT_RUNNER,
+  // preserving today's behaviour when `bkit.runners` is unset.
+  RENOVATE_RUNNER?: string;
+  CLOUD_RUNNER?: string;
 }
 
 // Read the INSTALLING bkit version from the package root (NOT the consumer's
@@ -129,6 +139,26 @@ function resolveRepoSlug(cwd: string): string {
   return "";
 }
 
+// Resolve a bkit-managed workflow's `runs-on` label from `bkit.runners` config (#362).
+// Precedence: the per-workflow key (e.g. `runners.renovate`) → `runners.default` →
+// literal `ubuntu-latest`. Invalid/blank labels are ignored (parseRunnerLabel returns
+// null) so a typo falls back rather than emitting broken YAML. Accepts the already-parsed
+// package.json so callers that hold it (resolveTokens, detectRenovateRunner) avoid re-IO.
+export function resolveRunnerLabel(pkg: Record<string, unknown>, workflowKey: string): string {
+  const bkit = pkg["bkit"];
+  if (bkit && typeof bkit === "object") {
+    const runners = (bkit as Record<string, unknown>)["runners"];
+    if (runners && typeof runners === "object") {
+      const table = runners as Record<string, unknown>;
+      const specific = parseRunnerLabel(table[workflowKey]);
+      if (specific) return specific;
+      const fallback = parseRunnerLabel(table["default"]);
+      if (fallback) return fallback;
+    }
+  }
+  return DEFAULT_RUNNER;
+}
+
 // Read and parse package.json from cwd. Throws if absent.
 function readPackageJson(cwd: string): Record<string, unknown> {
   const pkgPath = path.join(cwd, "package.json");
@@ -155,6 +185,8 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
     PROJECT_NAME: name.trim(),
     REPO_SLUG: resolveRepoSlug(cwd),
     BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
+    RENOVATE_RUNNER: resolveRunnerLabel(pkg, "renovate"),
+    CLOUD_RUNNER: resolveRunnerLabel(pkg, "bkitCloud"),
   };
 }
 
@@ -167,11 +199,17 @@ export function applyTokens(content: string, tokens: TokenMap): string {
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   const repoSlug = tokens.REPO_SLUG;
+  // Runner labels default to ubuntu-latest when the TokenMap omits them (bare
+  // literals in tests / non-resolveTokens callers) so existing behaviour is preserved (#362).
+  const renovateRunner = tokens.RENOVATE_RUNNER ?? DEFAULT_RUNNER;
+  const cloudRunner = tokens.CLOUD_RUNNER ?? DEFAULT_RUNNER;
   let out = content
     .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
-    .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
+    .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug)
+    .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => renovateRunner)
+    .replace(/\{\{CLOUD_RUNNER\}\}/g, () => cloudRunner);
   // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
   // placeholder is actually present AND the caller's TokenMap omitted the value
   // (resolveTokens always sets it; bare literals in tests / the install fallback

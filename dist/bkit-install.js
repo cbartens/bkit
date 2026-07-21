@@ -8,7 +8,7 @@ import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
-import { resolveTokens } from "./bkit-tokens.js";
+import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
@@ -258,7 +258,7 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
     if (curated)
         return curated;
-    // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
+    // Sentinel fallback. All eight allowlisted providers (ollama-local, nvidia, groq, cerebras,
     // openrouter, ollama, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
     // This path is the safety net for a FUTURE allowlisted provider added before its column
     // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
@@ -1296,9 +1296,10 @@ export function detectOpencodeProvider(cwd) {
  */
 export function detectRenovateRunner(cwd) {
     const pkgPath = path.join(cwd, "package.json");
+    let pkg = {};
     if (fs.existsSync(pkgPath)) {
         try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+            pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
             const stored = parseRenovateRunner(pkg.bkit?.renovateRunner);
             if (stored !== null)
                 return stored;
@@ -1310,10 +1311,16 @@ export function detectRenovateRunner(cwd) {
     const workflowDst = path.join(cwd, ".github", "workflows", "renovate.yml");
     const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml");
     if (fs.existsSync(workflowDst) && fs.existsSync(templatePath)) {
-        // Byte-equal to the canonical template → bkit-owned self-hosted workflow (the
-        // token-free template renders verbatim). A differing file is a consumer's own
-        // bespoke workflow, NOT bkit-owned (see the doc comment above, #325).
-        if (fs.readFileSync(workflowDst, "utf-8") === fs.readFileSync(templatePath, "utf-8")) {
+        // Byte-equal to the canonical template → bkit-owned self-hosted workflow. The
+        // template carries a `{{RENOVATE_RUNNER}}` token (#362), so render it with the
+        // consumer's configured label before comparing — otherwise a custom runner
+        // (bkit-owned, but non-ubuntu) would look like a bespoke consumer file and lose
+        // its "self" classification. A file that still differs after rendering is a
+        // consumer's own bespoke workflow, NOT bkit-owned (see the doc comment above, #325).
+        const rendered = fs
+            .readFileSync(templatePath, "utf-8")
+            .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => resolveRunnerLabel(pkg, "renovate"));
+        if (fs.readFileSync(workflowDst, "utf-8") === rendered) {
             return "self";
         }
     }
@@ -2262,7 +2269,7 @@ async function main() {
                     if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
                         console.warn(`[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
                             `The cloud opencode job requires a remote provider with an API key — ` +
-                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode) to switch.`);
+                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode-zen) to switch.`);
                     }
                 }
                 catch {

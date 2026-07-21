@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyTokens, resolveTokens } from "./bkit-tokens";
+import { applyTokens, resolveTokens, resolveRunnerLabel } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -167,6 +167,74 @@ describe("resolveTokens — REPO_SLUG", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Runner labels — configurable runs-on for bkit-managed workflows (#362)
+// ---------------------------------------------------------------------------
+
+describe("resolveRunnerLabel — bkit.runners precedence (#362)", () => {
+  it("returns the per-workflow key when set", () => {
+    const pkg = { bkit: { runners: { renovate: "depot-ubuntu-24.04-4" } } };
+    expect(resolveRunnerLabel(pkg, "renovate")).toBe("depot-ubuntu-24.04-4");
+  });
+
+  it("falls back to runners.default when the per-workflow key is absent", () => {
+    const pkg = { bkit: { runners: { default: "depot-ubuntu-24.04" } } };
+    expect(resolveRunnerLabel(pkg, "renovate")).toBe("depot-ubuntu-24.04");
+    expect(resolveRunnerLabel(pkg, "bkitCloud")).toBe("depot-ubuntu-24.04");
+  });
+
+  it("per-workflow key wins over default", () => {
+    const pkg = { bkit: { runners: { default: "ubuntu-latest", bkitCloud: "self-hosted-gpu" } } };
+    expect(resolveRunnerLabel(pkg, "bkitCloud")).toBe("self-hosted-gpu");
+  });
+
+  it("defaults to ubuntu-latest when bkit.runners is unset (zero behaviour change)", () => {
+    expect(resolveRunnerLabel({}, "renovate")).toBe("ubuntu-latest");
+    expect(resolveRunnerLabel({ bkit: {} }, "bkitCloud")).toBe("ubuntu-latest");
+  });
+
+  it("ignores an invalid/blank label and falls back rather than emitting broken YAML", () => {
+    expect(resolveRunnerLabel({ bkit: { runners: { renovate: "" } } }, "renovate")).toBe(
+      "ubuntu-latest",
+    );
+    expect(resolveRunnerLabel({ bkit: { runners: { renovate: "has space" } } }, "renovate")).toBe(
+      "ubuntu-latest",
+    );
+    // A bad per-workflow value still falls back to a valid default.
+    expect(
+      resolveRunnerLabel(
+        { bkit: { runners: { renovate: "bad label", default: "depot-ubuntu-24.04" } } },
+        "renovate",
+      ),
+    ).toBe("depot-ubuntu-24.04");
+  });
+
+  it("ignores a non-object runners field", () => {
+    expect(resolveRunnerLabel({ bkit: { runners: "ubuntu-latest" } }, "renovate")).toBe(
+      "ubuntu-latest",
+    );
+  });
+});
+
+describe("resolveTokens — runner labels (#362)", () => {
+  it("populates RENOVATE_RUNNER + CLOUD_RUNNER from bkit.runners", async () => {
+    writeJson("package.json", {
+      name: "proj",
+      bkit: { runners: { renovate: "depot-ubuntu-24.04-4", bkitCloud: "depot-ubuntu-24.04" } },
+    });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.RENOVATE_RUNNER).toBe("depot-ubuntu-24.04-4");
+    expect(tokens.CLOUD_RUNNER).toBe("depot-ubuntu-24.04");
+  });
+
+  it("defaults both to ubuntu-latest when unset", async () => {
+    writeJson("package.json", { name: "proj" });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.RENOVATE_RUNNER).toBe("ubuntu-latest");
+    expect(tokens.CLOUD_RUNNER).toBe("ubuntu-latest");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // applyTokens — substitution
 // ---------------------------------------------------------------------------
 
@@ -193,6 +261,23 @@ describe("applyTokens", () => {
   it("leaves content without placeholders unchanged", () => {
     const content = "no placeholders here";
     expect(applyTokens(content, tokens)).toBe(content);
+  });
+
+  it("substitutes {{RENOVATE_RUNNER}} + {{CLOUD_RUNNER}} from the token values (#362)", () => {
+    const content = "renovate: {{RENOVATE_RUNNER}}\ncloud: {{CLOUD_RUNNER}}";
+    const result = applyTokens(content, {
+      ...tokens,
+      RENOVATE_RUNNER: "depot-ubuntu-24.04-4",
+      CLOUD_RUNNER: "depot-ubuntu-24.04",
+    });
+    expect(result).toBe("renovate: depot-ubuntu-24.04-4\ncloud: depot-ubuntu-24.04");
+  });
+
+  it("falls back to ubuntu-latest for runner tokens when omitted (bare literal TokenMap, #362)", () => {
+    // The applyTokens tests' `tokens` literal omits RENOVATE_RUNNER/CLOUD_RUNNER —
+    // the default must render so existing behaviour is preserved.
+    const result = applyTokens("a: {{RENOVATE_RUNNER}}\nb: {{CLOUD_RUNNER}}", tokens);
+    expect(result).toBe("a: ubuntu-latest\nb: ubuntu-latest");
   });
 
   it("substitutes {{BKIT_MANAGED_MARKER}} from the token value when provided", () => {

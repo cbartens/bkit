@@ -143,6 +143,30 @@ export function parseRenovateRunner(value: unknown): RenovateRunner | null {
 }
 
 // ---------------------------------------------------------------------------
+// Runner labels — configurable `runs-on` for bkit-managed workflows (#362)
+// ---------------------------------------------------------------------------
+
+/**
+ * Default GitHub Actions `runs-on` label for bkit-managed canonical workflows
+ * (`renovate.yml`, `bkit-cloud.yml`). Substituted when `bkit.runners` is unset,
+ * so existing consumers see zero behaviour change (#362).
+ */
+export const DEFAULT_RUNNER = "ubuntu-latest";
+
+/**
+ * Validate a single GitHub Actions `runs-on` label supplied via `bkit.runners.*`
+ * config (#362). The label is arbitrary — a GitHub-hosted size (`ubuntu-latest`),
+ * a GitHub larger runner, a Depot label (`depot-ubuntu-24.04-4`), or a self-hosted
+ * alias. Accepts letters, digits, dot, dash, underscore (the charset GitHub allows
+ * for a single label); rejects empty/whitespace strings, YAML-breaking characters,
+ * and non-strings (arrays/objects) so the caller falls back to `DEFAULT_RUNNER`.
+ * Only the single-label form is supported here, not a label matrix/array.
+ */
+export function parseRunnerLabel(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value) ? value : null;
+}
+
+// ---------------------------------------------------------------------------
 // Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
 

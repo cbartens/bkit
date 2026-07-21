@@ -6,7 +6,10 @@
 # re-install reclaims it. This is the alternative to the Mend-hosted Renovate GitHub
 # App: it runs Renovate on `ubuntu-latest` (~16 GB) instead of Mend's 3 GB hosted
 # microvm, which physically OOMs (`kernel-out-of-memory`) on large pnpm monorepos.
-# See docs/deployments.md § Self-hosted Renovate and KN-CORE-10.
+# The `runs-on:` label below is bkit-substituted from `bkit.runners.renovate`
+# (default `ubuntu-latest`; the label is arbitrary — a GitHub larger runner, a Depot
+# label, or a self-hosted alias — point it at ≥16 GB headroom). See docs/deployments.md
+# § Self-hosted Renovate and KN-CORE-10.
 #
 # MUTUAL EXCLUSION: the Mend Renovate App MUST be suspended for this repo, or both
 # open the same `renovate/*` PRs. bkit cannot verify that (off-repo) — it only warns.
@@ -55,7 +58,7 @@ concurrency:
 
 jobs:
   renovate:
-    runs-on: ubuntu-latest # ~16 GB — the headroom that fixes Mend's 3 GB OOM
+    runs-on: ubuntu-latest # default ubuntu-latest (~16 GB, the headroom that fixes Mend's 3 GB OOM); override via bkit.runners.renovate
     timeout-minutes: 30
     steps:
       # No checkout / configurationFile: Renovate clones the repo itself and

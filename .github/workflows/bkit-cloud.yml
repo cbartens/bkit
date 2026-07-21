@@ -94,6 +94,7 @@ jobs:
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
       )
     # bkit:end auto-route-gate
+    # runs-on bkit-substituted from bkit.runners.bkitCloud (default ubuntu-latest).
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -258,6 +259,7 @@ jobs:
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
       )
     # bkit:end auto-route-gate
+    # runs-on bkit-substituted from bkit.runners.bkitCloud (default ubuntu-latest).
     runs-on: ubuntu-latest
     permissions:
       contents: write
