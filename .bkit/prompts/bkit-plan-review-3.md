@@ -50,13 +50,14 @@ maxTurns: 50
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → CRITICAL.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → CRITICAL.
    - Mock-only coverage: Tasks crossing an external boundary (DB / API / model / network / migration) whose `Done when` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → CRITICAL.
-7. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), every design section identifying touched surfaces needs a plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing → CRITICAL.
-8. Knowledge cross-reference: Search `docs/knowledge.jsonl` for entries describing past regressions in touched surfaces. Plan task re-entering a known-broken pattern without acknowledging the prior fix → CRITICAL.
+7. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections identifying touched surfaces need plan tasks with regression-test coverage OR out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → CRITICAL. Respect declared sub-plan coverage scopes if produced.
+8. Knowledge cross-reference: Search `docs/knowledge.jsonl` and `related-failures.md` for past regressions / known failures in touched surfaces. Plan tasks re-entering known-broken patterns, or touching surfaces with unacknowledged known failures / without acknowledging prior fixes → CRITICAL.
 9. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-    - `PASS` = no CRITICAL items; surface touches are contained or covered.
-    - `FAIL` = plan introduces a regression vector with no mitigation (e.g. schema migration without ordering plan).
-    - `CONCERNS` = CRITICAL items flagged for orchestrator merge.
+
+- `PASS` = no CRITICAL items; surface touches are contained or covered.
+- `FAIL` = plan introduces a regression vector with no mitigation (e.g. schema migration without ordering plan).
+- `CONCERNS` = CRITICAL items flagged for orchestrator merge.
 
 **Output format:**
 

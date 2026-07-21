@@ -27,7 +27,7 @@
 
 **Related Issues:**
 
-- [Related issues search results. Tracker issue refs ONLY (e.g. `#N — title (state)`); NOT full content. Considered for dedup / scope-awareness; NOT a scope mandate. None / scan unavailable → `None`.]
+- [Issue references already present in the plan input (linked / referenced issues in the issue text). Tracker issue references ONLY (e.g. `#N — title (state)`); NOT full content. For dedupe / scope-awareness; NOT a scope mandate. None → `None`. The workflow's later fetch-context step runs a fresh tracker search that feeds the reviewers, NOT this section.]
 
 ---
 
@@ -174,27 +174,27 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Out of Scope
 
-[List features/fixes explicitly excluded to prevent scope creep.]
-
-## Merge Method
-
-**Merge method: always squash.** Plans MUST NOT propose `rebase` or `merge-commit` as the integration method into `dev`. Default is hardcoded to `gh pr merge --squash --delete-branch --body ""`. If a plan needs commit-boundary preservation for ordering reasons, decompose into separate PRs rather than requesting a non-squash merge.
-
-## Supersession Inventory
-
-[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None".]
+[Features/fixes excluded to prevent scope creep. Every exclusion is `Exempt` per the rule below, with a reason + a home. If none, write "None".]
 
 <!-- prettier-ignore -->
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| `path/to/old-thing` | `path/to/new-thing` | DELETE | [reason] |
+| Excluded item | Why `Exempt` | Where it belongs |
+| --- | --- | --- |
+| [feature/fix] | [why genuinely-additive] | [design non-goal / follow-up #N / future phase] |
 
 > [!CAUTION]
-> **Default = `DELETE`.** `RETAIN-WITH-REASON` only allowed for:
-> (a) external contract — atomic migration impossible (third-party callers, public API);
-> (b) staged rollout with kill-date + follow-up issue link.
->
-> NEVER accept `@deprecated` + still exported as a resolution. Each `DELETE` row MUST be mirrored as `[DELETE] path/to/file` in `Architecture & Component Changes` AND as a removal task in `Agent Execution Runbook`.
+> **Default = in-scope.** An item is `Exempt` ONLY if genuinely-additive — NOT required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section (declared non-goals excepted). Anything so required is an `Agent Execution Runbook` task, NEVER a deferral; parking it here is a `Blocking` deferral that plan review / scope-check pull back into scope. Mirror each `Exempt` row in `docs/deferrals.jsonl`.
+
+## Suggested Scope Expansion
+
+[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures — surfaced as candidate expansions for the human. If none, write "None".]
+
+<!-- prettier-ignore -->
+| Candidate | Source | Overlaps | Recommendation |
+| --- | --- | --- | --- |
+| [what it is] | [`#N` / `docs/deferrals.jsonl` / `docs/failures.jsonl`] | [surface / task it touches] | [fold in / keep deferred / needs design decision] |
+
+> [!CAUTION]
+> **Candidates, not scope.** Entries are surfaced for human review; they do NOT become `Agent Execution Runbook` tasks and MUST NOT expand plan scope. Fold one in only once it traces to design scope or an explicit human decision — then it becomes a task and leaves this list.
 
 ## Security & Privacy
 
@@ -309,6 +309,22 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 [Define scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). Record them in the project's cron/scheduled-jobs doc if it has one (resolve via `.agents/docs.md`).]
 
+## Supersession Inventory
+
+[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None".]
+
+<!-- prettier-ignore -->
+| Existing artifact | Replaced by | Decision | Justification |
+| --- | --- | --- | --- |
+| `path/to/old-thing` | `path/to/new-thing` | DELETE | [reason] |
+
+> [!CAUTION]
+> **Default = `DELETE`.** `RETAIN-WITH-REASON` only allowed for:
+> (a) external contract — atomic migration impossible (third-party callers, public API);
+> (b) staged rollout with kill-date + follow-up issue link.
+>
+> NEVER accept `@deprecated` + still exported as a resolution. Each `DELETE` row MUST be mirrored as `[DELETE] path/to/file` in `Architecture & Component Changes` AND as a removal task in `Agent Execution Runbook`.
+
 ## Documentation Updates
 
 > List only docs this change actually touches; delete the rest. Core docs named below; for any OTHER affected doc resolve it via `.agents/docs.md`. Treat as code changes — rewrite prose, no lazy bullet appends.
@@ -412,5 +428,9 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
 - [ ] **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
+
+## Merge Method
+
+**Merge method: always squash.** Plans MUST NOT propose `rebase` or `merge-commit` as the integration method into `dev`. Default is hardcoded to `gh pr merge --squash --delete-branch --body ""`. If a plan needs commit-boundary preservation for ordering reasons, decompose into separate PRs rather than requesting a non-squash merge.
 
 <!-- bkit:end -->
