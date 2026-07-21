@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-scope-check-2
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: gpt-5.5-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep

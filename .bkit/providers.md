@@ -115,22 +115,22 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 
 ## Models
 
-> **Effort vs model — different mechanisms.** Claude uses `effort: low|medium|high|xhigh` as thinking-budget knob layered on a pinned model; same model, different reasoning depth. Cursor uses explicit `model:` per agent; cross-family diversity (`bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`) is real model selection across Claude / GPT / Composer families, not single-family effort tier. **Per-agent model assignment is canonical**; derive Cursor `model` from `prompts.md` § Models, NOT from `effort` alone.
+> **Effort vs model — different mechanisms.** Claude uses `effort: low|medium|high|xhigh` as thinking-budget knob layered on a pinned model; same model, different reasoning depth. Cursor uses explicit `model:` per agent; cross-family diversity (`bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`) is real model selection across Claude / Grok / Composer families, not single-family effort tier. **Per-agent model assignment is canonical**; derive Cursor `model` from `prompts.md` § Models, NOT from `effort` alone.
 
 ### Cursor model catalog
 
 **Pinned selections are canonical in `prompts.md`** (§ Models per-agent `Cursor` column + § Orchestrators) — not enumerated here. Cursor's available set churns; discover the live set with the pull recipe below rather than maintaining a list. Tier guidance for choosing among them:
 
-- **`composer-2.5`** ($) — fast/cheap: build executors, summarizers, ship-summary, utilities, orchestrator plumbing.
-- **`claude-opus-*-thinking-high`** ($$$) — deep review, audit, design synthesis, debug diagnosis, ship docs. Current `claude-opus-4-8-thinking-high`; `-fast` variants and prior-gen (`claude-opus-4-7-thinking-high`, legacy `claude-4.6-opus-high-thinking`) are availability hedges.
-- **`gpt-5.x-high`** ($$) — cross-family diversity (plan generation, parallel-pair slot-2). Current `gpt-5.5-high`; `-codex` and prior-gen variants exist.
+- **`composer-2.5`** ($) — fast/cheap: build executors, summarizers, ship-summary, utilities, orchestrator plumbing. First-party pool.
+- **`cursor-grok-4.5-high`** ($$) — cross-family diversity (plan generation, parallel-pair slot-2). First-party pool (Cursor + SpaceXAI); Coding Agent Index parity with GPT-5.5 at lower per-task cost. `-fast` variant exists. GPT-5.x (`gpt-5.6-sol-high`, …) remains available on the API pool as a diversity hedge — not currently pinned.
+- **`claude-opus-*-thinking-high`** ($$$) — deep review, audit, design synthesis, debug diagnosis, ship docs. Current `claude-opus-4-8-thinking-high`; `-fast` variants and prior-gen (`claude-opus-4-7-thinking-high`, legacy `claude-4.6-opus-high-thinking`) are availability hedges. API pool.
 - **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — Fable 5, tier above Opus. **Available, not adopted** (see `prompts.md` § Effort → Claude model mapping).
 - **No Sonnet** is offered on Cursor — never pin a `claude-*-sonnet-*` ID.
 
 Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.** The API currently offers **no Sonnet model** — the former `claude-4.6-sonnet-thinking` pin is gone, so build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) is now offered but not adopted.
 
 > [!NOTE]
-> **Subagent model IDs — corrected to the live API format.** The prior pin `claude-4.7-opus-high-thinking` used a word-order the Cursor `/v0/models` API never listed (the API uses `claude-opus-4-N-thinking-high`; only the legacy 4.6 model kept the old order). That format mismatch is the likely root of the earlier "may not be in the subagent-allowed set" signal. The `Cursor model` column in `prompts.md` now pins `claude-opus-4-8-thinking-high` / `gpt-5.5-high`, both confirmed present in the live `/v0/models` response. Residual caveat: the IDE **subagent-runner** surface is technically distinct from the Cloud Agents API, and per-subagent dispatch of these IDs has not yet been empirically smoke-tested via the Cursor `Task` tool — confirm one dispatch per model ID lands before treating the Cursor side as fully validated.
+> **Subagent model IDs — corrected to the live API format.** The prior pin `claude-4.7-opus-high-thinking` used a word-order the Cursor `/v0/models` API never listed (the API uses `claude-opus-4-N-thinking-high`; only the legacy 4.6 model kept the old order). That format mismatch is the likely root of the earlier "may not be in the subagent-allowed set" signal. The `Cursor model` column in `prompts.md` now pins `claude-opus-4-8-thinking-high` / `cursor-grok-4.5-high` / `composer-2.5`, all confirmed present in the live `/v0/models` response (2026-07-21). Residual caveat: the IDE **subagent-runner** surface is technically distinct from the Cloud Agents API, and per-subagent dispatch of these IDs has not yet been empirically smoke-tested via the Cursor `Task` tool — confirm one dispatch per model ID lands before treating the Cursor side as fully validated.
 
 ### Per-subagent model assignment
 
@@ -299,7 +299,7 @@ The installed provider's model catalog changes over time. Look up available mode
 | Provider | Command | Notes |
 | --- | --- | --- |
 | Claude (Anthropic) | `curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01"` | Canonical `Claude` column source. No key in-shell → cross-check via the OpenRouter `anthropic/*` mirror. |
-| Cursor | `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns — currently NO Sonnet (Fable 5 + Opus 4.7/4.8 + GPT-5.x + composer-2.5 only). |
+| Cursor | `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns — currently NO Sonnet (Fable 5 + Opus 4.7/4.8 + GPT-5.x + Grok 4.5 + composer-2.5). |
 | ollama-local | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
 | NVIDIA NIM | `curl https://integrate.api.nvidia.com/v1/models -H "Authorization: Bearer $NVIDIA_API_KEY"` | Hosted; catalog changes; verify before pinning. |
 | Groq | `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` | Hosted; small catalog. Coding/tool-calling set: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `llama-3.3-70b-versatile` (no Kimi / Qwen3-Coder-480B; `qwen3-32b` was removed). Confirm tool-calling per model. |

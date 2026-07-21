@@ -29,7 +29,7 @@ Output: a reviewed design document (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | Pragmatic | Independent design exploration. Opus, high effort. Forbidden from reading siblings (circular-reasoning guard). |
-| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. Cross-tier / cross-family model (Sonnet on Claude, GPT on Cursor) for diversity. |
+| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. Cross-tier / cross-family model (Sonnet on Claude, Grok on Cursor) for diversity. |
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. Opus, high effort. |
 | `bkit-design-generate` | Synthesiser | Merges the three brainstorms into one design. xhigh effort. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. Opus, high. |
