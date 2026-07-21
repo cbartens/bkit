@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
-model: opencode-go/kimi-k3
+model: opencode-go/minimax-m3
 tools:
   read: true
   grep: true

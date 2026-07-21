@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
-model: opencode/kimi-k2.7-code
+model: opencode-go/minimax-m3
 tools:
   read: true
   grep: true

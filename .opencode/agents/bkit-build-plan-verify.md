@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
-model: opencode-go/kimi-k3
+model: opencode-go/minimax-m3
 tools:
   read: true
   grep: true

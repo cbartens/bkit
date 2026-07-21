@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
-model: opencode/kimi-k2.7-code
+model: opencode-go/minimax-m3
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
-model: opencode/kimi-k2.7-code
+model: opencode-go/minimax-m3
 tools:
   read: true
   grep: true

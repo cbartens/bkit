@@ -1258,16 +1258,16 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
   });
 
-  it("opencode-go: curated OpenCode Go column — AHEAD of Zen (kimi-k3, qwen3.7-plus)", () => {
-    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go-only
-    // premium models kimi-k3 / qwen3.7-plus are invisible to /zen/v1/models — sourced via models.dev.
+  it("opencode-go: curated OpenCode Go column (minimax-m3, qwen3.7-plus)", () => {
+    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog
+    // (incl. minimax-m3 / qwen3.7-plus) is invisible to /zen/v1/models — sourced via models.dev.
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode-go\//);
       expect(model).not.toContain("set-model-id");
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/kimi-k3"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/minimax-m3"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/qwen3.7-plus"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("opencode-go/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode-go/deepseek-v4-pro"); // convergent
