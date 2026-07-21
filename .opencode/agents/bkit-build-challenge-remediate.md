@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against a prioritised review report.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true

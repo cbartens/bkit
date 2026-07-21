@@ -47,8 +47,11 @@ export const OPENCODE_PROVIDERS = [
   "cerebras",
   "openrouter",
   "ollama",
-  // opencode-native gateway. Auth via OPENCODE_API_KEY; models prefixed opencode/<id>.
-  "opencode",
+  // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
+  // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
+  // opencode-go/<id>. Both auth via OPENCODE_API_KEY. See providers.md § Models.
+  "opencode-zen",
+  "opencode-go",
 ] as const;
 
 /**
@@ -57,9 +60,10 @@ export const OPENCODE_PROVIDERS = [
  * CLI to the current canonical key before allowlist validation.
  */
 export const OPENCODE_PROVIDER_ALIASES: Record<string, string> = {
-  // Legacy names kept only for existing installs reading stored "zen"/"go" from package.json.
-  zen: "opencode",
-  go: "opencode",
+  // Legacy bare `opencode` (pre-split) resolved to the Zen gateway → map to opencode-zen.
+  opencode: "opencode-zen",
+  zen: "opencode-zen",
+  go: "opencode-go",
 };
 
 /** Normalise an `--opencode=` value through OPENCODE_PROVIDER_ALIASES (identity if no alias). */
@@ -94,7 +98,7 @@ export type Verb =
 // ---------------------------------------------------------------------------
 
 /** Valid sub-verbs accepted by `bkit telemetry <subverb>`. */
-export const TELEMETRY_SUBVERBS = ["migrate", "summary"] as const;
+export const TELEMETRY_SUBVERBS = ["migrate", "summary", "validate", "normalise"] as const;
 export type TelemetrySubverb = (typeof TELEMETRY_SUBVERBS)[number];
 
 /** Narrow an unknown string to `TelemetrySubverb` or return null if invalid. */
@@ -156,7 +160,7 @@ export interface ParsedArgs {
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
    * Supported: see OPENCODE_PROVIDERS — strict allowlist (ollama-local, nvidia, groq,
-   * cerebras, openrouter, ollama, opencode).
+   * cerebras, openrouter, ollama, opencode-zen, opencode-go).
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
@@ -457,12 +461,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --opencode=<provider>
       // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
-      // cerebras, openrouter, ollama (cloud), opencode (opencode-native gateway) (strict allowlist).
+      // cerebras, openrouter, ollama (cloud), opencode-zen + opencode-go (opencode-native
+      // gateways) (strict allowlist).
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
           console.error(
-            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=opencode-zen). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -474,7 +479,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         const rawValue = flag.slice("opencode=".length);
         if (!rawValue) {
           console.error(
-            `[bkit] --opencode= requires a provider value (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode= requires a provider value (e.g. --opencode=opencode-zen). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -765,6 +770,19 @@ Usage:
                                  --phase=<workflow>: the workflow to report
                                  (design|plan|build|debug|ship). Without it, prints the
                                  ledger-health line only. Read-only: exits 0.
+  bkit telemetry validate        Scan docs/decisions.jsonl + docs/knowledge.jsonl for
+                                 DE-<n>/KN-<n> alias collisions — one number claimed by
+                                 more than one row, which a bare citation resolves to
+                                 ambiguously. Read-only. Exits 1 on a collision (the loud
+                                 signal the merge=union append never surfaces); also WARNs
+                                 on sequential keys minted outside the one-shot migration.
+  bkit telemetry normalise [--dry-run]
+                                 Normalise those ledgers off the retired sequential-alias
+                                 scheme: drop the deprecated aliases[] field into
+                                 references[], keep ts as the id, and re-key only the
+                                 colliding rows (strip the shared number, preserve it as a
+                                 references[] pointer). Parity-gated + idempotent: a re-run
+                                 changes nothing. --dry-run: report without writing.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
                                  counterSource trust labelling, and per-rule compliance
@@ -850,9 +868,10 @@ Examples:
   bkit install --claude --ci                  Claude host + stack-agnostic CI skeleton + core.
   bkit install --claude --cursor --typescript Both hosts + full Node/TS toolchain (implies --ci).
   bkit install --claude --cursor --tooling    Same as --ci --typescript (back-compat alias).
-  bkit install --opencode=opencode            opencode host (opencode-native gateway, additive).
-  bkit install --opencode=nvidia              add nvidia alongside opencode gateway.
-  bkit uninstall --opencode=nvidia            remove nvidia block only; keep opencode.
+  bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
+  bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
+  bkit install --opencode=nvidia                add nvidia alongside an opencode gateway.
+  bkit uninstall --opencode=nvidia              remove nvidia block only; keep the gateway.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --renovate=self
                                               Renovate via self-hosted GitHub Actions (16 GB;

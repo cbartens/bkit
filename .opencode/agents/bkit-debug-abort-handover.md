@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   write: true

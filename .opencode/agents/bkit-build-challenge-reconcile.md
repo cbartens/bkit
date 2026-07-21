@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: opencode/kimi-k2.7-code
+model: opencode-go/kimi-k3
 tools:
   read: true
   grep: true

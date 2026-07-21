@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs-ship
 description: Senior SRE running a post-deploy smoke check for new errors and regressions.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true

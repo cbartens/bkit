@@ -1176,10 +1176,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "nvidia");
     // opus-tier general → kimi
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("nvidia/moonshotai/kimi-k2.6");
-    // sonnet-tier → qwen3-coder
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe(
-      "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
-    );
+    // sonnet-tier → flagship general Qwen3.5 (NIM dropped the Qwen3-Coder-480B)
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("nvidia/qwen/qwen3.5-397b-a17b");
     // haiku-tier → gpt-oss
     expect(lookup.get("bkit-design-summary")).toBe("nvidia/openai/gpt-oss-20b");
     // reasoning lens (opus-tier but CoT override) → deepseek
@@ -1190,19 +1188,19 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
-  it("openrouter: matches nvidia opus/sonnet/haiku identities; v3.2 reasoner for convergent", () => {
+  it("openrouter: kimi-k3 opus, deepseek-v4-pro reasoner for convergent (aggressive-latest)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k2.6");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k3");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/qwen/qwen3-coder");
     expect(lookup.get("bkit-design-summary")).toBe("openrouter/openai/gpt-oss-20b");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v3.2");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v3.2");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v4-pro");
   });
 
-  it("ollama (cloud): identical model identities to nvidia across all four tiers", () => {
+  it("ollama (cloud): kimi-k2.7-code opus, qwen3.5:397b sonnet, deepseek-v4-pro convergent", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.6");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3-coder:480b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.7-code");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3.5:397b");
     expect(lookup.get("bkit-design-summary")).toBe("ollama/gpt-oss:20b");
     expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
   });
@@ -1210,7 +1208,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   it("groq: opus+convergent collapse onto gpt-oss-120b (no Kimi/Qwen3-Coder in catalog)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "groq");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/openai/gpt-oss-120b");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3-32b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3.6-27b");
     expect(lookup.get("bkit-design-summary")).toBe("groq/openai/gpt-oss-20b");
     expect(lookup.get("bkit-build-challenge-2")).toBe("groq/openai/gpt-oss-120b");
   });
@@ -1223,7 +1221,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all seven)", () => {
+  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all eight)", () => {
     for (const provider of [
       "ollama-local",
       "nvidia",
@@ -1231,7 +1229,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       "cerebras",
       "openrouter",
       "ollama",
-      "opencode",
+      "opencode-zen",
+      "opencode-go",
     ]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
       for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
@@ -1244,20 +1243,34 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 
-  it("opencode (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
-    // opencode gateway ships a curated "OpenCode" column probed against the live
-    // https://opencode.ai/zen/v1/models endpoint (2026-06-12). Cells are opencode/<id>.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode");
+  it("opencode-zen: curated OpenCode Zen column (opencode/<id> — models.dev built-in id)", () => {
+    // CLI key is opencode-zen; agent pins use the OpenCode built-in provider id `opencode`.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode\//);
+      expect(model).not.toMatch(/^opencode-zen\//);
       expect(model).not.toContain("set-model-id");
     }
-    // Tier identities from the OpenCode column (opus=kimi-k2.7-code re-pinned 2026-07-12, convergent=deepseek-v4-pro).
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.7-code"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
+  });
+
+  it("opencode-go: curated OpenCode Go column — AHEAD of Zen (kimi-k3, qwen3.7-plus)", () => {
+    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go-only
+    // premium models kimi-k3 / qwen3.7-plus are invisible to /zen/v1/models — sourced via models.dev.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
+    expect(lookup.size).toBeGreaterThan(0);
+    for (const [, model] of lookup) {
+      expect(model).toMatch(/^opencode-go\//);
+      expect(model).not.toContain("set-model-id");
+    }
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/kimi-k3"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/qwen3.7-plus"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("opencode-go/deepseek-v4-flash"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("opencode-go/deepseek-v4-pro"); // convergent
   });
 });
 
@@ -1506,9 +1519,9 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
     expect(detectOpencodeProvider(cwd)).toBe("nvidia");
   });
 
-  it("normalizes a legacy provider key (zen → opencode)", () => {
+  it("normalizes a legacy provider key (zen → opencode-zen)", () => {
     writePkg({ opencodeProvider: "zen" });
-    expect(detectOpencodeProvider(cwd)).toBe("opencode");
+    expect(detectOpencodeProvider(cwd)).toBe("opencode-zen");
   });
 
   it("ignores an out-of-allowlist provider and falls through to null", () => {
@@ -1545,7 +1558,7 @@ describe("detectOpencodeProviders — all installed providers", () => {
 
   it("reads and allowlist-filters bkit.opencodeProviders, normalizing legacy keys", () => {
     writePkg({ opencodeProviders: ["nvidia", "zen", "bogus"] });
-    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode"]);
+    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode-zen"]);
   });
 
   it("falls back to the single bkit.opencodeProvider for legacy installs", () => {

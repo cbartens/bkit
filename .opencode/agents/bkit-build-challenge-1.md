@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
-model: opencode/kimi-k2.7-code
+model: opencode-go/kimi-k3
 tools:
   read: true
   grep: true

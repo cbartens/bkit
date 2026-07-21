@@ -118,7 +118,7 @@ bkit install --claude                    # .claude/** + CLAUDE.md + core
 bkit install --cursor                    # .cursor/** + core
 bkit install --ci                        # stack-agnostic CI skeleton + Vale prose-lint + core
 bkit install --claude --typescript       # Claude host + full Node/TS toolchain (implies --ci) + core
-bkit install --opencode=opencode         # additive opencode host (opencode-native gateway) + core
+bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
 bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core (alias for --ci --typescript)
 
 # A bare install errors — name at least one module:

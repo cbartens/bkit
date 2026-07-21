@@ -242,9 +242,10 @@ const OPENCODE_PROVIDER_COLUMN = {
     cerebras: "Cerebras",
     openrouter: "OpenRouter",
     ollama: "Ollama (Cloud)",
-    // opencode-native gateway: bkit key `opencode`, column header "OpenCode", cells are
-    // opencode-side ids (opencode/<id>), matching the gateway's reference format.
-    opencode: "OpenCode",
+    // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
+    // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
+    "opencode-zen": "OpenCode Zen",
+    "opencode-go": "OpenCode Go",
 };
 /**
  * Build the per-agent opencode model lookup for the selected provider.
@@ -258,7 +259,7 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     if (curated)
         return curated;
     // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
-    // openrouter, ollama, opencode) ship a curated prompts.md column and never reach here.
+    // openrouter, ollama, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
     // This path is the safety net for a FUTURE allowlisted provider added before its column
     // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
     // model id (see providers.md § Models for the live-probe recipe). The prefix is the
@@ -1260,7 +1261,11 @@ export function detectOpencodeProvider(cwd) {
     try {
         const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
         if (cfg.provider && typeof cfg.provider === "object") {
-            return Object.keys(cfg.provider)[0] ?? null;
+            const first = Object.keys(cfg.provider)[0];
+            if (!first)
+                return null;
+            // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
+            return normalizeOpencodeProvider(first === "opencode" ? "opencode-zen" : first);
         }
     }
     catch {
@@ -1699,7 +1704,8 @@ async function main() {
                 cerebras: ["CEREBRAS_API_KEY"],
                 openrouter: ["OPENROUTER_API_KEY"],
                 ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
-                opencode: ["OPENCODE_API_KEY"], // opencode-native gateway
+                "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
+                "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
                 // ollama-local: local server, no API key required
             };
             // Local-only providers that use no remote API key
@@ -2238,7 +2244,7 @@ async function main() {
         // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
         if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
             console.error(`[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
-                `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode)\n` +
+                `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode-zen)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
             process.exit(1);
         }

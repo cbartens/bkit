@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
-model: opencode/kimi-k2.7-code
+model: opencode-go/kimi-k3
 tools:
   read: true
   grep: true

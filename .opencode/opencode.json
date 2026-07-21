@@ -47,7 +47,7 @@
   },
   "plugin": [".opencode/plugin/gateguard.js"],
   "provider": {
-    "opencode": {
+    "opencode-go": {
       "options": {
         "apiKey": "{env:OPENCODE_API_KEY}"
       }

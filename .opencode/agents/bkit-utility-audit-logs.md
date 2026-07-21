@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs
 description: Senior SRE scanning GCP logs for unique error signatures and regressions.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true

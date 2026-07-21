@@ -84,10 +84,13 @@ function detectOpencodeProvider(doc) {
     const provider = doc.provider;
     if (provider !== null && typeof provider === "object" && !Array.isArray(provider)) {
         const keys = Object.keys(provider);
-        if (keys.length > 0)
-            return keys[0];
+        if (keys.length > 0) {
+            const first = keys[0];
+            // Zen block is keyed `opencode` (built-in id); map back to the bkit CLI key.
+            return first === "opencode" ? "opencode-zen" : first;
+        }
     }
-    return "opencode";
+    return "opencode-zen";
 }
 export function stripTier2JsonScope(consumerDoc, templateDoc) {
     const out = JSON.parse(JSON.stringify(consumerDoc));

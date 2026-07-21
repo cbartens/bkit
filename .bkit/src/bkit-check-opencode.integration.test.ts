@@ -76,15 +76,15 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
   // opencode renders an `opencode`-keyed provider block. This is the case that false-drifts if
   // detection regresses to mapping the opencode.json provider-block key straight to a bkit key.
-  it("clean install (opencode gateway, opencode block keyed by providerId) → check exits 0, no false drift", () => {
+  it("clean install (opencode-go gateway, opencode-go block keyed by provider) → check exits 0, no false drift", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    const install = runBkit(["install", "--claude", "--opencode=opencode", "--tracker=github"]);
+    const install = runBkit(["install", "--claude", "--opencode=opencode-go", "--tracker=github"]);
     expect(install.status).toBe(0);
-    // opencode ships a built-in `opencode` block — confirm the fixture exercises the providerId path.
+    // opencode-go renders a built-in block keyed `opencode-go` — confirm the fixture exercises it.
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as {
       provider?: Record<string, unknown>;
     };
-    expect(cfg.provider?.opencode).toBeDefined();
+    expect(cfg.provider?.["opencode-go"]).toBeDefined();
 
     const check = runBkit(["check"]);
     expect(check.status).toBe(0);

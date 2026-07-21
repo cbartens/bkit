@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
-model: opencode/kimi-k2.7-code
+model: opencode-go/kimi-k3
 tools:
   read: true
   grep: true

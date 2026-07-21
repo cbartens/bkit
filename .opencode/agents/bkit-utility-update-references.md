@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   glob: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-summary
 description: Senior reviewer evaluating a ship cycle for completion and follow-up needs.
-model: opencode/deepseek-v4-flash
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: true

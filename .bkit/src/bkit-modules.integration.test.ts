@@ -993,6 +993,31 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/); // all sentinels resolved
   });
 
+  it("cloud=claude: {{CLOUD_RUNNER}} renders both jobs' runs-on from the token (#362)", () => {
+    const ws = makeWriteSet();
+    runCloudModule(
+      makeCtx({
+        ws,
+        cloudVariant: "claude",
+        issueTracker: "github",
+        tokens: { ...makeCtx().tokens, CLOUD_RUNNER: "depot-ubuntu-24.04" },
+      }),
+    );
+    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
+    // Both jobs (claude + opencode) share the one label; no raw token leaks through.
+    const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
+    expect(runsOn).toEqual(["depot-ubuntu-24.04", "depot-ubuntu-24.04"]);
+    expect(yml).not.toContain("{{CLOUD_RUNNER}}");
+  });
+
+  it("cloud=claude: unset runner defaults both jobs to ubuntu-latest (#362)", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
+    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
+    const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
+    expect(runsOn).toEqual(["ubuntu-latest", "ubuntu-latest"]);
+  });
+
   it("cloud=claude: bkit-cloud.yml header states App required and bkit:auto label (no bare Auto)", () => {
     const ws = makeWriteSet();
     runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
@@ -1101,12 +1126,19 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     expect(stripped).not.toBe("141");
   });
 
-  it("canonical .github/workflows/bkit-cloud.yml and template are byte-identical (T3.1 + T2.7 invariant)", () => {
+  it("canonical .github/workflows/bkit-cloud.yml matches the token-rendered template (T3.1 + T2.7 invariant, #362)", () => {
     const canonical = fs.readFileSync(
       path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"),
       "utf-8",
     );
-    expect(canonical).toBe(rawTemplate);
+    // bkit's own package.json sets no `bkit.runners`, so `{{CLOUD_RUNNER}}` resolves
+    // to the ubuntu-latest default (#362). The committed canonical is the RENDERED
+    // template, not the raw token — mirror the install/upgrade render here.
+    const rendered = renderCloudWorkflow(rawTemplate, "github").replace(
+      /\{\{CLOUD_RUNNER\}\}/g,
+      () => "ubuntu-latest",
+    );
+    expect(canonical).toBe(rendered);
   });
 });
 
@@ -2572,7 +2604,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 
   // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
   // removing the first. Both nvidia + opencode blocks coexist after two installs.
-  it("provider switch nvidia → opencode keeps both blocks (additive install)", () => {
+  it("provider switch nvidia → opencode-go keeps both blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2581,15 +2613,42 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
     expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
 
-    // opencode renders a minimal built-in `opencode` provider block keyed by its providerId.
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode" }));
+    // opencode-go renders a built-in block keyed `opencode-go` (apiKey only — no npm/baseURL).
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    // Additive: nvidia block is preserved alongside the new opencode block.
+    // Additive: nvidia block is preserved alongside the new opencode-go block.
     expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
-    // The opencode block is keyed `opencode` and references OPENCODE_API_KEY.
-    expect((parsed.provider?.opencode?.options as Record<string, unknown>)?.apiKey).toBe(
-      "{env:OPENCODE_API_KEY}",
-    );
+    const go = parsed.provider?.["opencode-go"];
+    expect((go?.options as Record<string, unknown>)?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect(go?.npm).toBeUndefined();
+    expect((go?.options as Record<string, unknown>)?.baseURL).toBeUndefined();
+  });
+
+  it("reinstall heals a corrupted opencode-go block (strips hijacked npm/baseURL)", () => {
+    type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
+    const doc = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    // Consumer (or prior bug) hijacked the built-in with an ollama-local-shaped block.
+    doc.provider!["opencode-go"] = {
+      npm: "@ai-sdk/openai-compatible",
+      name: "hijacked",
+      options: {
+        baseURL: "http://localhost:11434/v1",
+        apiKey: "{env:OPENCODE_API_KEY}",
+      },
+    };
+    fs.writeFileSync(jsonPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
+    const healed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    const block = healed.provider?.["opencode-go"];
+    expect(block?.npm).toBeUndefined();
+    expect(block?.name).toBeUndefined();
+    expect((block?.options as Record<string, unknown>)?.baseURL).toBeUndefined();
+    expect((block?.options as Record<string, unknown>)?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect(Object.keys(block ?? {})).toEqual(["options"]);
   });
 
   it("provider switch nvidia → groq keeps both provider blocks (additive install)", () => {
@@ -2764,13 +2823,15 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
     }
   });
 
-  it("opencode key maps to opencode gateway id 'opencode' (#245 Phase 3)", () => {
-    expect(opencodeProviderId("opencode")).toBe("opencode");
+  it("opencode-zen CLI key maps to built-in gateway id 'opencode' (models.dev)", () => {
+    expect(opencodeProviderId("opencode-zen")).toBe("opencode");
   });
 
-  it("legacy zen key maps to opencode gateway id via OPENCODE_PROVIDER_DEFAULTS providerId", () => {
-    // zen is a legacy alias; OPENCODE_PROVIDER_DEFAULTS no longer has a 'zen' entry,
-    // so opencodeProviderId passes it through unchanged (same as any unknown key).
+  it("opencode-go CLI key maps to built-in gateway id 'opencode-go'", () => {
+    expect(opencodeProviderId("opencode-go")).toBe("opencode-go");
+  });
+
+  it("legacy zen key passes through unchanged (alias resolved at CLI, not here)", () => {
     expect(opencodeProviderId("zen")).toBe("zen");
   });
 
@@ -2862,22 +2923,31 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.apiKey).toBeUndefined();
   });
 
-  it("opencode (#282): built-in provider — minimal `opencode` block keyed by providerId, OPENCODE_API_KEY only", () => {
-    // opencode is the built-in opencode gateway (id `opencode`). renderOpencodeJson emits a
-    // minimal block carrying only options.apiKey ({env:OPENCODE_API_KEY}) — NO npm driver, NO
-    // baseURL (opencode resolves the built-in provider itself).
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "opencode"));
-    const block = parsed.provider?.opencode;
-    expect(block, "opencode provider block present").toBeDefined();
-    expect(block.npm, "no npm driver for the built-in gateway").toBeUndefined();
-    expect(block.options?.baseURL, "no baseURL for the built-in gateway").toBeUndefined();
-    expect(block.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
-    // The rest of the managed surface still renders normally.
-    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
-    expect(parsed.mcp?.github?.type).toBe("remote");
-    expect(parsed.permission?.edit).toBe("allow");
-    // No leaked sentinels.
-    expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
+  it("opencode-zen / opencode-go: built-in providers (apiKey only — no npm/baseURL)", () => {
+    // OpenCode resolves Zen/Go from models.dev (per-model openai-compatible vs anthropic).
+    // Seeding npm+baseURL forces every model through /chat/completions and breaks Qwen/MiniMax
+    // (Anthropic /messages) → wrong-URL errors. Built-in shape: options.apiKey only.
+    const cases = [
+      ["opencode-zen", "opencode"],
+      ["opencode-go", "opencode-go"],
+    ] as const;
+    for (const [cliKey, blockKey] of cases) {
+      const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", cliKey));
+      const block = parsed.provider?.[blockKey];
+      expect(block, `${cliKey} → provider.${blockKey}`).toBeDefined();
+      expect(block.api).toBeUndefined();
+      expect(block.npm).toBeUndefined();
+      expect(block.name).toBeUndefined();
+      expect(block.options?.baseURL).toBeUndefined();
+      expect(block.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+      expect(Object.keys(block)).toEqual(["options"]);
+      expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+      expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
+    }
+    // Zen CLI key must NOT invent a custom `opencode-zen` block — models.dev id is `opencode`.
+    const zen = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "opencode-zen"));
+    expect(zen.provider?.["opencode-zen"]).toBeUndefined();
+    expect(zen.provider?.opencode).toBeDefined();
   });
 });
 
