@@ -13,7 +13,14 @@ export default defineConfig({
     // (report-only never reds the lane); a gate is opt-in per consumer.
     coverage: {
       provider: "v8",
-      reporter: ["text", "json-summary", "json"],
+      // "text" pins skipFull: false explicitly — vitest 4.x auto-forces skipFull:
+      // true on it under AI-agent detection (std-env `isAgent`, e.g. CLAUDECODE),
+      // which silently drops any 100%-covered file's row from the printed table
+      // (json-summary/json data is unaffected either way). Without this override,
+      // an agent running `pnpm test:coverage:unit` sees a shorter table than a
+      // human running the identical command — e.g. bkit-trackers.ts (100% branch)
+      // vanishes from the report though it's fully measured.
+      reporter: [["text", { skipFull: false }], "json-summary", "json"],
       reportOnFailure: true,
     },
   },

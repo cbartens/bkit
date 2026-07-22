@@ -1,6 +1,7 @@
-// bkit-gateguard.test.ts — behavioural tests for the shipped GateGuard PreToolUse
-// hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the real script with
-// node, feeds a PreToolUse payload on stdin, and asserts the stdout contract:
+// bkit-gateguard.integration.test.ts — behavioural tests for the shipped GateGuard
+// PreToolUse hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the real
+// script with node, feeds a PreToolUse payload on stdin, and asserts the stdout
+// contract:
 //   - advisory by default (additionalContext, no permissionDecision)
 //   - fail-open / no-op on disabled, subagent, non-edit, malformed/empty input
 //   - dedup once per (session, file)

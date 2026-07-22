@@ -44,7 +44,7 @@
     "test": "vitest run",
     "test:bats": "bats tests/*.bats",
     "test:watch": "vitest",
-    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=65",
+    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=70",
     "typecheck": "tsc --noEmit",
     "check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "format": "prettier --write .",
