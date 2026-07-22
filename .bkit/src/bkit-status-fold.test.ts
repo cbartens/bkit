@@ -14,7 +14,7 @@
  *       guard).
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -74,42 +74,15 @@ describe("#58 T1.1/T1.3: bkit-status-fold.sh is single-sourced", () => {
     expect(md5).toBe(MEASURED_MD5);
   });
 
-  it("extracted value is byte-identical to the blob inside bkit-build.md's (formerly) inlined quotes", () => {
-    // Re-derive the reference value directly from git history (dev) rather
-    // than re-reading the now-converted workflow, so this assertion is not
-    // circular once T1.2 has replaced the inline assignment. Uses spawnSync
-    // (non-throwing) rather than execSync + try/catch — a missing `dev` ref
-    // (e.g. shallow clone) is an expected, non-exceptional outcome here, not
-    // an error to swallow.
-    const devShow = spawnSync("git", ["show", "dev:.bkit/workflows/bkit-build.md"], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-    });
-    if (devShow.status !== 0) {
-      // dev ref unavailable in this environment (e.g. shallow clone) — skip
-      // this particular cross-check; the length/md5 assertion above already
-      // pins the value. (G5, build-plan-gaps-remediate-1-1: logged, not just
-      // silently returned, so a shallow-clone CI lane surfaces in its own
-      // output that this cross-check did not run, rather than looking
-      // identical to a run where it did.)
-      console.warn(
-        "[bkit-status-fold.test.ts] dev ref unavailable (shallow clone?) — " +
-          "skipping the git-history cross-check; length/md5 assertion still ran.",
-      );
-      return;
-    }
-    const devBuild = devShow.stdout;
-    const match = devBuild.match(/FOLD='(def lastIdx[\s\S]*?end\);)'/);
-    expect(
-      match,
-      "dev's bkit-build.md should still carry an inline FOLD assignment",
-    ).not.toBeNull();
-    const devValue = match?.[1] ?? "";
-    const out = execSync(`sh -c '. "${FOLD_SH_PATH}"; printf "%s" "$BKIT_STATUS_FOLD"'`, {
-      encoding: "utf-8",
-    });
-    expect(out).toBe(devValue);
-  });
+  // NOTE: A former test here cross-checked the extracted value against the
+  // inline `FOLD='def lastIdx...'` blob read from `git show dev:...bkit-build.md`.
+  // That was a one-time TRANSITION check: it only held while T1.2 sat on a
+  // feature branch and `dev` still carried the inline assignment. Once #58 (T1.2)
+  // merged into dev, `dev:bkit-build.md` IS the converted file with no inline
+  // blob, so the cross-check could never pass again (self-invalidating). The
+  // value it guarded is already durably pinned by the length/md5 assertion above
+  // (whose md5 was itself measured from that exact blob at T1.1), so it was
+  // removed rather than salvaged via fragile git archaeology.
 
   it("every workflow referencing $BKIT_STATUS_FOLD also sources bkit-status-fold.sh", () => {
     for (const wf of WORKFLOW_FILES) {
