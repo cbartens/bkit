@@ -20,10 +20,10 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 .bkit/workflows/
 ├── bkit-design.md         # Workflow 1/6 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/6 — 12 steps; hard stop after summary
-├── bkit-build.md          # Workflow 3/6 — 18 steps; CI takes over after PR
+├── bkit-build.md          # Workflow 3/6 — 17 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/6 — 10 steps; normal / soak modes
 ├── bkit-ship.md           # Workflow 5/6 — 13 steps; merge → archive → In Review (human closes)
-├── bkit-audit.md          # Workflow 6/6 — 7 steps; hard stop after summary
+├── bkit-audit.md          # Workflow 6/6 — 7 steps; planned (not yet shipped)
 ├── bkit-auto.md          # Utility — phase-routed cloud dispatch (ship/debug by CI; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
 └── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
@@ -37,7 +37,7 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 | `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL |
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
-| `/bkit-audit` | yes | yes | `docs/audits/{FID}-audit.md` + one Linear sub-issue per workstream |
+| `/bkit-audit` | yes | yes | planned — `docs/audits/{FID}-audit.md` + one Linear sub-issue per workstream |
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
@@ -561,12 +561,12 @@ Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate f
 
 **Placement (mode-dependent):**
 
-- `/bkit-build` Step 18: `bkit:auto` re-read BEFORE close-workflow commit. Present → subject `chore({FID}): close-workflow bkit [auto route]`. Close-workflow = feat-branch HEAD firing CI → gate checks `head_commit.message`.
+- `/bkit-build` Step 17: `bkit:auto` re-read BEFORE close-workflow commit. Present → subject `chore({FID}): close-workflow bkit [auto route]`. Close-workflow = feat-branch HEAD firing CI → gate checks `head_commit.message`.
 - `/bkit-debug` Step 12 PR-mode: same — marker on close-workflow. Create-pr (sub-step 9) does NOT run (`TRIGGER_PR=0`).
 - `/bkit-debug` Step 12 local-mode: `bkit:auto` re-read before create-pr (sub-step 9). Marker on create-pr = CI-triggering HEAD local-mode.
 - `/bkit-ship` Step 4 (conflict-resolve) + Step 6 (dev-sync): re-derive `AUTO_ROUTE_SUFFIX` from Step-1 `LABELS` (`echo "${LABELS:-}" | grep -q 'bkit:auto'`, fail-closed empty) → append to commit/merge subject — opted-in branch keeps marker when either commit becomes CI-triggering HEAD. Ship uses Step-1 `LABELS` (not fresh MCP); cloud gate in-job `bkit:auto` re-check = live kill switch.
 
-**Why re-read must precede commit (R2-1/R2-2):** kill-switch re-read at build Step 18 sub-step 4 / debug Step 12 sub-step 11 runs AFTER commit+push — cannot source marker on existing commit. Fresh `bkit:auto` read BEFORE commit construction = authoritative "at close time" signal.
+**Why re-read must precede commit (R2-1/R2-2):** kill-switch re-read at build Step 17 / debug Step 12 sub-step 11 runs AFTER commit+push — cannot source marker on existing commit. Fresh `bkit:auto` read BEFORE commit construction = authoritative "at close time" signal.
 
 **Coexistence with `bkit [verbose ci]`:** debug local-mode both on same subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. HEAD-Subject Assertion: both legitimate. Gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — `bkit [verbose ci]` does not interfere.
 
@@ -646,7 +646,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Hard stop in Step 12 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
 
-### `/bkit-build` — 18 steps
+### `/bkit-build` — 17 steps
 
 **Goal:** implementation + PR creation. CI takes over after PR exists. Workflow stops on PR creation; no human gate within build itself.
 
@@ -671,8 +671,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 14 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 13 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. |
 | 15 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 13 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 13. > `MAX_TEST_ATTEMPT` → Failure Path. |
 | 16 — Summary | `@bkit-build-summary` | Commit `chore({FID}): summary` → push (`-u origin {BRANCH}`). |
-| 17 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `bkit [force build]` → amend or empty commit with `bkit [force build]` → push. PR body is the plan blob URL. `gh pr create --base dev` (base pinned). Retry `gh pr create` once on failure. Post-create assertion: `gh pr view --json baseRefName` = dev else Failure Path — guards against repos whose default base is `main`. |
-| 18 — Close Workflow | — | Set state `In Review`; phase label `Build` persists. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. Final return displays `build-summary.md` verbatim. |
+| 17 — Close Workflow & Create PR | — | `bkit:auto` re-read BEFORE close-workflow commit; open-PR probe; if `supabase/migrations/` changed and HEAD lacks `bkit [force build]` → amend or empty commit with `bkit [force build]` → push. PR body is the plan blob URL. `gh pr create --base dev` (base pinned). Retry `gh pr create` once on failure. Post-create assertion: `gh pr view --json baseRefName` = dev else Failure Path — guards against repos whose default base is `main`. Set state `In Review`; phase label `Build` persists. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. Final return displays `build-summary.md` verbatim. |
 
 **Failure Path includes handover** — when triggered by exhausted retry counts, invokes `@bkit-debug-abort-handover` and posts `Workflow Handover` comment.
 
@@ -695,7 +694,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | --- | --- | --- |
 | 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER` → `PUSH_MODE`. Read prior `debugAttempt` from status.jsonl → `DEBUG_ATTEMPT` = prior + 1. Set `DEBUG_MODE` (NORMAL | SOAK; objective signals: `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` + session-prompt `[soak]`). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | Branch fallback differs from feat workflows: if no `feat/{FID}` branch exists locally or on origin → `git worktree add -b fix/{FID} origin/dev`. Branch eligibility check: `BRANCH` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive) — else Failure Path with `Wrong branch.` Writes `debug-input-{DEBUG_ATTEMPT}.md` (failure description only — no workflow state). Init `NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0. Persists `debugMode` / `pushMode`. |
-| 3 — Run Tests | — | **LOOP HEAD (both modes).** Increment `NORMAL_ATTEMPT`. Detect `turbo.json`: present → `pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]' --continue` (append any declared `test:integration:live` / `test:e2e:live` / `test:live` LAST, opt-out via `[live=off]`); absent → single-package fallback. Iteration 1 = reproduce. Records `verdict` + `failures` + `scope` (the verbatim test command; contains a `test:...:live` task only when a live tier ran). PASS + `NORMAL_ATTEMPT` > 1 → Step 8; PASS (unreproduced) → Step 9; FAIL + NORMAL + `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4; FAIL + NORMAL + exhausted → set SOAK, reset `SOAK_ATTEMPT` = 0 → Step 4; FAIL + SOAK + `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4; else → Failure Path. |
+| 3 — Run Tests | — | **LOOP HEAD (both modes).** Increment `NORMAL_ATTEMPT`. Detect `turbo.json`: present → `pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]' --continue` (append any declared `test:integration:live` / `test:e2e:live` / `test:live` LAST, opt-out via `[live=off]`); absent → single-package fallback. Iteration 1 = reproduce. Records `verdict` + `failures` + `scope` (the verbatim test command; contains a `test:...:live` task only when a live tier ran); commits `chore({FID}): run-tests attempt {NORMAL_ATTEMPT}` (status durable before route). PASS + `NORMAL_ATTEMPT` > 1 → Step 8; PASS (unreproduced) → Step 9; FAIL + NORMAL + `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4; FAIL + NORMAL + exhausted → set SOAK, reset `SOAK_ATTEMPT` = 0 → Step 4; FAIL + SOAK + `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4; else → Failure Path. |
 | 4 — Fetch Context | — | _(on FAIL with budget)_ Mode-agnostic. Five sub-fetches in priority order (CI logs / diff vs last-passing CI / local run output incl `[DEBUG-OBSERVE]` / Playwright e2e / runtime logs) + a related-issues tracker search → per-source `debug-context-*-{DEBUG_ATTEMPT}.md` written only when content exists. Routes: SOAK → Step 7; else → Step 5. |
 | 5 — Failure Diagnose | `@bkit-debug-failure-diagnose` _(only if `DEBUG_MODE` = NORMAL)_ | `STRATEGY` STANDARD → PIVOT → FINAL by prior diagnose. Writes `debug-failure-diagnose-{NORMAL_ATTEMPT}.md`; when a live tier failed on a functional assertion, anchors on that real-boundary ground truth (treats infra/credential failures as environment, not feature-broken). Sets `Mode` (NORMAL | SOAK) — `SOAK` when the cause is not localisable (gated on `Verdict` != PASS); in `NORMAL` the orchestrator then fast-tracks to Step 7 (Soak), resetting `SOAK_ATTEMPT` = 0, else → Step 6. |
 | 6 — Failure Remediate | `@bkit-debug-failure-remediate` _(only if `DEBUG_MODE` = NORMAL)_ | Writes `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md` + source files. Orchestrator commits `fix({FID}): {description}{VERBOSE_SUFFIX}` (`{description}` from the first `DONE — Step` line, truncated to 72 chars; `VERBOSE_SUFFIX = " bkit [verbose ci]"` iff `PUSH_MODE = LOCAL`); the fix commit is the HEAD the next Run Tests / Push pushes. → loop to Step 3. |
@@ -725,11 +724,11 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 10 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | No archive step — plans are already at canonical `docs/plans/{YYYYMM}/`. Both subagents in parallel. `update-docs` writes `ship-update-docs.md` + edits cataloged docs (incl. `docs/completed.md`, which references `docs/plans/{YYYYMM}/{FID}-plan.md`). `summary` writes `ship-summary.md` (incl. the resurfaced declared-deferral section lifted from `ship-deferred-sweep.md`). Sibling-blind: `summary` MUST NOT read `update-docs.md`. Commit `docs({FID}): update-docs-summary`. `SUMMARY_VERDICT` or `UPDATE_DOCS_VERDICT` = FAIL → Failure Path. |
 | 11 — Prune Skills | — | Uninstall any `.agents/skills/` skills not listed in `.agents/skills.md` via `npx skills remove -y`. Commit `chore({FID}): prune-skills`. |
 | 12 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. Local + remote branch deletion is explicit because `gh pr merge --delete-branch` aborts both sides when the local one fails (worktree holds the ref). Squash-merged tip is unreachable from `dev`, so `-D` is correct. |
-| 13 — Close Workflow | — | Assert the squash-merge CI run reached `status` = completed (an unfinished run has a null `conclusion`, which fail-open equality checks read as green), was neither cancelled nor a failure, and that its test tiers passed: the `bkit-tests-check` capstone where adopted — it is the sole authority there, since it already reds the build if any tier the plan expected was skipped, so a tier it let self-skip must not fail this gate — else every `bkit-tests*` lane, fail-safe on `!= "success"`. Exact-match by job name: no job is named `bkit-tests` any more, and a substring match on `test` also catches unrelated jobs (`latest-deploy`). Final commit `docs({FID}): ship DONE bkit [skip ci]` → push `dev`. Add `Merged` label, drop `Failed` if present, state `Done`. Final return displays `ship-summary.md` verbatim. |
+| 13 — Close Workflow | — | Assert the squash-merge CI run reached `status` = completed (an unfinished run has a null `conclusion`, which fail-open equality checks read as green), was neither cancelled nor a failure, and that its test tiers passed: the `bkit-tests-check` capstone where adopted — it is the sole authority there, since it already reds the build if any tier the plan expected was skipped, so a tier it let self-skip must not fail this gate — else every `bkit-tests*` lane, fail-safe on `!= "success"`. Exact-match by job name: no job is named `bkit-tests` any more, and a substring match on `test` also catches unrelated jobs (`latest-deploy`). Final commit `docs({FID}): ship DONE bkit [skip ci]` → push `dev`. Add `Merged` label, drop `Failed` if present, state `Done`. Final return displays `ship-summary.md` verbatim. **HARD STOP**. |
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
-### `/bkit-audit` — 7 steps
+### `/bkit-audit` — 7 steps _(planned — `bkit-audit.md` not yet in `.bkit/workflows/`)_
 
 **Goal:** read-only multi-lens audit. No code, no execution. Always hard-stops after summary for human review (do NOT invoke `/bkit-plan` or `/bkit-build`). Triggered ad-hoc by a human; NOT part of the design → plan → build → debug → ship auto-cycle.
 
@@ -956,7 +955,7 @@ Precedence: `bkit [force build]` on head commit wins.
 | `fix({FID}): {description}` (debug Step 5 failure-remediate) | none — Step 7 pushes this commit directly so `fix(...)` becomes the CI-triggering HEAD (dodges `^chore:`-prefix Vercel-ignore rules and partial-tier `decide`-step demotion). `{description}` derived from first `DONE — Step` line in `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md`. Debug Step 7 adds NO intermediate `chore(...)` commit before push. |
 | `docs({FID}): ship DONE` (ship Step 13 close-workflow on `dev`) | `bkit [skip ci]` |
 | `docs({FID}): {phase} aborted` (Failure Path handover) | `bkit [skip ci]` |
-| `chore({FID}): close-workflow` (build Step 18 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
+| `chore({FID}): close-workflow` (build Step 17 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
 | `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
 | `chore({FID}): conflict-resolve` (ship Step 4) / `chore({FID}): sync dev` (ship Step 6 dev-sync merge) — opted-in | none / `bkit [auto route]` (conditional on `bkit:auto`, from Step-1 `LABELS`) — re-carries the marker onto the feat-branch HEAD so a bkit-driven conflict / dev-sync merge does not bury it (the ad-hoc `merge origin/dev` that buried it in a consumer is the human analogue) |
@@ -1015,7 +1014,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 
 **Per-site AUTO_ROUTE sourcing:**
 
-- **Build Step 18:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from in-block `LABELS` derivation. Assert-equal trivially satisfied; line stays for symmetry.
+- **Build Step 17:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from in-block `LABELS` derivation. Assert-equal trivially satisfied; line stays for symmetry.
 - **Debug LOCAL Step 10 sub-step 9:** in-block `AUTO_ROUTE_SUFFIX` from `BKIT_AUTO_ROUTE_FILE` (read+`rm` before create-pr; var stays in scope for gate after push). Do NOT reorder `rm` or re-read file.
 - **Debug PR Step 10 sub-step 3:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from `LABELS` at sub-step 3 entry.
 
@@ -1060,7 +1059,7 @@ Rationale: invariant **contextual** — bkit pushes `[skip ci]` intermediately (
 | `/bkit-ship` | 4 (merge-pr) | `gh pr merge --squash --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Followed by pre-existing `gh run list --branch dev --commit "$SQUASH_SHA"` gate (not a CI-Dispatch Gate) |
 | `/bkit-ship` | 10 / 11 / 13 (post-merge dev pushes) | Step 10 `docs({FID}): update-docs-summary`, Step 11 `chore({FID}): prune-skills`, Step 13 `docs({FID}): ship DONE bkit [skip ci]` | Post-merge docs-only; PR already merged, dev's CI fired by Step 6, no re-trigger needed. Per-step commits batched locally; single push to `dev` at Step 13 close-workflow. |
 
-All intermediate workflow commits retain `bkit [skip ci]` — only trailing `close-workflow` unmarked, LAST before final `git push`. Fixes prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
+All intermediate workflow commits retain `bkit [skip ci]` — only trailing `close-workflow` unmarked, LAST before final `git push`. Fixes prior latent bug where build Step 17 / debug Step 12 commits were never explicitly pushed.
 
 ## Permissions (`.claude/settings.json`)
 

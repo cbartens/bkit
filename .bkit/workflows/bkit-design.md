@@ -719,8 +719,9 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Blocked-by edges attempted (per `Requires`)
 - [ ] Workflow status updated (step `design-workstream-issues` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 9` section)
-    <!-- bkit:tracker true end -->
-  <!-- bkit:tracker false start -->
+
+<!-- bkit:tracker true end -->
+<!-- bkit:tracker false start -->
 
 1. No tracker connected → Step 10.
 
