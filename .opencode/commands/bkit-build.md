@@ -30,7 +30,7 @@ $ARGUMENTS
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** build status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -71,7 +71,7 @@ $ARGUMENTS
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
@@ -340,7 +340,7 @@ $ARGUMENTS
 
 **Skip if** build input contains `[skills=false]`.
 
-1. **Subagent:** Invoke `@bkit-build-install-skills` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-install-skills` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `.agents/skills.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-install-skills.md`, `.agents/skills/` (skill installs via Bash).
@@ -384,7 +384,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 5 — Plan Execute
 
-3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Task` tool:
+3. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:
    Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Update: Source files.
@@ -424,7 +424,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 6 — Plan Verify
 
 8. Increment `VERIFY_ATTEMPT` + 1.
-9. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
+9. **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
    Update: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
@@ -489,7 +489,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
     - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
     - **Else** → **Failure Path**.
-19. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Task` tool:
+19. **Subagent:** Invoke `/bkit-build-plan-gaps-remediate` using `Task` tool:
     Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
     Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
@@ -530,7 +530,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** `SUB_COUNT` >= 2. **Skip if** `SINGLE_PLAN` = true.
 
-1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
@@ -572,11 +572,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🧠 Step 9 — Build Challenge
 
 1. Launch both subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-build-challenge-1`
+   - **Subagent:** Invoke `/bkit-build-challenge-1`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
-   - **Subagent:** Invoke `@bkit-build-challenge-2`
+   - **Subagent:** Invoke `/bkit-build-challenge-2`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
@@ -612,7 +612,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🧠 Step 10 — Reconcile Build Challenge
 
-1. **Subagent:** Invoke `@bkit-build-challenge-reconcile` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-challenge-reconcile` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
@@ -659,7 +659,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 **Run only if** Step 10 (`CHALLENGE_VERDICT` = CONCERNS **or** FAIL) **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
 
 1. Increment `CHALLENGE_REMEDIATE_ATTEMPT` + 1.
-2. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-build-challenge-remediate` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
    Update: Source files.
@@ -703,7 +703,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** Step 10 `CHALLENGE_VERDICT` = CONCERNS or FAIL.
 
-1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-challenge-tests` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-tests.md`, test files.
@@ -821,7 +821,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+3. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
@@ -861,7 +861,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** Step 13 tests FAIL.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source and test files.
@@ -902,7 +902,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** all Step 13 tests PASS.
 
-1. **Subagent:** Invoke `@bkit-build-summary` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-summary` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md`.

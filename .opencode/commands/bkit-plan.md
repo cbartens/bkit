@@ -29,7 +29,7 @@ $ARGUMENTS
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
 > - **Status branch:** plan status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle `dev` push. State reaches `dev` once via the Close Workflow squash-merge → `docs({FID}): plan DONE bkit [skip ci]`. Failure Path appends `workflow-failed` to the retained worktree copy (NO `dev` push); the tracker comment carries the failure signal.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -236,7 +236,7 @@ $ARGUMENTS
 
 ## 🧠 Step 3 — Generate Plan
 
-1. **Subagent:** Invoke `@bkit-plan-generate` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-plan-generate` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
@@ -331,15 +331,15 @@ $ARGUMENTS
 ## 🧠 Step 5 — Review Plan
 
 1. Launch all three subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-plan-review-1`
+   - **Subagent:** Invoke `/bkit-plan-review-1`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
-   - **Subagent:** Invoke `@bkit-plan-review-2`
+   - **Subagent:** Invoke `/bkit-plan-review-2`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
-   - **Subagent:** Invoke `@bkit-plan-review-3`
+   - **Subagent:** Invoke `/bkit-plan-review-3`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
@@ -376,7 +376,7 @@ $ARGUMENTS
 
 ## 🧠 Step 6 — Apply Review
 
-1. **Subagent:** Invoke `@bkit-plan-update` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-plan-update` using `Task` tool:
    Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
@@ -415,11 +415,11 @@ $ARGUMENTS
 ## 🧠 Step 7 — Scope Check
 
 1. Launch both subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-plan-scope-check-1`
+   - **Subagent:** Invoke `/bkit-plan-scope-check-1`
      Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`.
-   - **Subagent:** Invoke `@bkit-plan-scope-check-2`
+   - **Subagent:** Invoke `/bkit-plan-scope-check-2`
      Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
@@ -456,7 +456,7 @@ $ARGUMENTS
 
 ## 🧠 Step 8 — Apply Scope
 
-1. **Subagent:** Invoke `@bkit-plan-update` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-plan-update` using `Task` tool:
    Context: You are a subagent in the Plan phase applying scope-check critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
    Update: `docs/deferrals.jsonl` (APPEND scope expansions if any).
@@ -496,7 +496,7 @@ $ARGUMENTS
 
 ## 🧠 Step 9 — Complexity Check
 
-1. **Subagent:** Invoke `@bkit-plan-complexity-check` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-plan-complexity-check` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md`.
@@ -534,7 +534,7 @@ $ARGUMENTS
 
 **Run only if** Step 9 `COMPLEXITY_VERDICT` = SPLIT.
 
-1. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-plan-complexity-split` using `Task` tool:
    Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-1.md` ... `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-N.md` (children).
@@ -578,7 +578,7 @@ $ARGUMENTS
 ## 🧠 Step 11 — Summary
 
 1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
-2. **Subagent:** Invoke `@bkit-plan-summary` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-plan-summary` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.

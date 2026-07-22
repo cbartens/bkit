@@ -30,7 +30,7 @@ $ARGUMENTS
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
 > - **Status branch:** Steps 1-8 commit status.jsonl on `feat/{FID}` (`$(git rev-parse --show-toplevel)/.../status.jsonl`); Steps 9-13 append to the dev copy (`$REPO_ROOT/.../status.jsonl`). `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -93,7 +93,7 @@ $ARGUMENTS
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards, counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed **or** deferred-sweep block sentinel (`docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked`) previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
@@ -365,7 +365,7 @@ $ARGUMENTS
 
 **Run only if:** Sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists after Step 2.
 
-1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `Task` tool:
    Context: You are a subagent in the Ship phase. Lockfile-only fast-path already attempted and did not match. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Update: Conflicted source files.
@@ -406,7 +406,7 @@ $ARGUMENTS
 
 ## 🧠 Step 5 — Deferred Sweep
 
-1. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-ship-deferred-sweep` using `Task` tool:
    Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
@@ -564,7 +564,7 @@ $ARGUMENTS
 
 **Run only if** `state` != MERGED.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
@@ -614,7 +614,7 @@ $ARGUMENTS
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+3. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
@@ -724,12 +724,12 @@ $ARGUMENTS
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
 3. Launch both subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-ship-update-docs`
+   - **Subagent:** Invoke `/bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
      Update: Doc files.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
-   - **Subagent:** Invoke `@bkit-ship-summary`
+   - **Subagent:** Invoke `/bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.

@@ -101,6 +101,23 @@ describe("T2 — command body rewrites", () => {
     expect(applyT2(input)).toBe("**Subagent:** /build-plan\n");
   });
 
+  it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
+    const input = "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    expect(applyT2(input)).toBe(
+      "1. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:\n",
+    );
+  });
+
+  it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
+    const input = "   - **Subagent:** Invoke `@bkit-build-challenge-1`\n";
+    expect(applyT2(input)).toBe("   - **Subagent:** Invoke `/bkit-build-challenge-1`\n");
+  });
+
+  it("rewrites caution placeholder Invoke using `@name` → `/name`", () => {
+    const input = "> - **Subagents:** Invoke using `@name` with `Agent` tool.\n";
+    expect(applyT2(input)).toBe("> - **Subagents:** Invoke using `/name` with `Task` tool.\n");
+  });
+
   it("does NOT rewrite @name inside body text", () => {
     const input = "See @build-plan for details.\n";
     expect(applyT2(input)).toBe(input);
@@ -118,6 +135,11 @@ describe("T2 — command body rewrites", () => {
 
   it("does NOT rewrite markdown anchors like [text](#section)", () => {
     const input = "See [section](#overview) for details.\n";
+    expect(applyT2(input)).toBe(input);
+  });
+
+  it("does NOT rewrite gate-checklist `@agent` outside **Subagent:** lines", () => {
+    const input = "- [ ] Subagent invoked (`@bkit-build-install-skills`, no inline work)\n";
     expect(applyT2(input)).toBe(input);
   });
 
@@ -960,6 +982,28 @@ describe("applyOpencodeCommand", () => {
     const result = applyOpencodeCommand(input);
     expect(result).toContain("**Subagent:** /build-plan");
     expect(result).toContain("See @build-plan for details.");
+  });
+
+  it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
+    const input =
+      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("**Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:");
+    expect(result).not.toContain("`@bkit-build-plan-execute`");
+  });
+
+  it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
+    const input = "---\ndescription: x\n---\n   - **Subagent:** Invoke `@bkit-build-challenge-1`\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("   - **Subagent:** Invoke `/bkit-build-challenge-1`");
+  });
+
+  it("rewrites caution placeholder Invoke using `@name` → `/name`", () => {
+    const input =
+      "---\ndescription: x\n---\n> - **Subagents:** Invoke using `@name` with `Agent` tool.\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("Invoke using `/name` with `Task` tool.");
+    expect(result).not.toContain("Invoke using `@name`");
   });
 
   it("does NOT rewrite @name inside body text (not on **Subagent:** line)", () => {

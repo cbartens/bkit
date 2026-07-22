@@ -522,26 +522,43 @@ export function applyOpencodeAgent(
 export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
 
 /**
+ * Shared Cursor/OpenCode command invocation rewrite (T2 body / OC2 step 2).
+ * - `Agent` tool → `Task` tool (subagent invocations)
+ * - `Skill` tool → `Task` tool (slash-command invocations — Cursor/OpenCode
+ *   `Task` covers both surfaces; Claude splits them into `Agent` + `Skill`)
+ * - @name → /name on **Subagent:** lines:
+ *   - bare `**Subagent:** @name` (legacy exact line)
+ *   - real workflow shape `**Subagent:** Invoke \`@name\`…` (incl. indented lists)
+ * - Caution placeholder `Invoke using \`@name\`` → `\`/name\``
+ * Does NOT rewrite body prose, npm scopes, emails, or gate-checklist `@agent` refs.
+ */
+export function applyHostCommandInvocationRewrite(content: string): string {
+  let result = content.replace(/`Agent` tool/g, "`Task` tool");
+  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+  // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
+  result = result.replace(/^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm, "$1`/$2`");
+  // Bare `@agent` immediately after **Subagent:** (legacy exact-line form).
+  result = result.replace(/^([^\n]*?\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)\b/gm, "$1/$2");
+  result = result.replace(/Invoke using `@name`/g, "Invoke using `/name`");
+  return result;
+}
+
+/**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
- * - Rewrites invocation spelling for opencode:
- *   - `Agent` tool → `Task` tool (subagent invocations)
- *   - `Skill` tool → `Task` tool (slash-command invocations)
- *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ * - Rewrites invocation spelling for opencode (same as T2 — see
+ *   `applyHostCommandInvocationRewrite`).
  * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
   const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
   // Step 2: rewrite invocations (same as T2)
-  let result = stripped.replace(/`Agent` tool/g, "`Task` tool");
-  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
-  result = result.replace(/`Skill` tool/g, "`Task` tool");
-  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
-  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  const result = applyHostCommandInvocationRewrite(stripped);
   // Step 3: prepend the session-prompt anchor so the slash-command args survive.
-  result = OPENCODE_SESSION_PROMPT_ANCHOR + result;
-  return result;
+  return OPENCODE_SESSION_PROMPT_ANCHOR + result;
 }
 
 // T1: Strip leading YAML frontmatter block from command files for Cursor
@@ -549,18 +566,9 @@ export function applyT1(content: string): string {
   return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
 }
 
-// T2: Rewrite command body for Cursor invocation
-// - `Agent` tool → `Task` tool (subagent invocation)
-// - `Skill` tool → `Task` tool (slash-command invocation — Cursor's `Task`
-//   tool covers both surfaces; Claude splits them into `Agent` + `Skill`)
-// - @name → /name ONLY on exact **Subagent:** lines (anchored)
+// T2: Rewrite command body for Cursor invocation — see applyHostCommandInvocationRewrite.
 export function applyT2(content: string): string {
-  let result = content.replace(/`Agent` tool/g, "`Task` tool");
-  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
-  result = result.replace(/`Skill` tool/g, "`Task` tool");
-  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
-  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
-  return result;
+  return applyHostCommandInvocationRewrite(content);
 }
 
 // Parse simple YAML frontmatter block (key: value, or key: | multiline)
