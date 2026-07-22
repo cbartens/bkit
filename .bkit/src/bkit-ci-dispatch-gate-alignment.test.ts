@@ -471,7 +471,7 @@ describe("intentional-non-push rationale documented in workflows.md, not inline 
     expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
     expect(workflowsMd).toContain("KN-11");
     // Must explicitly forbid the rejected fix.
-    expect(workflowsMd).toContain('Do NOT "fix" this by adding a post-gate commit+push');
+    expect(workflowsMd).toContain('Do NOT "fix" with post-gate commit+push');
   });
 
   it("bkit-build.md does NOT inline the non-push rationale (it belongs in workflows.md)", () => {

@@ -76,7 +76,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Prior Attempts Reviewed
 
-[What was tried amd why it failed (Pivot/Final). If Standard then `None`; initially set to `PENDING`.]
+[What was tried and why it failed (Pivot/Final). If Standard then `None`; initially set to `PENDING`.]
 
 ## Prior Knowledge
 

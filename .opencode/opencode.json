@@ -45,7 +45,9 @@
       }
     }
   },
-  "plugin": [".opencode/plugin/gateguard.js"],
+  "plugin": [
+    ".opencode/plugin/gateguard.js"
+  ],
   "provider": {
     "opencode-go": {
       "options": {

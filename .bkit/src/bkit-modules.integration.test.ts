@@ -24,6 +24,7 @@ import {
   runCloudModule,
   runOpencodeModule,
   renderOpencodeJson,
+  reconcileOpencodeJson,
   opencodeProviderId,
   renderCloudWorkflow,
   dispatchModules,
@@ -3019,5 +3020,64 @@ describe("runRenovateModule — self-hosted vs mend runner (#325)", () => {
     const second = fs.readFileSync(path.join(tmpDir, WORKFLOW_REL), "utf-8");
     expect(second).toBe(first);
     expect(readRunner()).toBe("self");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reconcileOpencodeJson — provider-key ordering must be stable across paths.
+// Regression: install reconciles only the ACTIVE provider while upgrade also
+// reconciles each ADDITIONAL installed provider. deepMergeJson orders template
+// keys first, so reconciling a later provider used to hoist it to the front —
+// install and upgrade then rendered a different order and `bkit check` never
+// settled (perpetual opencode.json + .bkit/version drift).
+// ---------------------------------------------------------------------------
+describe("reconcileOpencodeJson — preserves existing provider order", () => {
+  const DST = path.join(".opencode", "opencode.json");
+
+  function seed(providers: Record<string, unknown>): void {
+    fs.mkdirSync(".opencode", { recursive: true });
+    fs.writeFileSync(
+      DST,
+      JSON.stringify({ plugin: [".opencode/plugin/gateguard.js"], provider: providers }, null, 2) +
+        "\n",
+      "utf-8",
+    );
+  }
+  function providerOrder(): string[] {
+    const parsed = JSON.parse(fs.readFileSync(DST, "utf-8")) as {
+      provider: Record<string, unknown>;
+    };
+    return Object.keys(parsed.provider);
+  }
+
+  it("reconciling a LATER provider's block keeps the existing key order (upgrade path)", () => {
+    seed({
+      "opencode-go": { options: { apiKey: "{env:OPENCODE_API_KEY}" } },
+      nvidia: { npm: "@ai-sdk/openai-compatible", name: "NVIDIA NIM", options: {} },
+    });
+    // The "additional provider" reconcile on upgrade seeds ONLY nvidia.
+    const nvidiaTemplate = JSON.stringify({
+      provider: {
+        nvidia: {
+          npm: "@ai-sdk/openai-compatible",
+          name: "NVIDIA NIM",
+          options: {
+            baseURL: "https://integrate.api.nvidia.com/v1",
+            apiKey: "{env:NVIDIA_API_KEY}",
+          },
+        },
+      },
+    });
+    reconcileOpencodeJson(nvidiaTemplate, DST, false, makeWriteSet());
+    expect(providerOrder()).toEqual(["opencode-go", "nvidia"]);
+  });
+
+  it("appends a genuinely-new template provider AFTER the existing ones", () => {
+    seed({ "opencode-go": { options: {} } });
+    const groqTemplate = JSON.stringify({
+      provider: { groq: { npm: "@ai-sdk/openai-compatible", name: "Groq", options: {} } },
+    });
+    reconcileOpencodeJson(groqTemplate, DST, false, makeWriteSet());
+    expect(providerOrder()).toEqual(["opencode-go", "groq"]);
   });
 });

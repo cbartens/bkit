@@ -32,8 +32,8 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Phase | Command | Steps | Output | Hard stop? |
 | --- | --- | --- | --- | --- |
 | Design | `/bkit-design` | 10 | `docs/plans/{YYYYMM}/{FID}-design.md` | Yes — review before plan |
-| Plan | `/bkit-plan` | 11 | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
-| Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
+| Plan | `/bkit-plan` | 12 | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
+| Build | `/bkit-build` | 17 | PR to `dev` | No — CI continues |
 | Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 

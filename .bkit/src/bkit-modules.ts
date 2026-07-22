@@ -1544,18 +1544,34 @@ export function reconcileOpencodeJson(
   >;
   // Replace (do not deep-merge) each provider key the template seeds — heals hijacked
   // npm/baseURL/name while keeping other provider keys additive.
+  //
+  // Preserve the EXISTING file's provider key order. deepMergeJson orders template keys
+  // first (correct for last-match-wins maps like permission.bash), but for the provider
+  // map that reordering is churn: reconciling one provider (e.g. an "additional provider"
+  // block on `bkit upgrade`) would move it ahead of the others, so install (active
+  // provider only) and upgrade (every installed provider) render a DIFFERENT order and
+  // `bkit check` never settles. Rebuild from the existing order — replacing template-seeded
+  // blocks in place — then append genuinely-new template providers in template order.
   const tmplProv = template.provider;
   if (tmplProv !== null && typeof tmplProv === "object" && !Array.isArray(tmplProv)) {
-    const existingProv =
-      merged.provider !== null &&
-      typeof merged.provider === "object" &&
-      !Array.isArray(merged.provider)
-        ? ({ ...(merged.provider as Record<string, JsonValue>) } as Record<string, JsonValue>)
+    const tmplProvObj = tmplProv as Record<string, JsonValue>;
+    const existingProvObj =
+      existing.provider !== null &&
+      typeof existing.provider === "object" &&
+      !Array.isArray(existing.provider)
+        ? (existing.provider as Record<string, JsonValue>)
         : ({} as Record<string, JsonValue>);
-    for (const [k, v] of Object.entries(tmplProv as Record<string, JsonValue>)) {
-      existingProv[k] = JSON.parse(JSON.stringify(v)) as JsonValue;
+    const orderedProv: Record<string, JsonValue> = {};
+    for (const k of Object.keys(existingProvObj)) {
+      orderedProv[k] =
+        k in tmplProvObj
+          ? (JSON.parse(JSON.stringify(tmplProvObj[k])) as JsonValue)
+          : existingProvObj[k];
     }
-    merged.provider = existingProv;
+    for (const [k, v] of Object.entries(tmplProvObj)) {
+      if (!(k in orderedProv)) orderedProv[k] = JSON.parse(JSON.stringify(v)) as JsonValue;
+    }
+    merged.provider = orderedProv;
   }
 
   const mergedStr = JSON.stringify(merged, null, 2) + "\n";

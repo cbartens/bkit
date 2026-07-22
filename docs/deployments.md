@@ -503,7 +503,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors `bkit-tests` NAMESPACE, not lane name** — `test("bkit-tests|decide"; "i")`. Single-job anchor PROHIBITED. Alignment: `bkit-ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2, not 3):** build Gate 18; debug Gate 10 PR-mode (sub-step 3) + LOCAL-mode (sub-step 9). Ship OUT — `SQUASH_SHA`-poll Step 13; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2, not 3):** build Gate 17; debug Gate 10 PR-mode (sub-step 3) + LOCAL-mode (sub-step 9). Ship OUT — `SQUASH_SHA`-poll Step 13; CI-Dispatch there masks "essential tests skipped".
 
 **EC-1 (build Step 17):** before `gh pr create`, probe `gh pr list --head … --base dev`. Open PR → Failure Path (`EC-1: feat/{FID} already has open PR #N`). Probe fail → blind create.
 

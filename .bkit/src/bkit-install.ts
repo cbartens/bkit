@@ -522,7 +522,8 @@ export function applyOpencodeAgent(
 export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
 
 /**
- * Shared Cursor/OpenCode command invocation rewrite (T2 body / OC2 step 2).
+ * T2: Cursor/OpenCode command invocation rewrite (shared — also OC2 step 2 via
+ * applyOpencodeCommand). Paired with applyT1 in the Cursor render pipeline.
  * - `Agent` tool → `Task` tool (subagent invocations)
  * - `Skill` tool → `Task` tool (slash-command invocations — Cursor/OpenCode
  *   `Task` covers both surfaces; Claude splits them into `Agent` + `Skill`)
@@ -532,7 +533,7 @@ export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS
  * - Caution placeholder `Invoke using \`@name\`` → `\`/name\``
  * Does NOT rewrite body prose, npm scopes, emails, or gate-checklist `@agent` refs.
  */
-export function applyHostCommandInvocationRewrite(content: string): string {
+export function applyT2(content: string): string {
   let result = content.replace(/`Agent` tool/g, "`Task` tool");
   result = result.replace(/using `Agent` tool/g, "using `Task` tool");
   result = result.replace(/`Skill` tool/g, "`Task` tool");
@@ -548,15 +549,14 @@ export function applyHostCommandInvocationRewrite(content: string): string {
 /**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
- * - Rewrites invocation spelling for opencode (same as T2 — see
- *   `applyHostCommandInvocationRewrite`).
+ * - Rewrites invocation spelling for opencode (same as T2 — see `applyT2`).
  * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
   const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
   // Step 2: rewrite invocations (same as T2)
-  const result = applyHostCommandInvocationRewrite(stripped);
+  const result = applyT2(stripped);
   // Step 3: prepend the session-prompt anchor so the slash-command args survive.
   return OPENCODE_SESSION_PROMPT_ANCHOR + result;
 }
@@ -564,11 +564,6 @@ export function applyOpencodeCommand(content: string): string {
 // T1: Strip leading YAML frontmatter block from command files for Cursor
 export function applyT1(content: string): string {
   return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
-}
-
-// T2: Rewrite command body for Cursor invocation — see applyHostCommandInvocationRewrite.
-export function applyT2(content: string): string {
-  return applyHostCommandInvocationRewrite(content);
 }
 
 // Parse simple YAML frontmatter block (key: value, or key: | multiline)

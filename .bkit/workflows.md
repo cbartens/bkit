@@ -113,7 +113,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 - **Blocked-by edges:** GitHub: `<!-- bkit:blocked-by -->` in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
 - **Workstream milestone assignment (design Step 9):** `MILESTONE`-labelled parent groups workstreams under native milestone, NOT sub-issues. Parent must carry target (GitHub milestone / Linear project + project milestone) — MCP cannot create → unset = Step 9 Failure Path. Each workstream assigned to same target: GitHub `issue_write` `milestone` (from parent `issue_read`); Linear `save_issue` `projectId` + `projectMilestoneId`. Existing detection: GitHub `search_issues` `milestone:"{title}" in:title WS-` (index lag, best-effort); Linear `list_issues` by `projectId` + `projectMilestoneId`; match `^WS-N:` title. `Requires` → block-by edges unchanged.
 - **issue-update-review** (phase-close): **update state only — never change label on close.** GitHub: no-op (phase label until ship `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` (partial update would drop `bkit:auto`/`bkit:debug`).
-- **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops phase labels, adds `bkit:merged`, **In Review** — Linear `state: "In Review"`, GitHub **open** (board → review, not done). Human reviews merged change and closes manually. Merge ≠ acceptance.
+- **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops phase labels, adds `bkit:merged`, **In Review** — Linear `state: "In Review"`, GitHub **open** (board → review, not done). Human reviews merged change and closes manually. Merge != acceptance.
 
 ## Two-Layer Separation Rules
 
@@ -968,7 +968,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 
 **Invoked by orchestrators** (NOT git hook — invariant contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
 
-- **Build Gate 18:** close-workflow final push. HEAD-subject pre-push + post-push poll.
+- **Build Gate 17:** close-workflow final push. HEAD-subject pre-push + post-push poll.
 - **Build Step 17 + Debug Step 10 create-pr:** PR creation — HEAD = `[skip ci]` create-pr by D2; HEAD clause does NOT run; PR title only. No poll (build: create-pr not CI trigger; debug LOCAL: create-pr IS — see below).
 - **Debug Gate 10 PR-mode:** close-workflow push = CI trigger (sub-step 3). Poll in close-workflow block.
 - **Debug Gate 10 LOCAL-mode:** create-pr push (sub-step 9) = CI trigger. Poll in create-pr block. `AUTO_ROUTE_SUFFIX` from in-block var before `rm`; `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` (do NOT reorder `rm` or re-read removed file).

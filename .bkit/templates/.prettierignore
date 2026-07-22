@@ -8,7 +8,7 @@ dist/
 # lint them. Width-sensitive rewrites would be reverted next install. The
 # .opencode agent + command mirrors are force-overwritten just like .claude /
 # .cursor (the managed-version marker and transform output are the source of
-# truth, not a prettier rewrite); opencode.json / plugin/ stay linted.
+# truth, not a prettier rewrite). .opencode/plugin/ stays byte-equal-seeded.
 .claude/
 .cursor/
 .opencode/agents/
@@ -17,10 +17,14 @@ dist/
 .husky/_/
 *.tsbuildinfo
 pnpm-lock.yaml
-# Tier-3 seed files (byte-equal-text) — bkit seeds these; consumers may modify
-# them but should not have prettier reformat bkit's canonical JSON layout.
+# bkit-seeded / reconciled JSON — bkit writes these with its own JSON.stringify
+# layout (2-space, expanded arrays) and consumers have no prettier at install
+# time, so prettier must not reformat them or the next install / `bkit check`
+# would just revert the rewrite (permanent drift). Tier-3 byte-equal seeds plus
+# the Tier-2 reconciled .opencode/opencode.json.
 .mcp.json
 .envrc
 .bkit/.env.example
+.opencode/opencode.json
 
 # bkit:end
