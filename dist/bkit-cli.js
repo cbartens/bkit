@@ -682,7 +682,7 @@ Examples:
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
-  bkit uninstall                              Full uninstall (all modules, zero footprint).
+  bkit uninstall                              Full uninstall (all modules; artefacts kept, --nuke to purge).
   bkit uninstall --typescript                 Remove Node/TS toolchain only (keep --ci + core).
   bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
   bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
