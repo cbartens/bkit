@@ -3,35 +3,35 @@
 # Config
 
 > [!CAUTION]
-> **Purpose:** Agent/tooling configuration that bkit tooling PARSES and executes — currently the `debug-fetch` runtime-log contract (`/bkit-debug`) and its cloud CLI provisioning. Distinct from `docs/observability.md`, which is logging _doctrine_, not parsed config.
+> **Purpose:** Agent/tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`) and cloud CLI provisioning. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
 >
 > **Rules:**
 >
-> - Blocks below `<!-- bkit:end -->` are consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
+> - Blocks below `<!-- bkit:end -->` = consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
 > - Read-only + idempotent. **Never log PII.**
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 
 ## Debug Fetch
 
-`/bkit-debug` runs **every** `bash` fenced block between `<!-- debug-fetch:start [name] -->` / `<!-- debug-fetch:end -->` that appears **after** `<!-- bkit:end -->` (this consumer-owned section). The bkit-shipped examples _inside_ the managed block above are reference-only and never executed. Per block the agent customises (severity / freshness / limit), executes, and writes stdout to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` (unnamed block => `debug-context-runtime-{DEBUG_ATTEMPT}.md`).
+`/bkit-debug` runs **every** `bash` fenced block between `<!-- debug-fetch:start [name] -->` / `<!-- debug-fetch:end -->` **after** `<!-- bkit:end -->` (consumer-owned section). bkit-shipped examples _inside_ managed block above = reference-only, never executed. Per block: agent customises (severity / freshness / limit), executes, writes stdout to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` (unnamed block => `debug-context-runtime-{DEBUG_ATTEMPT}.md`).
 
-**Enabling:** copy an example block below to **after** `<!-- bkit:end -->`, then set its env vars. **Where to set the tokens (local):** put them wherever your repo already exposes env — typically an app env file such as `apps/web/.env.local` sourced by `.envrc` (the exact path varies by stack/consumer). These are app/stack observability creds, **not** bkit tooling, so they do **not** belong in `.bkit/.env`. Each block self-gates — missing CLI / token prints a one-line `[debug-fetch:<name>] skipped — …` breadcrumb to stderr and exits 0 — so enable only the sources you use, and an empty source reads as "not wired up", not "no errors". Re-check after each upgrade: a freshly shipped example (e.g. a new `supabase` block) is inert until copied down. To intentionally enable none, add `<!-- debug-fetch:none intentional -->` after `<!-- bkit:end -->` to dismiss the bkit advisory.
+**Enabling:** copy example block below to **after** `<!-- bkit:end -->`, set env vars. **Where to set tokens (local):** repo env exposure — typically `apps/web/.env.local` via `.envrc` (path varies by stack/consumer). App/stack observability creds, **not** bkit tooling — **not** `.bkit/.env`. Each block self-gates — missing CLI / token → one-line `[debug-fetch:<name>] skipped — …` stderr, exit 0 — enable only sources you use; empty source = "not wired up", not "no errors". Re-check after upgrade: freshly shipped example inert until copied down. Enable none → `<!-- debug-fetch:none intentional -->` after `<!-- bkit:end -->`.
 
-**Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud agents, which are headless and never see `.bkit/.env`. Authenticate non-interactively — set env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) in the dashboard, never `vercel login`. Put each secret token in the cloud agent's dashboard env; non-secret selectors (scope / project ref / `--environment`) can be committed directly in your copied block so cloud agents inherit them. The token is identical across preview/prod — only the selector changes. (Authoring a block for another backend — `gcloud` / `aws` / `datadog` — self-gate on whatever credential it needs.)
+**Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud (headless, never see `.bkit/.env`). Non-interactive auth — dashboard env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`), never `vercel login`. Secret tokens → cloud dashboard; non-secret selectors (scope / project ref / `--environment`) commit in copied block so cloud agents inherit them. Token identical preview/prod — selector only changes. Other backends (`gcloud` / `aws` / `datadog`) self-gate on needed credential.
 
-**Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on the credential/tool you need (`command -v <tool>` + token check; on a miss, emit one `[debug-fetch:<name>] skipped — …` line to stderr, then `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
+**Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on credential/tool (`command -v <tool>` + token check; miss → `[debug-fetch:<name>] skipped — …` stderr, `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
 
-**Formatting output (`jq`):** every example pipes JSON through `jq` to filter to failures and project a **PII-safe** field subset (never dump raw rows — the projection is what keeps PII out of the run artifact). bkit provisions `jq` as a base tool (macOS dev, Cursor container, and the Claude-web cloud setup script), so a block may assume it is present and does **not** self-gate on it. **Without `jq`** on your stack: substitute an already-present interpreter (`… | node -e '…'` or `… | python3 -c '…'` — same filter/project, no new dependency), or emit the source's own `--json` / raw response unfiltered — but raw output writes whatever the source returns (possibly PII) into the artifact, so prefer in-block projection.
+**Formatting output (`jq`):** every example pipes JSON through `jq` → **PII-safe** field subset (projection keeps PII out of run artifact). bkit provisions `jq` (macOS dev, Cursor container, Claude-web cloud setup) — assume present, no self-gate. **Without `jq`:** substitute present interpreter (`… | node -e '…'` or `… | python3 -c '…'` — same filter/project) or source `--json` / raw unfiltered — raw writes whatever source returns (possibly PII) into artifact; prefer in-block projection.
 
 ### CLI provisioning (cloud)
 
-A fetch block only _runs_ in the cloud if its CLI is present — otherwise it self-skips and the cloud `/bkit-debug` gets **no** runtime logs (a silent `exit 0`, not an error). bkit installs no stack CLIs itself (that would name a stack); instead you **declare** each block's install recipe in a sibling `<!-- debug-fetch:provision <name> --> … <!-- debug-fetch:end -->` block, and bkit's stack-agnostic tooling runs it in both cloud paths:
+Fetch block _runs_ in cloud only if CLI present — else self-skips, cloud `/bkit-debug` gets **no** runtime logs (silent `exit 0`, not error). bkit installs no stack CLIs; **declare** each block's install recipe in sibling `<!-- debug-fetch:provision <name> --> … <!-- debug-fetch:end -->`; bkit stack-agnostic tooling runs both cloud paths:
 
-- `.claude/hooks/cloud-bootstrap.sh` runs every `debug-fetch:provision` block on session start (gh-runner + resumed web sessions),
-- `bkit install` injects the same recipes into the generated `.claude/cloud.md` setup script (web snapshot — fast, install-once).
+- `.claude/hooks/cloud-bootstrap.sh` — every `debug-fetch:provision` block on session start (gh-runner + resumed web sessions),
+- `bkit install` — same recipes into generated `.claude/cloud.md` setup script (web snapshot — install-once).
 
-Rules for a provision block: **self-guard** it (`command -v <cli> >/dev/null 2>&1 || <install>`) so a re-run is a no-op, keep it install-only (no fetching), and give it the **same name** as its fetch block. A block that fetches via an **MCP** tool or a plain `curl`/API call needs no CLI — omit its provision block entirely. Only a block that shells out to a stack CLI needs one: the `vercel` example below ships a provision block (it calls the `vercel` CLI); the curl-based `supabase` example does not.
+Provision block rules: **self-guard** (`command -v <cli> >/dev/null 2>&1 || <install>`) → re-run no-op; install-only (no fetching); **same name** as fetch block. MCP / `curl`/API fetch needs no CLI — omit provision. Only stack-CLI blocks need one: `vercel` example ships provision; curl `supabase` example does not.
 
 **Examples (reference only — copy below `<!-- bkit:end -->` to enable):**
 
@@ -108,9 +108,9 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
 
 ## Cloud allowed domains
 
-Cloud sessions (Claude Code on the web, Cursor background agents) run behind an egress proxy. Under **Trusted** network access only package registries + common SDK hosts are reachable — your log-backend / observability API hosts and your app's own domains are **not**, so cloud `/bkit-debug` gets no runtime logs and e2e can't reach a deployment. Declare the domains those flows need in a `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` block **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>` and renders a copy-paste **Custom** allowlist into `.claude/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — this EXTENDS the defaults, never replaces them).
+Cloud sessions (Claude Code on the web, Cursor background agents) run behind egress proxy. **Trusted** network: package registries + common SDK hosts only — log-backend / observability API hosts and app domains **not** reachable → cloud `/bkit-debug` no runtime logs, e2e can't reach deployment. Declare domains in `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>`, renders copy-paste **Custom** allowlist into `.claude/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — EXTENDS defaults, never replaces).
 
-Declare **apex domains only**, one per line — bkit adds the `*.` wildcard so the WHOLE domain is allowed and you never list specific subdomains. Include every host your debug-fetch blocks reach (incl. the implicit hosts of CLI blocks like `vercel` / `gcloud`) plus your app's production + preview/dev domains. To intentionally declare none, add `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
+**Apex domains only**, one per line — bkit adds `*.` wildcard (whole domain; never list subdomains). Include every host debug-fetch blocks reach (incl. implicit CLI hosts `vercel` / `gcloud`) + app production + preview/dev domains. Declare none → `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
 
 **Example (reference only — copy below `<!-- bkit:end -->` and edit):**
 

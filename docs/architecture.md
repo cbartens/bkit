@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+{{BKIT_MANAGED_MARKER}}
 
 # Architecture
 
@@ -12,19 +12,20 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Topology and boundaries only. Operational rules and library lists belong in domain docs.
-> - Update when packages are added/removed or domain boundaries shift.
+> - Topology/boundaries only; operational rules and library lists → domain docs.
+> - Update on package add/remove or boundary shift.
 
+<!-- bkit:end -->
 <!-- bkit:end -->
 
 ## What bkit Is
 
-bkit is a **CLI tool and agent-stack payload** distributed as an npm package (`@cbartens/bkit` via GitHub Packages):
+bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` via GitHub Packages):
 
-1. **Producer repo (this repo):** houses the canonical `.bkit/` payload — engine source (`.bkit/src`), mirror sources (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), and consumer templates (`.bkit/templates`).
-2. **Consumer repos:** install bkit as a devDependency; run `pnpm bkit install` to regenerate IDE-specific mirrors and bkit-managed blocks. Mirror sources and authoring docs are read package-relative from the installed `.bkit/` — they are NOT copied into the consumer's `.agents/` tree.
+1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/src`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
+2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — NOT copied into consumer `.agents/`.
 
-No server, no database, no network service. bkit is a build-time / developer-experience tool.
+No server, database, or network service. Build-time / DX tool only.
 
 ## Package Boundaries
 
@@ -99,17 +100,17 @@ pnpm bkit install [--module-flags] [--auto-revert]
 
 CLI verbs:
 
-- `pnpm bkit install` — runs all three phases. Requires ≥1 module flag (v4.0.0+); bare `bkit install` errors.
-- `pnpm bkit check` — Phase 1 and Phase 3 (read-only, v2.2.3+); exits 1 on any Tier-1/Tier-2 drift without writes.
-- `pnpm bkit doctor` (v0.6.0+) — Phase 1 and Phase 3 detection; never writes; always exits 0.
-- `pnpm bkit status` (v4.0.0+) — read-only; prints each installed host (claude / cursor / opencode) and its configured provider.
-- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
-- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict). Module-scoped to installed modules (v4.0.0+). Re-renders at the **currently installed** version (offline). `--to=<version>` / `--latest` (#296) additionally bump `@cbartens/bkit` (`pnpm add`) then re-exec the freshly-installed binary to re-render and re-pin in one atomic step — so a version bump can never drift from its rendered mirrors; a bare `pnpm add` does not re-render.
-- `pnpm bkit comply --phase <p>` (#234 WS-2) — compliance grader over `git diff parentSha..HEAD`; advisory-only, fail-open (never gates).
-- `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; pulls consumer telemetry into `harvest/`. COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes drained rows from the consumer), count-only for `docs/{deferrals,failures}.jsonl`. Never commits in any repo.
-- `pnpm bkit analysis` (#234 WS-4) — counts/rates/elapsed over the harvested store; size↔outcome regression, per-rule compliance rate, rollup shard writer.
-- `pnpm bkit telemetry <migrate|summary|validate|normalise>` (#234 WS-5, #361) — `migrate` is the one-time parity-gated legacy `.md` → `.jsonl` port (`--dry-run`); `validate` is a read-only scan that exits 1 on a `DE-<n>`/`KN-<n>` alias collision; `normalise` is the one-shot idempotent fix (drops `aliases[]` into `references[]`, re-keys colliding rows, parity-gated, `--dry-run`).
-- `pnpm bkit cursor` / `pnpm bkit opencode` — launch the host app with `.bkit/.env` merged into its environment (macOS GUI apps do not inherit the login-shell / direnv env).
+- `pnpm bkit install` — all three phases. Requires ≥1 module flag (v4.0.0+); bare `bkit install` errors.
+- `pnpm bkit check` — Phase 1 + Phase 3 read-only (v2.2.3+); exit 1 on Tier-1/Tier-2 drift, no writes.
+- `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exit 0.
+- `pnpm bkit status` (v4.0.0+) — read-only; installed host (claude/cursor/opencode) + configured provider.
+- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
+- `pnpm bkit upgrade` (v0.9.0+) — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Module-scoped (v4.0.0+). Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically — version bump cannot drift mirrors; bare `pnpm add` does not re-render.
+- `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
+- `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.
+- `pnpm bkit analysis` (#234 WS-4) — harvested store counts/rates; size↔outcome regression, per-rule compliance, rollup shard.
+- `pnpm bkit telemetry <migrate|summary|validate|normalise>` (#234 WS-5, #361) — `migrate`: one-time parity-gated `.md` → `.jsonl` (`--dry-run`); `validate`: alias collision scan, exit 1; `normalise`: idempotent fix (`aliases[]` → `references[]`, re-key collisions, parity-gated, `--dry-run`).
+- `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell/direnv env).
 
 ## Consumer Integration Model
 
@@ -133,41 +134,60 @@ Consumer repo
     └── .env                # consumer secrets (gitignored), auto-loaded via .envrc/direnv
 ```
 
-Workflow/prompt SOURCES are NOT shipped into the consumer `.agents/`; they live in the installed bkit package under `.bkit/workflows/` and `.bkit/prompts/` and are read package-relative. IDE mirrors regenerated by bkit from those sources:
+Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed package `.bkit/workflows/` + `.bkit/prompts/`, read package-relative. IDE mirrors from those sources:
 
-- `.claude/commands/` and `.claude/agents/` — byte-identical copies of `.bkit/workflows/` and `.bkit/prompts/`
-- `.cursor/commands/` and `.cursor/agents/` — T1/T2/T3-transformed copies for Cursor compatibility
-- `.opencode/commands/` and `.opencode/agents/` and `.opencode/opencode.json` and `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`). See `docs/technology.md` § Execution Hosts.
+- `.claude/commands/` + `.claude/agents/` — byte-identical copies of `.bkit/workflows/` + `.bkit/prompts/`
+- `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed for Cursor
+- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`. See `docs/technology.md` § Execution Hosts.
 
-Every rendered agent/command file — and every bkit-managed `docs/*.md` block (the first line of its `bkit:start` region, via the `{{BKIT_MANAGED_MARKER}}` token) — carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install` / `upgrade` (v4.0.0+). When a marker drifts from the installed version, `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (docs, scoped to the canonical doc set, never consumer plans). These two gates are **branch-scoped** (`isOnProtectedBranch`): a hard-failing `blocker` on `main` / `dev` (or a PR into them, via `GITHUB_BASE_REF`), and a non-blocking `advisory` on feature branches — because a stale render is almost always _inherited_ from a base where bkit was bumped without an atomic re-render, not created by the feature branch. The advisory is still surfaced in the checklist so the drift is visible; it just no longer blocks an intermediate push.
+Every rendered agent/command file — and every bkit-managed `docs/*.md` block (first line of `bkit:start` via `{{BKIT_MANAGED_MARKER}}`) — carries `<!-- bkit:managed vX.Y.Z … -->` stamped by `bkit install`/`upgrade` (v4.0.0+). Marker drift → `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (canonical doc set, never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches — stale render usually inherited from base bump without atomic re-render, not created on feature branch. Advisory still in checklist for visibility; no longer blocks intermediate push.
 
 ## Compliance Grader Subsystem (#234 WS-2)
 
-The compliance grader is a deterministic, advisory-only (never-gating) subsystem that checks `git diff parentSha..HEAD` for rule violations and emits `kind:"compliance"` rows to `.bkit/stats.jsonl`.
+Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"compliance"` rows in `.bkit/stats.jsonl`.
 
 **Components:**
 
-- `.bkit/src/bkit-comply.ts` — pure grader functions (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no process.exit. CLI dispatch calls these.
-- `.bkit/src/bkit-paths-policy.ts` — single protected-path table (mirror-path prefixes and gate-config basename patterns). Shared by the grader and the committed generated `.cjs`. Source of truth for both.
-- `.claude/hooks/gate-paths.generated.cjs` — committed generated file from `bkit-paths-policy.ts`; drift-detected by `bkit-paths-policy.test.ts`. Install stays a byte-equal Tier-1 copy — NOT install-time codegen.
-- `bkit-cli.ts` — `comply` verb and `--phase` flag dispatch (shared entrypoint per DE-34).
+- `.bkit/src/bkit-comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
+- `.bkit/src/bkit-paths-policy.ts` — protected-path table (mirror prefixes + gate-config basenames); shared by grader + committed `.cjs`.
+- `.claude/hooks/gate-paths.generated.cjs` — generated from `bkit-paths-policy.ts`; drift in `bkit-paths-policy.test.ts`. Install = byte-equal Tier-1 copy, NOT install-time codegen.
+- `bkit-cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
 
-**Crash isolation (DE-34):** The `comply` dispatch branch is wrapped in try/catch; grader crashes log `[bkit-comply] internal error: …` and exit 0. Workflow wiring additionally pins `|| echo "[bkit-comply] grader unavailable, skipping"` so even a non-zero exit is silent.
+**Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
 
-**Rollout (DE-35):** Ship-only in P2; design / plan / build / debug phases wired in future sub-plans.
+**Rollout (DE-35):** Ship-only in P2; other phases in future sub-plans.
 
 ## Knowledge/Decisions JSONL Ledgers (#234 WS-5)
 
-`docs/knowledge.jsonl` (`kind:"knowledge"`) and `docs/decisions.jsonl` (`kind:"decision"`) are the NDJSON successors to `docs/knowledge.md` / `docs/decisions.md`. They are consumer-inherited ledgers (installed inside the `.gitattributes` managed block with `merge=union`) populated by `bkit telemetry migrate`.
+`docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON successors to markdown ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`), populated by `bkit telemetry migrate`.
 
-**Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports the markdown corpus to NDJSON rows, preserves all `KN-N` / `KN-CORE-N` / `DE-N` ids plus the legacy `**Related:**` graph in `references[]`, then DELETES the `.md` only after row-count parity is confirmed against a transient `.md.bak`. A parity mismatch or absent `.md.bak` ABORTS with ZERO `.md` deleted. Re-run is idempotent (no-op if already migrated). The destructive delete is provably unreachable from `bkit upgrade` — pinned by a boundary test (KN-8 regression vector, DE-39).
+**Migration (one-time, destructive per A5):** `bkit telemetry migrate [--dry-run]` ports markdown → NDJSON, preserves `KN-N`/`KN-CORE-N`/`DE-N` + legacy `**Related:**` graph in `references[]`, DELETES `.md` only after row-count parity vs transient `.md.bak`. Mismatch or missing `.bak` → ABORT, zero `.md` deleted. Re-run idempotent. Destructive delete unreachable from `bkit upgrade` (boundary test, KN-8/DE-39).
 
-**Data topology:** both ledgers carry the shared `TelemetryEnvelope` fields (ts, kind, repo, bkitVersion, workflow, step, key, references[]) plus kind-specific payloads (`KnowledgePayload` / `DecisionPayload`) defined in `bkit-telemetry.ts`. Agents read these files instead of the markdown ledgers post-migration.
+**Data topology:** shared `TelemetryEnvelope` (ts, kind, repo, bkitVersion, workflow, step, key, references[]) + kind payloads (`KnowledgePayload`/`DecisionPayload`) in `bkit-telemetry.ts`. Agents read JSONL post-migration.
 
-`references[]` is the single cross-entry pointer for EVERY kind — it lives on the envelope, not a payload. It holds any pointer at all (feature ids, tracker ids, PRs, commit SHAs, file paths, a sibling row's `ts`, and a migrated row's own legacy `KN-N`/`DE-N`). There is no separate identity field: the design's `aliases[]` folded into it once sequential `DE-{N}` ids proved un-mintable under concurrency — two runs read the same max from their own base commit and mint the same id, so an alias could never be a reliable identity. `ts` is the id; everything in `references[]` is a pointer. Full contract: `.bkit/jsonl.md` § Key & References.
+`references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. No separate identity: design `aliases[]` folded in once sequential `DE-{N}` proved un-mintable under concurrency. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References.
 
-That doctrine was unenforced, so legacy-seeded consumer ledgers (rows carrying `de-<n>-…` keys + an `aliases:["DE-<n>"]` field) kept the race live — an agent appending to such a file pattern-matches its old shape and re-mints the number, and `merge=union` appends the duplicate silently (#361). Two commands close the gap: `bkit telemetry validate` (a read-only cross-scan that exits 1 when one `DE-<n>`/`KN-<n>` is claimed by more than one slug `key`, and is surfaced as a postinstall advisory) and `bkit telemetry normalise` (a one-shot, idempotent, parity-gated rewrite that drops `aliases[]` into `references[]`, keeps `ts` as the id, and re-keys only the colliding rows). Cite the slug `key`, never the bare number.
+Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race live (#361). Close via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) + `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
 
 ## Distribution
 
-`@cbartens/bkit` is published to GitHub Packages npm registry on every git tag push via `.github/workflows/release.yml`. Consumers authenticate with a `GH_BKIT_TOKEN_INSTALL` PAT (`read:packages` scope). See `docs/deployments.md` for the four-surface token presence matrix and `docs/decisions.jsonl` DE-3 for the registry choice rationale.
+`@cbartens/bkit` published to GitHub Packages on every git tag via `.github/workflows/release.yml`. Consumers auth with `GH_BKIT_TOKEN_INSTALL` PAT (`read:packages`). See `docs/deployments.md` (four-surface matrix) + `docs/decisions.jsonl` DE-3.
+
+<!-- bkit:start -->
+
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
+# Architecture
+
+> [!CAUTION]
+> **Purpose:** System design — service boundaries, deployment topology, integration sketch.
+>
+> **Rules:**
+>
+> - Token-efficient dense phrasing; agent readers only.
+> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
+> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Topology/boundaries only; operational rules and library lists → domain docs.
+> - Update on package add/remove or boundary shift.
+
+<!-- bkit:end -->

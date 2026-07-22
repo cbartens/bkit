@@ -77,7 +77,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 
-[Every `Out of Scope` row. One line each: What is excluded, where it belongs, `Exempt` (genuinely-additive), or `Blocking` (required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or  design sections; declared non-goals excepted). List all; do NOT condense or trim. Any `Blocking` → CONCERNS and Action Items. If none then `None`; initially set to `PENDING`.]
+[Every `Out of Scope` row. One line each: What is excluded, where it belongs, `Exempt` (genuinely-additive), or `Blocking` (required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excepted). List all; do NOT condense or trim. Any `Blocking` → CONCERNS and Action Items. If none then `None`; initially set to `PENDING`.]
 
 ## Suggested Scope Expansion
 

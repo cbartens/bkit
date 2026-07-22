@@ -13,16 +13,13 @@
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
-> - Pre-push runs typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, and service-backed integration excluded (they run in CI — see below). NEVER `--no-verify`.
+> - Pre-push: typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
 
 ## CI test tiers (the bkit scaffold)
 
-CI runs the tiers through the bkit scaffold — **one parallel lane (job) per tier**, not steps
-in one job (full step-by-step in `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE";
-run-level shape in `deployments.md` § Run-level decision matrix).
+CI runs tiers through bkit scaffold — **one parallel lane (job) per tier**, not steps in one job (step-by-step: `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape: `deployments.md` § Run-level decision matrix).
 
-The graph is **flat and wide**: scope fans out to every lane at once, and the capstone joins them.
-Nothing waits on anything but the planner, so **total wall-clock is the slowest single lane**:
+Graph **flat and wide**: scope fans out to every lane; capstone joins them. Nothing waits but planner → **wall-clock = slowest single lane**:
 
 ```
   bkit-tests-scope ─┬─ bkit-tests-static      ─┬─ bkit-tests-check
@@ -39,39 +36,17 @@ Nothing waits on anything but the planner, so **total wall-clock is the slowest 
                         unconditional (self-skips its heavy steps when no migration/seed changed)
 ```
 
-Adopt only the lanes your repo has. Add a lane the moment its tier exists; a tier with no lane is
-a tier nothing gates.
+Adopt only lanes your repo has. Add lane the moment its tier exists — tier with no lane = tier nothing gates.
 
-- **`bkit-tests-scope`** (always-on) computes `run_level` + emits the `bkit-test-plan`
-  contract — _what should run_.
-- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate
-  parallel jobs (the shape bkit's own CI and consumers gether/fraser run, not steps in a
-  monolithic `bkit-tests`). Integration / E2E lanes gate on `web_affected` / `run_e2e`; each lane
-  emits its own executed-count for the capstone and (coverage tiers) posts its own coverage
-  comment. Start with `-static` + `-unit`, add a lane per tier you have (`deployments.md` §
-  Parallel test lanes).
-- **`bkit-tests-migration`** (optional; DB repos) — a **parallel sibling** lane
-  that proves every migration replays from an **empty** database (+ the seed loads) on a fresh
-  ephemeral instance. Always runs and reports a status, but self-skips the heavy steps when no
-  migration/seed source changed; folds into the `bkit-tests-check` capstone (a red replay reds
-  the build). It `needs:` the planner for graph ordering only — the replay itself is never gated
-  on `run_level`. See § Provision backing services fresh.
-- **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
-  `run_live`; drop the whole job if you have no deploy). It `needs:` the **planner only** and
-  runs parallel to the test lanes — do **not** gate it behind them. That edge reads as free
-  safety but is the most expensive one in the graph (measured at ~35% of total wall-clock on a
-  real consumer) and buys ~nothing: `@live` is push-only, and a push is post-merge and already
-  PR-validated. A tree that does not compile still cannot go green — `@live`'s own build fails
-  and reds the lane.
-- **`bkit-tests-check`** is the capstone — it `needs:` **all** lanes and fails the run if any tier
-  the plan _expected_ was skipped or executed zero, so a green required check means **validated**,
-  not merely "nothing failed". Make it the sole branch-protection required check.
+- **`bkit-tests-scope`** (always-on) computes `run_level` + emits `bkit-test-plan` contract — _what should run_.
+- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes).
+- **`bkit-tests-migration`** (optional; DB repos) — parallel sibling proving every migration replays from **empty** DB (+ seed loads) on fresh ephemeral instance. Always runs, self-skips heavy steps when no migration/seed changed; folds into `bkit-tests-check` capstone. `needs:` planner for graph ordering only — replay never gated on `run_level`. See § Provision backing services fresh.
+- **`bkit-tests-live`** runs `@live` tier against deployed URL (`run_live`; drop job if no deploy). `needs:` **planner only** — parallel to test lanes; do **not** gate behind them (~35% wall-clock on real consumer, buys ~nothing: `@live` push-only, post-merge, PR-validated; non-compiling tree reds via own build).
+- **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
 
 ### Which resources may each lane touch?
 
-Every lane must **declare** what it is allowed to reach, and the declaration must be enforced by
-what the lane's env actually provides — not by a comment. A lane that _can_ silently reach the
-shared remote instance eventually will, and you find out via cross-run interference, not a failure.
+Every lane must **declare** what it may reach; declaration enforced by lane env — not by comment. Lane that _can_ reach shared remote instance eventually will → cross-run interference, not failure.
 
 <!-- prettier-ignore -->
 | Lane | Real external APIs | Stateful backing service (DB / cache / queue) | Deployed app |
@@ -84,39 +59,19 @@ shared remote instance eventually will, and you find out via cross-run interfere
 | `bkit-tests-e2e` | none — **mocked** | ephemeral **local** (PR) / the migrated shared one (push) | preview / deployed URL |
 | `bkit-tests-live` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
 
-Read the table as the rule, not a description: **`bkit-tests-live` is the only lane permitted to
-spend real external quota**, and **only `-live` and the push-side `-e2e` may touch a shared,
-long-lived instance**. Everything else provisions its own (§ Provision backing services fresh).
-This is what makes the lanes parallel-safe: lanes that own their state cannot contend, so they can
-fan out and raise their own internal parallelism freely.
+Read table as rule: **`bkit-tests-live` ONLY lane permitted to spend real external quota**; **ONLY `-live` and push-side `-e2e` may touch shared long-lived instance**. Everything else provisions own (§ Provision backing services fresh). Parallel-safe: lanes owning state cannot contend → fan out + raise internal parallelism freely.
 
 > [!IMPORTANT]
 > **"Real external API" and "real remote backing service" are two INDEPENDENT axes — never one flag.**
-> This is the most expensive mistake in this doc. A single overloaded gate (`LIVE_API`, `TEST_REAL`,
-> …) meaning _both_ "hit real third-party APIs" _and_ "hit a real remote database" collapses two
-> unrelated needs into one switch. The result on a real consumer: **10 suites that needed only a
-> real DB — no external API at all — sat in the serial, push-only `@live` lane**, where they were
-> invisible on PRs and inflated the very lane that gated CI. Moving them to `-integration` (against
-> an ephemeral local instance) took `@live` from 86 to 44 tests and gave those suites PR coverage
-> they had never had. Gate each axis on the thing it actually needs: an external-boundary test gates
-> on the API credential; a DB test gates on a DB URL — and prefers an **ephemeral** one, which needs
-> no gate at all.
+> Most expensive mistake in this doc. Single overloaded gate (`LIVE_API`, `TEST_REAL`, …) meaning _both_ "hit real third-party APIs" _and_ "hit real remote database" collapses unrelated needs. Real consumer result: **10 suites needing ONLY real DB (no external API) sat in serial push-only `@live` lane** — invisible on PRs, inflated gating lane. Moving to `-integration` (ephemeral local DB): `@live` 86→44 tests, PR coverage for first time. Gate each axis on what it needs: external-boundary test → API credential; DB test → DB URL (prefer **ephemeral** — no gate needed).
 
-**Moving a suite between lanes takes three edits, and the third is the one that bites.** Rename /
-retag the file, move it to the new lane — **and delete its old gate**. A suite carrying
-`skipIf(!LIVE_API)` that lands in a lane which does not set `LIVE_API` **silently skips forever**:
-the lane is green, the count still looks plausible, and the coverage is simply gone. That is the
-hollow-green class (§ Validated means executed) arriving through the back door. After any lane move,
-assert the destination lane's executed count went **up** by the number of tests you moved.
+**Moving suite between lanes = three edits; third bites.** Retag file, move to new lane — **delete old gate**. Suite with `skipIf(!LIVE_API)` in lane that doesn't set `LIVE_API` **silently skips forever** — green lane, plausible count, coverage gone (hollow-green via back door, § Validated means executed). After lane move: assert destination executed count **up** by moved test count.
 
-**A missing gate variable must produce an honest, detectable skip — never a silent pass.** If a
-tier needs a URL or credential the run does not have, it must report as skipped (and, where the tier
-is planned, fail the capstone), not exit 0 having run nothing. Assert this per-file where it matters:
-`numPassedTests >= 1 && numPendingTests === 0` catches both the ghost-green no-op and the quiet skip.
+**Missing gate variable → honest detectable skip — never silent pass.** Tier needing URL/credential run lacks must report skipped (and, if planned, fail capstone), not exit 0 having run nothing. Per-file assert where it matters: `numPassedTests >= 1 && numPendingTests === 0` catches ghost-green no-op and quiet skip.
 
 ### Validated means executed, not "didn't fail"
 
-A green capstone must mean the planned tiers _ran tests and passed_ — not that nothing visibly failed. Each tier has three states, gated independently:
+Green capstone = planned tiers _ran tests and passed_ — not merely nothing visibly failed. Three states per tier, gated independently:
 
 - **Absent** — no entrypoint (`test:integration` / `test:live` script, enabled E2E step). The capstone asserts nothing; a repo with no integration / E2E / `@live` tier is fully valid (bkit's own repo has none).
 - **Declared + planned to run** — assert the tier ran **and** executed **> 0** tests. This closes the green-with-zero hole: `--passWithNoTests` matching nothing, a `@live`-tagged suite whose owning package declares no `test:live` script (so `turbo run test:live` runs nothing), or every test `skipIf`-gated off — all exit 0 and look green.

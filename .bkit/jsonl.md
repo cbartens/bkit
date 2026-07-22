@@ -1,15 +1,15 @@
 # JSONL Entry Format
 
 > [!CAUTION]
-> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which ledger holds which `kind` + when workflows write: `.bkit/workflows.md` § Telemetry Ledgers.
+> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
 >
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - One row per line. NEVER edit or reorder a prior LINE — but a row's STATE is not frozen: you change it by appending a new same-`key` row. See § Updating a Row.
-> - Before appending: Read the file. Skip ONLY if an identity-matching row exists AND nothing has changed — a changed field is an update, NOT a duplicate.
-> - Rows are removed from `.bkit/friction.jsonl` by `bkit harvest`, and by nothing else — see § Friction Is a Drained Queue.
+> - One row per line. NEVER edit or reorder a prior LINE — row STATE changes via same-`key` append (§ Updating a Row).
+> - Before append: read file. Skip ONLY if identity-matching row exists AND nothing changed — changed field = update, NOT duplicate.
+> - `.bkit/friction.jsonl` rows removed ONLY by `bkit harvest` (§ Friction Is a Drained Queue).
 > - Best-effort append — ALWAYS exit 0; NEVER gate workflows on telemetry success.
 
 ## Write Idiom
@@ -19,12 +19,12 @@ jq -c -n '{ ts: 0, kind: "deferral", repo: $REPO, bkitVersion: $VER, step: $STEP
   >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"
 ```
 
-- **`ts`:** portable Unix milliseconds via `jq '… | .ts = (now*1000|floor)'`. NEVER `date +%s%3N` (BSD/macOS incompatible).
+- **`ts`:** Unix ms via `jq '… | .ts = (now*1000|floor)'`. NEVER `date +%s%3N` (BSD/macOS incompatible).
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
 ## Ledgers & Writers
 
-Each `kind` lives in ONE file, written by specific processes:
+One file per `kind`; writers:
 
 <!-- prettier-ignore -->
 | Kind | File | Written by |
@@ -75,36 +75,36 @@ Each `kind` lives in ONE file, written by specific processes:
 | **The orchestrator** (a workflow itself) | `ship` | `ship-close-gate` | *(absent)* | *(absent)* |
 | **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-challenge` | `bkit-build-challenge-remediate` | that prompt's own `model:` |
 
-As a subagent, set these on every row you append, read off your own prompt file:
+Subagent: on every appended row, from your prompt file:
 
 - **`subagent`** = your frontmatter `name:`.
 - **`model`** = your frontmatter `model:`.
-- **`step`** = the workflow step that invoked you (named in your Context).
+- **`step`** = invoking workflow step (named in your Context).
 
-As an orchestrator, omit `subagent` and `model`.
+Orchestrator: omit `subagent` and `model`.
 
 ## Key & References
 
-`key` = a written-once stable slug; recurrence = a same-`key` append.
+`key` = written-once stable slug; recurrence = same-`key` append.
 
-- **Mint it from the CONTENT, never from a counter.** A descriptive slug (`gh-mcp-401-after-token-rotation`), optionally prefixed with the driving issue (`681-e2e-parallelism-via-runner-matrix`). A counter-derived number is un-mintable under concurrency — two workflows read the same max off their own base commit and mint the same one, so it collides silently and can never be a stable id.
-- **Cite the `key`.** It is the identity other rows, docs, and memory point at; `ts` is the tiebreaker. A content slug cannot collide the way a shared counter can.
+- **Mint it from the CONTENT, never from a counter.** Descriptive slug (`gh-mcp-401-after-token-rotation`), optionally issue-prefixed (`681-e2e-parallelism-via-runner-matrix`). Counter-derived ids collide under concurrency — two workflows read same max off their base commit, mint same id, silent collision.
+- **Cite the `key`.** Identity for other rows, docs, memory; `ts` = tiebreaker. Content slugs avoid counter collisions.
 
-`references` = free-form pointers to whatever places this row:
+`references` = pointers placing this row:
 
 <!-- prettier-ignore -->
 ```jsonl
 "references": ["681", "ISSUE-217", "PR-412", "a1b2c3d", "docs/plans/202607/681-e2e-parallelism-design.md", "1718900000600"]
 ```
 
-- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, a sibling row's `ts`.
-- Keep each item as the source wrote it; trailing qualifiers (`ISSUE-142 §A2`) are meaning, not noise.
-- No separate identity field: `ts` is the id, everything in `references` is a pointer.
-- Omit when there is nothing to point at.
+- Feature ids / `{FID}`, tracker ids (`ISSUE-217`), PRs, commit SHAs, file paths, sibling row `ts`.
+- Keep items as source wrote; trailing qualifiers (`ISSUE-142 §A2`) = meaning, not noise.
+- No separate identity field: `ts` = id; `references` = pointers only.
+- Omit when nothing to point at.
 
 ## Friction Is a Drained Queue — the one non-append-only ledger
 
-`.bkit/friction.jsonl` is a work queue that drains — the ONE file rows are removed from:
+`.bkit/friction.jsonl` = drained work queue — ONLY file rows are removed from:
 
 <!-- prettier-ignore -->
 | Actor | May do |
@@ -112,20 +112,20 @@ As an orchestrator, omit `subagent` and `model`.
 | **A consumer repo** | APPEND only. |
 | **`bkit harvest`** (from the bkit repo) | MOVES rows out: copies each into bkit's `harvest/` store, then prunes it from the consumer. |
 
-A friction row vanishing from your `.bkit/friction.jsonl` is `bkit harvest` having banked it centrally.
+Row vanishing from `.bkit/friction.jsonl` = `bkit harvest` banked it centrally.
 
-Prune gates, in order:
+Prune gates (in order):
 
-- **Durability first** — prune ONLY after that exact row is fsync'd to the store AND read back.
-- **Content, never identity** — gate on byte-for-byte content; `fold` collapses same-identity rows, so an identity gate deletes rows the store never kept. A row losing the fold STAYS in the consumer, reported.
+- **Durability first** — prune ONLY after exact row fsync'd to store AND read back.
+- **Content, never identity** — gate byte-for-byte; `fold` collapses same-identity rows — identity gate deletes rows store never kept; fold loser STAYS in consumer, reported.
 - **Malformed lines** — NEVER pruned.
 - **Store accumulates**, never cleared. `harvest` NEVER commits, either repo.
 
-`stats.jsonl` is COPY-only; `deferrals`/`failures` are COUNT-only (envelope metadata; prose never leaves the consumer). Contract: `.bkit/src/bkit-harvest.ts`.
+`stats.jsonl` = COPY-only; `deferrals`/`failures` = COUNT-only (envelope metadata; prose never leaves consumer). Contract: `.bkit/src/bkit-harvest.ts`.
 
 ## Summary vs Description
 
-Where a kind has BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): `summary` = the short title, `description` = the prose. With only one sentence, it goes in `description`.
+Kinds with BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): `summary` = short title; `description` = prose. One sentence → `description` only.
 
 ## Severity
 
@@ -139,13 +139,13 @@ Where a kind has BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): 
 | `MEDIUM` | Degraded behaviour or a repeated cost; safe to schedule. |
 | `LOW` | Cosmetic, nit, or a speculative future idea. |
 
-- Same enum the challenge + audit prompts assign to findings. When a finding becomes a row (e.g. `@bkit-build-challenge-remediate` writing a BLOCKED finding to `docs/deferrals.jsonl`), carry ITS severity through unchanged.
-- NOT the `bkit install` preflight `blocker`/`advisory` scale — a different axis.
-- Pick the level the ROW earns. A ledger where every row is `LOW` is as useless as no severity at all.
+- Same enum challenge + audit prompts assign. Finding → row (e.g. `@bkit-build-challenge-remediate` BLOCKED → `docs/deferrals.jsonl`): carry ITS severity unchanged.
+- NOT `bkit install` preflight `blocker`/`advisory` — different axis.
+- Pick level the ROW earns. All-`LOW` ledger = useless as no severity.
 
 ## Categories
 
-Free-form string; pick the closest term, `other` if none fit. `deferral` + `failure` use the domain set; `friction` uses the friction set — do NOT mix.
+Free-form; closest term, `other` if none. `deferral` + `failure` → domain set; `friction` → friction set — do NOT mix.
 
 **Domain — `deferral` + `failure`:**
 
@@ -163,7 +163,7 @@ Free-form string; pick the closest term, `other` if none fit. `deferral` + `fail
 | `docs` | documentation |
 | `other` | none of the above |
 
-**Flaky / intermittent tests** are a `failure` row with `category:"testing"`: `key` = spec path + test title, minted once; every re-observation is a same-`key` append (§ Updating a Row), so flake-count = the same-`key` row count and first / last `ts` = first- / last-seen. Do NOT add a pass-rate or counter field.
+**Flaky / intermittent tests** = `failure` with `category:"testing"`: `key` = spec path + test title, minted once; re-observation = same-`key` append (§ Updating a Row) → flake-count = same-`key` row count; first/last `ts` = first-/last-seen. Do NOT add pass-rate or counter field.
 
 **Friction — `friction`:**
 
@@ -180,7 +180,7 @@ Free-form string; pick the closest term, `other` if none fit. `deferral` + `fail
 
 ## Updating a Row
 
-These fields change after first write:
+Fields that change after first write:
 
 <!-- prettier-ignore -->
 | Field | Changes when |
@@ -192,33 +192,33 @@ These fields change after first write:
 | `lastConfirmed` | (`friction` only) re-observed. |
 | `recurrenceCount` | (`friction` only) it happens again. |
 
-**Update by APPENDING a new row with the SAME `key`, never by editing the old line.** `fold()` takes last-wins by `ts`; the older rows remain as history. A recurrence and an update are the same operation.
+**Update by APPENDING a new row with the SAME `key`, never by editing the old line.** `fold()` last-wins by `ts`; older rows = history. Recurrence = update.
 
-Copy the prior row, change what changed, append. Carry `key` across verbatim — a reworded `key` forks the entry. Same `key` throughout makes the rows one entry; `fold` returns only the last, so "how long open" and "time to fix" fall out of the dated `ts` values. The row-update lifecycle in § Examples shows one deferral as three appended rows — raised, analysed, closed.
+Copy prior row, change deltas, append. Carry `key` verbatim — reworded `key` forks entry. Same `key` = one entry; `fold` returns last → "how long open" / "time to fix" from dated `ts`. § Examples: deferral raised → analysed → closed.
 
-**Triage** — sweeping `docs/deferrals.jsonl` / `docs/failures.jsonl` for work that has moved on — is this operation: append a same-`key` row with `status: "CLOSED"`, the `references` you now have (PR, commit, closing issue), and a re-triaged `severity` if it earned one.
+**Triage** = sweep `docs/deferrals.jsonl` / `docs/failures.jsonl` for moved-on work → append same-`key` row with `status: "CLOSED"`, current `references` (PR, commit, closing issue), re-triaged `severity` if earned.
 
-**`TRIAGED`** is the state between, on all three triaged kinds (`friction`/`deferral`/`failure` — the trio carrying `severity`). The ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not yet fixed) -> `CLOSED` (fixed, refuted, or established as not ours). Append it exactly like a close, carrying the disposition in `references`: the issue, the `Fix N` it maps to, or why it is not ours.
+**`TRIAGED`** = middle state on triaged trio (`friction`/`deferral`/`failure` — kinds with `severity`). Ladder: `OPEN` (raised, cause unknown) -> `TRIAGED` (analysed, disposition known, not fixed) -> `CLOSED` (fixed, refuted, not ours). Append like close; disposition in `references`: issue, mapped `Fix N`, or why not ours.
 
-**`TRIAGED` IS STILL OPEN WORK.** Counting open entries — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
+**`TRIAGED` IS STILL OPEN WORK.** Open-entry counts — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
 
-Not on `knowledge` (no status) or `decision` (`ACTIVE`/`SUPERSEDED` is a lifecycle).
+Not on `knowledge` (no status) or `decision` (`ACTIVE`/`SUPERSEDED` lifecycle).
 
 Readers count ENTITIES, never lines — `fold` first.
 
 ## These Ledgers Are Inputs, Not a Diary
 
-`docs/deferrals.jsonl` and `docs/failures.jsonl` are a backlog of real work — deferred scope and known bugs, machine-readable, `severity` to rank by, `ts` to age by. READ them:
+`docs/deferrals.jsonl` + `docs/failures.jsonl` = backlog — deferred scope + known bugs; `severity` ranks, `ts` ages. READ:
 
-- **Before designing or planning** — grep for an entry already describing the thing, or the reason a past attempt was deferred.
-- **On a triage sweep** — walk the open entries against the tracker and the codebase; close, `TRIAGED`, or re-`severity` each by appending (§ Updating a Row).
-- **When a bug looks familiar** — a same-`key` `failure` row means it recurred.
+- **Before designing or planning** — grep for existing entry or past deferral reason.
+- **On a triage sweep** — walk open entries vs tracker + codebase; close, `TRIAGED`, or re-`severity` via append (§ Updating a Row).
+- **When a bug looks familiar** — same-`key` `failure` = recurrence.
 
-Rank on what is already there: `severity: CRITICAL` first, then oldest `ts`.
+Rank existing: `severity: CRITICAL` first, then oldest `ts`.
 
 ## Identity / Dedup
 
-Identity is this tuple, NOT bare `ts`:
+Identity tuple, NOT bare `ts`:
 
 <!-- prettier-ignore -->
 | Kind | Identity tuple |
@@ -228,18 +228,18 @@ Identity is this tuple, NOT bare `ts`:
 | `counter` | `(repo, workflow, parentSha, counterName)` |
 | `friction` \| `deferral` \| `failure` \| `knowledge` \| `decision` | `(kind, repo, key)` |
 
-An identity match means the two rows describe the SAME thing. It does not by itself mean skip:
+Identity match = SAME thing — not automatically skip:
 
 - **Nothing changed** -> skip.
-- **Something changed** -> **APPEND** (mechanics: § Updating a Row).
+- **Something changed** -> **APPEND** (§ Updating a Row).
 
 ## Versioning
 
-No separate schema version — `bkitVersion` is the only version stamp. Readers ingest ALL well-formed rows (no version gating) and report row counts per `bkitVersion`, so an unexpected version surfaces for triage.
+No schema version — `bkitVersion` only stamp. Readers ingest ALL well-formed rows (no version gating), report counts per `bkitVersion`; unexpected version surfaces for triage.
 
 ## Examples
 
-Indented here for readability — **on disk each row is a single physical line** (see § Write Idiom). One example per ledger, then a row-update lifecycle. Each shows every field its kind allows — including the `?`-optional ones (§ Per-Kind Fields) a real row omits when they do not apply:
+Indented for readability — **on disk each row = single physical line** (§ Write Idiom). One example per ledger + row-update lifecycle. Each shows all kind fields including `?`-optional ones (§ Per-Kind Fields) real rows omit when N/A:
 
 `.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`):
 
@@ -421,7 +421,7 @@ Indented here for readability — **on disk each row is a single physical line**
 }
 ```
 
-Row-update lifecycle — the same `pnpm-tag-drop-readme-note` deferral as three appended rows, raised -> analysed -> closed; same `key`, so `fold` returns only the last, and the dated `ts` values give "how long open" and "time to fix". Envelope fields trimmed to show the delta; on disk each is a full single-line row:
+Row-update lifecycle — `pnpm-tag-drop-readme-note` deferral: three appends raised -> analysed -> closed; same `key` → `fold` returns last; dated `ts` → "how long open" / "time to fix". Envelope trimmed for delta; on disk = full single-line row:
 
 <!-- prettier-ignore -->
 ```jsonl

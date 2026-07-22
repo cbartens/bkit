@@ -8,13 +8,13 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Subagents are leaves — never invoke other subagents.
+> - Subagents are leaves, NEVER invoke other subagents.
 > - Subagents NEVER touch the tracker. Tracker MCP tools (GitHub Issues, Linear, etc.) are orchestrator/workflow-layer exclusive.
 > - When you change a workflow file (`.bkit/workflows/bkit-*.md`), mirror change here.
 
 ## File Layout
 
-Canonical source lives in `.bkit/workflows/`. `bkit install` regenerates `.claude/commands/` (byte-identical) and `.cursor/commands/` (T1/T2/T3 transformed). Never edit the generated copies.
+Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/commands/` (byte-identical) and `.cursor/commands/` (T1/T2/T3 transformed). Never edit generated copies.
 
 ```
 .bkit/workflows/
@@ -44,28 +44,28 @@ Canonical source lives in `.bkit/workflows/`. `bkit install` regenerates `.claud
 
 ## Workflow Authoring Rules
 
-`.bkit/workflows/*.md` are AI-only execution surfaces. Every byte is paid on every run.
+`.bkit/workflows/*.md` = AI-only execution surfaces; every byte is paid on every run.
 
-- **Instructions only:** NO rationale, NO parentheticals explaining "why", NO "we don't do X because Y" notes, NO inline comments justifying behaviour.
-- **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
-- **No internal labels, no coined guard names:** NEVER cite a bkit-internal identifier (`DE-25`, `EC-1`, `KN-11`, `#261`) in a workflow file — consumers receive the workflow and not the doc that defines the label, so it reads as an unexplained token. Do NOT swap it for a coined name either (`EC-1 pre-flight` -> `open-PR pre-flight`): a name still makes the reader hold a definition. Drop the label; the step's own lead-in says what it does. The label belongs here.
-- **Bash decides, prose routes:** where a fenced block determines something, the prose after it branches on the **exit code** (`**If** exit non-zero → **Failure Path**.`) — NEVER on a restatement of the domain condition (`**If** an open PR exists → …`), which invites the orchestrator to re-derive what the block already resolved. A constraint the block enforces internally is stated imperatively on the lead-in (`— NEVER onto a branch with an open PR:`), not as an `**If**`.
-- **Self-contained:** Each workflow file MUST stand alone. NO cross-references to `.bkit/workflows.md` or other meta docs. If the orchestrator needs the rule, inline it; if it doesn't, leave it out.
-- **Sibling-blind subagent Context:** `Context:` strings stay generic — agent prompts handle their own lens via Process. Canonical phrasings: "You are a subagent in the {Phase} phase running in parallel with N other agents"; for reconcilers, "Inputs carry distinct lenses — merge across them, max-wins on CRITICAL findings".
-- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.bkit/workflows.md`) — NEVER in the per-workflow files.
-- **Reuse wording and formatting:** ALWAYS `grep .bkit/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
-- **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
-- **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
-- **Labeled decision blocks:** A conditional decision with 2+ branches is a labeled heading-row + `-` bullet sub-points (one branch per bullet) — NEVER inline on one line, NEVER spread across numbered sub-steps. Two labels: `Route:` (branch to a next Step / Failure Path) and `Decide \`VAR\`:` (select a value for a variable). Single-branch guards (`**If** {X} → **Failure Path**`) stay inline.
-- **ASCII operators:** Use ASCII comparison/logic operators only — `!=`, `>=`, `<=`, `=>` — and `x` for "times"/dimensions. NEVER Unicode math glyphs (not-equal, greater-or-equal, less-or-equal, implies, multiplication). The flow-arrow `→` in procedural conditionals / dispatch tables is the **sole intentional non-ASCII glyph** — deliberately kept (it is the uniform, documented flow notation used in every conditional, not a stray operator; it reads clearer than `->`, which is also overloaded as member-access). Do NOT convert `→`.
-- **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
-- **Gate items:** Each `- [ ]` gate item leads with a prose label (the thing checked); variable / placeholder names appear ONLY inside a trailing parenthetical, backticked — `- [ ] Test attempt incremented (\`TEST_ATTEMPT\` + 1)`, NEVER `- [ ] \`TEST_ATTEMPT\` incremented`(no bare var as subject). A verdict / value check that asserts BOTH extraction and validity is ONE item, never two:`- [ ] Verdict extracted and valid (\`SUMMARY_VERDICT\` in \`PASS|CONCERNS|FAIL\`)`.
+- **Instructions only:** NO rationale, NO parentheticals explaining "why", NO "we don't do X because Y", NO inline behaviour justification.
+- **Removal = delete:** Drop instruction → delete it; NEVER replace with removal explanation.
+- **No internal labels, no coined guard names:** NEVER cite bkit-internal identifiers (`DE-25`, `EC-1`, `KN-11`, `#261`) or coined guard names (`EC-1 pre-flight` → `open-PR pre-flight`) in workflow files — unexplained tokens for consumers. Drop label; step lead-in states what it does. Label belongs here.
+- **Bash decides, prose routes:** fenced block determines outcome → prose branches on **exit code** (`**If** exit non-zero → **Failure Path**.`) — NEVER domain restatement (`**If** an open PR exists → …`). Internal constraints: imperative lead-in (`— NEVER onto a branch with an open PR:`), not `**If**`.
+- **Self-contained:** Each workflow file MUST stand alone — NO cross-refs to `.bkit/workflows.md` or meta docs. Need rule → inline; else omit.
+- **Sibling-blind subagent Context:** `Context:` stays generic; agent prompts own lens via Process. Canonical: "You are a subagent in the {Phase} phase running in parallel with N other agents"; reconcilers: "Inputs carry distinct lenses — merge across them, max-wins on CRITICAL findings".
+- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary → this file only — NEVER per-workflow files.
+- **Reuse wording and formatting:** ALWAYS `grep .bkit/workflows/` first; copy closest phrasing + formatting verbatim (backticks, indentation, breaks, punctuation, spacing). Match shape for repeated sections (subagent invocations, gate checklists, `bash` blocks, comment fences).
+- **Cross-workflow alignment:** Shared lines → change in ALL workflows using them.
+- **Procedural conditionals:** Flow-gating → bold `**If** {condition} → {action}.` (`**Else** → {action}.` for branches). Test: reordering reads "If {X}, {Y}" → it IS one. Excludes: inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash in backticks, output-template placeholders.
+- **Labeled decision blocks:** 2+ branches → labeled heading-row + `-` bullets (one per branch) — NEVER inline one line, NEVER across numbered sub-steps. Labels: `Route:` (next Step / Failure Path); `Decide \`VAR\`:` (variable value). Single-branch (`**If** {X} → **Failure Path**`) stays inline.
+- **ASCII operators:** `!=`, `>=`, `<=`, `=>`, `x` for times/dimensions only — NEVER Unicode math glyphs. `→` in conditionals/dispatch tables = sole intentional non-ASCII glyph (uniform flow notation; clearer than overloaded `->`). Do NOT convert `→`.
+- **Variable references:** Prose: names/labels/placeholders in backticks. Bare `VAR` = reference; `{VAR}` = interpolation (paths, JSON, commit msgs, Context). Operators outside (`VERIFY_ATTEMPT` = 0). Literal enum plain (**If** `VERDICT` = PASS); unions one backticked unit (`PASS|CONCERNS|FAIL`). Fenced output blocks: plain. NEVER `${VAR}` outside bash fences.
+- **Gate items:** `- [ ]` leads with prose label; vars ONLY in trailing backticked parenthetical — `- [ ] Test attempt incremented (\`TEST_ATTEMPT\` + 1)`, NEVER `- [ ] \`TEST_ATTEMPT\` incremented`. Extraction + validity = ONE item: `- [ ] Verdict extracted and valid (\`SUMMARY_VERDICT\` in \`PASS|CONCERNS|FAIL\`)`.
 
 ## Tracker Blocks
 
-`.bkit/workflows/bkit-*.md` source files carry the wired tracker variants inline — `github` and `linear` — so the full per-tracker behaviour (MCP call shapes, label semantics, state transitions) is visible at the call site in one place. No substitution from `.bkit/trackers.md`; the resolver only selects/strips inline blocks. Markers:
+`.bkit/workflows/bkit-*.md` carry wired tracker variants inline (`github`, `linear`) — full per-tracker behaviour (MCP shapes, labels, states) visible at call site. No substitution from `.bkit/trackers.md`; resolver selects/strips inline blocks. Markers:
 
-**Per-tracker pair.** Every tracker call site defines a consecutive `github` → `linear` pair (no authored `none` block — the no-tracker rendering is a single generic message):
+**Per-tracker pair.** Every tracker call site: consecutive `github` → `linear` pair (no authored `none` — no-tracker rendering = single generic message):
 
 ```text
 <!-- bkit:tracker github start -->
@@ -76,11 +76,11 @@ mcp__linear__… call
 <!-- bkit:tracker linear end -->
 ```
 
-At `bkit install` time the installer reads `bkit.issueTracker` from the consumer manifest, keeps the block matching the chosen tracker, and drops the other when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Under `none` the whole pair collapses to **`_No tracker connected, skip step._`**. A list-number prefix (`3. `) is preserved on the kept block / stub. A handful of sites that must still function without a tracker (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`) add a trailing `<!-- bkit:tracker false start/end -->` block right after the pair, which is used under `none` instead of the generic message.
+At `bkit install`: read `bkit.issueTracker` from consumer manifest → keep matching block, drop other when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Under `none` → whole pair collapses to **`_No tracker connected, skip step._`**. List-number prefix (`3. `) preserved on kept block / stub. Sites needing no-tracker function (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`) add trailing `<!-- bkit:tracker false start/end -->` after pair — used under `none` instead of generic message.
 
-**Conditional blocks (`bkit:tracker true` / `bkit:tracker false`).** Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body): `true` is kept when a tracker is connected and **removed entirely under `none`** (used for shared content like comment `{BODY}` fences, identical for github/linear); `false` is kept ONLY under `none`. A removed block consumes its leading newline so no blank gap remains.
+**Conditional blocks (`bkit:tracker true` / `bkit:tracker false`).** Boolean tracker-presence gates for tracker-agnostic content: `true` kept when wired, **removed entirely under `none`** (shared comment `{BODY}` fences, identical github/linear); `false` kept ONLY under `none`. Removed block consumes leading newline — no blank gap.
 
-A `github`/`linear` pair is only for content whose **call genuinely differs**. When the two bodies would be **byte-identical** (same text/call for both trackers), use a single `true` block instead — duplicating identical content as a pair is redundant. Enforced by a test (`bkit-trackers.test.ts` — "no identical github/linear pair"). Note the `none` difference: a pair collapses to the `_No tracker connected, skip step._` stub, whereas a `true` block is removed outright — so only use `true` where the content can vanish under `none` (inline notes, gate items), not where a standalone numbered step needs a stub to keep its number.
+`github`/`linear` pair only when call **genuinely differs**. Byte-identical bodies → single `true` block — duplicating identical content as pair is redundant. Enforced by `bkit-trackers.test.ts` ("no identical github/linear pair"). `none` difference: pair → `_No tracker connected, skip step._` stub; `true` block removed outright — use `true` only where content can vanish under `none` (inline notes, gate items), NOT where numbered step needs stub to keep number.
 
 ```text
 <!-- bkit:tracker true start -->
@@ -88,32 +88,32 @@ A `github`/`linear` pair is only for content whose **call genuinely differs**. W
 <!-- bkit:tracker true end -->
 ```
 
-**Hoist shared content out of the blocks — but only at `false`-block sites.** Text identical across the variants belongs on the numbered step line, with only the genuinely per-tracker part inside the blocks (`issue-id-extraction` keeps just the extraction patterns + create call; `fid-format` keeps just the assert regex). Every byte inside a pair is authored two or three times and drifts independently.
+**Hoist shared content out of blocks — only at `false`-block sites.** Identical cross-variant text → numbered step line; per-tracker part inside blocks (`issue-id-extraction`: extraction patterns + create call only; `fid-format`: assert regex only). Every byte inside pair authored 2–3× and drifts.
 
-The limit is the `none` rendering. A bare `github`/`linear` pair collapses to `_No tracker connected, skip step._`, so anything hoisted above it survives as prose introducing a step that then says "skip" — a `{QUERY}` definition with no search, a "NEW comment" instruction with no comment. Hoist only where a trailing `false` block supplies a real `none` body (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`); at pair-only sites keep the shared text inside both blocks so the whole step vanishes cleanly. This is why the design/debug issue-scan `{QUERY}` prefix and the `— NEW comment, no edit.` suffix stay duplicated. **Exception — plan fetch-context (`/bkit-plan` Step 4):** its `{QUERY}` IS hoisted to a plain (non-tracker) step, because the tracker-independent local-ledger greps (`related-deferrals.md` / `related-failures.md`) in the same step consume it and MUST run under `none`. There the hoisted definition is not orphaned — the greps are its `none` consumer — so do NOT re-duplicate it back inside the tracker pair.
+Limit = `none` rendering. Bare pair collapses to `_No tracker connected, skip step._` — hoisted prose above survives introducing a step that says "skip" (`{QUERY}` with no search, "NEW comment" with no comment). Hoist only where trailing `false` block supplies real `none` body (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`); at pair-only sites keep shared text inside both blocks so whole step vanishes. Design/debug issue-scan `{QUERY}` prefix + `— NEW comment, no edit.` suffix stay duplicated. **Exception — plan fetch-context (`/bkit-plan` Step 4):** `{QUERY}` hoisted to plain step — tracker-independent local greps (`related-deferrals.md` / `related-failures.md`) in same step consume it and MUST run under `none`; hoisted definition not orphaned — do NOT re-duplicate into tracker pair.
 
-Re-runnable: source workflows carry the wired variants; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors. The resolver reports a lone `github`/`linear` block or an unbalanced `true`/`false` pair as an orphan — silent regressions unacceptable. New tracker call site → add the `github`/`linear` pair inline (no `trackers.md` edit; add a `none` block only if the step must do something specific without a tracker). `.bkit/trackers.md` is reference-only (marker contract + cross-cutting per-tracker conventions); it is not a substitution source.
+Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` after `--tracker=github`) → fresh mirrors. Resolver reports lone `github`/`linear` block or unbalanced `true`/`false` pair as orphan — silent regressions unacceptable. New call site → add `github`/`linear` pair inline (no `trackers.md` edit; `none` block only if step must do something without tracker). `.bkit/trackers.md` = reference-only (marker contract + cross-cutting conventions); not substitution source.
 
 **Rationale rehomed from the workflow files** (stripped there per § Workflow Authoring Rules; kept here):
 
-- **`git push --force-with-lease` on the personal branch:** the Step 2 `git rebase origin/dev` rewrites SHAs, so a plain push is non-fast-forward. Mirrors `rules.md` § Force push. Never applies to `dev` / `main`.
-- **`BKIT_VER` reads `pinnedVersion`, not `version`,** and takes the `[ -z … ] &&` fallback rather than a piped one: a pipeline's status is its LAST command's, so a `| tr … || echo` fallback never fires on a failed grep.
-- **`deferrals` / `failures` on the `outcome` row are a CUMULATIVE count of DISTINCT `key`s, not lines:** rows update by appending a same-`key` row (§ Updating a Row in `.bkit/jsonl.md`), so `wc -l` double-counts a deferral the moment triage closes it. Readers derive this cycle from the delta against the previous outcome row — see `newFailuresThisRun` in `bkit-analysis.ts`.
-- **CI-Dispatch kernel constants:** `POLL_BUDGET_S` / `POLL_INTERVAL_S` give ATTEMPTS = BUDGET / INTERVAL = 6. `poll_dispatch` echoes `found` / `none` / `err` and never `set -e`s out. Self-heal is capped at 1 and asserts the re-trigger suffix matches the close-workflow suffix. The `ciDispatch` verdict is always written onto the step-done record as an additive field.
-- **Open-PR pre-flight (EC-1 in #261):** a blind `gh pr create` on a branch with an existing open PR errors, triggers retry, then Failure Path — so build detects it first. Idempotent-resume (reuse the existing PR instead of Failure Path) is not built.
-- **Build's close-workflow push does not trigger CI** — no PR exists yet; `gh pr create` on the pushed HEAD is the single CI-triggering event.
-- **Design / plan close on a HARD STOP** because the phase requires human review before the next phase runs.
-- **No archive step in ship:** plan/design artifacts are written to canonical `docs/plans/{YYYYMM}/` at design start, so there is nothing to move at close.
-- **Debug's three attempt counters are mode-matched pairs** — DE-25, DE-36.
+- **`git push --force-with-lease` on personal branch:** Step 2 `git rebase origin/dev` rewrites SHAs → plain push non-fast-forward. Mirrors `rules.md` § Force push. Never on `dev` / `main`.
+- **`BKIT_VER` reads `pinnedVersion`, not `version`:** `[ -z … ] &&` fallback, not piped one — pipeline status = LAST command's; `| tr … || echo` fallback never fires on failed grep.
+- **`deferrals` / `failures` on `outcome` row = CUMULATIVE distinct `key` count, not lines:** same-`key` append (§ Updating a Row in `.bkit/jsonl.md`) → `wc -l` double-counts closed deferrals. Readers derive cycle from delta vs prior outcome row — `newFailuresThisRun` in `bkit-analysis.ts`.
+- **CI-Dispatch kernel constants:** `POLL_BUDGET_S` / `POLL_INTERVAL_S` → ATTEMPTS = 6. `poll_dispatch` echoes `found` / `none` / `err`; never `set -e`s out. Self-heal cap 1; re-trigger suffix must match close-workflow suffix. `ciDispatch` verdict always on step-done record (additive field).
+- **Open-PR pre-flight (EC-1 in #261):** blind `gh pr create` on branch with open PR → error → retry → Failure Path. Build detects first. Idempotent-resume (reuse existing PR) not built.
+- **Build close-workflow push does not trigger CI** — no PR yet; `gh pr create` on pushed HEAD = single CI trigger.
+- **Design / plan close on HARD STOP** — human review required before next phase.
+- **No archive step in ship:** artifacts at canonical `docs/plans/{YYYYMM}/` from design start — nothing to move at close.
+- **Debug three attempt counters = mode-matched pairs** — DE-25, DE-36.
 
 **Per-tracker operational notes** (rationale kept here, not in the workflow files per § Workflow Authoring Rules):
 
-- **Related-issues scan** (issue-scan): a numbered step at design ideate-entry, plan fetch-context, and debug fetch-context, authored as a `github`/`linear` pair so under `none` it collapses to the standard `_No tracker connected, skip step._` (number preserved) — without a tracker there is no scan and no `related-issues.md` / `debug-context-related` file. Best-effort: a broad keyword search (title+body, all states open+closed, recency-sorted) — fetch 15, drop the workflow's own issue, keep the first 10 — with one `get_comments` / `list_comments` fetch per kept hit; writes `Search unavailable.` on error/timeout; never gates and never auto-expands scope (the content is advisory — dedup / conflicting-design avoidance / prior-incident awareness). All states because the strongest dedup/recurrence signals are closed: an already-shipped feature or an already-resolved incident. The file holds, per hit, a `## #{number} — {title} ({state})` section with the issue body + every comment verbatim (rich context for the synthesiser, not just refs — issue comments carry most of the signal); no redundant top-level heading. Design writes `related-issues.md`, read back by `bkit-design-generate` as an `(if present)` input that informs the design and is condensed to a one-line `- #N — title (state)` ref list in `## Related Issues` (else `None`) — no marker gating needed since the prompt tolerates absence. Plan's fetch-context step derives `{QUERY}` in a plain (tracker-independent) sub-step, then writes `related-issues.md` (tracker-gated search) plus local-ledger scans `related-deferrals.md` / `related-failures.md` (awk term-count match: a line needs >=2 distinct query terms, or the sole term when only one — cuts single-common-word noise; runs even under `none`), all read by the `bkit-plan-review-1/2/3` triplet (not `bkit-plan-generate`) as advisory context. Debug writes `debug-context-related-${DEBUG_ATTEMPT}.md` in the same shape, picked up by `bkit-debug-failure-diagnose` via its `debug-context-*` glob (excluded from `FETCH_VERDICT`). Plan runs its own fresh scan rather than consuming the design's so a standalone plan (no design) is still covered.
-- **Projects v2 board sync** (`issue-update-status`): best-effort — never gates; on failure the workflow retries once after 5s then continues. The `update_project_item` call needs the numeric `item_id`, NOT the node id returned by `add_project_item` — hence the intervening `projects_list` resolve step. The status `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name. Linear has no separate board (issue state carries the status) → its `issue-update-status` is a no-op.
-- **Blocked-by edges:** GitHub Issues have no native `blockedBy` field → encoded via a `<!-- bkit:blocked-by -->` marker block in the issue body. Linear has a native `blockedBy` (append-only; re-runs with unchanged edges are no-ops).
-- **Workstream milestone assignment (design Step 9):** a `MILESTONE`-labelled parent groups its workstream issues under a native milestone, NOT as sub-issues. The parent must already carry the target — GitHub milestone / Linear project + project milestone — because the MCP servers cannot create one (GitHub exposes only an assign-by-number `milestone` param; no create/list milestone tool), so an unset target is a Step 9 Failure Path (assign it on the parent first). Each workstream is created assigned to the same target: GitHub `issue_write` `milestone` (number, read from the parent via `issue_read` get → `milestone.number`); Linear `save_issue` `projectId` + `projectMilestoneId` (read via `get_issue` → `project.id` / `projectMilestone.id`). Existing-workstream detection no longer walks a sub-issue tree — GitHub `search_issues` `milestone:"{title}" in:title WS-` (subject to search-index lag, best-effort, never gates), Linear `list_issues` filtered by `projectId` + `projectMilestoneId`; matched by `^WS-N:` title prefix. `Requires` → block-by edges are unchanged (`set-blocked-by`).
-- **issue-update-review** (phase-close hand-off): **update state only — never change a label on close.** GitHub: no-op (the `issue-update-phase` phase label carries the signal until ship's `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` param (partial update; sending `labels` full-replaces and would drop additive labels like `bkit:auto`/`bkit:debug`).
-- **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops the phase labels, adds `bkit:merged`, and moves the issue to **In Review** — Linear `state: "In Review"`, GitHub left **open** (the board, if wired, goes to the review option, not done). A human reviews the merged change and closes the issue manually. Rationale: a merge is not an acceptance — a person should confirm the shipped result before the issue is considered done, so closing stays a deliberate human act.
+- **Related-issues scan** (issue-scan): numbered step at design ideate-entry, plan fetch-context, debug fetch-context; `github`/`linear` pair → under `none` collapses to `_No tracker connected, skip step._` (number preserved). Best-effort: broad keyword search (title+body, all states, recency) — fetch 15, drop own issue, keep 10 — one comment fetch per hit; `Search unavailable.` on error; never gates, never auto-expands scope (advisory dedup / conflicting-design / prior-incident). All states: closed issues carry strongest dedup signals. Per hit: `## #{number} — {title} ({state})` + body + comments verbatim; design → `related-issues.md` (generate reads `(if present)`, condenses to `## Related Issues` one-liners or `None`). Plan: `{QUERY}` in plain sub-step → `related-issues.md` (tracker-gated) + `related-deferrals.md` / `related-failures.md` (awk >=2 distinct query terms, or sole term when one — runs under `none`); read by `bkit-plan-review-1/2/3`. Debug → `debug-context-related-${DEBUG_ATTEMPT}.md` (`debug-context-*` glob; excluded from `FETCH_VERDICT`). Plan runs fresh scan (standalone plan coverage).
+- **Projects v2 board sync** (`issue-update-status`): best-effort, never gates; retry once after 5s on failure. `update_project_item` needs numeric `item_id`, not node id from `add_project_item` → intervening `projects_list` resolve. Status `value` = single-select option id (e.g. `47fc9ee4`), not name. Linear: no-op (state carries status).
+- **Blocked-by edges:** GitHub: `<!-- bkit:blocked-by -->` in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
+- **Workstream milestone assignment (design Step 9):** `MILESTONE`-labelled parent groups workstreams under native milestone, NOT sub-issues. Parent must carry target (GitHub milestone / Linear project + project milestone) — MCP cannot create → unset = Step 9 Failure Path. Each workstream assigned to same target: GitHub `issue_write` `milestone` (from parent `issue_read`); Linear `save_issue` `projectId` + `projectMilestoneId`. Existing detection: GitHub `search_issues` `milestone:"{title}" in:title WS-` (index lag, best-effort); Linear `list_issues` by `projectId` + `projectMilestoneId`; match `^WS-N:` title. `Requires` → block-by edges unchanged.
+- **issue-update-review** (phase-close): **update state only — never change label on close.** GitHub: no-op (phase label until ship `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` (partial update would drop `bkit:auto`/`bkit:debug`).
+- **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops phase labels, adds `bkit:merged`, **In Review** — Linear `state: "In Review"`, GitHub **open** (board → review, not done). Human reviews merged change and closes manually. Merge ≠ acceptance.
 
 ## Two-Layer Separation Rules
 
@@ -129,11 +129,11 @@ Re-runnable: source workflows carry the wired variants; switching trackers (`--t
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent must be runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` works without a live tracker issue). All inputs arrive via filesystem paths from orchestrator. All outputs land on disk under `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source files, or structured docs at `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs and decides what (if anything) to mirror to the tracker.
+**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs → decides tracker mirror.
 
 ## Common Workflow Anatomy
 
-Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the same skeleton:
+Every phase command (`design`, `plan`, `build`, `debug`, `ship`) shares skeleton:
 
 ```
 1. YAML frontmatter (description)
@@ -147,19 +147,19 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal `bkit:merged` + In Review via `issue-update-merged` (issue left OPEN — human reviews + closes); non-ship phases update state only, phase label unchanged; **final return** = verbatim `{phase}-summary.md` to user as the last action)
 ```
 
-**Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and posts a NEW tracker comment with one fenced section (see § Comment Lifecycle).
+**Step convention:** every step ends `### 🔒 Gate N — {Step Name}` checklist (verify before proceed) + NEW tracker comment with one fenced section (§ Comment Lifecycle).
 
-**Managed-version marker:** the renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(one blank line below) after the frontmatter for claude commands, or at the top for cursor/opencode commands whose transforms strip the frontmatter. Stamped at`bkit install`/`upgrade`render time by`stampManagedVersion`— NEVER add a version line to a source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when a rendered marker drifts from the installed version — a hard-failing blocker on`main`/`dev` (or a PR into them), a non-blocking advisory on feature branches (the drift is inherited from the base, not created by the branch) — so consumers cannot silently run outdated workflows on a protected branch.
+**Managed-version marker:** renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(blank line below) after frontmatter (claude) or top (cursor/opencode strips frontmatter). Stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NEVER add version to source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when marker drifts — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift).
 
-**Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl` only (FID-scoped — NEVER the whole `docs/plans/` tree, which sweeps a concurrent run's untracked status under another `{FID}`); guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
+**Pre-worktree git scope:** Step 1 + Step 2 pre-worktree guard on originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl` only (FID-scoped — NEVER whole `docs/plans/` tree). Guard commit: `git diff --cached --quiet ||`. NEVER `git add -A` until `cd "$WORKTREE_PATH"` — sweeps unrelated user edits into workflow commit → rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` fine; cwd = sandbox. `git worktree add` does not inherit dirty state.
 
-**Worktree isolation (no Step 1 dev sync gate):** ALL phase workflows (`design`, `plan`, `build`, `debug`, `ship`) Step 1 makes ZERO commits on `dev` and does NOT assert local `dev` is in sync with `origin/dev`. Step 1 only `git fetch origin dev`; workflow work runs in `.worktrees/{FID}` on `feat/{FID}` (or `fix/{FID}` for debug), rebased against `origin/dev` in Step 2. Local `dev` ahead-of-`origin/dev` is irrelevant at start — Close Workflow reconciles with `origin/dev` at merge time (`git pull --ff-only origin dev` before squash-merge for design/plan; ship Step 9 re-checks only when switching to `dev` post-merge). Rationale: blocking start on unpushed local `dev` commits forces manual intervention before any isolated work can begin; those commits do not affect the worktree branch until Close merges back.
+**Worktree isolation (no Step 1 dev sync gate):** ALL phases Step 1: ZERO commits on `dev`; does NOT assert local `dev` synced with `origin/dev`. Step 1 only `git fetch origin dev`; work in `.worktrees/{FID}` on `feat/{FID}` (or `fix/{FID}` debug), rebased `origin/dev` in Step 2. Local `dev` ahead-of-origin irrelevant at start — Close reconciles at merge (`git pull --ff-only origin dev` before squash-merge design/plan; ship Step 9 re-check when switching post-merge). Rationale: blocking on unpushed local `dev` forces manual intervention before isolated work; those commits do not affect worktree until Close merges back.
 
-**Branch placement:** `design`/`plan`/`build`/`debug` write + commit `status.jsonl` on `feat/{FID}` (the worktree) with NO mid-lifecycle `dev` push — state reaches `dev` once via the Close squash-merge (`design`/`plan`) or ship's PR squash-merge (`build`/`debug`); `ship` writes Steps 1-8 on `feat/{FID}` and Steps 9-13 on `dev`; `cloud` is a stateless dispatcher — it writes NO `status.jsonl` (its run is recorded only by the tracker comment). See § `status.jsonl` — workflow state SoT for the full table, event model, and fold.
+**Branch placement:** `design`/`plan`/`build`/`debug` write + commit `status.jsonl` on `feat/{FID}` — NO mid-lifecycle `dev` push; state reaches `dev` once via Close squash-merge (design/plan) or ship PR squash (build/debug). `ship` Steps 1-8 on `feat/{FID}`, Steps 9-13 on `dev`. `cloud` = stateless dispatcher — NO `status.jsonl` (tracker comment only). See § `status.jsonl` — workflow state SoT.
 
 ### Execution Protocol — canonical invariants
 
-Lifted verbatim into every workflow's caution block. If you change one wording, change all five workflow files.
+Lifted verbatim into every workflow caution block. Change one wording → change all five workflow files.
 
 <!-- prettier-ignore -->
 | Invariant | Rule |
@@ -189,9 +189,9 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 
 ### `status.jsonl` — workflow state SoT
 
-`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` is the canonical workflow-state source of truth: an **append-only NDJSON event log** (one JSON event per line; prior lines NEVER mutated). Written by workflows only; agents MUST NOT read or write it. Enables resume of an interrupted run without re-reading the plan. Current state is derived by **folding** the log (see Fold below); the canonical reducer is `.bkit/src/bkit-status.ts` (`fold` / `parseStatus`, unit-tested in `bkit-status.test.ts`), and each workflow inlines a jq filter that mirrors it.
+`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` = canonical workflow-state SoT: **append-only NDJSON** (one JSON event/line; prior lines NEVER mutated). Workflows only; agents MUST NOT read/write. Enables resume without re-reading plan. Current state = **fold** (see Fold); canonical reducer `.bkit/src/bkit-status.ts` (`fold` / `parseStatus`, `bkit-status.test.ts`); each workflow inlines jq filter mirroring it.
 
-**Why an event log + `merge=union`:** the prior single `status.json` (a mutated JSON array) for one FID was committed on **both** `dev` (design/plan/build dev commits) and `feat/{FID}` (per-step worktree commits) → divergent content on the same path → the feature PR became unmergeable → GitHub never built `refs/pull/N/merge` → `pull_request` CI never ran (a `dev`-push status commit could also become the PR-branch tip and suppress CI). Append-only NDJSON + `docs/plans/**/status.jsonl merge=union` (`.gitattributes`, template at `.bkit/templates/.gitattributes` — path-scoped, NOT a blanket `*.jsonl`) lets git concatenate both branches' appended lines **server-side** — the per-FID log can never block a merge. Union may interleave or duplicate lines, so the reader de-dupes by `(workflow, step, parentSha, at)` and orders by `at` before reducing.
+**Why event log + `merge=union`:** prior single `status.json` (mutated array) committed on **both** `dev` and `feat/{FID}` → divergent same-path content → unmergeable PR → GitHub never built `refs/pull/N/merge` → `pull_request` CI never ran. Append-only NDJSON + `docs/plans/**/status.jsonl merge=union` (`.gitattributes`, `.bkit/templates/.gitattributes` — path-scoped, NOT blanket `*.jsonl`) concatenates both branches server-side — per-FID log cannot block merge. Union may interleave/duplicate → reader de-dupes `(workflow, step, parentSha, at)`, orders by `at`, reduces.
 
 **Branch placement (§3):**
 
@@ -203,7 +203,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | `ship` | Steps 1-8 on `feat/{FID}` (worktree); Steps 9-13 on `dev` (`$REPO_ROOT/...`) post-merge | Steps 1-8 commit on `feat/{FID}` (reach `dev` via the Step-6 squash-merge); Steps 9-13 append to dev's copy. Ship is terminal, so its `dev` commit + push (Close / Failure Path) is the legitimate state landing. |
 | `cloud` | — (none) | Stateless phase dispatcher — writes NO `status.jsonl` and makes no `dev` commit; the run is recorded only by its tracker comment. The dispatched skill owns its own state/FID/worktree. |
 
-Rationale: relocating per-run state onto `feat/{FID}` removes the dev↔feat divergence at its source; the NDJSON+union change makes it merge-safe regardless. `design`/`plan` write status on their throwaway `feat/{FID}` worktree exactly like `build`/`debug` — status and generated docs travel together and reach `dev` via the single Close squash-merge, so the only thing hard-coded to `dev` is the doc-link URLs in tracker comment blocks. `cloud` is a pure dispatcher — no worktree, no state: it writes no `status.jsonl` at all (the tracker comment is its only record). The design/plan close-workflow `dev` commit is the substantive feature commit and runs CI. (`audit` is not yet built; per its design it will follow the design/plan feat-located pattern.)
+Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source; NDJSON+union merge-safe regardless. `design`/`plan` on throwaway `feat/{FID}` like `build`/`debug` — status + docs reach `dev` via single Close squash-merge; only doc-link URLs in tracker comments hard-coded to `dev`. `cloud` = pure dispatcher — no worktree, no state, no `status.jsonl` (tracker comment only). Design/plan close `dev` commit = substantive feature commit, runs CI. (`audit` not built; per design follows design/plan feat pattern.)
 
 **Event types (one per line):**
 
@@ -218,9 +218,9 @@ Rationale: relocating per-run state onto `feat/{FID}` removes the dev↔feat div
 
 `workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ `PASS`/`CONCERNS`/`FAIL`; `strategy` ∈ `STANDARD`/`PIVOT`/`FINAL`; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL). Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
 
-**Fold** (NDJSON events → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first occurrence, order by `at`, then reduce: `workflow-started` pushes a run; `step-done` appends the bare step (routing fields stripped) to the latest run of that workflow; `workflow-meta` merges fields onto it; `workflow-done`/`workflow-failed` set its `status`. Canonical reducer = `bkit-status.ts`; each workflow inlines a one-line jq filter byte-equal to it.
+**Fold** (NDJSON → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first, order by `at`, reduce: `workflow-started` pushes run; `step-done` appends bare step to latest run; `workflow-meta` merges; `workflow-done`/`workflow-failed` set `status`. Canonical = `bkit-status.ts`; workflows inline one-line jq byte-equal.
 
-**Append / read patterns** (every workflow uses these; `$STATUS` resolves per the branch-placement table — `$(git rev-parse --show-toplevel)/...` on feat, `$REPO_ROOT/...` on dev):
+**Append / read patterns** (`$STATUS` per branch-placement table — `$(git rev-parse --show-toplevel)/...` on feat, `$REPO_ROOT/...` on dev):
 
 ```bash
 # migrate-once: a legacy status.json array (in-flight pre-NDJSON FID) -> events
@@ -254,11 +254,11 @@ jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at
 jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed", workflow:"build", at:$t}' >> "$STATUS"
 ```
 
-**Resume rule:** read the run array via `jq -s "$FOLD"' fold | …'`. For `design`/`plan`/`build`/`debug`/`ship` prefer the `feat/{FID}` worktree copy when it exists (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`), else the dev copy. (`cloud` writes no status.) `status=IN_PROGRESS` → resume after last `DONE` step (re-run if its gate artifacts missing on disk). `status=DONE`/`FAILED` → start a new run. A legacy `status.json` (no `.jsonl` yet) is read as an already-folded array (see `parseStatus`).
+**Resume rule:** `jq -s "$FOLD"' fold | …'`. `design`/`plan`/`build`/`debug`/`ship`: prefer `feat/{FID}` worktree copy when exists (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`), else dev. (`cloud` writes none.) `IN_PROGRESS` → resume after last `DONE` step (re-run if gate artifacts missing). `DONE`/`FAILED` → new run. Legacy `status.json` (no `.jsonl`) → read as folded array (`parseStatus`).
 
 ### Concurrency lock
 
-`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` is plain text file holding `{ISO_TIMESTAMP} {workflow}`. Path is **absolute** (anchored to main repo via `git rev-parse --path-format=absolute --git-common-dir`) so acquire and release resolve to the same inode whether cwd is the main repo or a worktree. Acquired in Step 1 right after `mkdir -p`; released in Step N (Close Workflow) and in Failure Path; both must assert the lock file is absent before exiting.
+`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` = plain text `{ISO_TIMESTAMP} {workflow}`. **Absolute** path (main repo via `git rev-parse --path-format=absolute --git-common-dir`) — acquire/release same inode from main repo or worktree. Step 1 after `mkdir -p`; released Close Workflow + Failure Path; both assert absent before exit.
 
 ```bash
 REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -281,11 +281,11 @@ fi
 printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
 ```
 
-**Staleness rule:** read the owning workflow's status.jsonl via the fold (`design`/`plan`/`build`/`debug`/`ship` prefer the `feat/{FID}` worktree copy, else dev). (`cloud` holds no lock and writes no status — no staleness check applies.) `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step >=30min idle → orphaned, clean and proceed. Lock with no matching workflow run in the folded log is treated as stale and cleaned.
+**Staleness rule:** read owning workflow's status.jsonl via fold (`design`/`plan`/`build`/`debug`/`ship` prefer `feat/{FID}` worktree, else dev). (`cloud` holds no lock, writes no status.) `DONE`/`FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → concurrent run, Failure Path; `IN_PROGRESS` + >=30min → orphaned, clean and proceed. Lock with no matching run in folded log → stale, clean.
 
 ### Comment Lifecycle
 
-Every workflow step posts a NEW tracker comment via its inline `comment-post-step` tracker block (per-tracker `github`/`linear`/`none`, resolved at install; see § Tracker Blocks). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Each step's comment is independent — no comment-ID carry-forward, no body concatenation.
+Every workflow step posts NEW tracker comment via inline `comment-post-step` block (per-tracker `github`/`linear`/`none`, resolved at install; § Tracker Blocks). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Each step independent — no comment-ID carry-forward, no body concatenation.
 
 **Step 1 (first comment):**
 
@@ -345,21 +345,21 @@ Stderr: {last 20 lines if shell}
 
 ### Tracker Writes Are Best-Effort
 
-Tracker write calls (issue update, comment post) are observability, NOT gates. NEVER block, hang, or fail a workflow on tracker write failure. Tracker reads (issue read, list comments) remain authoritative.
+Tracker write calls (issue update, comment post) = observability, NOT gates. NEVER block, hang, or fail workflow on tracker write failure. Tracker reads (issue read, list comments) remain authoritative.
 
-**Wrapper semantics — every tracker write call:**
+**Wrapper semantics — every tracker write:**
 
-1. Attempt the call.
-2. On `rate_limited` / transient error → wait 5s, retry once.
-3. On second failure → set `TRACKER_DEFERRED` = true, append the literal token `TRACKER_DEFERRED=true reason={error}` to the next workflow commit message, proceed to next step.
+1. Attempt call.
+2. `rate_limited` / transient → wait 5s, retry once.
+3. Second failure → `TRACKER_DEFERRED` = true, append `TRACKER_DEFERRED=true reason={error}` to next commit message, proceed.
 
-**Gate phrasing:** tracker-dependent gate items read as `Issue update attempted (label set X)` and `Issue comment attempted (Step N section)`. Do NOT phrase as `Issue state X set` or `Issue comment created` — those imply the write succeeded.
+**Gate phrasing:** `Issue update attempted (label set X)` / `Issue comment attempted (Step N section)` — NOT `Issue state X set` or `Issue comment created` (imply success).
 
 ### Versioned Outputs
 
-Every transformation step writes ONE new versioned file in `docs/plans/{YYYYMM}/logs/{FID}/`. Steps NEVER write the canonical `docs/plans/{YYYYMM}/{FID}-*.md` directly — the canonical artifact is populated only by close-workflow as a copy of the highest-version file. `{YYYYMM}` = canonical month bucket, decided once at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+Every transformation step writes ONE versioned file in `docs/plans/{YYYYMM}/logs/{FID}/`. Steps NEVER write canonical `docs/plans/{YYYYMM}/{FID}-*.md` directly — populated only by close-workflow copy of highest version. `{YYYYMM}` = month bucket at first workflow start (`date +%Y%m`); downstream discovers via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 
-**Naming:** `logs/{FID}/{workflow}-v{N}-{action}.md` — incrementing `N`, `action` describes what produced this version. Directory conveys FID; do NOT prefix the filename.
+**Naming:** `logs/{FID}/{workflow}-v{N}-{action}.md` — incrementing `N`, `action` = producer. Directory conveys FID; do NOT prefix filename.
 
 **Step output classification** (each step picks exactly one):
 
@@ -405,32 +405,32 @@ Every transformation step writes ONE new versioned file in `docs/plans/{YYYYMM}/
 
 **Build / debug / ship:** doc-producing steps adopt the same `{workflow}-v{N}-{action}.md` naming inside `logs/{FID}/`. NO canonical-copy at close — those phases don't produce a canonical artifact in `{YYYYMM}/` (only plan + design do).
 
-**Close-workflow copy semantics (plan + design only):** find highest `v{N}` matching `logs/{FID}/{workflow}-v*.md`; copy file verbatim to `{YYYYMM}/{FID}-{workflow}.md`. SPLIT case: copy parent + each numbered sibling.
+**Close-workflow copy (plan + design only):** highest `v{N}` matching `logs/{FID}/{workflow}-v*.md` → copy verbatim to `{YYYYMM}/{FID}-{workflow}.md`. SPLIT: parent + each numbered sibling.
 
 ### Verdict Validation
 
-Verdict-bearing subagents (any agent that returns `PASS | CONCERNS | FAIL`) MUST emit the verdict header as the first non-blank line of their output file, BEFORE any other content. The orchestrator validates and re-issues on invalid verdicts.
+Verdict-bearing subagents MUST emit verdict header as first non-blank line, BEFORE other content. Orchestrator validates; re-issues on invalid.
 
 **Subagent contract:**
 
-1. Write verdict line FIRST: `Verdict: PASS | CONCERNS | FAIL` (one of the three; NEVER `PENDING`, NEVER blank).
-2. Then `<!-- verdict:end -->` delimiter.
-3. Then the rest of the output (record, body, etc.).
+1. Verdict line FIRST: `Verdict: PASS | CONCERNS | FAIL` (one of three; NEVER `PENDING`, NEVER blank).
+2. Then `<!-- verdict:end -->`.
+3. Then rest (record, body, etc.).
 
-If the agent terminates mid-stream after the verdict line is written, the orchestrator gets a usable verdict + truncated body. The truncation is detectable separately (artifact length / body integrity), and the verdict signal isn't lost.
+Mid-stream termination after verdict line → usable verdict + truncated body (detectable separately); verdict signal not lost.
 
 **Orchestrator contract:**
 
-1. After subagent return, read the output file until `<!-- verdict:end -->`.
-2. Extract `Verdict:` value as `{VERDICT}`.
+1. After return, read until `<!-- verdict:end -->`.
+2. Extract `Verdict:` → `{VERDICT}`.
 3. Assert `{VERDICT} ∈ {PASS, CONCERNS, FAIL}`.
-4. **If invalid** (missing, empty, `PENDING`, or any other value):
-   - Re-issue the same subagent with a tightening prompt: "Your prior output `{file}` is missing/invalid verdict. Re-emit ONLY the verdict header (`Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`) at the top of that file. Do NOT redo the work; the body is already in place."
-   - Increment a local `VERDICT_RETRY` = 1.
-5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
-6. Orchestrator NEVER synthesizes a verdict itself — that would mask truncation/budget signals that humans need to see.
+4. **If invalid** (missing, empty, `PENDING`, other):
+   - Re-issue same subagent: "Your prior output `{file}` is missing/invalid verdict. Re-emit ONLY the verdict header (`Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`) at the top of that file. Do NOT redo the work; the body is already in place."
+   - `VERDICT_RETRY` = 1.
+5. **If retry fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
+6. Orchestrator NEVER synthesizes verdict — masks truncation/budget signals.
 
-**Per-step gate item (universal for verdict-bearing steps):**
+**Per-step gate item (verdict-bearing steps):**
 
 ```
 [ ] Verdict valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})
@@ -438,9 +438,9 @@ If the agent terminates mid-stream after the verdict line is written, the orches
 
 ### Gates
 
-Every step ends with `### 🔒 Gate N — {Step Name}` and a checklist.
+Every step ends `### 🔒 Gate N — {Step Name}` + checklist.
 
-**Format:** Every gate item MUST follow `[ ] What (settings)` — verb-led clause, parenthetical for specifics. Do NOT lead with the value, the file path, or the variable list.
+**Format:** `[ ] What (settings)` — verb-led clause, parenthetical for specifics. Do NOT lead with value, path, or variable list.
 
 Canonical patterns:
 
@@ -457,7 +457,7 @@ Skipped gate = invalid work. Workflow MUST verify every checkbox before advancin
 
 ### Subagent Invocation
 
-All subagents invoked via `@agent-name` with Agent tool. Per-step convention:
+All subagents via `@agent-name` + Agent tool. Per-step convention:
 
 ```
 Context: You are a subagent in the {Phase} phase {modifier — e.g. "running in parallel with other agents"}
@@ -466,11 +466,11 @@ Update:  {existing paths the agent modifies in-place}        ← omit if no in-p
 Create:  {paths the agent writes fresh, with annotations e.g. (MAX 500 token summary)}
 ```
 
-Then assert each Update/Create artifact exists and is non-empty. Empty → **Failure Path**.
+Then assert each Update/Create artifact exists, non-empty. Empty → **Failure Path**.
 
-**Per-agent description, scope, effort tier, tool surface, and `maxTurns` calibration → see `.bkit/prompts.md`.** That file indexes every `.bkit/prompts/*.md` agent and is single source of truth for agent metadata; this file only describes how workflow layer composes them.
+**Per-agent description, scope, effort tier, tool surface, `maxTurns` → `.bkit/prompts.md`** (indexes `.bkit/prompts/*.md`; single source for agent metadata). This file = how workflow layer composes them.
 
-**Cross-platform tool surface:** subagent frontmatter `tools:` allowlist is enforced on both Claude (native) and Cursor (passthrough — Cursor 2.4+). Removing `Edit`/`Bash` makes an agent provably non-mutating on both hosts. `bkit install` T3 transform passes `tools:` through verbatim; never emits `readonly:` (Cursor honours `tools:` allowlist directly).
+**Cross-platform tool surface:** subagent `tools:` allowlist enforced Claude (native) + Cursor (passthrough, 2.4+). Removing `Edit`/`Bash` = provably non-mutating both hosts. `bkit install` T3 passes `tools:` verbatim; never emits `readonly:` (Cursor honours `tools:` directly).
 
 **Parallel fan-outs** (effort / model diversity, sibling-blind):
 
@@ -518,23 +518,23 @@ Reference these constants by name in retry checks — never use literal `3`.
 
 ### Failure Path
 
-Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any step / tool / gate failure.
+Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate failure triggers it.
 
-**Standard failure (always run):**
+**Standard failure (always):**
 
-1. Mark `status.jsonl` last entry `status: "FAILED"`; remove `.lock` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute path); **assert lock file is absent** (else exit non-zero with `Lock removal failed`). For `plan`/`design`, the failed-status commit additionally pushes to `dev` (best-effort — `2>/dev/null || true`).
-2. Add `Failed` to `{LABELS}` (additive — phase label persists) → update issue via `issue-update-failed` tracker snippet.
-3. Append `### Workflow Failure` block to workflow comment with step number, error, and last 20 lines of stderr.
+1. Mark `status.jsonl` last entry `status: "FAILED"`; remove `.lock` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute); **assert absent** (else exit non-zero `Lock removal failed`). `plan`/`design`: failed-status commit additionally pushes `dev` (best-effort `2>/dev/null || true`).
+2. Add `Failed` to `{LABELS}` (additive — phase persists) → `issue-update-failed` snippet.
+3. Append `### Workflow Failure` block: step number, error, last 20 stderr lines.
 
-**Conditional handover** — runs ONLY if failure was triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **and** the worktree exists (the handover agent `cd`s into `.worktrees/{FID}`; `/bkit-debug` decides `DEBUG_MODE` in Step 1 before the worktree exists, so its Failure Path guards on `.worktrees/{FID}` existence before routing a mode-triggered handover — a pre-worktree failure with the mode already set goes straight to STOP):
+**Conditional handover** — ONLY on max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT`) **and** worktree exists (handover agent `cd`s `.worktrees/{FID}`; `/bkit-debug` decides `DEBUG_MODE` Step 1 before worktree — Failure Path guards `.worktrees/{FID}` before mode-triggered handover; pre-worktree failure with mode set → straight STOP):
 
-4. Invoke `@bkit-debug-abort-handover` with all relevant prior logs as Read context; Write `docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md`.
-5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip ci]` → push, guarded on an open PR (EC-2 in #261): before pushing, probe `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'`. Open PR found (non-empty result) → **do NOT push** the `[skip ci]` abort commit; preserve last validated remote HEAD and log `[bkit-ci-gate] abort-guard: open PR on branch — preserving last validated remote HEAD (no push)`. No open PR → push as normal. **Probe failed (non-zero exit) → inverted safe default: treat as "PR exists, do NOT push"** (cost-asymmetry: pushing a `[skip ci]` abort HEAD onto a live PR silently empties the PR's rollup; not-pushing on a no-PR branch is harmless) — log the probe failure with the `[bkit-ci-gate]` prefix.
-6. Append `### Workflow Handover` block to workflow comment with handover blob link and verbatim body.
+4. `@bkit-debug-abort-handover` with prior logs as Read; Write `docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md`.
+5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip ci]` → push, guarded on open PR (EC-2 in #261): probe `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'`. Open PR → **do NOT push** `[skip ci]` abort; preserve remote HEAD; log `[bkit-ci-gate] abort-guard: open PR on branch — preserving last validated remote HEAD (no push)`. No PR → push. **Probe failed → inverted safe default: treat as PR exists, do NOT push** (pushing `[skip ci]` abort onto live PR empties rollup; not-pushing on no-PR branch harmless) — log probe failure with `[bkit-ci-gate]`.
+6. Append `### Workflow Handover` with handover blob link + verbatim body.
 
-7. **STOP** — no further downstream steps.
+7. **STOP** — no downstream steps.
 
-`/bkit-design` is only command without conditional handover (no max-retry loop).
+`/bkit-design` = only command without conditional handover (no max-retry loop).
 
 ### Rebase Conflict Tiering
 
@@ -547,44 +547,44 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 | 2 | `pnpm-lock.yaml` only | Inline `git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only` + `git add` + `git rebase --continue` | Bash block in Step 2 of all three workflows |
 | 3 | Code, configs, anything else | Touch sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
 
-**Why Tier 1 is `merge=union` and not a workflow step:** the trade-off is interleaved or duplicated rows when both branches append — resolved by the reader's identity-tuple dedup (`(kind, repo, key)`), not a regression. `.gitattributes` is the standard git mechanism; pre-empts the conflict at the git layer for all callers without workflow surface area. Excludes `.bkit/friction.jsonl` (same-`key` update rows break the strict-append contract that union-safety requires).
+**Why Tier 1 `merge=union` not workflow step:** trade-off = interleaved/duplicated rows when both append — reader identity-tuple dedup (`(kind, repo, key)`), not regression. `.gitattributes` = standard git mechanism; pre-empts conflict for all callers. Excludes `.bkit/friction.jsonl` (same-`key` updates break strict-append union-safety).
 
-**Why Tier 2 is inline bash and not a subagent:** mechanical recovery, deterministic git plumbing, no judgement call. A subagent or new Step would add status.jsonl / gate / Linear-comment overhead for what is a 4-line shell idiom.
+**Why Tier 2 inline bash not subagent:** mechanical, deterministic git plumbing, no judgement. Subagent/new Step = status.jsonl / gate / comment overhead for 4-line shell idiom.
 
-**Why Tier 3 invokes `@bkit-ship-conflict-resolve` only in `/bkit-ship`:** ship is the only workflow that rebases against an active integration target where conflicts are common. `/bkit-build` and `/bkit-debug` operate on the feature branch in isolation; conflicts there are rarer and usually point to a deeper problem worth a human glance — they keep sentinel → handover only. The resolver's verdict signal (`pnpm install` + `typecheck` + `test` + `build` all PASS) is necessary but not sufficient for a merge — tests can pass while one side's intent is silently dropped — so the resolver refuses semantic overlaps and falls through to handover on any ambiguity. `bkit-debug` itself is **not** repurposed for git plumbing because its diagnose/remediate subagents are scoped to test/runtime failures with the same insufficient verdict signal.
+**Why Tier 3 `@bkit-ship-conflict-resolve` only in `/bkit-ship`:** ship rebases against active integration target — conflicts common. `/bkit-build`/`/bkit-debug` on isolated feature branch — rarer conflicts, deeper problems → sentinel → handover only. Resolver verdict (`pnpm install` + `typecheck` + `test` + `build` PASS) necessary not sufficient — tests pass while intent dropped → refuse semantic overlaps, handover on ambiguity. `bkit-debug` NOT repurposed for git plumbing — diagnose/remediate scoped to test/runtime failures.
 
-**Failure Path routing:** rebase sentinel triggers conditional handover via `@bkit-debug-abort-handover` (same path as max-retry exhaustion), so Tier 3 unrecovered conflicts always end with a written handover doc, `Failed` label, and `In Review` state — not a silent stop.
+**Failure Path routing:** rebase sentinel → conditional handover via `@bkit-debug-abort-handover` (same as max-retry) → handover doc, `Failed` label, `In Review` — not silent stop.
 
 ### `bkit [auto route]` Marker Propagation
 
-`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-cloud.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**), and re-carried onto any later bkit-driven commit that can become the CI-triggering feat-branch HEAD — the ship **dev-sync merge** (`chore({FID}): sync dev`) and **conflict-resolve** commit — ONLY when the issue carried `bkit:auto`. The re-carry is required because the gate reads `head_commit.message` of a single commit (the feat-branch HEAD), so any unmarked commit landing on top of the marked close-workflow commit buries the marker; the ship dev-sync merge is the bkit-driven analogue of an ad-hoc `merge origin/dev` that unblocks CI. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
+`bkit [auto route]` = CI commit-message marker enabling free-tier `bkit-cloud.yml` auto-route gate. On **close-workflow commit** (and debug **re-trigger commit**); re-carried onto later bkit-driven commits that can become CI-triggering feat-branch HEAD — ship **dev-sync merge** (`chore({FID}): sync dev`), **conflict-resolve** — ONLY when issue carried `bkit:auto`. Re-carry required: gate reads single commit `head_commit.message`; unmarked commit on top buries marker; ship dev-sync = bkit analogue of ad-hoc `merge origin/dev` that unblocked CI. NOT CI-suppressing (HEAD-Subject Assertion = deny-list, passes automatically).
 
-**Placement logic (mode-dependent):**
+**Placement (mode-dependent):**
 
-- `/bkit-build` Step 18: a `bkit:auto` presence re-read happens BEFORE the close-workflow commit. If `bkit:auto` present → commit subject = `chore({FID}): close-workflow bkit [auto route]`. This close-workflow commit IS the feat-branch HEAD that fires CI → free-tier gate checks `head_commit.message` for `bkit [auto route]`.
-- `/bkit-debug` Step 12 (PR-mode): same pattern — `bkit:auto` re-read before the close-workflow commit (Step 12 sub-step 3). Marker on close-workflow commit. The create-pr commit (Step 12 sub-step 9) does NOT run in PR-mode (`TRIGGER_PR=0`).
-- `/bkit-debug` Step 12 (local-mode): `bkit:auto` re-read before the create-pr commit (Step 12 sub-step 9). Marker on create-pr commit (the CI-triggering HEAD in local-mode, not close-workflow).
-- `/bkit-ship` Step 4 (conflict-resolve) and Step 6 (dev-sync merge): both re-derive `AUTO_ROUTE_SUFFIX` from the Step-1 `LABELS` read (`echo "${LABELS:-}" | grep -q 'bkit:auto'`, fail-closed to empty) and append it to the commit / merge subject — so an opted-in branch keeps the marker when either commit becomes the CI-triggering feat-branch HEAD instead of the original close-workflow commit. Ship does not do a fresh MCP re-read here (the ship-start `LABELS` is the opt-in signal); the cloud gate's in-job `bkit:auto` re-check remains the live kill switch.
+- `/bkit-build` Step 18: `bkit:auto` re-read BEFORE close-workflow commit. Present → subject `chore({FID}): close-workflow bkit [auto route]`. Close-workflow = feat-branch HEAD firing CI → gate checks `head_commit.message`.
+- `/bkit-debug` Step 12 PR-mode: same — marker on close-workflow. Create-pr (sub-step 9) does NOT run (`TRIGGER_PR=0`).
+- `/bkit-debug` Step 12 local-mode: `bkit:auto` re-read before create-pr (sub-step 9). Marker on create-pr = CI-triggering HEAD local-mode.
+- `/bkit-ship` Step 4 (conflict-resolve) + Step 6 (dev-sync): re-derive `AUTO_ROUTE_SUFFIX` from Step-1 `LABELS` (`echo "${LABELS:-}" | grep -q 'bkit:auto'`, fail-closed empty) → append to commit/merge subject — opted-in branch keeps marker when either commit becomes CI-triggering HEAD. Ship uses Step-1 `LABELS` (not fresh MCP); cloud gate in-job `bkit:auto` re-check = live kill switch.
 
-**Why the re-read must precede the commit (R2-1/R2-2 ordering fix):** the existing kill-switch re-read at build Step 18 sub-step 4 / debug Step 12 sub-step 11 runs AFTER the commit + push — it cannot source the marker on a commit that already exists. A fresh `bkit:auto` read BEFORE the commit construction is the authoritative "at close time" signal.
+**Why re-read must precede commit (R2-1/R2-2):** kill-switch re-read at build Step 18 sub-step 4 / debug Step 12 sub-step 11 runs AFTER commit+push — cannot source marker on existing commit. Fresh `bkit:auto` read BEFORE commit construction = authoritative "at close time" signal.
 
-**Coexistence with `bkit [verbose ci]`:** in debug local-mode, both markers may appear on the same commit subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. The HEAD-Subject Assertion treats both as legitimate (neither is a suppressor). The two-tier CI gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — the `bkit [verbose ci]` suffix does not interfere.
+**Coexistence with `bkit [verbose ci]`:** debug local-mode both on same subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. HEAD-Subject Assertion: both legitimate. Gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — `bkit [verbose ci]` does not interfere.
 
-**Cleanup:** the marker is self-clearing per push — only close-workflow, debug re-trigger, and ship dev-sync / conflict-resolve commits carry it; all other workflow commits never have it. No PR-title edit needed (unlike `bkit [verbose ci]` in debug PR-mode); the CI auto-route fires on the commit message, not the PR title.
+**Cleanup:** self-clearing per push — only close-workflow, debug re-trigger, ship dev-sync/conflict-resolve carry it. No PR-title edit (unlike `bkit [verbose ci]` debug PR-mode); auto-route fires on commit message.
 
 ### `bkit [verbose ci]` Marker Propagation
 
-`bkit [verbose ci]` is a CI commit-message / PR-title marker (registered in `docs/deployments.md` § Commit-message force tags) that escalates log detail for one run. `/bkit-debug` auto-applies it on every CI-triggering push so retry attempts have rich evidence to read; `/bkit-build` and `/bkit-ship` never apply it. Read template ci.yml § `bkit:start verbose-ci-env` for the env block that consumes the marker, and `docs/testing.md` § "CI verbosity" for the full knob list.
+`bkit [verbose ci]` = CI commit-message / PR-title marker (`docs/deployments.md` § Commit-message force tags) escalating log detail one run. `/bkit-debug` auto-applies every CI-triggering push (retry evidence); `/bkit-build` and `/bkit-ship` never apply. Template ci.yml § `bkit:start verbose-ci-env` for env block; `docs/testing.md` § "CI verbosity" for knob list.
 
-**Why debug is always-verbose, build is never-verbose:**
+**Why debug always-verbose, build never:**
 
-- **Debug is failure-recovery by definition.** Once `/bkit-debug` activates, we're already in "something is broken" mode and want maximum signal. Verbose on every push means attempt N+1's diagnose reads rich logs produced by attempt N's verify run, eliminating the one-cycle latency a "verbose only on retry" rule would introduce.
-- **Build pushes are happy-path / ship-eligible.** Build's verify-retry loop runs locally (no pushes between attempts); only the final summary / create-pr / close-workflow pushes touch CI, and those commits can be merged. Tagging them with verbose would carry the marker downstream onto ship paths. The escalation handoff to verbose CI happens automatically when build's Failure Path triggers `/bkit-debug` for a still-broken state.
-- **Ship is the green-path workflow.** Verbose on green runs is pure cost (artifact storage + run time) with zero diagnostic payoff.
+- **Debug = failure-recovery.** Verbose every push → attempt N+1 diagnose reads rich logs from attempt N verify — eliminates one-cycle latency of "verbose only on retry".
+- **Build = happy-path / ship-eligible.** Verify-retry local; only final summary/create-pr/close-workflow push CI — verbose would carry downstream onto ship. Escalation to verbose when build Failure Path triggers `/bkit-debug`.
+- **Ship = green-path.** Verbose on green runs = cost (storage + time), zero diagnostic payoff.
 
-**Mode-dependent propagation in `/bkit-debug`:**
+**Mode-dependent propagation (`/bkit-debug`):**
 
-GitHub Actions surfaces commit messages and PR titles to workflows via two distinct event payloads — `push.head_commit.message` vs `pull_request.title`. The template ci.yml's `on:` filter `branches: [main, dev]` means **push events ONLY fire for direct pushes to dev / main**; feature-branch pushes fire `pull_request.synchronize` instead. `PUSH_MODE` (decided in Step 1 sub-step 6 from `gh pr list --head <branch>`) drives which surface carries the marker:
+GitHub Actions: `push.head_commit.message` vs `pull_request.title`. Template ci.yml `on:` `branches: [main, dev]` → feature pushes fire `pull_request.synchronize`, not `push`. `PUSH_MODE` (Step 1 sub-step 6 from `gh pr list --head <branch>`) drives marker surface:
 
 <!-- prettier-ignore -->
 | `PUSH_MODE` | When | CI event fired by debug push | Marker surface | Mechanism |
@@ -592,15 +592,15 @@ GitHub Actions surfaces commit messages and PR titles to workflows via two disti
 | `LOCAL` | Debug invoked on a `dev` / `main` failure (no PR involved) | `push` event reads `head_commit.message` | **Commit message** | `bkit [verbose ci]` appended conditionally via `VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"` immediately before the relevant commits in `bkit-debug.md` (Step 6 `fix`, Step 7 `soak`, Step 9 `summary`, Step 10 `close-workflow`, Step 10 `create-pr`). PR-mode runs skip the suffix (`pull_request` events ignore commit messages). Self-clearing per push — non-debug pushes return to default. |
 | `PR` | Debug invoked on a feature branch with an open PR (the dominant case) | `pull_request.synchronize` reads `pull_request.title` | **PR title** | Step 10 (Push Remediation) runs `gh pr edit --title` to idempotently append `bkit [verbose ci]` to the PR title (skip if already present) immediately before the push. Step 12 (Close Workflow) strips it via `sed` + `gh pr edit` on a successful close. Failure Path / handover **do NOT strip** — the post-handover human investigator wants continued verbose CI. |
 
-Both paths idempotent — re-running debug doesn't double-append the marker (Step 10 skips when already present); orphan markers (workflow killed mid-run) are cleaned by the next debug invocation's Step 12 strip on successful close.
+Both paths idempotent — re-run skips when present; orphan markers cleaned by next debug Step 12 strip on successful close.
 
-**Cleanup invariant:** the PR-title `bkit [verbose ci]` marker is stripped on a successful `/bkit-debug` close (Step 12, `PUSH_MODE = PR`). Failure Path / handover preserve the marker intentionally — the post-handover human investigator wants continued verbose CI without re-adding it. Cleanup of a preserved marker then happens via one of: (a) the next `/bkit-debug` run closing successfully, (b) the human stripping it manually, or (c) PR merge — the squash commit subject inherits `bkit [verbose ci]` so one post-merge dev CI run is verbose (harmless, occasionally useful as recovery-state evidence).
+**Cleanup invariant:** PR-title marker stripped on successful `/bkit-debug` close (Step 12, `PUSH_MODE = PR`). Failure Path / handover preserve intentionally — post-handover investigator wants continued verbose CI. Cleanup via: (a) next `/bkit-debug` close success, (b) manual strip, (c) PR merge — squash subject inherits `bkit [verbose ci]` → one post-merge dev CI verbose (harmless, recovery evidence).
 
-**Manual override:** users can append `bkit [verbose ci]` to any commit message or PR title directly — the env block honours both surfaces unconditionally. Debug's auto-propagation just removes the need to do it manually for the dominant retry-evidence-escalation case.
+**Manual override:** append `bkit [verbose ci]` to any commit message or PR title — env block honours both. Debug auto-propagation removes manual need for dominant retry-evidence case.
 
 ## Per-Phase Workflows
 
-Each subsection below documents what command actually does — step list, subagents invoked, artifacts written, verdict routing, close behavior. For agent capability and effort details, cross-reference `.bkit/prompts.md`.
+Each subsection documents command behaviour — steps, subagents, artifacts, verdict routing, close. Agent capability/effort → `.bkit/prompts.md`.
 
 ### `/bkit-design` — 10 steps
 
@@ -622,7 +622,7 @@ Each subsection below documents what command actually does — step list, subage
 
 **Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
-**Step 9 contract:** the workstream-issue body carries everything `/bkit-plan` needs — no tracker-specific labels, no `WS_ID` parameter, no parent-shape detection. The two markdown markers (`**Parent design:**`, `**Workstream:**`) are load-bearing and parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract (workstream scope). The `**Parent design:**` value is wrapped as a markdown link (`[docs/plans/{YYYYMM}/{FID}-design.md](URL)`) — display text is the canonical bare path so plan's parser can extract the slug. `Requires:` translates 1:1 to tracker block-by edges so `/bkit-build` Step 1's `issue-blockers-check` tracker snippet enforces ordering — no new build-side gate needed. Workstream issues are grouped by the parent's native milestone (GitHub) / project + project milestone (Linear), NOT nested as sub-issues — the MCP servers cannot create a milestone/project, so the parent must already carry it or Step 9 hits a Failure Path. Re-runs are non-destructive: existing bodies/titles are never rewritten (only sync comments appended); orphaned issues stay in the milestone with a `## Workstream Delete` notification comment. Even single-workstream designs spawn one issue; design and plan never share an FID.
+**Step 9 contract:** workstream-issue body carries everything `/bkit-plan` needs — no tracker labels, no `WS_ID`, no parent-shape detection. Markers `**Parent design:**`, `**Workstream:**` load-bearing — parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract. `**Parent design:**` = markdown link with bare path display text for plan parser. `Requires:` → block-by edges → `/bkit-build` Step 1 `issue-blockers-check` enforces ordering. Workstreams grouped by parent native milestone/project — NOT sub-issues (MCP cannot create milestone). Re-runs non-destructive: bodies/titles never rewritten (sync comments only); orphans get `## Workstream Delete` comment. Single-workstream designs still spawn one issue; design and plan never share FID.
 
 ### `/bkit-plan` — 12 steps
 
@@ -680,15 +680,15 @@ Each subsection below documents what command actually does — step list, subage
 
 **Goal:** diagnose and remediate failing test or CI run; push fix back to branch.
 
-**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev`: a PR exists → `PUSH_MODE` = PR, else `PUSH_MODE` = LOCAL; `DEBUG_ATTEMPT` = prior `debugAttempt` from status.jsonl + 1 (this invocation number); then set `DEBUG_MODE` (NORMAL | SOAK) from objective signals only: defaults to NORMAL; `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` OR `[soak]` in the session prompt → SOAK. On resume, `DEBUG_MODE` = SOAK if any `debug-failure-soak` step is recorded for the current `DEBUG_ATTEMPT` (a prior mid-run switch is sticky). The non-localisable-cause path to SOAK is NOT judged here — it is the Step-5 diagnose agent's evidence-based `Mode: SOAK`, applied mid-run (NORMAL → SOAK).
+**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev`: PR exists → `PUSH_MODE` = PR, else LOCAL; `DEBUG_ATTEMPT` = prior `debugAttempt` from status.jsonl + 1; then `DEBUG_MODE` (NORMAL | SOAK) from objective signals: default NORMAL; `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` OR `[soak]` in session prompt → SOAK. On resume, `DEBUG_MODE` = SOAK if any `debug-failure-soak` step for current `DEBUG_ATTEMPT` (mid-run switch sticky). Non-localisable-cause → SOAK judged Step-5 diagnose `Mode: SOAK`, not here.
 
-**The ladder + cutover:** two modes — `NORMAL` (diagnose + remediate) and `SOAK` (one accumulating-context instrument-or-fix loop). No separate observe mode exists: observation logging (`[DEBUG-OBSERVE]`) lives only inside the soak agent's instrument-and-strip loop. `SOAK` is entered three ways: at invocation start (`DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]`); mid-run when the Step-5 diagnose agent sets `Mode: SOAK` (header field, gated on `Verdict` != PASS) because the cause is not localisable; or when the `NORMAL` loop exhausts `MAX_NORMAL_ATTEMPT` (all three strategies STANDARD → PIVOT → FINAL tried and still failing) — a final SOAK escalation before handover. Every SOAK entry resets `SOAK_ATTEMPT` = 0, giving SOAK its own fresh budget (`MAX_SOAK_ATTEMPT`) independent of the `NORMAL_ATTEMPT` the NORMAL loop already spent (worst case: NORMAL up to 3 + SOAK up to 3). `SOAK` is terminal (one-way; never reverts to NORMAL). Soak does NOT require a live boundary — it loops against whatever Run Tests fails on (live or mocked). Diagnose RECOMMENDS; the orchestrator DECIDES (owns the switch).
+**Ladder + cutover:** `NORMAL` (diagnose + remediate) and `SOAK` (accumulating-context instrument-or-fix). No observe mode — `[DEBUG-OBSERVE]` only in soak agent loop. SOAK entry: invocation start (`DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]`); mid-run Step-5 `Mode: SOAK` (`Verdict` != PASS); `NORMAL` exhausts `MAX_NORMAL_ATTEMPT` (STANDARD → PIVOT → FINAL) — final SOAK escalation before handover. Every SOAK entry resets `SOAK_ATTEMPT` = 0 (fresh `MAX_SOAK_ATTEMPT` budget, independent of spent `NORMAL_ATTEMPT`; worst case NORMAL 3 + SOAK 3). SOAK terminal (one-way). Soak loops whatever Run Tests fails on (live or mocked). Diagnose RECOMMENDS; orchestrator DECIDES.
 
-**The loop:** Step 3 Run Tests (loop head; iteration 1 = reproduce) → on FAIL with budget, Step 4 Fetch Context → the mode's fix step (`NORMAL` → Diagnose 5 + Remediate 6; `SOAK` → Failure Remediate Soak 7) → loop to Step 3. PASS after a fix → Push 8 → Summary 9 → Close 10; PASS with no fix → can't-reproduce → Summary (CONCERNS). NORMAL inner-budget exhaustion (`NORMAL_ATTEMPT` > `MAX_NORMAL_ATTEMPT`) escalates to SOAK with a fresh budget; SOAK inner-budget exhaustion (`SOAK_ATTEMPT` >= `MAX_SOAK_ATTEMPT`) → Failure Path. Close asserts no added `[DEBUG-OBSERVE]` line survives the debug diff (no-leak) before the CI-triggering push.
+**Loop:** Step 3 Run Tests (head; iter 1 = reproduce) → FAIL with budget → Step 4 Fetch Context → fix step (`NORMAL` → Diagnose 5 + Remediate 6; `SOAK` → Soak 7) → loop Step 3. PASS after fix → Push 8 → Summary 9 → Close 10; PASS no fix → can't-reproduce → Summary (CONCERNS). NORMAL exhaust → SOAK fresh budget; SOAK exhaust → Failure Path. Close asserts no `[DEBUG-OBSERVE]` survives debug diff (no-leak) before CI push.
 
-**Live tier (Step 3):** Run Tests appends any declared `test:integration:live` / `test:e2e:live` / `test:live` the consumer has not opted out of (`[live=off]`); what actually ran is recorded verbatim in `scope` (the exact test command). When no live tier ran (no `test:...:live` task in `scope`), the live gate degrades to CONCERNS with a consumer-neutral `testsLiveSkipped` at close — never a silent pass. No separate capability flag is kept: "did live run?" is read off `scope` after the fact.
+**Live tier (Step 3):** appends declared `test:integration:live` / `test:e2e:live` / `test:live` unless `[live=off]`; recorded verbatim in `scope`. No live tier → CONCERNS + `testsLiveSkipped` at close — never silent pass. "Did live run?" = read `scope` after fact.
 
-**Context fetch (Step 4):** Mode-agnostic, runs per loop iteration on a failing Run Tests. Five independent sub-fetch categories in priority order → per-source artifacts written only when content exists: (a) CI failure — structured triage (failed jobs/steps via `gh run view --json jobs`) + `##[error]`/`::error` annotation subset + full failed-step logs (`--log-failed`, falling back to `--log` when intermittently empty) under a `headSha` header → `debug-context-ci-{DEBUG_ATTEMPT}.md` when a non-success CI run exists for the branch; (b) diff vs last-passing CI on `dev` (`gh run list --branch dev --workflow ci.yml --status success --limit 5` → `git diff <last-pass-sha>..HEAD --stat`) → `debug-context-diff-{DEBUG_ATTEMPT}.md` when a last-passing-CI SHA exists and diff is non-empty; (c) local test suite (`pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`) → `debug-context-tests-local-{DEBUG_ATTEMPT}.md` capturing combined stdout/stderr regardless of exit code; (d) Playwright `playwright-report` artifact via `gh run download` → `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md` when `gh run view --json jobs` reports an `e2e|playwright`-named job/step with `conclusion=failure` (every text file under `test-results/` inlined verbatim with `===== file: <relpath> =====` separators; binary artifacts — HTML viewer, screenshots, videos, `trace.zip` — listed by relpath at the end but not inlined; depends on consumer-side `bkit-stub:e2e-artifacts` upload step in `ci.yml`, missing upload = empty download = no artifact, non-fatal); (e) runtime-log query → one `debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` per **every** `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block **after** `<!-- bkit:end -->` in `.agents/config.md` (unnamed legacy block omits `-<name>`; consumer section only — bkit-shipped examples inside the bkit block are skipped; orchestrator uses each fenced block as template, customises by severity `>= ERROR`, freshness ~hours-since-last-commit + 30min buffer clamped `[1h, 24h]`, limit; each block self-gates on its CLI / token, emitting a `[debug-fetch:<name>] skipped — …` stderr breadcrumb when a cred/CLI is absent; the step captures both stdout and stderr and writes stdout when present, else the breadcrumb — so a skipped source records WHY it is empty rather than producing silence (load-bearing for headless cloud agents, where no operator watches stderr and the `2>/dev/null`-discarded breadcrumb was previously lost); tool-agnostic — bkit ships inert `vercel` + `supabase` examples). Any / all / none of these artifacts may exist; missing content = no file. Fail-soft throughout.
+**Context fetch (Step 4):** mode-agnostic, per loop iteration on FAIL. Five sub-fetches priority order → artifacts only when content: (a) CI failure — `gh run view --json jobs` triage + `##[error]`/`::error` + failed-step logs → `debug-context-ci-{DEBUG_ATTEMPT}.md`; (b) diff vs last-passing CI on `dev` → `debug-context-diff-{DEBUG_ATTEMPT}.md`; (c) local suite → `debug-context-tests-local-{DEBUG_ATTEMPT}.md`; (d) Playwright via `gh run download` → `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md` when e2e/playwright job failed (text inlined, binary listed); (e) runtime logs — one `debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` per `<!-- debug-fetch:start [name] -->` after `<!-- bkit:end -->` in `.agents/config.md` (consumer blocks only; self-gates on CLI/token; stderr breadcrumb when skipped — load-bearing for headless cloud). Any/all/none may exist; fail-soft throughout.
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
@@ -704,7 +704,7 @@ Each subsection below documents what command actually does — step list, subage
 | 9 — Summary | `@bkit-debug-summary` | Commit `chore({FID}): summary{VERBOSE_SUFFIX}` → push. `SUMMARY_VERDICT` = PASS/CONCERNS → Step 10; FAIL → Failure Path. |
 | 10 — Close Workflow | — | No-leak assertion: fails the run if any added `[DEBUG-OBSERVE]` line survives the debug diff (`git diff origin/dev..HEAD`, excluding `docs/plans/`) before the CI-triggering push — diff-scoped, NOT a tree-wide `git grep`, so the bkit-managed prompt/command files that quote the literal marker never false-trip (the soak agent's own `git grep '[DEBUG-OBSERVE]'` self-check in `bkit-debug-failure-soak.md` is the first layer). Else Failure Path. PR-mode: strip `bkit [verbose ci]` from PR title. Commit `chore({FID}): close-workflow{VERBOSE_SUFFIX}` → push + (LOCAL, no PR) `chore({FID}): create-pr{VERBOSE_SUFFIX}` (`VERBOSE_SUFFIX = " bkit [verbose ci]"` iff `PUSH_MODE = LOCAL`). Auto-route marker `bkit [auto route]` on the CI-triggering HEAD when `bkit:auto`. Records `testsLiveSkipped` when no live tier ran (no `test:...:live` task in `scope`). Set state `In Review`; phase label `Debug` persists. Worktree persists. The handover path runs via Failure Path. Final return displays `debug-summary.md` verbatim. |
 
-**Failure Path** includes conditional handover via `@bkit-debug-abort-handover` when max-retry exhausted, writing `debug-handover.md`. PR-mode `bkit [verbose ci]` marker is **intentionally preserved** here (NOT stripped) — human investigator picking up the failed PR wants ongoing verbose CI on their pushes; see § `bkit [verbose ci]` Marker Propagation for the cleanup invariant.
+**Failure Path** includes conditional handover via `@bkit-debug-abort-handover` when max-retry exhausted → `debug-handover.md`. PR-mode `bkit [verbose ci]` **preserved** (NOT stripped) — investigator wants ongoing verbose CI; § `bkit [verbose ci]` Marker Propagation cleanup invariant.
 
 ### `/bkit-ship` — 13 steps
 
@@ -746,15 +746,15 @@ Each subsection below documents what command actually does — step list, subage
 
 **Hard stop in Step 7 caution block:** "Audit requires human review. Do NOT invoke `/bkit-plan` or `/bkit-build`. Findings are advisory; act on them via the spawned Linear sub-issues or open follow-up issues."
 
-**Step 5 contract:** sub-issue body carries the workstream's `## Findings` list + `## Rationale`. Two markdown markers (`**Parent audit:**`, `**Workstream:**`) are load-bearing. Re-audit workflow: append `-audit-{YYYYMMDD-HHmm}` suffix to FID for lineage isolation; lock decoupled via timestamp; existing sub-issues with matching `WS-{N}:` title prefix get a sync comment instead of a body rewrite.
+**Step 5 contract:** sub-issue body = workstream `## Findings` + `## Rationale`. Markers `**Parent audit:**`, `**Workstream:**` load-bearing. Re-audit: append `-audit-{YYYYMMDD-HHmm}` to FID; lock decoupled via timestamp; existing sub-issues matching `WS-{N}:` title → sync comment not body rewrite.
 
-**Step 6 contract:** matches the canonical "ONE Linear comment per workflow run" rule. Master comment grows over Steps 1–7 (one appended section per step); Step 6's appended section contains the `audit-summary.md` content verbatim (exec summary + top-3 CRITICAL + class totals + lens coverage). No additional Linear comments are created — sub-issues spawned at Step 5 are the only Linear writes beyond the master comment.
+**Step 6 contract:** matches "ONE Linear comment per workflow run". Master comment grows Steps 1–7 (one section/step); Step 6 section = `audit-summary.md` verbatim. Sub-issues Step 5 = only Linear writes beyond master comment.
 
-**No `Audit` phase label.** The workflow does NOT apply a Linear phase label. Audit identity is encoded in (a) issue title prefix `Audit run …` (or reused issue's own title), (b) parent → sub-issue tree shape, (c) on-disk artifact `docs/audits/{FID}-audit.md`. Additive labels (`Failed` on Failure Path, `Debug` if a debug cycle follows) coexist normally.
+**No `Audit` phase label.** Identity via (a) title prefix `Audit run …`, (b) parent → sub-issue tree, (c) `docs/audits/{FID}-audit.md`. Additive labels (`Failed`, `Debug`) coexist.
 
 ### `/bkit-worktree-sync` — utility
 
-Human-triggered. Pulls Claude's worktree commits into IDE's current branch. Always interactive — never auto-merges.
+Human-triggered. Pulls Claude worktree commits into IDE current branch. Always interactive — never auto-merges.
 
 **Flow:**
 
@@ -767,7 +767,7 @@ Human-triggered. Pulls Claude's worktree commits into IDE's current branch. Alwa
 
 ### `/bkit-worktree-prune` — utility
 
-Human-triggered. Removes a Claude worktree (and optionally its feature branch). Always interactive.
+Human-triggered. Removes Claude worktree (optionally feature branch). Always interactive.
 
 **Two paths:**
 
@@ -776,7 +776,7 @@ Human-triggered. Removes a Claude worktree (and optionally its feature branch). 
 
 ### `/bkit-auto` — phase-routed dispatch
 
-**Goal:** phase-routed cloud dispatcher. Reads `{PHASE}` + `{ARG}` from invocation args and routes to the matching phase skill. **`MODE` = CI** (`ship`/`debug`, `{ARG}` = PR) runs Steps 1–4 (guard + opt-in gate + dispatch); **`MODE` = BRIEF** (`design`/`plan`/`build`, `{ARG}` = issue) runs Step 1 then Step 4 — the human `workflow_dispatch` is the opt-in, and the dispatched skill ingests its own brief + owns its `status.jsonl` / worktree / FID. No worktree, no tracker state change beyond a single comment line.
+**Goal:** phase-routed cloud dispatcher. `{PHASE}` + `{ARG}` from args → matching phase skill. **`MODE` = CI** (`ship`/`debug`, `{ARG}` = PR): Steps 1–4 (guard + opt-in + dispatch); **`MODE` = BRIEF** (`design`/`plan`/`build`, `{ARG}` = issue): Step 1 → Step 4 — human `workflow_dispatch` = opt-in; dispatched skill owns brief + `status.jsonl` / worktree / FID. No worktree, no tracker state beyond single comment line.
 
 <!-- prettier-ignore -->
 | Step | Notes |
@@ -786,13 +786,13 @@ Human-triggered. Removes a Claude worktree (and optionally its feature branch). 
 | 3 — Opt-In Gate | **`MODE` = CI only.** Require tracker `Auto` label on issue. Absent → `AUTO_VERDICT` = FAIL → exit 0 with no-op comment line + kill-switch propagation. |
 | 4 — Dispatch | Route `{PHASE}` → `/bkit-ship {FID}` / `/bkit-debug {FID}` / `/bkit-design {ISSUE_ID}` / `/bkit-plan {ISSUE_ID}` / `/bkit-build {ISSUE_ID}`. Invoke via `Skill` (Claude) / `Task` (Cursor); dispatched skill owns its session from there. The regression-gate-verification gate that catches Vercel-ignore / `decide`-step demotion lives in `/bkit-ship` Step 3 — Regression Guard (universal — also applies to manual `/bkit-ship` invocations that bypass the workflow). |
 
-**CI-class skip conditions emit one tracker no-op line and exit 0.** Only real failures (missing args, tracker unreachable, malformed state) take the Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; the cloud workflow never counts attempts.
+**CI-class skip conditions:** one tracker no-op line, exit 0. Only real failures (missing args, tracker unreachable, malformed state) → Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; cloud never counts attempts.
 
 ## Worktree Model
 
-All phase workflows run inside `.worktrees/{FID}` (gitignored). One worktree per FID. IDE's main checkout is never touched.
+All phase workflows run in `.worktrees/{FID}` (gitignored). One worktree per FID. IDE main checkout never touched.
 
-**Step 2 — Worktree Setup** is identical across all 5 phases except for branch fallback rule:
+**Step 2 — Worktree Setup** identical across 5 phases except branch fallback:
 
 ```bash
 REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -837,24 +837,24 @@ pnpm install --frozen-lockfile   # symlink-only ~5s; required because pnpm per-p
 | `/bkit-build`, `/bkit-debug` | Worktree persists for follow-up phases. |
 | `/bkit-ship` | Step 12 dedicated worktree cleanup: `git worktree remove --force` + `git worktree prune`. |
 
-**`pnpm install --frozen-lockfile`** is symlink-only (~5s, no network). Required because pnpm per-package `node_modules` symlinks are not inherited from main checkout. A root-level symlink is not a substitute — individual packages need their own.
+**`pnpm install --frozen-lockfile`** symlink-only (~5s, no network). Required — pnpm per-package `node_modules` symlinks not inherited from main checkout. Root symlink insufficient — packages need own.
 
-**Manual cross-IDE handoff** — user-triggered only:
+**Manual cross-IDE handoff** (user-triggered):
 
-1. `/bkit-design` and `/bkit-plan` complete → changes are on `dev` (worktree pruned at close).
-2. Human reviews on `dev`. Runs `/bkit-build` → recreates worktree from `dev`.
-3. `/bkit-build` pushes implementation → CI runs.
-4. On CI failure → human triggers `/bkit-debug` → reuses or creates `fix/{FID}` worktree.
+1. `/bkit-design` + `/bkit-plan` complete → changes on `dev` (worktree pruned).
+2. Human reviews `dev` → `/bkit-build` recreates worktree from `dev`.
+3. `/bkit-build` pushes → CI runs.
+4. CI failure → `/bkit-debug` reuses or creates `fix/{FID}` worktree.
 
-`/bkit-worktree-sync` and `/bkit-worktree-prune` exist for ad-hoc manual sync; not invoked by any phase command.
+`/bkit-worktree-sync` + `/bkit-worktree-prune` = ad-hoc manual sync; not invoked by phase commands.
 
 ## Tracker Integration
 
-Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes are written inline at each call site as `github`/`linear`/`none` blocks; the installer keeps the chosen tracker's block and drops the others when mirroring to `.claude/commands/` + `.cursor/commands/` (see § Tracker Blocks). `.bkit/trackers.md` holds the marker contract + cross-cutting conventions only.
+Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP endpoints, tool names, call shapes inline at each site as `github`/`linear`/`none` blocks; installer keeps chosen, drops others when mirroring `.claude/commands/` + `.cursor/commands/` (§ Tracker Blocks). `.bkit/trackers.md` = marker contract + cross-cutting conventions only.
 
 ### Phase labels (mutually exclusive)
 
-Phase labels carry the `bkit:` namespace prefix so they never clash with consumer-defined labels. Mutual exclusion enforced by workflow code: drop prior phase label from `{LABELS}` explicitly before adding new.
+Phase labels carry `bkit:` namespace — no consumer clash. Mutual exclusion in workflow code: drop prior phase label from `{LABELS}` before adding new.
 
 <!-- prettier-ignore -->
 | Label | Meaning |
@@ -865,7 +865,7 @@ Phase labels carry the `bkit:` namespace prefix so they never clash with consume
 | `bkit:ship` | `/bkit-ship` running |
 | `bkit:merged` | `/bkit-ship` completed; PR merged to `dev`; issue left **In Review** (open) — a human reviews post-merge and closes manually (bkit never auto-closes) |
 
-Phase label is preserved through Close Workflow exit — tracker-specific state (e.g. Linear "In Review", GitHub `open`) carries the completion signal, so the label tells reviewers which workflow just finished. Ship is the exception: Close Workflow swaps `bkit:ship` → `bkit:merged`.
+Phase label preserved through Close — tracker state (Linear "In Review", GitHub `open`) carries completion signal; label tells reviewers which workflow finished. Ship exception: Close swaps `bkit:ship` → `bkit:merged`.
 
 ### Additive labels (do not drop phase)
 
@@ -878,7 +878,7 @@ Phase label is preserved through Close Workflow exit — tracker-specific state 
 
 ### Tracker-specific state
 
-Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed` + optional Projects v2 board status) are written inline as per-tracker blocks at these call sites:
+Issue state semantics (Linear "In Progress" / "In Review" / "Done"; GitHub `open`/`closed` + Projects v2) inline as per-tracker blocks:
 
 <!-- prettier-ignore -->
 | Snippet | When |
@@ -892,11 +892,11 @@ Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `
 
 ### Comment lifecycle
 
-NEW comment per workflow step via tracker MCP. Step 1 posts the first comment; every later step posts its own. NEVER edit, paraphrase, or carry forward prior comment IDs. See § Comment Lifecycle for templates.
+NEW comment per workflow step via tracker MCP. Step 1 = first comment; later steps = own. NEVER edit, paraphrase, or carry forward comment IDs. § Comment Lifecycle for templates.
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` Step 1 calls the tracker's `issue-read` snippet and parses tracker-native blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: issue body text scan for `Blocked by #N` references). Any blocker whose state is not closed/done → Failure Path with `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Workstream issues spawned by `/bkit-design` Step 9 record their `Requires` edges via the `set-blocked-by` snippet, so this gate also enforces workstream ordering.
+`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: body scan `Blocked by #N`). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Design Step 9 `Requires` edges via `set-blocked-by` → enforces workstream ordering.
 
 ## GitHub Integration
 
@@ -944,7 +944,7 @@ Precedence: `bkit [force build]` on head commit wins.
 | `bkit [skip ci]` | GitHub Actions skip the workflow / `vercel-build` sets `run_level=none`. |
 | `bkit [force build]` | Forces full CI + Vercel build even on docs-only paths. Used by `/bkit-build` Step 16 when `supabase/migrations/` changed without it on HEAD. |
 
-**Docs-only commits:** workflows append `bkit [skip ci]` (CI suppression). The former `bkit [skip build]` build-cancel lever was removed (#291) — a docs-only commit is not app-affected, so a host's affected-detection build-cancel skips the build without it. Hosts that cancel ONLY on `[skip build]` will now build docs-only workflow commits; switch them to affected-detection.
+**Docs-only commits:** workflows append `bkit [skip ci]` (CI suppression). Former `bkit [skip build]` removed (#291) — docs-only not app-affected; host affected-detection cancels build without it. Hosts cancelling ONLY on `[skip build]` will build docs-only workflow commits — switch to affected-detection.
 
 <!-- prettier-ignore -->
 | Workflow commit | Tags |
@@ -961,41 +961,41 @@ Precedence: `bkit [force build]` on head commit wins.
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
 | `chore({FID}): conflict-resolve` (ship Step 4) / `chore({FID}): sync dev` (ship Step 6 dev-sync merge) — opted-in | none / `bkit [auto route]` (conditional on `bkit:auto`, from Step-1 `LABELS`) — re-carries the marker onto the feat-branch HEAD so a bkit-driven conflict / dev-sync merge does not bury it (the ad-hoc `merge origin/dev` that buried it in a consumer is the human analogue) |
 
-**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject. The CI-Dispatch Gate below is the enforcement mechanism — see § CI-Dispatch Gate.
+**CI trigger mechanic (build / debug / ship aligned):** last push to CI-validated ref must leave HEAD without `bkit [skip ci]` — else `pull_request` (build/debug) or `push` (ship) suppressed, `statusCheckRollup` empty → Ship Step 2 fail-fast admits vacuously green PR. Trigger in close-workflow (build/debug); ship via squash merge subject. CI-Dispatch Gate below enforces — § CI-Dispatch Gate.
 
 ### CI-Dispatch Gate (shared, single source)
 
-An outcome-verification gate enforces the CI-trigger contract at the orchestrator layer. After the final loud push, it confirms a bkit CI check was dispatched for the exact pushed HEAD; if none appears within a bounded poll it self-heals once with a clean `re-trigger` commit, then terminates with a named verdict. The pre-push HEAD-subject string clause (retained below) is the fast-fail component; the post-push poll is the outcome-verification component. The gate fires **post-final-push only** — zero additional mid-build CI triggers; D2 invariant (KN-30 / §141) is preserved.
+Outcome-verification gate: after final loud push, confirms bkit CI check dispatched for exact pushed HEAD; bounded poll → self-heal once with clean `re-trigger` commit → named verdict. Pre-push HEAD-subject = fast-fail; post-push poll = outcome verification. Fires **post-final-push only** — zero mid-build CI triggers; D2 invariant (KN-30 / §141) preserved.
 
-It is **invoked by orchestrators** (NOT a git hook — the invariant is contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
+**Invoked by orchestrators** (NOT git hook — invariant contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
 
-- **Build Gate 18 (HEAD clause + CI-Dispatch poll):** fires on the close-workflow final push. HEAD-subject pre-push fast-fail + post-push poll for a bkit CI check on the pushed HEAD.
-- **Build Step 17 + Debug Step 10 create-pr (PR-title clause):** fires on PR creation — HEAD is the `[skip ci]` create-pr commit by D2 design, so the HEAD clause does NOT run here; only PR title is checked. No CI-Dispatch poll (create-pr is not the CI-triggering push in build; in debug LOCAL-mode it IS — see below).
-- **Debug Gate 10, PR-mode (HEAD clause + CI-Dispatch poll):** fires on the close-workflow push (sub-step 3) — this is the CI-triggering push in PR-mode. Poll appended inside the close-workflow shell block.
-- **Debug Gate 10, LOCAL-mode (HEAD clause + CI-Dispatch poll):** fires on the create-pr push (sub-step 9) — this is the CI-triggering push in LOCAL-mode. Poll appended inside the create-pr shell block. AUTO_ROUTE sourcing: reuse the in-block `AUTO_ROUTE_SUFFIX` shell var materialised from `BKIT_AUTO_ROUTE_FILE` before the `rm`; `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` (do NOT reorder the `rm` or re-read the removed file).
-- **Ship:** OUT of scope. Ship keeps its pre-existing `SQUASH_SHA`-poll gate at Step 13 (`gh run list --branch dev --commit "$SQUASH_SHA"`). Adding a CI-Dispatch Gate at ship would mask the "essential tests skipped" signal that ship is the designed backstop for.
-- **Ship Gate 5 + squash `--body ""` (PR-title clause):** fires at merge — squash subject becomes `dev` HEAD.
+- **Build Gate 18:** close-workflow final push. HEAD-subject pre-push + post-push poll.
+- **Build Step 17 + Debug Step 10 create-pr:** PR creation — HEAD = `[skip ci]` create-pr by D2; HEAD clause does NOT run; PR title only. No poll (build: create-pr not CI trigger; debug LOCAL: create-pr IS — see below).
+- **Debug Gate 10 PR-mode:** close-workflow push = CI trigger (sub-step 3). Poll in close-workflow block.
+- **Debug Gate 10 LOCAL-mode:** create-pr push (sub-step 9) = CI trigger. Poll in create-pr block. `AUTO_ROUTE_SUFFIX` from in-block var before `rm`; `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` (do NOT reorder `rm` or re-read removed file).
+- **Ship:** OUT of scope. Existing `SQUASH_SHA`-poll Step 13 (`gh run list --branch dev --commit "$SQUASH_SHA"`). CI-Dispatch at ship would mask "essential tests skipped" signal ship backstops.
+- **Ship Gate 5 + squash `--body ""`:** merge — squash subject = dev HEAD.
 
 **Gate outcomes (4-state terminal verdict):**
 
-- `dispatched` — a bkit CI check found on the pushed HEAD within the poll budget. Step proceeds normally.
-- `self-healed` — poll exhausted budget, HEAD was clean; gate pushed one clean empty `re-trigger` commit (carrying the same `AUTO_ROUTE_SUFFIX`) and re-polled; a run appeared. Step proceeds normally.
-- `no-ci` — poll exhausted budget, HEAD was clean, re-trigger ALSO dispatched nothing — consumer repo has no CI workflow for this event. Logged pass; NOT Failure Path.
-- `unresolved` — one of the sub-reasons below; routes to **Failure Path** after the verdict is recorded.
+- `dispatched` — bkit CI check on pushed HEAD within poll budget. Proceed.
+- `self-healed` — poll exhausted, HEAD clean; one empty `re-trigger` commit (`AUTO_ROUTE_SUFFIX`) + re-poll; run appeared. Proceed.
+- `no-ci` — poll exhausted, HEAD clean, re-trigger also dispatched nothing — no consumer CI workflow. Logged pass; NOT Failure Path.
+- `unresolved` — sub-reason below → **Failure Path** after verdict recorded.
 
-**Sub-reason codes (always map to `unresolved`):**
+**Sub-reason codes (→ `unresolved`):**
 
-- `timeout-dirty` — poll exhausted budget AND pushed HEAD carries a CI suppressor; refuse to re-trigger a dirty HEAD.
-- `retrigger-suppressed` — re-trigger commit's HEAD itself carries a suppressor; cannot discriminate `no-ci` vs. suppression. Maps to `unresolved`, NOT `no-ci`.
-- `autoroute-mismatch` — `RETRIGGER_SUFFIX` != `AUTO_ROUTE_SUFFIX` (assert-equal backstop before re-trigger push).
-- `gh-error` — every poll iteration errored (gh unavailable/unauthed).
+- `timeout-dirty` — poll exhausted AND HEAD carries CI suppressor; refuse re-trigger dirty HEAD.
+- `retrigger-suppressed` — re-trigger HEAD carries suppressor; cannot discriminate `no-ci` vs suppression → `unresolved`, NOT `no-ci`.
+- `autoroute-mismatch` — `RETRIGGER_SUFFIX` != `AUTO_ROUTE_SUFFIX` (assert-equal before re-trigger).
+- `gh-error` — every poll iteration errored.
 
-**Named symbols (both gate sites — must be identical):**
+**Named symbols (both gate sites — identical):**
 
-- `POLL_BUDGET_S=60`, `POLL_INTERVAL_S=10` (derived `ATTEMPTS=6`).
-- Log prefix `[bkit-ci-gate]` on every poll/verdict line.
-- Self-heal cap = 1 (one `re-trigger` commit maximum).
-- Dispatch probe: case-insensitive match `test("bkit-tests|decide"; "i")` on the `statusCheckRollup` check-run shape — anchored on the **`bkit-tests` namespace**, not on any single lane's name. The gate's question is "did CI dispatch for this HEAD", and ANY `bkit-tests-*` check answers it; `decide` is retained for consumers still on the pre-rename planner name. Do NOT narrow this to one lane: the original `test("decide"; "i")` was chosen to survive consumer renames and failed at exactly that when a consumer renamed the planner `bkit-decide` → `bkit-tests-scope` — the probe matched nothing, so the gate self-healed once and then reported `no-ci` on every build, losing its ability to catch a genuinely undispatched run. Do NOT widen it to "any check" either: a Vercel preview / Renovate / cloud-agent check would satisfy the probe and report `dispatched` when CI never fired. Build/debug use the PR `statusCheckRollup` check-run shape; ship's existing `gh run list` probe uses the workflow-run shape and cannot share the jq filter.
+- `POLL_BUDGET_S=60`, `POLL_INTERVAL_S=10` (`ATTEMPTS=6`).
+- Log prefix `[bkit-ci-gate]`.
+- Self-heal cap = 1.
+- Dispatch probe: case-insensitive `test("bkit-tests|decide"; "i")` on `statusCheckRollup` — **`bkit-tests` namespace**, not single lane. ANY `bkit-tests-*` answers "did CI dispatch"; `decide` for pre-rename consumers. Do NOT narrow to one lane (`test("decide")` failed when planner renamed `bkit-decide` → `bkit-tests-scope`). Do NOT widen to "any check" — Vercel/Renovate/cloud would false `dispatched`. Build/debug: PR `statusCheckRollup`; ship: `gh run list` workflow-run shape — cannot share jq filter.
 
 **`ciDispatch` NDJSON field (additive on `step-done` records — backward-compatible with the FOLD reducer):**
 
@@ -1009,17 +1009,17 @@ It is **invoked by orchestrators** (NOT a git hook — the invariant is contextu
 }
 ```
 
-`reason` is omitted when outcome is `dispatched`/`self-healed`/`no-ci`. The FOLD reducer does `del(.type,.workflow)` then merges remainder — extra keys pass through untouched (additive, backward-compatible).
+`reason` omitted when `dispatched`/`self-healed`/`no-ci`. FOLD reducer `del(.type,.workflow)` then merges — extra keys pass through (additive, backward-compatible).
 
-**`ciDispatch` step-done record is LOCAL-only (intentional non-push):** the `jq ... >> "$STATUS"` write that appends the `ciDispatch`-bearing `step-done` record is written to the local `status.jsonl` ledger only and is deliberately NOT committed or pushed afterward. Pushing any commit after the confirmed-loud close-workflow HEAD changes the PR HEAD: a `[skip ci]` verdict commit empties the `statusCheckRollup` (re-introduces KN-11); a clean commit fires a second CI run. Do NOT "fix" this by adding a post-gate commit+push.
+**`ciDispatch` step-done LOCAL-only (intentional non-push):** `jq ... >> "$STATUS"` appends locally only — NOT committed/pushed afterward. Post-gate commit changes PR HEAD: `[skip ci]` verdict empties rollup (KN-11); clean commit fires second CI run. Do NOT "fix" with post-gate commit+push.
 
 **Per-site AUTO_ROUTE sourcing:**
 
-- **Build (Step 18):** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — re-use the in-block `AUTO_ROUTE_SUFFIX` already derived from `LABELS`. Assert-equal is trivially satisfied; the assert line stays for cross-site symmetry.
-- **Debug LOCAL-mode (Step 10 sub-step 9):** gate reuses the in-block `AUTO_ROUTE_SUFFIX` shell var materialised from `BKIT_AUTO_ROUTE_FILE` (read + `rm` happens before the create-pr commit/push; `AUTO_ROUTE_SUFFIX` stays in scope for the rest of the block and for the gate appended after the push). `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — do NOT reorder the `rm` or re-read the removed file.
-- **Debug PR-mode (Step 10 sub-step 3):** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — re-use the in-block `AUTO_ROUTE_SUFFIX` derived from `LABELS` at sub-step 3 entry.
+- **Build Step 18:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from in-block `LABELS` derivation. Assert-equal trivially satisfied; line stays for symmetry.
+- **Debug LOCAL Step 10 sub-step 9:** in-block `AUTO_ROUTE_SUFFIX` from `BKIT_AUTO_ROUTE_FILE` (read+`rm` before create-pr; var stays in scope for gate after push). Do NOT reorder `rm` or re-read file.
+- **Debug PR Step 10 sub-step 3:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from `LABELS` at sub-step 3 entry.
 
-**Re-trigger commit carries the same `AUTO_ROUTE_SUFFIX`:** `chore({FID}): re-trigger${RETRIGGER_SUFFIX}` — so an opted-in issue's re-trigger carries `bkit [auto route]` automatically. The `bkit [auto route]` Marker Propagation rule (§ below) applies unchanged to re-trigger commits.
+**Re-trigger commit:** `chore({FID}): re-trigger${RETRIGGER_SUFFIX}` — opted-in issues carry `bkit [auto route]`. § `bkit [auto route]` Marker Propagation applies.
 
 **Contract (DENY-LIST — never an allow-list):**
 
@@ -1044,12 +1044,12 @@ if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip action
 fi
 ```
 
-- **Deny-list tokens (HEAD message subject + body, AND PR title):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` — the GitHub-native CI suppressors. Both clauses enforce the same set. The stack-specific `[skip build]` is **not** checked (#291): it is a host build-cancel convention, not a platform-native CI suppressor, so it has no place in bkit's stack-agnostic gate contract.
-- **Legitimate loud tokens that pass automatically (deny-list, so no allow-list needed):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. None contain a suppressor substring.
-- **Hard-fail loud:** name the offending commit subject or PR title + the fix. Route to Failure Path. No silent auto-fix.
-- **Escape hatch:** `bkit [force build]` on HEAD forces a full CI + host build and is not itself a suppressor.
+- **Deny-list tokens (HEAD message + PR title):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` — GitHub-native CI suppressors. `[skip build]` **not** checked (#291): host build-cancel convention, not platform-native — no place in stack-agnostic gate.
+- **Legitimate loud tokens (deny-list, auto-pass):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`.
+- **Hard-fail loud:** name offending subject/title + fix → Failure Path. No silent auto-fix.
+- **Escape hatch:** `bkit [force build]` on HEAD forces full CI + host build; not a suppressor.
 
-Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip ci]` HEADs intermediately (D2: `worktree-setup`/`create-pr` commits) and to `dev` (status bookkeeping). A blanket pre-push hook would wrongly block those legitimate pushes. Only the orchestrator knows which push is the final loud one.
+Rationale: invariant **contextual** — bkit pushes `[skip ci]` intermediately (D2: `worktree-setup`/`create-pr`) and to `dev` (status bookkeeping). Blanket pre-push hook would block legitimate pushes. Only orchestrator knows which push is final loud one.
 
 <!-- prettier-ignore -->
 | Workflow | Step | Mechanic | Why this form |
@@ -1060,11 +1060,11 @@ Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip 
 | `/bkit-ship` | 4 (merge-pr) | `gh pr merge --squash --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Followed by pre-existing `gh run list --branch dev --commit "$SQUASH_SHA"` gate (not a CI-Dispatch Gate) |
 | `/bkit-ship` | 10 / 11 / 13 (post-merge dev pushes) | Step 10 `docs({FID}): update-docs-summary`, Step 11 `chore({FID}): prune-skills`, Step 13 `docs({FID}): ship DONE bkit [skip ci]` | Post-merge docs-only; PR already merged, dev's CI fired by Step 6, no re-trigger needed. Per-step commits batched locally; single push to `dev` at Step 13 close-workflow. |
 
-All intermediate workflow commits (start-workflow, summary, create-pr, etc.) retain `bkit [skip ci]` — only the trailing `close-workflow` commit is unmarked, and it is the LAST commit before the final `git push`. This also fixes the prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
+All intermediate workflow commits retain `bkit [skip ci]` — only trailing `close-workflow` unmarked, LAST before final `git push`. Fixes prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
 
 ## Permissions (`.claude/settings.json`)
 
-Without `acceptEdits` / wildcard allow surface, every `Bash`, `Edit`, `Write`, MCP, or skill call would prompt mid-workflow and break end-to-end runs.
+Without `acceptEdits` / wildcard allow surface, every `Bash`, `Edit`, `Write`, MCP, or skill call prompts mid-workflow — breaks end-to-end runs.
 
 <!-- prettier-ignore -->
 | Bucket | Patterns | Purpose |
@@ -1075,11 +1075,11 @@ Without `acceptEdits` / wildcard allow surface, every `Bash`, `Edit`, `Write`, M
 
 `.mcp.json` declares `mcpServers.linear.url = https://mcp.linear.app/mcp` and `mcpServers.github.url = https://api.githubcopilot.com/mcp/`. SessionStart hook `bash .claude/hooks/preflight.sh` runs at every session start.
 
-**Anti-pattern:** never use `--dangerously-skip-permissions` on host. Use it only inside sandboxed CI containers.
+**Anti-pattern:** never `--dangerously-skip-permissions` on host. Sandbox CI containers only.
 
 ## Workflow Primitives — quick reference
 
-Inline definitions for tokens used in workflow files. Keep this section in sync with actual workflow bodies.
+Inline definitions for workflow-file tokens. Keep synced with workflow bodies.
 
 ### FID generation
 
@@ -1117,11 +1117,11 @@ SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
 pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue
 ```
 
-No quote / filter / glob edits. Pre-PR is lint+typecheck+unit only; debug normal-mode adds `test:integration test:e2e`. Build does NOT run the live tier (out of build's scope by design — the @live boundary is validated post-merge by the push-only `bkit-tests-live` CI canary). When the consumer declares them (and has not opted out via `[live=off]` — a debug-scoped session flag, read per invocation from `debug-input-{DEBUG_ATTEMPT}.md`), debug appends `test:integration:live test:e2e:live test:live` LAST — never folded into a bare `pnpm test` (cost invariant); no live tier → debug's live gate degrades to CONCERNS with a recorded `testsLiveSkipped`.
+No quote / filter / glob edits. Pre-PR = lint+typecheck+unit; debug normal-mode adds `test:integration test:e2e`. Build does NOT run live tier (post-merge `bkit-tests-live` canary). Debug appends `test:integration:live test:e2e:live test:live` LAST when declared (unless `[live=off]` — debug session flag from `debug-input-{DEBUG_ATTEMPT}.md`) — never in bare `pnpm test`. No live tier → CONCERNS + `testsLiveSkipped`.
 
 ### Tracker issue-create return guard
 
-When a tracker call creates a new issue, it MUST return a non-empty `id`. Empty/null → Failure Path with `Tracker issue create returned no id`.
+When tracker call creates issue, MUST return non-empty `id`. Empty/null → Failure Path `Tracker issue create returned no id`.
 
 ### Pre-worktree carry-over commit (Steps 2 of design / plan / build / ship)
 
@@ -1134,9 +1134,9 @@ if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
 fi
 ```
 
-Carries the workflow's own log + friction rows into the new worktree branch. `/bkit-ship` appends ` bkit [skip ci]` to the commit subject; `/bkit-debug` Step 2 omits the primitive entirely — it intentionally branches off `origin/dev` for hotfix isolation.
+Carries workflow log + friction rows into new worktree branch. `/bkit-ship` appends ` bkit [skip ci]`; `/bkit-debug` Step 2 omits primitive — branches `origin/dev` for hotfix isolation.
 
-Allow-list, never a deny-list (#61): a deny-list on the main checkout is `git add -A` by another name. The pathspec repeats on all three commands for the same reason — `git add` alone does not bound the commit, because a bare `git commit` commits the whole index, so a deletion the user had staged before the run gets swept into the workflow's commit (the reported destructive backout that required `git revert`). Passing the pathspec to `git commit` bypasses the index for everything else, leaving the user's staged work intact; the `git diff --cached` guard carries the same pathspec so a dirty index elsewhere cannot make the commit fire on nothing. `/bkit-ship` Step 6 runs a second instance of this shape against `$REPO_ROOT` before the squash-merge, and additionally allow-lists `.bkit/stats.jsonl` (close-step telemetry is written to `$REPO_ROOT`, outside the worktree).
+Allow-list, never deny-list (#61): deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. `/bkit-ship` Step 6 second instance on `$REPO_ROOT` before squash-merge; also allow-lists `.bkit/stats.jsonl` (close telemetry outside worktree).
 
 ## File path conventions
 
@@ -1157,7 +1157,7 @@ Allow-list, never a deny-list (#61): a deny-list on the main checkout is `git ad
 
 ## Loop context accumulation
 
-Verify→remediate and diagnose→fix loops carry context via **per-attempt log files**, not by mutating the plan. Plan docs remain pure deliverables.
+Verify→remediate and diagnose→fix loops carry context via **per-attempt log files**, not plan mutation. Plan docs = pure deliverables.
 
 <!-- prettier-ignore -->
 | Verifier / checker | Remediator | Max attempts | Escalation |
@@ -1168,11 +1168,11 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` (NORMAL); `@bkit-debug-failure-soak` (SOAK) | `MAX_NORMAL_ATTEMPT` = 3 (NORMAL loop); `SOAK_ATTEMPT` bounded by `MAX_SOAK_ATTEMPT` = 3 (reset on each SOAK entry) | Failure Path with `@bkit-debug-abort-handover` |
 | Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |
 
-**Filename convention:** `docs/plans/{YYYYMM}/logs/{FID}/{phase}-{step}-N-{ATTEMPT}.md` (e.g. `build-verify-plan-1-2.md` = sub-plan 1, verify attempt 2). Verifiers MUST read prior verify+remediate logs before deciding `PASS`/`FAIL`. Remediators MUST glob their own prior logs and not repeat strategies.
+**Filename convention:** `docs/plans/{YYYYMM}/logs/{FID}/{phase}-{step}-N-{ATTEMPT}.md` (e.g. `build-verify-plan-1-2.md` = sub-plan 1, verify attempt 2). Verifiers MUST read prior verify+remediate logs before `PASS`/`FAIL`. Remediators MUST glob own prior logs; no repeat strategies.
 
 ## Structured Docs Writer Map
 
-Pipeline writes to the structured ledgers at `docs/` root. Each has strict sole-writer policy.
+Pipeline writes structured ledgers at `docs/` root. Each has strict sole-writer policy.
 
 <!-- prettier-ignore -->
 | Doc | Dedup id | Sole writer(s) | Source step |
@@ -1182,13 +1182,13 @@ Pipeline writes to the structured ledgers at `docs/` root. Each has strict sole-
 | `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
 | `docs/deferrals.jsonl` | `key` | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 8), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 8, Failure Path handover |
 
-All other agents document blockers and out-of-scope items in their own log file (Plan Execution / Challenge Remediation / etc — see each subagent's H1 for the canonical output name) — workflow reads those at step boundaries and decides what (if anything) to mirror to the issue tracker.
+All other agents document blockers/out-of-scope in own log file (Plan Execution / Challenge Remediation / etc — each subagent H1 for canonical output name) — workflow reads at step boundaries, decides tracker mirror.
 
-Append-only. Row format: `.bkit/jsonl.md`. See `.agents/docs.md` for doc index and read-by-phase matrix.
+Append-only. Row format: `.bkit/jsonl.md`. Doc index + read-by-phase matrix: `.agents/docs.md`.
 
 ## Telemetry Ledgers
 
-bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope + per-kind fields, dedup tuples, write idiom): `.bkit/jsonl.md`.
+bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope, per-kind fields, dedup tuples, write idiom): `.bkit/jsonl.md`.
 
 <!-- prettier-ignore -->
 | File | Kind(s) | Scope |
@@ -1202,15 +1202,15 @@ bkit emits JSONL telemetry to six append-only ledgers. Row format (envelope + pe
 
 Orchestrator behavior:
 
-- **Never-drop:** NEVER silently drop deferred work → append a `kind:"deferral"` row to `docs/deferrals.jsonl`.
-- **Found-bug:** NEVER silently drop a discovered bug → append a `kind:"failure"` row to `docs/failures.jsonl` immediately.
-- **Friction/stats:** workflows write `friction` rows to `.bkit/friction.jsonl` and `counter`/`compliance`/`outcome` rows to `.bkit/stats.jsonl` at close/summary steps.
-- **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates a workflow.
-- **Summary read:** each workflow's close writes its run row, grades compliance, then posts a per-workflow telemetry report (this run's metrics vs `med·5` — the median of the previous 5 same-workflow runs) into the tracker comment; `> 5000` rows in `stats.jsonl` → grep-able `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
+- **Never-drop:** NEVER silently drop deferred work → append `kind:"deferral"` to `docs/deferrals.jsonl`.
+- **Found-bug:** NEVER silently drop discovered bug → append `kind:"failure"` to `docs/failures.jsonl` immediately.
+- **Friction/stats:** `friction` → `.bkit/friction.jsonl`; `counter`/`compliance`/`outcome` → `.bkit/stats.jsonl` at close/summary.
+- **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
+- **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
 
 ## Authoring Checklist for New / Refined Workflows
 
-When writing or editing `.bkit/workflows/bkit-*.md` (canonical source — `bkit install` regenerates `.claude/commands/` and `.cursor/commands/`):
+When writing/editing `.bkit/workflows/bkit-*.md` (canonical — `bkit install` regenerates `.claude/commands/` + `.cursor/commands/`):
 
 - [ ] YAML frontmatter with `description`.
 - [ ] Header with `Output:` and `Tracker:` lines.

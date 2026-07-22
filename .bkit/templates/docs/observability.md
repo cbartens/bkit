@@ -17,6 +17,6 @@
 
 ## Debug Fetch
 
-Runtime log fetching for `/bkit-debug` — the `debug-fetch:*` blocks it runs and their cloud CLI provisioning — is configured in `.agents/config.md`. Author and enable runtime-log sources there.
+Runtime log fetching for `/bkit-debug` (`debug-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/config.md`. Author and enable runtime-log sources there.
 
 <!-- bkit:end -->

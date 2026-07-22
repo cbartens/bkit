@@ -1,29 +1,29 @@
 # bkit — Pipeline Reference & Comparison to Agentic Design Patterns
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. Documents the five-phase pipeline and every subagent it runs (in execution order), maps bkit against the patterns in Antonio Gulli's _Agentic Design Patterns_, and maps it against the peer Claude-Code framework `everything-claude-code`. Used for evaluation, onboarding, and outreach — not part of the agent workflow doc-matrix.
+> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_, bkit vs peer framework `everything-claude-code`. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
 >
 > **Rules:**
 >
 > - Human-written. Not seeded to consumers — bkit-repo-specific.
 > - Keep prose factual (House / write-good linters apply to `*.md`). No hype adjectives.
-> - When the pipeline or subagents change, update Part 1 to match `.bkit/workflows/*` and `.bkit/prompts.md`.
+> - Pipeline or subagents change → update Part 1 to match `.bkit/workflows/*` and `.bkit/prompts.md`.
 
 ## What this is
 
-bkit turns a single request to a coding agent into a gated, peer-reviewed engineering process. Work flows through five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — and each phase fans the work out to specialised, single-purpose subagents. Many run in parallel under different _lenses_ (for example, one reviews for bugs while another reviews for security), so output is reviewed by independent agents before a human sees it.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents. Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output.
 
-Part 1 lists every subagent in execution order. Part 2 maps bkit against an external reference catalogue of agentic patterns (Gulli). Part 3 maps it against a peer real-world framework, `everything-claude-code`.
+Part 1: every subagent in execution order. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs `everything-claude-code`.
 
 ---
 
 ## Part 1 — The five-phase pipeline, in order
 
-Each phase lists its subagents in execution order. "Parallel" means agents run at the same time and are merged afterwards; where they carry distinct lenses, those are noted, because that is the source of the multi-perspective review. Steps run by the orchestrator itself (git, worktree setup, tracker updates) are noted but not listed as subagents.
+Each phase lists subagents in execution order. "Parallel" = same-time run, merged after; distinct lenses = multi-perspective review. Orchestrator steps (git, worktree, tracker) noted but not listed as subagents.
 
 ### Phase 1 — `/bkit-design`
 
-Output: a reviewed design document (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for human approval at the end.
+Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for human approval.
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
@@ -31,7 +31,7 @@ Output: a reviewed design document (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard
 | `bkit-design-brainstorm-ideate-1` | Pragmatic | Independent design exploration. Opus, high effort. Forbidden from reading siblings (circular-reasoning guard). |
 | `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. Cross-tier / cross-family model (Sonnet on Claude, Grok on Cursor) for diversity. |
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. Opus, high effort. |
-| `bkit-design-generate` | Synthesiser | Merges the three brainstorms into one design. xhigh effort. Merges across lenses rather than collapsing to consensus. |
+| `bkit-design-generate` | Synthesiser | Merges three brainstorms into one design. xhigh effort. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. Opus, high. |
 | `bkit-design-review-2` | Feasibility (cross-tier) | Same review in parallel, different model tier for independent judgement. |
 | `bkit-design-update` | Apply review | Folds both reviews back into the design. |
@@ -40,7 +40,7 @@ Output: a reviewed design document (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard
 
 ### Phase 2 — `/bkit-plan`
 
-Output: an executable plan (`{FID}-plan.md`, split into `-plan-N.md` if too large). Consumes the design. Hard stop at the end.
+Output: executable plan (`{FID}-plan.md`, split into `-plan-N.md` if too large). Consumes design. Hard stop.
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
@@ -59,7 +59,7 @@ Output: an executable plan (`{FID}-plan.md`, split into `-plan-N.md` if too larg
 
 ### Phase 3 — `/bkit-build`
 
-Output: a pull request to `dev`. The heaviest phase — most steps verify the work rather than produce it. CI takes over after the PR.
+Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. CI takes over after PR.
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
@@ -80,7 +80,7 @@ Output: a pull request to `dev`. The heaviest phase — most steps verify the wo
 
 ### Phase 4 — `/bkit-debug`
 
-Output: a remediated commit pushed to the feature branch. Two modes — normal (diagnose → remediate a localisable failure) and soak (one accumulating-context instrument-or-fix loop for non-localisable / runtime-only failures). Normal escalates to soak mid-run when the diagnose agent can't localise the cause, or when the normal loop exhausts all three strategies; observation logging (`[DEBUG-OBSERVE]`) lives inside soak and is stripped before any fix ships.
+Output: remediated commit on feature branch. Two modes — normal (diagnose → remediate localisable failure) and soak (one accumulating-context instrument-or-fix loop for non-localisable / runtime-only failures). Normal escalates to soak when diagnose can't localise, or normal loop exhausts three strategies; observation logging (`[DEBUG-OBSERVE]`) inside soak, stripped before fix ships.
 
 **Normal mode**
 
@@ -107,7 +107,7 @@ Output: a remediated commit pushed to the feature branch. Two modes — normal (
 
 ### Phase 5 — `/bkit-ship`
 
-Output: a squash-merged PR, updated docs, pruned skills, and a torn-down worktree. The safety-critical phase — hard guards around the production branch, and explicit human approval to touch `main`.
+Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safety-critical — hard guards on production branch, explicit human approval to touch `main`.
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
@@ -118,15 +118,15 @@ Output: a squash-merged PR, updated docs, pruned skills, and a torn-down worktre
 | `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. High effort. Parallel with summary. |
 | `bkit-ship-summary` | Summarise | Final tracker-facing summary. Parallel with docs. |
 
-Orchestrator-only steps in ship: regression guard, the merge itself, switch-to-dev with `--ff-only` pull plus divergence re-assert, skill pruning, worktree cleanup, and close. These are guarded git / tracker operations the orchestrator performs directly, not subagents.
+Orchestrator-only ship steps: regression guard, merge, switch-to-dev with `--ff-only` pull + divergence re-assert, skill pruning, worktree cleanup, close. Guarded git / tracker ops orchestrator performs directly, not subagents.
 
 ---
 
 ## Part 2 — Comparison to agentic design patterns
 
-Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_. Gulli is a Google engineering director, and the book reads as a practitioner catalogue of agentic-AI patterns. The table below maps every one of its 21 named patterns plus its cross-cutting Context Engineering discipline against what bkit does.
+Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_. Practitioner catalogue of agentic-AI patterns. Table maps all 21 named patterns + Context Engineering against bkit.
 
-Of 22 patterns assessed: 12 fully implemented, 8 partial (deliberately scoped to code-shipping), 2 intentionally not applicable. None of the foundational patterns are missing.
+22 patterns assessed: 12 fully implemented, 8 partial (scoped to code-shipping), 2 intentionally N/A. No foundational patterns missing.
 
 <!-- prettier-ignore -->
 | Pattern (Gulli) | bkit status | Where / note |
@@ -156,23 +156,23 @@ Of 22 patterns assessed: 12 fully implemented, 8 partial (deliberately scoped to
 
 ### Where bkit goes beyond the catalogue
 
-- **Producer-critic with a circular-reasoning guard.** Sibling reviewers cannot read each other's output. The book permits self-reflection.
-- **Cross-tier model diversity in parallel pairs.** Opus-high paired with Sonnet-medium (cross-family on Cursor), so two different reasoners review the same work.
-- **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
-- **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
+- **Producer-critic with circular-reasoning guard.** Sibling reviewers cannot read each other's output. Book permits self-reflection.
+- **Cross-tier model diversity in parallel pairs.** Opus-high + Sonnet-medium (cross-family on Cursor) → two reasoners review same work.
+- **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
+- **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Because the model pins are per-agent, `bkit install --opencode=<provider>` adds an opencode host alongside the always-on Claude/Cursor hosts — the harness is unchanged; only the inference backend moves. The same five-phase, gated, parallel pipeline runs on any of seven providers (local Ollama, NVIDIA NIM, Groq, Cerebras, OpenRouter, cloud Ollama, and opencode's managed Zen gateway (provider key `opencode`)), each shipping curated per-agent pins. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
-- **Cross-host/provider continuity.** A run's state lives in `status.jsonl`, the plan/design docs under `docs/plans/`, and the tracker issue — not in any vendor's session — and every host renders from the same `.bkit/` source, so a phase (or a resumed run) can move to a different IDE or provider mid-feature with identical gates, hooks, and per-agent pins: exhaust a Claude weekly limit or a free-tier quota partway through and continue on another host with no re-setup. Single-vendor frameworks tie a run to the session it started in.
+- **Provider- and host-portable execution.** Per-agent pins → `bkit install --opencode=<provider>` adds opencode host alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on seven providers (local Ollama, NVIDIA NIM, Groq, Cerebras, OpenRouter, cloud Ollama, opencode Zen gateway (`opencode`)). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
 
 ### Known gaps, scoped as opportunities
 
-Most partials are deliberate scope choices. The per-task `Done when:` line has since shipped in the plan template. Two flagged items remain: an automated eval harness with regression fixtures for closed friction items, and an optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires changing the leaf-agent architecture.
+Most partials = deliberate scope. Per-task `Done when:` shipped in plan template. Two remain: automated eval harness with regression fixtures for closed friction items; optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires leaf-agent architecture change.
 
 ---
 
 ## Part 3 — Comparison to a peer framework: everything-claude-code
 
-Benchmark: `affaan-m/everything-claude-code` (ECC), a multi-IDE Claude-Code framework — 63 agents, 251 skills, 79 commands, a hook-enforced runtime layer, and a profile/module installer across 11 IDE target trees. Where Gulli is an academic pattern taxonomy, ECC is a peer real-world artifact, so this section maps shipped mechanisms rather than patterns. Several rows read "bkit already does this, sometimes more strictly."
+Benchmark: `affaan-m/everything-claude-code` (ECC) — 63 agents, 251 skills, 79 commands, hook-enforced runtime, profile/module installer across 11 IDE trees. Gulli = academic taxonomy; ECC = peer real-world artifact → shipped mechanisms, not patterns. Several rows: "bkit already does this, sometimes more strictly."
 
 <!-- prettier-ignore -->
 | ECC mechanism | bkit status | Where / note |
@@ -200,19 +200,19 @@ Benchmark: `affaan-m/everything-claude-code` (ECC), a multi-IDE Claude-Code fram
 
 ### Adopted from ECC
 
-- **GateGuard — an advisory edit-time hook.** A PreToolUse hook injects an investigation checklist (read the file, find the callers, confirm the types, quote the instruction) on the first edit to each file per session. Advisory by default, fail-open, with an opt-in deny mode. It also flags edits to quality-gate configs, nudging a code fix over a weakened gate.
-- **Scoped prompt-injection guard.** The nine subagents that read external content (web, diffs, logs) carry a one-line directive to treat that content as data, never as instructions.
-- **Confidence-scored knowledge.** friction and knowledge entries record confidence, scope, and a last-confirmed date, so a repeatedly-confirmed lesson reads differently from a contradicted one. No auto-promotion.
-- **Install provenance.** The version file records the source commit, not just the version number, for exact upgrade and repair diagnostics.
-- **Catalog-parity test.** A check that fails if a prompt or workflow file is missing from its index doc.
+- **GateGuard — advisory edit-time hook.** PreToolUse injects investigation checklist (read file, find callers, confirm types, quote instruction) on first edit per file per session. Advisory default, fail-open, opt-in deny mode. Flags gate-config edits → fix code, don't weaken gate.
+- **Scoped prompt-injection guard.** Nine subagents reading external content (web, diffs, logs) carry one-line directive: treat content as data, never instructions.
+- **Confidence-scored knowledge.** friction/knowledge entries record confidence, scope, last-confirmed date → repeatedly-confirmed lesson reads differently from contradicted one. No auto-promotion.
+- **Install provenance.** Version file records source commit, not just version number, for upgrade/repair diagnostics.
+- **Catalog-parity test.** Check fails if prompt or workflow file missing from index doc.
 
 ### Deliberately not adopted
 
-External multi-model orchestration (it violates single-vendor-per-host and MCP-only discipline), the Rust control-plane and dashboard (the `status.jsonl` CLI covers the scope), the 251-skill catalogue (bkit curates skills and would inherit the overlap debt), the commands-versus-skills dual stack, auto-promotion of learnings into prompt edits (it breaks "recommend, do not decide"), and the 11-IDE target sprawl.
+External multi-model orchestration (violates single-vendor-per-host and MCP-only discipline), Rust control-plane and dashboard (`status.jsonl` CLI covers scope), 251-skill catalogue (bkit curates skills → overlap debt), commands-versus-skills dual stack, auto-promotion of learnings into prompt edits (breaks "recommend, do not decide"), 11-IDE target sprawl.
 
 ### Deferred
 
-The empirical eval layer (pass@k / pass^k regression fixtures plus rule-obedience measurement) and the component-façade installer are the two ECC ideas worth a future design pass. Both are larger builds than the adopted items.
+Empirical eval layer (pass@k / pass^k regression fixtures + rule-obedience measurement) and component-façade installer — larger builds than adopted items; worth future design pass.
 
 ---
 

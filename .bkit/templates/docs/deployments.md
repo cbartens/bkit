@@ -12,25 +12,25 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Pre-push runs the project's gate set locally (see "Pre-push checklist" below); never `--no-verify`.
+> - Pre-push runs project gate set locally (see "Pre-push checklist" below); never `--no-verify`.
 
 ## Production rollback runbook
 
-> Triggered when a bad commit reaches `main` (production) and must be unwound to a prior known-good SHA. Vercel deployments are assumed; adjust the deploy-side step for other hosting.
+> Bad commit on `main` (production) → unwind to prior known-good SHA. Vercel assumed; adjust deploy step for other hosting.
 
 ### Preconditions
 
-- A known-good SHA on `main` to roll back to. Confirm via `gh run list --branch main --status success --limit 5` (must include the target SHA in green state).
-- Local repo on `main`, working tree clean, `gh auth status` green.
+- Known-good SHA on `main`. Confirm: `gh run list --branch main --status success --limit 5` (target SHA green).
+- Local repo on `main`, clean tree, `gh auth status` green.
 - `jq` installed (`brew install jq` / system package manager).
 
 ### Playbook
 
-1. **Save current protection JSON** so it can be restored verbatim. The GET and PUT shapes differ; capturing the raw GET response avoids hand-mapping fields.
+1. **Save current protection JSON** for verbatim restore. GET and PUT shapes differ; raw GET avoids hand-mapping fields.
    ```bash
    gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
    ```
-2. **Disable protection** so the force-reset is accepted.
+2. **Disable protection** so force-reset is accepted.
    ```bash
    gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
    ```
@@ -38,22 +38,22 @@
    ```bash
    gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
    ```
-4. **Restore protection** from the saved JSON. Note the GET → PUT shape mismatch: required-status-checks → required_status_checks, contexts list, etc. Inspect the saved JSON and PUT the equivalent shape.
+4. **Restore protection** from saved JSON. GET → PUT shape mismatch: `required-status-checks` → `required_status_checks`, contexts list, etc. Inspect saved JSON; PUT equivalent shape.
    ```bash
    gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
    ```
-5. **Re-point the production deployment** (Vercel does NOT auto-rollback on git ref rewrites — the deployment alias remains on the most-recently-pushed deployment until manually promoted). Look up the prior good deployment by commit SHA and promote it:
+5. **Re-point production deployment** (Vercel does NOT auto-rollback on git ref rewrites — alias stays on most-recent push until manually promoted). Look up prior good deployment by commit SHA and promote:
    ```bash
    vercel ls --meta githubCommitSha=<green-sha>
    vercel promote <prior-deployment-url>
    ```
-   Without this step the git ref is rolled back but production traffic still serves the bad build.
+   Without this step: git ref rolled back but production still serves bad build.
 
 ### Why force-push on `main` alone is not enough
 
-- `git revert` of a cross-branch squash (e.g. a `feat/*` branch that landed directly on `main` instead of `dev`) can delete files that surviving code in `main` still references. The result is a tree that fails CI even though git history is "clean".
-- The `feat/*`-onto-`main` path is the root cause that makes recovery destructive; production merges MUST come from `dev` to keep the squash diff scoped to a single feature.
-- On `revert-*` branches the pre-push hook skips only the **test suite** — typecheck, format:check, prose, slop:delta and the bkit drift gate still run — so a revert PR can be pushed even when its source state is transitionally inconsistent.
+- `git revert` on cross-branch squash (e.g. `feat/*` landed on `main` not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history.
+- `feat/*`-onto-`main` is root cause of destructive recovery; production merges MUST come from `dev` (single-feature squash scope).
+- On `revert-*` branches pre-push skips only **test suite** — typecheck, format:check, prose, slop:delta, bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 
@@ -63,33 +63,33 @@
 
 ## Dev rollback runbook
 
-> Triggered when a bad commit reaches `dev` and must be unwound to a prior known-good SHA. Use when the rolled-out range included applied migrations — code rollback alone leaves the linked dev DB ahead of the code, and schema-aware tests (cdc-schema, schema-introspection, RLS-aware integration) fail on the otherwise-clean tree. Supabase is assumed; adjust the DB step for other providers.
+> Bad commit on `dev` → unwind to prior known-good SHA. Use when rolled-out range included applied migrations — code-only rollback leaves dev DB ahead of code; schema-aware tests (cdc-schema, schema-introspection, RLS integration) fail on otherwise-clean tree. Supabase assumed; adjust DB step for other providers.
 
 ### Preconditions
 
-- A known-good SHA on `dev` to roll back to. Confirm via `gh run list --branch dev --status success --limit 5` (must include the target SHA in green state).
-- Local repo on `dev`, working tree clean, `gh auth status` green.
-- `supabase` CLI installed and linked to the dev project (`supabase link --project-ref <dev-ref>`).
-- Service-role connection string for the dev DB available in the local env (`SUPABASE_DB_URL` or equivalent).
+- Known-good SHA on `dev`. Confirm: `gh run list --branch dev --status success --limit 5` (target SHA green).
+- Local repo on `dev`, clean tree, `gh auth status` green.
+- `supabase` CLI linked to dev project (`supabase link --project-ref <dev-ref>`).
+- Dev DB service-role connection string in local env (`SUPABASE_DB_URL` or equivalent).
 
 ### Playbook
 
-1. **Force-reset the `dev` ref** to the known-good SHA. `dev` is typically unprotected; if protection is on, follow the production-rollback save/disable/restore pattern.
+1. **Force-reset `dev` ref** to known-good SHA. `dev` typically unprotected; if protected → production-rollback save/disable/restore pattern.
    ```bash
    git reset --hard <green-sha>
    git push --force-with-lease origin dev
    ```
-2. **Reset the linked dev DB.** Drop all consumer-managed schemas with `CASCADE`, truncate the migrations ledger, then replay the surviving migration files. Substitute schema names for the consumer's actual managed set.
+2. **Reset linked dev DB.** Drop consumer-managed schemas `CASCADE`, truncate migrations ledger, replay surviving migration files. Substitute schema names for consumer's managed set.
    ```bash
    psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS stripe CASCADE;'
    psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
    supabase db push --linked --include-all
    ```
-3. **Re-seed fixtures** (if the consumer runs a seed script on dev).
+3. **Re-seed fixtures** (if consumer runs seed script on dev).
    ```bash
    pnpm db:seed
    ```
-4. **Re-trigger CI** on the rolled-back `dev` ref to confirm the green-on-rollback baseline.
+4. **Re-trigger CI** on rolled-back `dev` ref → confirm green-on-rollback baseline.
    ```bash
    git commit --allow-empty -m "chore: trigger CI after dev rollback"
    git push origin dev
@@ -97,9 +97,9 @@
 
 ### Why code-only rollback is not enough
 
-- `git reset` rewinds the source tree; Supabase migrations applied during the rolled-out range remain materialised. The DB has no "unapply" semantics for code-driven migrations.
-- Any test that introspects the live schema (column lists, RLS policies, table presence) sees structure the code no longer declares and flags the drift as a failure.
-- Re-running `supabase db push --linked --include-all` after truncating the ledger reapplies only the migrations present in the rolled-back tree — bringing the DB back into alignment with the code.
+- `git reset` rewinds source tree; migrations from rolled-out range stay materialised — DB has no "unapply" for code-driven migrations.
+- Schema-introspection tests (columns, RLS, table presence) see structure code no longer declares → drift failure.
+- `supabase db push --linked --include-all` after ledger truncate reapplies only rolled-back-tree migrations → DB aligns with code.
 
 ### Post-rollback verification
 
@@ -109,14 +109,14 @@
 
 ## Commit-message force tags
 
-Bkit's shipped `ci.yml` recognises the tags below. Tags are case-sensitive, must be literal square-bracket form, and may appear anywhere in the source string. Tags compose freely — multiple tags on the same commit / PR title all fire independently.
+Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may appear anywhere in source string. Tags compose — multiple on same commit / PR title fire independently.
 
 **Where to put the tag — read carefully:**
 
-- **Direct push to `dev` or `{{DEFAULT_BRANCH}}`** (no PR involved): tag goes in the **commit message**. Read from `github.event.head_commit.message`.
-- **Push to a feature branch with an open PR** (or PR open / synchronize / edit): tag goes in the **PR title**. Read from `github.event.pull_request.title`. The commit message is NOT consulted — the workflow fires on `pull_request`, not `push`, for feature branches.
-- **Both surfaces are checked** by `contains()` in the env block, so a marker in either location wins for its corresponding event. But you must pick the right one: putting `[verbose ci]` in a feature-branch commit message has no effect — only the PR title is read.
-- **`workflow_dispatch`** (manual UI trigger): neither field is populated; tags don't apply. Use the workflow_dispatch input checkboxes if present.
+- **Direct push to `dev` or `{{DEFAULT_BRANCH}}`** (no PR): tag in **commit message** (`github.event.head_commit.message`).
+- **Feature branch with open PR** (open / synchronize / edit): tag in **PR title** (`github.event.pull_request.title`). Commit message NOT consulted — workflow fires on `pull_request`, not `push`.
+- **Both surfaces** checked by `contains()` in env block — marker in either wins for its event. Pick right one: `[verbose ci]` in feature-branch commit message has no effect — only PR title read.
+- **`workflow_dispatch`**: neither field populated; tags don't apply. Use workflow_dispatch input checkboxes if present.
 
 <!-- prettier-ignore -->
 | Tag | Effect | Scope |
@@ -127,17 +127,17 @@ Bkit's shipped `ci.yml` recognises the tags below. Tags are case-sensitive, must
 | `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 
-**Two deploy-forcing markers only (#291): `[force build]` + `[force full]`.** The granular `[force e2e]` / `[force live]` were removed — they were silent no-ops on an unchanged tree (named "force" but gated behind `web_affected`). `[force full]` is the single gate-bypass: it means "validate everything," so one effective `web_affected` drives integration + e2e + @live uniformly.
+**Two deploy-forcing markers only (#291): `[force build]` + `[force full]`.** Granular `[force e2e]` / `[force live]` removed — silent no-ops gated behind `web_affected`. `[force full]` = single gate-bypass ("validate everything") → one effective `web_affected` drives integration + e2e + @live uniformly.
 
-- **Precedence — `[skip ci]` / `[skip actions]` is a hard veto over any force marker.** A push commit carrying `[skip ci]` is never dispatched as a workflow run (native GitHub suppression, before any `ci.yml` code) — no force marker can un-suppress it. To validate a would-be-skipped commit, drop the `[skip ci]` and push with `[force full]`.
-- **`[force cache]` is orthogonal** — it busts turbo _replay_ (`TURBO_FORCE=1`), a different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
-- **Marker parity (deploy-forcing set).** The e2e / @live lanes resolve a per-SHA deployment, so any marker that force-runs them must **also** force the host build, or the lane force-runs then dies at "resolve deployment URL" — worse than skipping. If you wire a host build-cancel script (e.g. Vercel `ignoreCommand`), it MUST honor **both** `[force build]` and `[force full]`; assert it in CI (a `grep -qF` guard over the cancel script). `[force cache]` / `[verbose ci]` / `[skip ci]` are test-plane-only and intentionally NOT honored by the cancel script.
+- **Precedence — `[skip ci]` / `[skip actions]` hard-vetoes any force marker.** `[skip ci]` commit never dispatches (native GitHub suppression, before `ci.yml`) — no force marker un-suppresses. To validate would-be-skipped commit: drop `[skip ci]`, push with `[force full]`.
+- **`[force cache]` orthogonal** — busts turbo _replay_ (`TURBO_FORCE=1`), different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
+- **Marker parity (deploy-forcing set).** e2e / @live lanes resolve per-SHA deployment → marker that force-runs them MUST **also** force host build, or lane dies at "resolve deployment URL". Host build-cancel script (e.g. Vercel `ignoreCommand`) MUST honor **both** `[force build]` and `[force full]`; assert in CI (`grep -qF` over cancel script). `[force cache]` / `[verbose ci]` / `[skip ci]` test-plane-only — NOT honored by cancel script.
 
-Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for the cache-bust rationale.
+Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
 
 ## Run-level decision matrix
 
-Bkit ships a **flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level`, emits the `bkit-test-plan` JSON contract) fans out to **every** lane at once — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` (the always-on capstone that asserts every tier the plan _expected_ actually ran and passed) joins them. No lane waits on any lane but the planner, so **total wall-clock is the slowest single lane**. Adopt only the lanes your repo has. `bkit-tests-migration` (DB repos) proves every migration replays from an empty database + the seed loads on a fresh instance; it always runs but self-skips the heavy steps when no migration/seed source changed (`bkit-stub:bkit-tests-migration` in the scaffold reference), and its `needs:` on the planner is graph ordering only — the replay is never gated on `run_level`. **Do not gate `bkit-tests-live` behind the test lanes**: that edge reads as free safety and was measured at ~35% of total wall-clock on a real consumer, while buying ~nothing (`@live` is push-only, so the tree is already PR-validated, and a non-compiling tree reds the lane through its own build anyway). Before spending anything on CI speed, **measure the job graph and find the pole** — the same consumer found every setup-cost lever (browser cache, `node_modules` cache, composite setup action, fetch-depth) totalled ~3%, while one `needs:` edge was worth 35%; a lever aimed at a lane that is not the pole buys exactly zero. The single-job starter `ci.yml` ships the primitives (cache check, marker parsing, direct-push detect, integration gate); the **FULL CI SCAFFOLD REFERENCE** at the end of `.github/workflows/ci.yml` reproduces every step, in execution order, for adopting the tiers. The table below defines the `none` / `partial` / `full` shape those primitives + the plan plug into.
+Bkit ships **flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` capstone joins them (asserts every expected tier ran and passed). No lane waits on any lane but planner → **wall-clock = slowest single lane**. Adopt only lanes your repo has. `bkit-tests-migration` (DB repos): replays every migration from empty DB + seed on fresh instance; always runs, self-skips heavy steps when no migration/seed changed (`bkit-stub:bkit-tests-migration`); `needs:` planner for graph ordering only — replay never gated on `run_level`. **Do not gate `bkit-tests-live` behind test lanes**: ~35% wall-clock on real consumer, buys ~nothing (`@live` push-only, tree PR-validated; non-compiling tree reds lane via own build). Before CI speed spend: **measure job graph, find pole** — same consumer: setup levers (browser cache, `node_modules` cache, composite setup, fetch-depth) ~3%; one `needs:` edge 35%; lever on non-pole lane = zero gain. Starter `ci.yml` ships primitives; **FULL CI SCAFFOLD REFERENCE** at end of `.github/workflows/ci.yml` reproduces every step for tier adoption. Table below: `none` / `partial` / `full` shape primitives + plan plug into.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -148,35 +148,35 @@ Bkit ships a **flat, wide** scaffold: `bkit-tests-scope` (always-on; reads marke
 
 Composition guidance:
 
-- Treat `cache.outputs.skip` as the `none` gate — every step gates on `if: steps.cache.outputs.skip != 'true'`.
-- Treat `steps.detect.outputs.should_force_build` / `should_run_full` as escalation flags into `full`.
-- Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
-- Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
-- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
+- `cache.outputs.skip` = `none` gate — every step: `if: steps.cache.outputs.skip != 'true'`.
+- `steps.detect.outputs.should_force_build` / `should_run_full` = escalation into `full`.
+- No merged PR on `dev` push (auto `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
+- Smoke: separate workflow (`bkit-stub:smoke` in `ci.yml`), `workflow_run`-keyed — non-blocking for PR merges, gates production observability.
+- Capstone `bkit-tests-check` = SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". Light/cached/partial green by construction — confirm `full` run before treating green as validation.
 
 ### Parallel test lanes (one lane per tier)
 
-Each test tier is its **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e` (+ `-migration` / `-live`) — **not** steps in a monolithic `bkit-tests`. This is the proven shape: bkit's own CI runs static + unit + integration as separate lanes, and consumers gether/fraser run all of them. Wall-clock is `max(lane)` not the **sum** of serial steps, each tier gets its own honest coverage number + executed-count + job-level permissions, and a slow tier can't serialise the fast ones. Cost: each lane re-runs setup (checkout / install) and any shared infra (e.g. a local DB), so setup duplicates per lane — mitigate with the turbo remote cache + a DB service container. The capstone `needs:` **all** lanes and **each** lane emits its own executed-count output for the non-hollow assertion (see `testing.md` § Validated means executed). The starter ships `-static` + `-unit`; add a lane per tier you have. For a tiny repo where the extra runner cost isn't worth it, tiers can collapse into steps in one lane — but the capstone must then assert each tier's count via step outputs. For the E2E lane's PR-subset tiering and local-vs-preview DB routing, see `testing.md` § "E2E on PRs".
+Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e` (+ `-migration` / `-live`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumers gether/fraser run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout/install, shared infra e.g. local DB) — mitigate with turbo remote cache + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E PR-subset tiering + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
 
-**Runner size is a per-lane lever — and only for the pole.** Once the graph is flat, one lane defines wall-clock (commonly E2E). A larger runner (more vCPU/RAM) lets that lane raise its own internal parallelism — more test workers, more concurrent E2E projects — and can cut a long lane substantially; GitHub-hosted larger runners are configured per job via `runs-on: <your-larger-runner-label>`, so scope it to the **one** lane that needs it and leave every other lane on the default runner. Two caveats, both learned the expensive way. First, a larger runner is billed at a **higher per-minute rate** — confirm the rate before adopting, and note it may not be readable from billing until the first invoice line lands. (A managed provider such as [Depot](https://depot.dev/docs/github-actions/runner-types) offers drop-in `runs-on` labels — e.g. `depot-ubuntu-24.04-8` — at ~30% lower per-minute cost than GitHub-hosted larger runners; `ci.yml` is consumer-owned so swap its label directly, and bkit-managed workflows take a custom label via `bkit.runners` — see § Self-hosted Renovate.) Second, it buys **literally zero** wall-clock when aimed at a lane that isn't the pole: a consumer measured a bigger E2E runner at **+0.0 min** on its own, because `@live` was the pole and stayed the pole — the same runner was worth ~7 minutes only _after_ the `@live` gate was removed and E2E became the pole again. Measure first, re-measure after: the pole moves.
+**Runner size = per-lane lever, ONLY for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU/RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `ci.yml` consumer-owned; bkit-managed via `bkit.runners` — § Self-hosted Renovate. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min ONLY after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves.
 
 ### turbo `//` over-triggers `web_affected` on docs-only diffs
 
-`bkit-tests-scope`'s affected-graph step (monorepo only) forces `web_affected=true` when a **real global dependency** changes. But turbo attributes **any** changed root-level path that is neither inside a workspace nor a declared `globalDependency` (`docs/**`, `README`, `LICENSE`, …) to the root `//` package with reason `FileChanged`. A fallback that keys the force on _any_ `//` `FileChanged` therefore can't tell a genuine global-dep bump from a docs-only diff, and over-triggers: `web_affected=true` schedules the e2e lane, the host's ignore-command cancels the docs-only preview build (nothing deployed), and the `Await Deployment` step then reds e2e on **every** docs-only push — a frequent, spurious failure.
+`bkit-tests-scope` affected-graph (monorepo) forces `web_affected=true` on **real global dependency** change. Turbo attributes any changed root-level path outside workspace / undeclared `globalDependency` (`docs/**`, `README`, `LICENSE`, …) to root `//` (`FileChanged`). Fallback keying on _any_ `//` `FileChanged` can't distinguish global-dep bump from docs-only diff → over-triggers: e2e scheduled, ignore-command cancels docs-only preview, `Await Deployment` reds e2e on **every** docs-only push.
 
-Fix it at the source, not with a special-case: gate the global-dep force on a **real** global-dep change. Intersect the changed root-level files against `turbo.json`'s `globalDependencies` / `globalEnv` (plus the root lockfile + `package.json`) and force `web_affected` only on a match; anything else turbo pins to `//` (docs, top-level metadata, non-triggering root dirs) must **not** force it. A narrow "neutralise when the whole diff is `docs/**`" guard is the same idea scoped to one directory — correct but incomplete (it still over-triggers on a root `README`-only change), so prefer the `globalDependencies` intersection. This logic lives in the consumer's own `ci.yml` (Tier-3 seed-or-print — the `bkit-stub:affected-graph` reference): bkit ships the affected-graph as a pattern to adapt, so port the fix into each monorepo copy. Orthogonal to `[force full]`, which deliberately bypasses `web_affected` to validate everything.
+Fix at source: gate global-dep force on **real** global-dep change. Intersect changed root files against `turbo.json` `globalDependencies` / `globalEnv` (+ root lockfile + `package.json`); force `web_affected` ONLY on match. Turbo-pinned `//` (docs, metadata, non-triggering root dirs) must **not** force. Narrow `docs/**`-only guard = same idea, incomplete (`README`-only still over-triggers) — prefer `globalDependencies` intersection. Consumer `ci.yml` (Tier-3 `bkit-stub:affected-graph`); port fix per monorepo. Orthogonal to `[force full]` (deliberately bypasses `web_affected`).
 
 ### Promotion-lag warning (`Check Main Lags Dev`)
 
-CI on `dev` proves the code is good; nothing otherwise checks that good code ever reached the default branch. That gap bites because several surfaces are read LIVE from the default branch, not from `dev` and not from the validated tip:
+CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites — surfaces read LIVE from default branch, not `dev` / validated tip:
 
 - **Renovate** resolves its config only from the default branch (see § Customizing Renovate). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
 - **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
 - **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
 
-The `Check Main Lags Dev` step (in the `bkit-tests-static` lane) closes that blind spot: on every push to `dev` it diffs `renovate.json5`, `renovate.json`, and `.github/workflows/**` between the default branch and `dev`, and if any differ it emits a `::warning::` plus a `$GITHUB_STEP_SUMMARY` block naming the stale files and how far the default branch lags. It is **non-blocking** (a nudge — those surfaces may legitimately sit on `dev` between releases) and keys ONLY on those consumed-from-default-branch surfaces, so ordinary app-code `dev` pushes stay quiet. Clear it by opening a `dev` → default-branch PR.
+`Check Main Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
-The step reads the default branch from the Actions context at runtime, so it is identical for every repo. It ships as the bkit-managed `main-lag-warning` block (between `# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` raises a non-blocking `tier2-text-drift` advisory if that block is **missing or drifted** — so adoption is nudged everywhere; keep it in sync from the template and do not hand-edit. It is safe to keep in any repo even if you do not gate the default branch behind `dev`: it only runs on `dev` pushes and self-skips when the default branch is `dev`/unset, so it never fires where the flow does not apply.
+Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
 ## Smoke trigger plumbing
 
@@ -239,7 +239,7 @@ GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is fr
 
 ## GitHub Actions pinning
 
-**Pin every third-party dependency to an immutable digest, and pair the pin with an updater.** A floating reference — a `@v{N}` action tag, an `ubuntu:26.04` image tag, an unversioned `curl … | bash` installer — is mutable: a compromised or coerced maintainer can re-point it at malicious code that runs on the next push with the runner's token. This is one exposure class across three surfaces:
+**Pin every third-party dependency to immutable digest; pair pin with updater.** Floating ref (`@v{N}` tag, `ubuntu:26.04` image, unversioned `curl … | bash`) is mutable — compromised maintainer re-points to malicious code on next push with runner token. One exposure class, three surfaces:
 
 - **Actions** — pin every `uses:` to a 40-character commit SHA, never `@v{N}`. Resolve it with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'` and append a `# vX.Y.Z` comment so the version stays human-readable:
 
@@ -252,7 +252,7 @@ GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is fr
 
 Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) are where this is **especially critical** — a re-pointed ref there runs with those credentials — but the practice applies to **all** third-party refs, not only elevated ones.
 
-**Pair with an updater.** Pinning freezes each dependency on its pinned version — without an updater, CVEs in those pinned refs (actions, images, tools) stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`.
+**Pair with updater.** Pinning freezes version — without updater, CVEs in pinned refs stay unpatched indefinitely. Pinning without updater worse than not pinning. bkit: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (first-party GitHub, no third-party trust surface). Canonical Renovate config: `.bkit/templates/.github/renovate.json5`.
 
 **Choosing a Renovate runner (mend vs self-hosted).** Renovate runs on the **Mend Community Cloud App** by default (`--renovate=mend`) — recommended for almost every repo (free, one-click, nothing to operate). The one reason to switch is scale: a large pnpm monorepo can exhaust Mend's fixed **3 GB hosted-runner memory** and fail every run with `kernel-out-of-memory` (KN-CORE-10). Those repos run Renovate **self-hosted** on GitHub Actions instead (`--renovate=self`, `ubuntu-latest` ~16 GB). Start on `mend`; move to `self` only if you hit the OOM (the `pnpm-release-age-gate-oom` advisory points you there when you do). Full details, token setup, and the migration steps are in § Self-hosted Renovate below; the rest of this section (config, grouping, activation) applies to both runners.
 
