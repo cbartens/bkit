@@ -218,7 +218,7 @@ Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source
 
 `workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ `PASS`/`CONCERNS`/`FAIL`; `strategy` ∈ `STANDARD`/`PIVOT`/`FINAL`; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL). Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
 
-**Fold** (NDJSON → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first, order by `at`, reduce: `workflow-started` pushes run; `step-done` appends bare step to latest run; `workflow-meta` merges; `workflow-done`/`workflow-failed` set `status`. Canonical = `bkit-status.ts`; workflows inline one-line jq byte-equal.
+**Fold** (NDJSON → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first, order by `at`, reduce: `workflow-started` pushes run; `step-done` appends bare step to latest run; `workflow-meta` merges; `workflow-done`/`workflow-failed` set `status`. Canonical = `bkit-status.ts`; workflows source `.bkit/scripts/bkit-status-fold.sh` (`BKIT_STATUS_FOLD`).
 
 **Append / read patterns** (`$STATUS` per branch-placement table — `$(git rev-parse --show-toplevel)/...` on feat, `$REPO_ROOT/...` on dev):
 
@@ -255,6 +255,38 @@ jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed", workflow:"build", 
 ```
 
 **Resume rule:** `jq -s "$FOLD"' fold | …'`. `design`/`plan`/`build`/`debug`/`ship`: prefer `feat/{FID}` worktree copy when exists (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`), else dev. (`cloud` writes none.) `IN_PROGRESS` → resume after last `DONE` step (re-run if gate artifacts missing). `DONE`/`FAILED` → new run. Legacy `status.json` (no `.jsonl`) → read as folded array (`parseStatus`).
+
+### Attempt counters — derived from status.jsonl, never carried (#58)
+
+`*_ATTEMPT` (`VERIFY`/`TEST`/`CHALLENGE_REMEDIATE`/`NORMAL`/`SOAK`/`MERGE`/`DEBUG`) **derived** from `status.jsonl` in the fenced block that uses them — never carried across Bash calls, never prose-assigned (`Init counters:` / `Increment X + 1` PROHIBITED). Re-derive every block (shell state does not persist). Gate: `.bkit/src/bkit-counter-prose-audit.test.ts`. `MAX_*` from `.bkit/scripts/bkit-counter-bus-config.sh` by name only.
+
+Fold: `.bkit/scripts/bkit-status-fold.sh` (`BKIT_STATUS_FOLD`), sourced via `bkit-counter-bus.sh`.
+
+<!-- prettier-ignore -->
+| Pos | Helper | When | Notes |
+| --- | --- | --- | --- |
+| 1 start | `counter_next` | before own row | `count+1` (artifact + row) |
+| 2 after-write | `counter_current` | after own row appended | `count`; refuses 0 (exit 2) |
+| 3 other-step | `counter_count` | prior / not-yet-run step | 0 legal (challenge-remediate first pass; SOAK budget) |
+| commit subject | — | already derived in-block | no separate derive |
+
+`attempt` on `step-done` = telemetry-only (routing counts rows). `workflow-meta.soakEntryAt` → fresh SOAK budget on entry. Fold de-dupe `(workflow, step, parentSha, at)` — drop per-attempt commit → retries collapse (`debug-run-tests` keeps no in-block commit; `parentSha` advances via later steps — `docs/deferrals.jsonl` → `58-debug-run-tests-parentsha-advances-only-transitively`).
+
+Scope: `counter_*` = **active-run**; `DEBUG_ATTEMPT` + `PRIOR_STRATEGY` = **all-runs** (invocation index / strategy ladder).
+
+### Routing state — durable mode / verdict / strategy (#58 follow-up)
+
+Cross-block routing vars re-read from `status.jsonl` via `.bkit/scripts/bkit-status-route.sh` (source after `bkit-status-fold.sh`):
+
+| Helper                                             | Scope        | Notes                                      |
+| -------------------------------------------------- | ------------ | ------------------------------------------ |
+| `route_get_debug_mode` / `route_append_debug_mode` | active-run   | `NORMAL`/`SOAK`; meta wins over step field |
+| `route_get_push_mode` / `route_append_push_mode`   | active-run   | `PR`/`LOCAL`                               |
+| `route_last_verdict` / `route_last_failures`       | active-run   | last DONE step; `--sub-plan N` optional    |
+| `route_last_strategy`                              | **all-runs** | PRIOR_STRATEGY shape                       |
+| `ladder_next`                                      | —            | `''→STANDARD→PIVOT→FINAL→FINAL`            |
+
+Same-block artifact extraction still authors verdicts; status is the cross-block/resume source. Fail-closed (exit 2).
 
 ### Concurrency lock
 
@@ -1221,7 +1253,7 @@ When writing/editing `.bkit/workflows/bkit-*.md` (canonical — `bkit install` r
 - [ ] Every step appends one fenced section to the workflow comment via the `comment-post-step` tracker snippet (one new comment per step — no COMMENT_ID threading).
 - [ ] Subagent invocations use `@name` + `Context:` / `Read:` / `Update:` / `Create:` block (Update/Create as applicable); assert non-empty Update/Create artifacts.
 - [ ] Verdict-bearing steps extract `{*_VERDICT}` and route per § Verdict vocabulary.
-- [ ] Loops cap at `MAX_*_ATTEMPT` constants; exhaustion → Failure Path; per-attempt logs use `-{N}` filename suffix.
+- [ ] Counters **derived** per fenced block from `status.jsonl` (§ Attempt counters); no prose `Init`/`Increment`; `MAX_*` from config by name; loops → Failure Path; logs `-{N}`.
 - [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm turbo`; exceeded → Failure Path.
 - [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases update state only, phase label unchanged.
 - [ ] Docs-only commits include `bkit [skip ci]` (§ CI / Vercel commit tags).

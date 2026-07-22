@@ -17,9 +17,14 @@ function readWorkflow(name: string): string {
 
 const buildMd = readWorkflow("bkit-build.md");
 
-// Extract the FOLD jq string verbatim from bkit-build.md (same reducer used everywhere).
-function extractFoldJq(content: string): string | null {
-  const m = content.match(/FOLD='(def lastIdx[^']+)'/);
+// Extract the single-sourced FOLD reducer. #58 moved it out of bkit-build.md's
+// inline `FOLD='...'` into BKIT_STATUS_FOLD in the shipped bkit-status-fold.sh;
+// bkit-build.md now sources that script, so read the blob from the single source.
+function extractFoldJq(_content: string): string | null {
+  const foldShPath = path.resolve(".bkit/templates/.bkit/scripts/bkit-status-fold.sh");
+  if (!fs.existsSync(foldShPath)) return null;
+  const scriptContent = fs.readFileSync(foldShPath, "utf-8");
+  const m = scriptContent.match(/BKIT_STATUS_FOLD='(def lastIdx[^']+)'/);
   return m ? m[1] : null;
 }
 
