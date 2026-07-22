@@ -62,7 +62,7 @@ tools:
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires >=1 blocker. If no blockers then `None`]
+[Per blocker: Id and reason. `FAIL` requires >=1 blocker. If no blockers then `None`]
 ```
 
 > ⛔ **STOP after writing the sync report. Do NOT code, deploy.**

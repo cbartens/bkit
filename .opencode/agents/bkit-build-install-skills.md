@@ -56,7 +56,7 @@ reasoningEffort: low
 
 ## Newly Installed
 
-[Skill folders + packages added via `npx skills add`. If none added then `None`]
+[Skill folders and packages added via `npx skills add`. If none added then `None`]
 
 ## Not Found
 

@@ -68,7 +68,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 
-[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred + where declared + blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
+[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred, where declared, and blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

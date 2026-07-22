@@ -67,7 +67,7 @@ Failures: <integer >= 0>
 
 ## Intended vs Actual
 
-[Per intended deliverable: `Delivered` / `Partial` / `Missing` + evidence (file:line, test, grep). Source = plan `Done when` + `ship-input.md` acceptance + design scope; initially set to `PENDING`.]
+[Per intended deliverable: `Delivered` / `Partial` / `Missing` and evidence (file:line, test, grep). Source = plan `Done when`, `ship-input.md` acceptance, and design scope; initially set to `PENDING`.]
 
 ## Blocking Deferrals
 

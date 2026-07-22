@@ -56,11 +56,11 @@ reasoningEffort: low
 
 ## Rot Signals
 
-[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs + all provided evidence. If no rot signals then `None`; initially set to `PENDING`.]
+[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs and all provided evidence. If no rot signals then `None`; initially set to `PENDING`.]
 
 ## Out-of-Scope Recommendations
 
-[Aggregated `Out-of-Scope Recommendations` content across diagnose attempts: Deduped file paths + all rationales. If nothing out-of-scope then `None`; initially set to `PENDING`.]
+[Aggregated `Out-of-Scope Recommendations` content across diagnose attempts: Deduped file paths and all rationales. If nothing out-of-scope then `None`; initially set to `PENDING`.]
 
 ## Attempt History
 

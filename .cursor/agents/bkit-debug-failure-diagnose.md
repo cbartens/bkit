@@ -76,7 +76,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Prior Attempts Reviewed
 
-[What was tried + why it failed (Pivot/Final). If Standard then `None`; initially set to `PENDING`.]
+[What was tried amd why it failed (Pivot/Final). If Standard then `None`; initially set to `PENDING`.]
 
 ## Prior Knowledge
 
@@ -88,11 +88,11 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Failures
 
-[Error summary + relationships between failures; initially set to `PENDING`.]
+[Error summary and relationships between failures; initially set to `PENDING`.]
 
 ## Root Cause
 
-[Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`.]
+[Per issue analysis — proximate cause, design fragility, and contributing factors; initially set to `PENDING`.]
 
 ## Rot Signals
 
@@ -104,11 +104,11 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Out-of-Scope Recommendations
 
-[Remediations outside of scope. Per item: File path + one-line rationale. If nothing out-of-scope then `None`; initially set to `PENDING`.]
+[Remediations outside of scope. Per item: File path and one-line rationale. If nothing out-of-scope then `None`; initially set to `PENDING`.]
 
 ## Blast Radius
 
-[Effects beyond named files. For each propagating change: List affected surfaces + compatibility verdict. If no propagation then `Localised`; initially set to `PENDING`.]
+[Effects beyond named files. For each propagating change: List affected surfaces and compatibility verdict. If no propagation then `Localised`; initially set to `PENDING`.]
 
 ## Suggested Tests
 

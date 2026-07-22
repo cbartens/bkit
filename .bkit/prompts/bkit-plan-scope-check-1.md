@@ -45,7 +45,7 @@ maxTurns: 25
 8. Verify test matrix against `Agent Execution Runbook`: Rows in `Derived Test Matrix` map 1:1 (bidirectional) to verification tasks. Any gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
 10. Any replaced / superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
-11. Out-of-scope legitimacy: every `Out of Scope` entry is `Exempt` — genuinely-additive; not required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section (declared non-goals excepted). Required work parked out of scope = `Blocking` → CRITICAL.
+11. All `Out of Scope` entries are `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → CRITICAL.
 12. Verify no task scopes edits inside `bkit:start` / `bkit:end` managed blocks; ALWAYS edit below `bkit:end` markers.
 13. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 14. Update **Create** output — set `Verdict` via `Edit`; mapping:

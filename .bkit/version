@@ -55,7 +55,7 @@
     ".github/renovate-local.json5": "b4fac9cf508134eea643e5432e6833b2842c0b5fcef88de63dd120957c70546f",
     ".claude/hooks/gateguard.cjs": "a4487b4616342a19e5f3ce9aec8770a2b50376a31ed5904c3883d9a007d1cfd4",
     ".bkit/.env.example": "1b061d850b52ebc390c18da97f536d7e29be460a7cd846dcad3cbc3221ff2495",
-    ".opencode/opencode.json": "101d7a414ed42cab3a2827e7c63c29ec1ef2ea60c01f901ef79762ed19d9d727",
+    ".opencode/opencode.json": "b33bf4d1d6f9483ab95c1f4311b2817b977272393f5997e0246a2e6c29a60b19",
     ".opencode/plugin/gateguard.js": "29aacad83c939e2993185e838d2badc957c6f2fff2cc11ca949804168a64f580",
     ".bkit/scripts/bkit-protect-main.sh": "30759666aa21a4cdf4a3a8211d3e389ceb79cb390724486906e796a7d6ab3a4f",
     ".bkit/scripts/bkit-slop-delta.sh": "4962c4cbd0421f3debb167450a5f1a39aa836b008bdf66480213400d6499d337",

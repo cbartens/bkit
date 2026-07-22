@@ -61,7 +61,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 
-[Modified plan body — verbatim copy of prior versioned plan with CRITICAL + merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
+[Modified plan body — verbatim copy of prior versioned plan with CRITICAL and merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
 > ⛔ **STOP after updating plan and producing output. Do NOT code, expand scope.**

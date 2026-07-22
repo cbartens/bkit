@@ -73,15 +73,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Design Alignment
 
-[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
+[Plan's `Acceptance Scenario` narrative and success criteria match design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 
-[Every `Out of Scope` row. One line each: what is excluded + where it belongs + `Exempt` (genuinely-additive) or `Blocking` (required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section, declared non-goals excepted). List all; do NOT condense or trim. Any `Blocking` → CONCERNS + Action Items. If none then `None`; initially set to `PENDING`.]
+[Every `Out of Scope` row. One line each: What is excluded, where it belongs, `Exempt` (genuinely-additive), or `Blocking` (required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or  design sections; declared non-goals excepted). List all; do NOT condense or trim. Any `Blocking` → CONCERNS and Action Items. If none then `None`; initially set to `PENDING`.]
 
 ## Suggested Scope Expansion
 
-[Every `Suggested Scope Expansion` row: candidate + source + recommendation. Advisory only; does NOT gate the verdict. If none then `None`; initially set to `PENDING`.]
+[Every `Suggested Scope Expansion` row: Candidate, source, and recommendation. Advisory only; does NOT gate the verdict. If none then `None`; initially set to `PENDING`.]
 
 ## Risks
 

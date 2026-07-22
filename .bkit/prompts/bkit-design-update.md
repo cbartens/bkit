@@ -60,7 +60,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 
-[Modified design body — verbatim copy of prior versioned design with CRITICAL + merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
+[Modified design body — verbatim copy of prior versioned design with CRITICAL and merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
 > ⛔ **STOP after updating design and producing output. Do NOT code, expand scope.**

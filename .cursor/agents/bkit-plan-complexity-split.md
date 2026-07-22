@@ -69,7 +69,7 @@ Verdict: PASS | FAIL
 
 ## Per-Sub-Plan Sizing
 
-[Per sub-plan: task count + estimated tokens (must be <= 85K). Plus sum vs original task count for losslessness verification.]
+[Per sub-plan: task count and estimated tokens (must be <= 85K). Plus sum vs original task count for losslessness verification.]
 
 ## Master Restructure
 

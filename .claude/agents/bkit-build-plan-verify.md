@@ -64,7 +64,7 @@ Failures: <integer >= 0>
 
 ## Scope
 
-[`Single` (one sub-plan) or `Holistic` (master + all sub-plans); initially set to `PENDING`.]
+[`Single` (one sub-plan) or `Holistic` (master and all sub-plans); initially set to `PENDING`.]
 
 ## Sub-Plans Verified
 
@@ -72,7 +72,7 @@ Failures: <integer >= 0>
 
 ## Integration Gaps
 
-[Count + description (Holistic only). If Single scope then `None`; initially set to `PENDING`.]
+[Count and description (Holistic only). If Single scope then `None`; initially set to `PENDING`.]
 
 ## Previously Attempted
 
@@ -84,7 +84,7 @@ Failures: <integer >= 0>
 
 ## Identified Gaps Log
 
-[Count + brief description per gap. If no gaps then `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[Count and brief description per gap. If no gaps then `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after verifying plan and producing output. Do NOT fix.**
