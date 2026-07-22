@@ -18,7 +18,7 @@
     ".agents/docs.md": "8e9855814fbaba91cad7504f53cf86214b4ed416d6587411e8dc9b0015c9942e",
     ".agents/skills.md": "3b44a3cb2fc9b9db0124db81b18010d458a86ca1c9e0947bd2322a2b40568daf",
     ".claude/hooks/preflight.sh": "f158e5eac74d180613771559d2b24e6aa23dcfa0a42a3bbaa50bd0489d86c049",
-    ".cursor/Dockerfile": "81aeacf36e174aa0f2937174c4f9aba9827b9f580fabb7f5a90d85182b5febc9",
+    ".cursor/Dockerfile": "d4461d8faf793bc2a69d499dd22ede11519a8591b927c608ed0a87c12fe87a3f",
     ".cursor/environment.json": "4a9791749fe057bb857c901eeb1b52d67148c41804c91cc6f09692482fcc1774",
     ".cursor/hooks/preflight.sh": "cd0071cfcc3c1794222f16631bafe983bee81e3dafd61ceba61d905257568606",
     ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
