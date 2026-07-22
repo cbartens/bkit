@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -25,12 +25,12 @@ $ARGUMENTS
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`; **if** none exists default to the current UTC month `date -u +%Y%m`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|FAIL|CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`); `debugAttempt` is carried by a `workflow-meta` event. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** debug status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -42,8 +42,8 @@ $ARGUMENTS
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** Three attempt counters (mode-matched pairs): `DEBUG_ATTEMPT` / `MAX_DEBUG_ATTEMPT` (cross-invocation index; `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` starts a fresh run in `SOAK`), `NORMAL_ATTEMPT` / `MAX_NORMAL_ATTEMPT` (bounds the NORMAL diagnose → remediate loop), `SOAK_ATTEMPT` / `MAX_SOAK_ATTEMPT` (bounds the SOAK loop; resets to 0 each time `SOAK` is entered). All `MAX_*` constants sourced via fenced shell routing blocks below.
-> - **Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects fix step: `NORMAL` → Diagnose (5) and Remediate (6); `SOAK` → Failure Remediate Soak (7). Entry: `[soak]` / soak criteria / `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` → `SOAK`. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts `MAX_NORMAL_ATTEMPT`; either switch resets `SOAK_ATTEMPT` = 0 (fresh budget). `SOAK` is terminal.
+> - **Limits:** Three counters derived from status.jsonl in fenced blocks below; caps from `bkit-counter-bus-config.sh`: `{DEBUG_ATTEMPT}`/`MAX_DEBUG_ATTEMPT` (cross-run; over → fresh `SOAK` run), `{NORMAL_ATTEMPT}`/`MAX_NORMAL_ATTEMPT`, `{SOAK_ATTEMPT}`/`MAX_SOAK_ATTEMPT` (resets on each `SOAK` entry).
+> - **Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects fix step: `NORMAL` → Diagnose (5) and Remediate (6); `SOAK` → Failure Remediate Soak (7). Entry: `[soak]` / soak criteria / exceeding `MAX_DEBUG_ATTEMPT` → `SOAK`. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts `MAX_NORMAL_ATTEMPT`; either switch resets the SOAK budget (fresh `{SOAK_ATTEMPT}`). `SOAK` is terminal.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -72,7 +72,7 @@ $ARGUMENTS
    Stderr: {last 20 lines if shell}
    ```
 4. **If** worktree `.worktrees/{FID}` exists **and** (failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** `DEBUG_MODE` = SOAK **or** rebase failure sentinel previously existed) → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md`.
@@ -99,16 +99,16 @@ $ARGUMENTS
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
-   [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before debug" >&2; exit 1; }
+   [ -z "$YYYYMM" ] && YYYYMM=$(date -u +%Y%m)
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
    if ! (set -C; printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-     FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
+       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
      else
        LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
      fi
@@ -137,28 +137,52 @@ $ARGUMENTS
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. Decide `PUSH_MODE`:
    - **If** `PR_NUMBER` non-empty → `PUSH_MODE` = PR.
    - **Else** → `PUSH_MODE` = LOCAL.
-7. Extract `PRIOR_DEBUG_ATTEMPT` from most recent `workflow == "debug"` entry and set this invocation's `DEBUG_ATTEMPT`:
+7. Derive `{DEBUG_ATTEMPT}` (cross-run invocation index) from the folded status.jsonl:
    ```bash
    STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   PRIOR_DEBUG_ATTEMPT=$(jq -s -r "$FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$SRC" 2>/dev/null || echo 0)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   PRIOR_DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | (last.debugAttempt // 0) | (tonumber? // 0)' "$SRC" 2>/dev/null || echo 0)
    DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))
    ```
 8. Decide `DEBUG_MODE`:
    - Default `DEBUG_MODE` = NORMAL.
    - **If** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
-   - **If** any `debug-failure-soak` step recorded for the current `DEBUG_ATTEMPT` → `DEBUG_MODE` = SOAK.
-   - Otherwise run counter-bus routing for `DEBUG_ATTEMPT >= MAX_DEBUG_ATTEMPT` check:
+   - **If** `ACTIVE_RUN` `debug-failure-soak` count (`counter_count`, 0 legal) > 0 → `DEBUG_MODE` = SOAK:
      ```bash
      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+     STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
+     SOAK_ROWS=$(counter_count "$SRC" debug debug-failure-soak) || exit 2
+     ```
+     - **If** `SOAK_ROWS` > 0 → `DEBUG_MODE` = SOAK; **else** continue to the next check.
+   - Otherwise run counter-bus routing against `MAX_DEBUG_ATTEMPT`:
+     ```bash
+     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+     STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
+     PRIOR_DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | (last.debugAttempt // 0) | (tonumber? // 0)' "$SRC" 2>/dev/null || echo 0)
+     DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))
      THRESHOLD=$((MAX_DEBUG_ATTEMPT - 1))
-     decide_next DEBUG_ATTEMPT "$DEBUG_ATTEMPT" "$THRESHOLD" NORMAL SOAK 2>/dev/null
+     decide_next DEBUG_ATTEMPT "$DEBUG_ATTEMPT" "$THRESHOLD" NORMAL SOAK
      ```
      - **If** exit 0 (printed `NORMAL`) → `DEBUG_MODE` = NORMAL.
      - **If** exit 1 (printed `SOAK`) → `DEBUG_MODE` = SOAK.
+     - **If** any other exit → **Failure Path**.
+   - **SOAK entry** (`[soak]` or MAX escalation — not continuation) — append `soakEntryAt` + `debugMode`:
+     ```bash
+     STATUS="$SRC"
+     [ -f "$STATUS" ] || : > "$STATUS"
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS"
+     route_append_debug_mode "$STATUS" SOAK || exit 2
+     DEBUG_MODE=SOAK
+     ```
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
     Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -179,7 +203,7 @@ $ARGUMENTS
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Push mode decided and valid (`PUSH_MODE` in `PR|LOCAL`)
 - [ ] PR number extracted (`PR_NUMBER`, if `PUSH_MODE` = PR)
-- [ ] Debug attempt incremented (`DEBUG_ATTEMPT` = prior + 1, folded from status.jsonl; `1` if first run)
+- [ ] Debug attempt derived (cross-run; `1` if first)
 - [ ] Debug mode decided and valid (`DEBUG_MODE` in `NORMAL|SOAK`)
 
 
@@ -240,9 +264,8 @@ $ARGUMENTS
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**
-5. Init counters: `NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0.
-6. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
-7. Update status and commit:
+5. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+6. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
    WT=$(git rev-parse --show-toplevel)
@@ -257,8 +280,10 @@ $ARGUMENTS
           else empty end)' "$WT/$DIR/status.json" > "$STATUS"
    fi
    [ -f "$STATUS" ] || : > "$STATUS"
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   PRIOR_DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | (last.debugAttempt // 0) | (tonumber? // 0)' "$STATUS" 2>/dev/null || echo 0)
+   DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))
+   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
    if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "debug" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
      jq -nc --arg t "$(date -u +%FT%TZ)" --arg p "$(git rev-parse HEAD 2>/dev/null || echo '')" '{type:"workflow-started", workflow:"debug", at:$t, parentSha:$p}' >> "$STATUS"
    fi
@@ -270,9 +295,12 @@ $ARGUMENTS
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg dm "$DEBUG_MODE" --arg pm "$PUSH_MODE" \
      '{type:"step-done", workflow:"debug", step:"debug-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-input-'"${DEBUG_ATTEMPT}"'.md"], debugMode:$dm, pushMode:$pm}' \
      >> "$STATUS"
+   . "$WT/.bkit/scripts/bkit-status-route.sh"
+   route_append_debug_mode "$STATUS" "$DEBUG_MODE" || exit 2
+   route_append_push_mode "$STATUS" "$PUSH_MODE" || exit 2
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
@@ -285,7 +313,7 @@ $ARGUMENTS
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0)
+- [ ] Counters derived per-block from status.jsonl
 - [ ] Artifact written (`debug-input-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `debug-start-workflow` and `debug-worktree-setup` recorded with `parentSha`, `debug-worktree-setup` with `debugMode`, `pushMode`)
 
@@ -297,9 +325,21 @@ $ARGUMENTS
 
 ## 🤖 Step 3 — Run Tests
 
-1. Increment `NORMAL_ATTEMPT` + 1.
+1. Derive `{NORMAL_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   NORMAL_ATTEMPT=$(counter_next "$STATUS" debug debug-run-tests) || exit 2
+   ```
 2. Run verbatim:
    ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    TESTS_LIVE=""
    if ! grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md" 2>/dev/null; then
      for s in test:integration:live test:e2e:live test:live; do
@@ -321,10 +361,14 @@ $ARGUMENTS
    - **If** all tests passed → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
    - **Else** → `TEST_VERDICT` = FAIL, `TEST_FAILURES` = count of failing test suites (>=1).
 4. Extract `TEST_SCOPE` from run block `TEST_SCOPE=` line.
-5. Update status:
+5. Update status (**no commit** — `parentSha` advances via later steps):
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   NORMAL_ATTEMPT=$(counter_next "$STATUS" debug debug-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$NORMAL_ATTEMPT" --argjson f "$TEST_FAILURES" \
      '{type:"step-done", workflow:"debug", step:"debug-run-tests", status:"DONE", verdict:$v, scope:$sc, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
@@ -334,39 +378,67 @@ $ARGUMENTS
    ```comment
    ### Step 3 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Scope: {TEST_SCOPE} - Attempt: {NORMAL_ATTEMPT}
    ```
-7. Route:
-   - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` > 1 → Step 8.
-   - **If** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` = 1 → Step 9.
-   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL — run counter-bus routing:
+7. **If** `TEST_VERDICT` = PASS — derive `{NORMAL_ATTEMPT}` and route:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   TEST_VERDICT=$(route_last_verdict "$STATUS" debug debug-run-tests) || exit 2
+   [ "$TEST_VERDICT" = "PASS" ] || exit 2
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
+   ```
+   - **If** the derived attempt (above) is greater than 1 → Step 8.
+   - **If** the derived attempt (above) is 1 (first attempt) → Step 9.
+8. **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = NORMAL — run counter-bus routing:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_MODE=$(route_get_debug_mode "$STATUS") || exit 2
+   TEST_VERDICT=$(route_last_verdict "$STATUS" debug debug-run-tests) || exit 2
+   [ "$DEBUG_MODE" = "NORMAL" ] && [ "$TEST_VERDICT" = "FAIL" ] || exit 2
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
+   decide_next NORMAL_ATTEMPT "$NORMAL_ATTEMPT" "$MAX_NORMAL_ATTEMPT" step-4 soak-escalation
+   ```
+   - **If** exit 0 (printed `step-4`) → Step 4.
+   - **If** exit 1 (printed `soak-escalation`) — NORMAL exhausted; append `soakEntryAt` + `debugMode`:
      ```bash
      REPO_ROOT=$(git rev-parse --show-toplevel)
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-     decide_next NORMAL_ATTEMPT "$NORMAL_ATTEMPT" "$MAX_NORMAL_ATTEMPT" step-4 soak-escalation 2>/dev/null
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+     STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     DEBUG_MODE=SOAK
+     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS"
+     route_append_debug_mode "$STATUS" SOAK || exit 2
      ```
-     - **If** exit 0 (printed `step-4`) → Step 4.
-     - **If** exit 1 (printed `soak-escalation`) — NORMAL exhausted; final SOAK escalation:
-       ```bash
-       REPO_ROOT=$(git rev-parse --show-toplevel)
-       . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
-       DEBUG_MODE=SOAK
-       counter_reset SOAK_ATTEMPT
-       ```
-       → set `DEBUG_MODE` = SOAK, `SOAK_ATTEMPT` reset to 0 → Step 4.
-   - **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK — run counter-bus routing:
-     ```bash
-     REPO_ROOT=$(git rev-parse --show-toplevel)
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
-     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-     check_max SOAK_ATTEMPT "$SOAK_ATTEMPT" "$MAX_SOAK_ATTEMPT" 2>/dev/null
-     ```
-     - **If** exit 0 (within budget) → Step 4.
-     - **If** exit 1 (SOAK exhausted) → **Failure Path**.
-   - **Else** → **Failure Path**.
+     → set `DEBUG_MODE` = SOAK → Step 4.
+   - **If** any other exit → **Failure Path**.
+9. **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK — run counter-bus routing:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_MODE=$(route_get_debug_mode "$STATUS") || exit 2
+   TEST_VERDICT=$(route_last_verdict "$STATUS" debug debug-run-tests) || exit 2
+   [ "$DEBUG_MODE" = "SOAK" ] && [ "$TEST_VERDICT" = "FAIL" ] || exit 2
+   SOAK_ATTEMPT=$(counter_count "$STATUS" debug debug-failure-soak --since soakEntryAt) || exit 2
+   check_max SOAK_ATTEMPT "$SOAK_ATTEMPT" "$MAX_SOAK_ATTEMPT"
+   ```
+   - **If** exit 0 (within budget) → Step 4.
+   - **If** exit 1 (SOAK exhausted) → **Failure Path**.
+   - **If** any other exit → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Run Tests
 
-- [ ] Test attempt incremented (`NORMAL_ATTEMPT` + 1)
+- [ ] Test attempt derived (active run)
 - [ ] Tests executed (turbo path if `turbo.json`)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)
@@ -389,8 +461,13 @@ $ARGUMENTS
    RUN_CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
    RUN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha // ""')
    ```
-2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch failed jobs / steps, error-annotation subset, and failed-step logs → **if** logs non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md`:
+2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch failed jobs / steps, error-annotation subset, and failed-step logs → **if** logs non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md`:
    ````bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \
      --jq '[.jobs[] | select(.conclusion=="failure") | {job: .name, steps: [.steps[] | select(.conclusion=="failure") | .name]}]' 2>/dev/null)
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
@@ -405,8 +482,13 @@ $ARGUMENTS
      } > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md"
    fi
    ````
-3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md`:
+3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md`:
    ````bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    LAST_PASS_SHA=$(gh run list --branch dev --workflow ci.yml --status success --limit 5 --json headSha --jq '.[0].headSha // ""' 2>/dev/null)
    if [ -n "$LAST_PASS_SHA" ]; then
      DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
@@ -418,13 +500,23 @@ $ARGUMENTS
      fi
    fi
    ````
-4. **If** current run output captured → write local test output to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md`:
+4. **If** current run output captured → write local test output to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md`:
    ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
    [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
    ```
-5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md`:
+5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`:
    ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
      E2E_DIR="docs/plans/{YYYYMM}/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
@@ -457,8 +549,13 @@ $ARGUMENTS
    SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
-7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`:
+7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`:
    ````bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    BLOCK=$(printf '%s\n' "$SECTION" | awk -v want="$NAME" '
      /^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); cur=(n==want); next }
      /^<!-- debug-fetch:end -->$/ { cur=0; next }
@@ -470,11 +567,15 @@ $ARGUMENTS
    OUT="docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${SUFFIX}${DEBUG_ATTEMPT}.md"
    if [ -n "$RUNTIME_LOGS" ]; then printf '%s' "$RUNTIME_LOGS" > "$OUT"; elif [ -n "$SKIP" ]; then printf '%s\n' "$SKIP" > "$OUT"; fi
    ````
-8. `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-${DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+8. `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 9. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
    ARTIFACTS=()
    for f in "docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-*-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
@@ -526,37 +627,50 @@ $ARGUMENTS
 
 1. Read status.jsonl and extract `PRIOR_STRATEGY`:
    ```bash
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   PRIOR_STRATEGY=$(jq -s -r --arg s "debug-failure-diagnose" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
-     "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PRIOR_STRATEGY=$(route_last_strategy "$STATUS" debug debug-failure-diagnose) || exit 2
+   STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
    ```
-2. Decide `STRATEGY`:
-   - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
-   - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
-   - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-   - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Debug phase. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-*-log.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md`.
-4. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-5. Read `debug-failure-diagnose-{NORMAL_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT` and `Mode` as `DIAGNOSE_MODE`.
-6. Update status and commit:
+3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+4. Read `debug-failure-diagnose-{NORMAL_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT` and `Mode` as `DIAGNOSE_MODE`.
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$NORMAL_ATTEMPT" --arg strat "$STRATEGY" \
      '{type:"step-done", workflow:"debug", step:"debug-failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-'"${NORMAL_ATTEMPT}"'.md"]}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${NORMAL_ATTEMPT}"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Mode: {DIAGNOSE_MODE} - Strategy: {STRATEGY}  - Attempt: {NORMAL_ATTEMPT}
    ```
-8. Route:
-   - **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → set `DEBUG_MODE` = SOAK, reset `SOAK_ATTEMPT` = 0 → Step 7.
+7. Route:
+   - **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → set `DEBUG_MODE` = SOAK → Step 7 — append `soakEntryAt` + `debugMode`:
+     ```bash
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+     STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     DEBUG_MODE=$(route_get_debug_mode "$STATUS") || exit 2
+     [ "$DEBUG_MODE" = "NORMAL" ] || exit 2
+     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS"
+     route_append_debug_mode "$STATUS" SOAK || exit 2
+     DEBUG_MODE=SOAK
+     ```
    - **Else** → Step 6.
 
 ### 🔒 Gate 5 — Failure Diagnose
@@ -579,17 +693,23 @@ $ARGUMENTS
 
 **Run only if** `DEBUG_MODE` != SOAK.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-{NORMAL_ATTEMPT}-log.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PUSH_MODE=$(route_get_push_mode "$STATUS") || exit 2
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$NORMAL_ATTEMPT" \
      '{type:"step-done", workflow:"debug", step:"debug-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-'"${NORMAL_ATTEMPT}"'-log.md"]}' \
      >> "$STATUS"
@@ -628,8 +748,15 @@ $ARGUMENTS
 
 **Run only if** `DEBUG_MODE` = SOAK.
 
-1. Increment `SOAK_ATTEMPT` + 1.
-2. **Subagent:** Invoke `@bkit-debug-failure-soak` using `Task` tool:
+1. Derive `{SOAK_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   SOAK_ATTEMPT=$(counter_next "$STATUS" debug debug-failure-soak --since soakEntryAt) || exit 2
+   ```
+2. **Subagent:** Invoke `/bkit-debug-failure-soak` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-*-log.md`.
    Update: Source files.
@@ -638,8 +765,15 @@ $ARGUMENTS
 4. Read `debug-failure-soak-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `SOAK_VERDICT`.
 5. Update status and commit:
    ```bash
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PUSH_MODE=$(route_get_push_mode "$STATUS") || exit 2
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
+   SOAK_ATTEMPT=$(counter_next "$STATUS" debug debug-failure-soak --since soakEntryAt) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SOAK_VERDICT" --argjson a "$NORMAL_ATTEMPT" --argjson sa "$SOAK_ATTEMPT" \
      '{type:"step-done", workflow:"debug", step:"debug-failure-soak", status:"DONE", verdict:$v, attempt:$a, soakAttempt:$sa, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-'"${NORMAL_ATTEMPT}"'-log.md"]}' \
      >> "$STATUS"
@@ -661,7 +795,7 @@ $ARGUMENTS
 
 ### 🔒 Gate 7 — Failure Remediate Soak
 
-- [ ] Soak iteration counter incremented (`SOAK_ATTEMPT` + 1, bounded by `MAX_SOAK_ATTEMPT`)
+- [ ] Soak iteration counter derived from status.jsonl (since last `soakEntryAt`), bounded by `MAX_SOAK_ATTEMPT`
 - [ ] Subagent invoked (`@bkit-debug-failure-soak`, one accumulating context reading prior soak logs, no inline work)
 - [ ] Artifact written (`debug-failure-soak-{NORMAL_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
@@ -677,12 +811,16 @@ $ARGUMENTS
 
 ## 🤖 Step 8 — Push Remediation
 
-**Run only if** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` > 1.
+**Run only if** `TEST_VERDICT` = PASS **and** Step 3's routing (above, the derived attempt was greater than 1) sent it here rather than Step 9.
 
 1. Update status:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   NORMAL_ATTEMPT=$(counter_current "$STATUS" debug debug-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson a "$NORMAL_ATTEMPT" \
      '{type:"step-done", workflow:"debug", step:"debug-push-remediation", status:"DONE", attempt:$a, at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
@@ -720,7 +858,7 @@ $ARGUMENTS
 
 **Run only if** `TEST_VERDICT` = PASS.
 
-1. **Subagent:** Invoke `@bkit-debug-summary` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-summary` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only), `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md`.
@@ -728,7 +866,9 @@ $ARGUMENTS
 3. Read `debug-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Update status and commit:
    ```bash
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PUSH_MODE=$(route_get_push_mode "$STATUS") || exit 2
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"debug", step:"debug-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"]}' \
@@ -784,7 +924,9 @@ $ARGUMENTS
    printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
    echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PUSH_MODE=$(route_get_push_mode "$STATUS") || exit 2
    PARENT_SHA=$(git rev-parse HEAD)
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
@@ -792,13 +934,15 @@ $ARGUMENTS
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   COUNTER_VALUE=$(jq -s --arg wf "debug" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
    jq -nc \
      --arg repo "$REPO_SLUG" \
      --arg bkitVersion "$BKIT_VER" \
      --arg step "debug-close-workflow" \
      --arg counterName "DEBUG_ATTEMPT" \
-     --argjson counterValue 1 \
-     --arg counterSource "model-self-report" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
      --arg parentSha "$PARENT_SHA" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "debug" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
@@ -1029,7 +1173,7 @@ $ARGUMENTS
 - [ ] PR title `[verbose ci]` stripped (if `PUSH_MODE` = PR)
 
 
-- [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+- [ ] Auto-label presence re-read BEFORE close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing)
 
 
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)

@@ -552,10 +552,9 @@ jobs:
       #   run: |
       #     pnpm test:e2e
       #
-      # E2E PR-TIERING (biggest PR-wall-clock win): tag ~10-15 critical specs { tag:'@smoke' } and run the
-      # subset on PRs / full on push + nightly via a PROJECT-scoped grep (e.g. PW_E2E_GREP on pull_request
-      # only) — NOT a CLI/top-level --grep, which also filters the auth/setup projects and breaks seeding.
-      # Mechanism + turbo strict-env note: docs/testing.md § "E2E on PRs".
+      # E2E PARITY: the full e2e suite runs on both pull_request and push — the PR runs the same spec
+      # set as the push. Scale a slow suite by sharding (parallel lanes). PR and push differ only by DB
+      # target (migration-coupled PRs) and push-only tiers (@live). See docs/testing.md § "E2E on PRs".
 
       # bkit-stub:e2e-coverage — Report Playwright E2E code-coverage on PRs, free and entirely inside Actions (no third-party service, private-repo safe), consistent with bkit-stub:coverage above. Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so you wire a 3-part pipeline (collect -> report -> comment). To enable: build the pipeline below, uncomment the report step, delete this stub header.
       #   1. COLLECT coverage during the E2E run — pick ONE route:
@@ -779,8 +778,8 @@ jobs:
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
 #       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
 #       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
-#       #     [E/PR] PR-tier the suite (@smoke subset on PRs via a PROJECT-scoped grep, full on push) AND, for migration-
-#       #     coupled PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
+#       #     [E/PR] run the full suite on PR and push (parity; shard a slow suite) AND, for migration-coupled
+#       #     PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #

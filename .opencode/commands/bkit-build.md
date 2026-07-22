@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -30,7 +30,7 @@ $ARGUMENTS
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** build status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -71,7 +71,7 @@ $ARGUMENTS
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
@@ -118,9 +118,9 @@ $ARGUMENTS
    if ! (set -C; printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-     FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
+       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
      else
        LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
      fi
@@ -249,9 +249,8 @@ $ARGUMENTS
    SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
    [ "$SUB_COUNT" -eq 0 ] && SUB_COUNT=1 && SINGLE_PLAN=true
    ```
-6. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
-7. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
-8. Update status and commit:
+6. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+7. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
    WT=$(git rev-parse --show-toplevel)
@@ -266,8 +265,8 @@ $ARGUMENTS
           else empty end)' "$WT/$DIR/status.json" > "$STATUS"
    fi
    [ -f "$STATUS" ] || : > "$STATUS"
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
    if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "build" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
      jq -nc --arg t "$(date -u +%FT%TZ)" --arg p "$(git rev-parse HEAD 2>/dev/null || echo '')" '{type:"workflow-started", workflow:"build", at:$t, parentSha:$p}' >> "$STATUS"
    fi
@@ -280,7 +279,7 @@ $ARGUMENTS
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup bkit [skip ci]"
    ```
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
@@ -293,7 +292,7 @@ $ARGUMENTS
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Plan files in `docs/plans/{YYYYMM}/` (canonical bucket)
-- [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
+- [ ] Sub-plan count set (`SUB_COUNT`); counters derived per-block
 - [ ] Artifact written (`build-input.md`, non-empty)
 - [ ] Workflow status updated (`build` `IN_PROGRESS`, steps `build-start-workflow` and `build-worktree-setup` recorded with `parentSha`)
 
@@ -326,7 +325,7 @@ $ARGUMENTS
 
 ### 🔒 Gate 3 — Branch Sync
 
-- [ ] `docs/` not behind `origin/dev`
+- [ ] Docs not behind origin (`docs/` not behind `origin/dev`)
 - [ ] On correct worktree branch
 - [ ] Workflow status updated (step `build-branch-sync` recorded with `parentSha`)
 
@@ -340,7 +339,7 @@ $ARGUMENTS
 
 **Skip if** build input contains `[skills=false]`.
 
-1. **Subagent:** Invoke `@bkit-build-install-skills` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-install-skills` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `.agents/skills.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-install-skills.md`, `.agents/skills/` (skill installs via Bash).
@@ -376,7 +375,7 @@ $ARGUMENTS
 ## Sub-Plan Loop — Steps 5–7
 
 1. **If** `SINGLE_PLAN` = true → execute once using `{FID}-plan.md` with `SUB_PLAN` = 1.
-2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-{SUB_PLAN}.md`. Reset `VERIFY_ATTEMPT` = 0 at start of each `SUB_PLAN`.
+2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-{SUB_PLAN}.md`. Verify derive filters on `SUB_PLAN` → fresh budget per sub-plan.
 
 Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMPT}.md`.
 
@@ -384,7 +383,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 5 — Plan Execute
 
-3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Task` tool:
+3. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:
    Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}` / `{SUB_COUNT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Update: Source files.
@@ -423,11 +422,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 6 — Plan Verify
 
-8. Increment `VERIFY_ATTEMPT` + 1.
-9. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
+8. Derive `{VERIFY_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   VERIFY_ATTEMPT=$(counter_next "$STATUS" build build-plan-verify --sub-plan "$SUB_PLAN") || exit 2
+   ```
+9. **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
-   Update:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
+   Update: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
 10. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 11. Read `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
@@ -435,6 +441,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ```bash
     STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
     PARENT_SHA=$(git rev-parse HEAD)
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+    VERIFY_ATTEMPT=$(counter_next "$STATUS" build build-plan-verify --sub-plan "$SUB_PLAN") || exit 2
     jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --argjson f "$VERIFY_FAILURES" \
       '{type:"step-done", workflow:"build", step:"build-plan-verify", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}' \
       >> "$STATUS"
@@ -451,17 +461,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 15. **If** `VERIFY_VERDICT` = CONCERNS or FAIL — run counter-bus routing:
     ```bash
     REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
     . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-    decide_next VERIFY_ATTEMPT "$VERIFY_ATTEMPT" "$MAX_VERIFY_ATTEMPT" step-7 failure-path 2>/dev/null
+    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+    VERIFY_ATTEMPT=$(counter_current "$STATUS" build build-plan-verify --sub-plan "$SUB_PLAN") || exit 2
+    decide_next VERIFY_ATTEMPT "$VERIFY_ATTEMPT" "$MAX_VERIFY_ATTEMPT" step-7 failure-path
     ```
     - **If** exit 0 (printed `step-7`) → Step 7.
     - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+    - **If** any other exit → **Failure Path**.
 16. **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Plan Verify
 
-- [ ] Verify attempt incremented (`VERIFY_ATTEMPT` + 1)
+- [ ] Verify attempt derived (active run, this sub-plan)
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
 - [ ] Artifact written (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, non-empty)
 - [ ] Verdict extracted and valid, failures extracted (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`; `VERIFY_FAILURES`)
@@ -476,41 +490,43 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 7 — Plan Gaps Remediate
 
-**Run only if** Step 6 `VERIFY_VERDICT` = FAIL.
+**Run only if** Step 6 `VERIFY_VERDICT` = CONCERNS or FAIL.
 
 17. Read status.jsonl and extract `PRIOR_STRATEGY`:
     ```bash
-    FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-    PRIOR_STRATEGY=$(jq -s -r --arg s "build-plan-gaps-remediate" --argjson sp "$SUB_PLAN" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .subPlan==$sp and .status=="DONE")] | last.strategy // ""' \
-      "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+    PRIOR_STRATEGY=$(route_last_strategy "$STATUS" build build-plan-gaps-remediate --sub-plan "$SUB_PLAN") || exit 2
+    STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
     ```
-18. Decide `STRATEGY`:
-    - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
-    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
-    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-    - **Else** → **Failure Path**.
-19. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Task` tool:
+18. **Subagent:** Invoke `/bkit-build-plan-gaps-remediate` using `Task` tool:
     Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-    Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
+    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
-    Create:`docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
-20. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-21. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
-22. Update status and commit:
+    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
+19. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+20. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+21. Update status and commit:
     ```bash
     STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
     PARENT_SHA=$(git rev-parse HEAD)
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+    VERIFY_ATTEMPT=$(counter_current "$STATUS" build build-plan-verify --sub-plan "$SUB_PLAN") || exit 2
     jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg strat "$STRATEGY" \
       '{type:"step-done", workflow:"build", step:"build-plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}' \
       >> "$STATUS"
     git add -A && git commit --allow-empty -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
-23. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+22. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
     ### Step 7 — Plan Gaps Remediate - Verdict: {REMEDIATE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT} - Strategy: {STRATEGY}
     ```
-24. Re-run Step 6.
+23. Re-run Step 6.
 
 ### 🔒 Gate 7 — Plan Gaps Remediate
 
@@ -530,7 +546,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** `SUB_COUNT` >= 2. **Skip if** `SINGLE_PLAN` = true.
 
-1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
@@ -572,11 +588,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🧠 Step 9 — Build Challenge
 
 1. Launch both subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-build-challenge-1`
+   - **Subagent:** Invoke `/bkit-build-challenge-1`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
-   - **Subagent:** Invoke `@bkit-build-challenge-2`
+   - **Subagent:** Invoke `/bkit-build-challenge-2`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
@@ -586,6 +602,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   CHALLENGE_REMEDIATE_ATTEMPT=$(counter_count "$STATUS" build build-challenge-remediate) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --arg v "$CHALLENGE_VERDICT" --argjson f "$CHALLENGE_FAILURES" \
      '{type:"step-done", workflow:"build", step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md","docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md"]}' \
      >> "$STATUS"
@@ -612,7 +632,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🧠 Step 10 — Reconcile Build Challenge
 
-1. **Subagent:** Invoke `@bkit-build-challenge-reconcile` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-challenge-reconcile` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
@@ -622,6 +642,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   CHALLENGE_REMEDIATE_ATTEMPT=$(counter_count "$STATUS" build build-challenge-remediate) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --argjson f "$CHALLENGE_FAILURES" \
      '{type:"step-done", workflow:"build", step:"build-challenge-reconcile", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md"]}' \
      >> "$STATUS"
@@ -632,13 +656,26 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```comment
    ### Step 10 — Reconcile Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
-6. Route:
-   - **If** `CHALLENGE_VERDICT` = PASS → Step 13.
-   - **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
-   - **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13.
-   - **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
-   - **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → **Failure Path**.
-   - **Else** → **Failure Path**.
+6. **If** `CHALLENGE_VERDICT` = PASS → Step 13.
+7. **If** `CHALLENGE_VERDICT` = CONCERNS or FAIL — counter-bus routing (`counter_count` on `build-challenge-remediate`; 0 legal; `MAX_CHALLENGE_REMEDIATE_ATTEMPT` = 1 → `THRESHOLD` = 0):
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   CHALLENGE_REMEDIATE_ATTEMPT=$(counter_count "$STATUS" build build-challenge-remediate) || exit 2
+   THRESHOLD=$((MAX_CHALLENGE_REMEDIATE_ATTEMPT - 1))
+   if [ "$CHALLENGE_VERDICT" = "FAIL" ]; then
+     decide_next CHALLENGE_REMEDIATE_ATTEMPT "$CHALLENGE_REMEDIATE_ATTEMPT" "$THRESHOLD" step-11 failure-path
+   else
+     decide_next CHALLENGE_REMEDIATE_ATTEMPT "$CHALLENGE_REMEDIATE_ATTEMPT" "$THRESHOLD" step-11 step-13
+   fi
+   ```
+   - **If** `CHALLENGE_VERDICT` = CONCERNS: exit 0 (printed `step-11`) → Step 11; exit 1 (printed `step-13`) → Step 13.
+   - **If** `CHALLENGE_VERDICT` = FAIL: exit 0 (printed `step-11`) → Step 11; exit 1 (printed `failure-path`) → **Failure Path**.
+   - **If** any other exit → **Failure Path**.
+8. **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Reconcile Build Challenge
 
@@ -656,10 +693,20 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🧠 Step 11 — Build Challenge Remediate
 
-**Run only if** Step 10 (`CHALLENGE_VERDICT` = CONCERNS **or** FAIL) **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
+**Run only if** Step 10 (`CHALLENGE_VERDICT` = CONCERNS **or** FAIL).
 
-1. Increment `CHALLENGE_REMEDIATE_ATTEMPT` + 1.
-2. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Task` tool:
+1. Re-read Step 10 challenge verdict; derive `{CHALLENGE_REMEDIATE_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   CHALLENGE_VERDICT=$(route_last_verdict "$STATUS" build build-challenge-reconcile) || exit 2
+   case "$CHALLENGE_VERDICT" in CONCERNS|FAIL) ;; *) exit 2 ;; esac
+   CHALLENGE_REMEDIATE_ATTEMPT=$(counter_next "$STATUS" build build-challenge-remediate) || exit 2
+   ```
+2. **Subagent:** Invoke `/bkit-build-challenge-remediate` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
    Update: Source files.
@@ -670,6 +717,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   CHALLENGE_REMEDIATE_ATTEMPT=$(counter_next "$STATUS" build build-challenge-remediate) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" \
      '{type:"step-done", workflow:"build", step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md"]}' \
      >> "$STATUS"
@@ -686,7 +737,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 11 — Build Challenge Remediate
 
-- [ ] Challenge-remediate attempt incremented (`CHALLENGE_REMEDIATE_ATTEMPT` + 1)
+- [ ] Challenge-remediate attempt derived (active run)
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
 - [ ] Artifact written (`build-challenge-remediate-log.md`, non-empty)
 - [ ] Source files modified or classify-gate FAIL recorded
@@ -703,7 +754,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** Step 10 `CHALLENGE_VERDICT` = CONCERNS or FAIL.
 
-1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-challenge-tests` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-tests.md`, test files.
@@ -745,7 +796,14 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🤖 Step 13 — Run Tests
 
-1. Increment `TEST_ATTEMPT` + 1.
+1. Derive `{TEST_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   TEST_ATTEMPT=$(counter_next "$STATUS" build build-run-tests) || exit 2
+   ```
 2. Run verbatim — do NOT modify quoting, filter, or glob:
    ```bash
    COV_UNIT=0
@@ -770,6 +828,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   TEST_ATTEMPT=$(counter_next "$STATUS" build build-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
      '{type:"step-done", workflow:"build", step:"build-run-tests", status:"DONE", verdict:$v, scope:$sc, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
@@ -785,17 +847,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    - **If** some tests FAIL — run counter-bus routing:
      ```bash
      REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
      . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-     decide_next TEST_ATTEMPT "$TEST_ATTEMPT" "$MAX_TEST_ATTEMPT" step-14 failure-path 2>/dev/null
+     STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     TEST_ATTEMPT=$(counter_current "$STATUS" build build-run-tests) || exit 2
+     decide_next TEST_ATTEMPT "$TEST_ATTEMPT" "$MAX_TEST_ATTEMPT" step-14 failure-path
      ```
      - **If** exit 0 (printed `step-14`) → Step 14.
      - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+     - **If** any other exit → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 13 — Run Tests
 
-- [ ] Test attempt incremented (`TEST_ATTEMPT` + 1)
+- [ ] Test attempt derived (active run)
 - [ ] Tests executed (turbo path if `turbo.json`)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Workflow status updated (step `build-run-tests` recorded with `parentSha`, `verdict`, `scope`)
@@ -812,31 +878,33 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. Read status.jsonl and extract `PRIOR_STRATEGY`:
    ```bash
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   PRIOR_STRATEGY=$(jq -s -r --arg s "build-failure-diagnose" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
-     "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PRIOR_STRATEGY=$(route_last_strategy "$STATUS" build build-failure-diagnose) || exit 2
+   STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
    ```
-2. Decide `STRATEGY`:
-   - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
-   - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
-   - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-   - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`.
-   Create:`docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
-4. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-5. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
-6. Update status and commit:
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
+3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+4. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   TEST_ATTEMPT=$(counter_current "$STATUS" build build-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
      '{type:"step-done", workflow:"build", step:"build-failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 14 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
@@ -861,7 +929,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** Step 13 tests FAIL.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source and test files.
@@ -872,6 +940,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   TEST_ATTEMPT=$(counter_current "$STATUS" build build-run-tests) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
      '{type:"step-done", workflow:"build", step:"build-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}' \
      >> "$STATUS"
@@ -902,7 +974,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 **Run only if** all Step 13 tests PASS.
 
-1. **Subagent:** Invoke `@bkit-build-summary` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-build-summary` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md`.
@@ -974,13 +1046,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   COUNTER_VALUE=$(jq -s --arg wf "build" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
    jq -nc \
      --arg repo "$REPO_SLUG" \
      --arg bkitVersion "$BKIT_VER" \
      --arg step "build-close-workflow" \
      --arg counterName "BUILD_ATTEMPT" \
-     --argjson counterValue 1 \
-     --arg counterSource "model-self-report" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
      --arg parentSha "$(git rev-parse HEAD)" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
@@ -1126,7 +1200,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Close Workflow & Create PR
 
 
-- [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+- [ ] Auto-label presence re-read BEFORE close-workflow commit (`bkit:auto` pre-commit label read for marker sourcing)
 
 
 - [ ] HEAD-Subject Assertion passed (close-workflow commit is the CI-triggering HEAD)

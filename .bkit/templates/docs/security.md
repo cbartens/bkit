@@ -16,8 +16,8 @@
 
 ## Supply-Chain (GitHub Actions)
 
-Action SHA-pinning and the dependency-update pipeline — Renovate / Dependabot activation, private-registry read-auth, consumer customization (`renovate-local.json5`), and CVE handling — are CI/CD pipeline rules. Their canonical home is `deployments.md` § GitHub Actions pinning; this section keeps only the security-relevant invariant.
+Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot activation, private-registry read-auth, `renovate-local.json5` customization, CVE handling) are CI/CD pipeline rules → canonical home `deployments.md` § GitHub Actions pinning; this section keeps only the security invariant.
 
-**Token isolation:** Renovate PRs run with a restricted `GITHUB_TOKEN` and have no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. A compromised or malicious dependency PR therefore cannot reach the agent's API credentials.
+**Token isolation:** Renovate PRs use a restricted `GITHUB_TOKEN` with no access to cloud-lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. A compromised dependency PR cannot reach agent API credentials.
 
 <!-- bkit:end -->

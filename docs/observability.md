@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Observability
 
@@ -17,13 +17,13 @@
 
 ## Debug Fetch
 
-Runtime log fetching for `/bkit-debug` — the `debug-fetch:*` blocks it runs and their cloud CLI provisioning — is configured in `.agents/config.md`. Author and enable runtime-log sources there.
+Runtime log fetching for `/bkit-debug` (`debug-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/config.md`. Author and enable runtime-log sources there.
 
 <!-- bkit:end -->
 
 ## Scope
 
-bkit has no server-side telemetry pipeline, log drains, or tracing infrastructure. Observability is limited to CLI stdout/stderr during `bkit install` / `bkit check` runs in consumer environments.
+No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout/stderr during `bkit install` / `bkit check` in consumer environments.
 
 ## Log Format
 
@@ -36,59 +36,59 @@ console.error("[bkit-comply] {Message}", {payload})
 console.error("[bkit-telemetry] {Message}", {payload})
 ```
 
-The `[{Context}]` brackets are load-bearing — any log-drain or grep-based alerting in consumer CI pipelines parsing bkit output depends on this pattern. NEVER drop the brackets.
+`[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-Prefix per emitting surface — one per verb or subsystem, named for the module, NOT the phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]`. Add a new prefix only alongside a new module; reuse the owning module's prefix otherwise.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]`. New prefix only alongside new module; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
-The compliance grader uses the `[bkit-comply]` prefix for all stderr output. Two canonical grep-able patterns:
+Compliance grader stderr. Canonical grep patterns:
 
-- `[bkit-comply] grader unavailable, skipping` — emitted when the grader is not available (missing `dist/`, grader crash, or any non-zero exit from `pnpm bkit comply`). The fail-open idiom `pnpm bkit comply --phase {p} || echo "[bkit-comply] grader unavailable, skipping"` guarantees this logs to stdout and exits 0.
-- `[bkit-comply] append failed: {path}` — emitted when the compliance row append to `.bkit/stats.jsonl` fails (best-effort; exit 0).
-- `[bkit-comply] internal error: {message}` — emitted when the grader dispatch catches an unhandled throw (top-level try/catch per DE-34; exit 0).
+- `[bkit-comply] grader unavailable, skipping` — grader unavailable (missing `dist/`, crash, non-zero `pnpm bkit comply`). Fail-open: `pnpm bkit comply --phase {p} || echo "[bkit-comply] grader unavailable, skipping"` → stdout, exit 0.
+- `[bkit-comply] append failed: {path}` — compliance row append to `.bkit/stats.jsonl` failed (best-effort; exit 0).
+- `[bkit-comply] internal error: {message}` — unhandled throw in dispatch (try/catch per DE-34; exit 0).
 
 ### `[bkit-telemetry]` prefix
 
-The inline-jq telemetry writers in workflows use `[bkit-telemetry]` for append-failure messages: `[bkit-telemetry] append failed: {path}`.
+Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 
 ### `[bkit-harvest]` prefix
 
-The `bkit harvest` CLI uses the `[bkit-harvest]` prefix for all stderr log lines. Grep-able patterns:
+`bkit harvest` stderr. Grep patterns:
 
-- `[bkit-harvest] Found N consumer(s) in .bkit/consumers.md` — emitted at harvest start, confirms consumer list was read.
-- `[bkit-harvest] Harvesting: {path}` — emitted per consumer as harvest begins.
-- `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — per-file result for COPY ledgers.
-- `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — per-file result for COUNT-ONLY ledgers.
-- `[bkit-harvest] {path}/.bkit/{file} — pruned N harvested row(s)` — rows REMOVED from a consumer after being durably stored (friction only).
-- `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped (path not found, timeout, etc.).
-- `[bkit-harvest] Done — total rows collected: N, after dedup: M, pruned from consumers: P` — harvest summary.
-- `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — emitted whenever P > 0; the window where an uncommitted store is the sole copy.
-- `[bkit-harvest] harvest error (fail-open): {message}` — unhandled error in harvest dispatch (exits 0).
+- `[bkit-harvest] Found N consumer(s) in .bkit/consumers.md` — harvest start; consumer list read.
+- `[bkit-harvest] Harvesting: {path}` — per consumer start.
+- `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — COPY ledger per-file.
+- `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — COUNT-ONLY ledger per-file.
+- `[bkit-harvest] {path}/.bkit/{file} — pruned N harvested row(s)` — rows REMOVED from consumer after durable store (friction only).
+- `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped.
+- `[bkit-harvest] Done — total rows collected: N, after dedup: M, pruned from consumers: P` — summary.
+- `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — when P > 0; uncommitted store is sole copy.
+- `[bkit-harvest] harvest error (fail-open): {message}` — unhandled harvest error (exit 0).
 
-A `pruned` line with no preceding `copied` line for the same file would mean rows were deleted without being stored — that ordering is enforced in code (copy → fsync → read back → prune), so treat it as a bug worth investigating, not noise.
+`pruned` without preceding `copied` for same file → rows deleted without store — ordering enforced (copy → fsync → read back → prune); treat as bug, not noise.
 
 ### `[bkit-analysis]` prefix
 
-The `bkit analysis` CLI uses the `[bkit-analysis]` prefix for all log lines. Grep-able patterns:
+`bkit analysis` log lines:
 
-- `[bkit-analysis] Telemetry rows: N | malformed: M` — analysis start summary.
-- `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: N linesAdded):` — regression report header.
-- `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier summary.
-- `[bkit-analysis] Per-rule compliance rates:` — compliance rate report header.
-- `[bkit-analysis] writeRollupShard: {message}` — rollup writer status (shard written or threshold not exceeded).
+- `[bkit-analysis] Telemetry rows: N | malformed: M` — start summary.
+- `[bkit-analysis] #183 Size↔outcome regression (dispatch-size threshold: N linesAdded):` — regression header.
+- `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier.
+- `[bkit-analysis] Per-rule compliance rates:` — compliance header.
+- `[bkit-analysis] writeRollupShard: {message}` — rollup status.
 
 ## Advisory Checklist Output
 
-Post-install findings are rendered via `formatChecklist(ctx.advisories)` (exported from `bkit-postinstall.ts`). Each finding is a `PreflightFinding` with shape `{ id, severity, detect, action }`. Formatted output is the primary human-readable observability surface for bkit consumers.
+Post-install findings via `formatChecklist(ctx.advisories)` (`bkit-postinstall.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
 
-- Blockers (Phase 1) print to `stderr` and exit 1 before any writes.
-- Advisories (Phase 1 and Phase 3) print as a numbered checklist after install completes.
-- `bkit check` (dry-run) renders Phase 1 and Phase 3 advisories (read-only paths); exits 1 if any Tier-1/Tier-2 drift detected. No writes. (v2.2.3+; prior versions rendered Phase 1 only.)
+- Blockers (Phase 1) → `stderr`, exit 1 before writes.
+- Advisories (Phase 1 + Phase 3) → numbered checklist after install.
+- `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1/Tier-2 drift. No writes. (v2.2.3+; prior: Phase 1 only.)
 
 ## Phase 3 Token-Surface Detectors
 
-Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces and emits actionable advisory text. Detector names are the audit trail:
+Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
 
 <!-- prettier-ignore -->
 | Detector | Surface |

@@ -1,7 +1,9 @@
-// bkit-workflow-telemetry.sh — verifies the extracted per-workflow close script writes
-// a schema-valid `outcome` run row (duration / size / frictionAdded) against a git
-// fixture. The `pnpm bkit comply` / `bkit telemetry summary` sub-calls fail-open in
-// the fixture (no bkit installed there); the row-writing logic is what this pins.
+// bkit-workflow-telemetry-script.integration.test.ts — verifies the extracted
+// per-workflow close script (bkit-workflow-telemetry.sh) writes a schema-valid
+// `outcome` run row (duration / size / frictionAdded) against a git fixture. Spawns
+// the real script via bash plus real git/jq subprocesses. The `pnpm bkit comply` /
+// `bkit telemetry summary` sub-calls fail-open in the fixture (no bkit installed
+// there); the row-writing logic is what this pins.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";

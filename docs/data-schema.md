@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Data Schema
 
@@ -12,7 +12,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - One section per table — `Field | Type | Unique | Notes` table and `Indices` and `Pending` lines.
-> - Link to `decisions.jsonl` ADR for fields whose existence is itself a decision; do NOT restate rationale.
+> - One section/table: `Field | Type | Unique | Notes`, `Indices`, `Pending`.
+> - Fields whose existence is a decision: link `decisions.jsonl` ADR; do NOT restate rationale.
 
 <!-- bkit:end -->

@@ -1,22 +1,22 @@
 # Trackers
 
 > [!CAUTION]
-> **Purpose:** Reference for the inline tracker-block model used by `.bkit/workflows/bkit-*.md`. **Not consumed by the installer** — there is no `trackers.md` substitution. The full per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents the marker contract and the cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent / maintainer readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
-> - Three trackers supported: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - Adding a new tracker (Jira, etc.): add the enum value to `.bkit/src/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.bkit/src/bkit-trackers.ts`). No `none` marker exists — no-tracker content is `false`.
+> - Three trackers: `github` (default), `linear` (opt-in), `none` (no tracker wired).
+> - New tracker (Jira, etc.): add enum to `.bkit/src/bkit-manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/src/bkit-trackers.ts`). No `none` marker — no-tracker content is `false`.
 
 ## Marker contract
 
-Workflow sources carry the wired tracker variants inline. The installer reads `bkit.issueTracker` from the consumer manifest and resolves the markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (see `.bkit/src/bkit-trackers.ts`). Mirrors are clean — no markers survive.
+Workflow sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (`.bkit/src/bkit-trackers.ts`). Mirrors clean — no markers survive.
 
 ### Per-tracker pair (`github` / `linear`)
 
-Every tracker call site is a consecutive `github` → `linear` pair, optionally followed by a `false` block (the substantive no-tracker rendering — see below). With no `false` block, the no-tracker rendering is a single generic message inserted at resolution time.
+Every call site = consecutive `github` → `linear` pair, optionally trailing `false` block (substantive no-tracker rendering). Without `false`, no-tracker rendering = generic message at resolution time.
 
 ```text
 <!-- bkit:tracker github start -->
@@ -27,14 +27,14 @@ mcp__linear__… call
 <!-- bkit:tracker linear end -->
 ```
 
-Resolution: `github` → github block; `linear` → linear block; `none` → the pair's trailing `false` block if present, else collapses to **`_No tracker connected, skip step._`**. A list-number prefix (`3. `) before the pair is preserved on the kept block / stub. A lone `github` or `linear` block (no matching partner) is reported as an orphan.
+Resolution: `github` → github block; `linear` → linear block; `none` → pair's trailing `false` block if present, else **`_No tracker connected, skip step._`**. List-number prefix (`3. `) before pair preserved on kept block / stub. Lone `github` or `linear` (no partner) = orphan.
 
 ### Conditional blocks (`bkit:tracker true` / `bkit:tracker false`)
 
-Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body). These are the ONLY no-tracker markers — there is no `none` marker.
+Boolean tracker-presence gates for tracker-agnostic content. ONLY no-tracker markers — no `none` marker.
 
-- `<!-- bkit:tracker true start/end -->` — kept when a tracker IS connected (`github` or `linear`); **removed entirely under `none`** (no stub). Used for shared content like a comment `{BODY}` fence that is identical for github and linear.
-- `<!-- bkit:tracker false start/end -->` — kept ONLY under `none`; removed when wired. For substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). A `false` block placed directly after a `github`/`linear` pair is consumed by the pair (it is the pair's `none` rendering); a standalone `false` block is resolved on its own.
+- `<!-- bkit:tracker true start/end -->` — kept when tracker connected (`github` or `linear`); **removed entirely under `none`** (no stub). Shared content e.g. comment `{BODY}` fence identical for github/linear.
+- `<!-- bkit:tracker false start/end -->` — kept ONLY under `none`; removed when wired. Substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). `false` directly after `github`/`linear` pair = pair's `none` rendering; standalone `false` resolved on its own.
 
 ```text
 <!-- bkit:tracker true start -->
@@ -42,9 +42,9 @@ Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body
 <!-- bkit:tracker true end -->
 ```
 
-Conditionals are resolved AFTER the pair pass, so a pair nested inside a kept `true` block is resolved first. A removed block consumes its leading newline + indentation so no blank gap remains. An unbalanced `start`/`end` is reported as an orphan.
+Conditionals resolved AFTER pair pass — pair nested inside kept `true` resolves first. Removed block consumes leading newline + indentation (no blank gap). Unbalanced `start`/`end` = orphan.
 
-**Numbered-step rule:** never wrap a numbered list item's NUMBER inside a `true` block — under `none` the whole item (number included) vanishes and leaves a numbering gap (`1, 6, 7`). For a numbered step whose entire body is tracker-only, keep the `N.` outside the markers and pair a `true` body with a trailing `false` stub. Put the `false` block on the SAME line as `true end`, with a single leading space before the stub text, so it renders inline (`N. _stub_`) rather than on a dangling continuation line:
+**Numbered-step rule:** never wrap numbered list item's NUMBER inside `true` block — under `none` whole item vanishes → numbering gap (`1, 6, 7`). Numbered step with tracker-only body: keep `N.` outside markers; pair `true` body with trailing `false` stub. Put `false` on SAME line as `true end`, single leading space before stub → inline (`N. _stub_`) not dangling continuation:
 
 ```text
 N. <!-- bkit:tracker true start -->
@@ -52,11 +52,11 @@ N. <!-- bkit:tracker true start -->
    <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected, skip step._<!-- bkit:tracker false end -->
 ```
 
-Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — the number always survives, on one line. (The bare-`true` "removed, no stub" form is for **checklist `- [ ]` gate items**, where vanishing is correct — a stub bullet would be noise.)
+Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — number survives, one line. Bare-`true` "removed, no stub" form = **checklist `- [ ]` gate items** (vanishing correct — stub bullet = noise).
 
 ## Interaction catalog
 
-The per-tracker call sites are referenced across `.bkit/workflows.md` by these names. Each is an inline `github`/`linear` pair at its call site; this table maps the name to its tracker tooling (reference only — the authoritative bodies are inline in the workflows). The `none` column shows the no-tracker rendering: most sites have no `false` block and collapse to the generic `_No tracker connected, skip step._`; a few carry a substantive trailing `false` block (shown) because they must still function without a tracker.
+Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Each = inline `github`/`linear` pair; authoritative bodies inline in workflows. `none` column: most sites collapse to generic `_No tracker connected, skip step._`; few carry substantive trailing `false` block (shown) for no-tracker function.
 
 <!-- prettier-ignore -->
 | Interaction | Purpose | github | linear | none |
@@ -82,12 +82,12 @@ The per-tracker call sites are referenced across `.bkit/workflows.md` by these n
 | `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | FID-only, no fail-closed |
 | `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
-Phase-label set + additive-label semantics are documented in `.bkit/workflows.md` § Tracker Integration.
+Phase-label set + additive-label semantics: `.bkit/workflows.md` § Tracker Integration.
 
 ## github — Projects v2 board (optional)
 
-The `issue-update-status` block reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover the ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field's numeric `id` → `statusFieldId`; each option's raw `id` → the option id, e.g. `47fc9ee4`; the `PVTSSF_…` node id from `gh project field-list` is NOT the field id — `projects_write` rejects it). Requires the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_BKIT_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` is the single-select **option id**, not the option name. On failure → retry once after 5s, then continue.
+`issue-update-status` reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field numeric `id` → `statusFieldId`; each option raw `id` → option id, e.g. `47fc9ee4`; `PVTSSF_…` node id from `gh project field-list` is NOT field id — `projects_write` rejects it). Requires `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_BKIT_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` = single-select **option id**, not option name. Failure → retry once after 5s, then continue.
 
 ## linear — notes
 
-Linear `ISSUE_ID`s carry a team prefix (e.g. `TEAM-123`) — FID inherits it (`team-123-slug`). GitHub FIDs are numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. Linear has no separate project board — issue state (`In Progress` / `In Review` / `Done`) carries the status, so `issue-update-status` is a no-op.
+Linear `ISSUE_ID`s carry team prefix (e.g. `TEAM-123`) — FID inherits (`team-123-slug`). GitHub FIDs numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. No separate project board — issue state (`In Progress` / `In Review` / `Done`) carries status → `issue-update-status` no-op.

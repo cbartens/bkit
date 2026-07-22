@@ -376,7 +376,7 @@ describe("runUninstall — round-trip", () => {
 
 describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
   const templatesRoot = getTemplatesRoot();
-  // Exact rendered opencode.json a `--opencode=opencode --tracker=github` install writes.
+  // Exact rendered opencode.json a `--opencode=opencode-go --tracker=github` install writes.
   const RENDERED_OPENCODE =
     JSON.stringify(
       {
@@ -390,7 +390,13 @@ describe("runUninstall — 100%-bkit residual + opencode scope (4.6.2)", () => {
             },
           },
         },
-        provider: { opencode: { options: { apiKey: "{env:OPENCODE_API_KEY}" } } },
+        provider: {
+          "opencode-go": {
+            options: {
+              apiKey: "{env:OPENCODE_API_KEY}",
+            },
+          },
+        },
       },
       null,
       2,

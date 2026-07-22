@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true
@@ -10,7 +10,7 @@ tools:
   write: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether a plan fits a single high-quality execution session.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -32,8 +32,8 @@ reasoningEffort: low
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Count tasks via `grep -cE '^- \[ \] **Task'` or equivalent task markers. Count 🔒 Gates and domain areas (API, DB, web UI, mobile, infra).
 4. Estimate total agent tokens required to execute the plan.
 5. Verdict mapping:

@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -30,7 +30,7 @@ $ARGUMENTS
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
 > - **Status branch:** Steps 1-8 commit status.jsonl on `feat/{FID}` (`$(git rev-parse --show-toplevel)/.../status.jsonl`); Steps 9-13 append to the dev copy (`$REPO_ROOT/.../status.jsonl`). `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
@@ -93,7 +93,7 @@ $ARGUMENTS
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards, counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed **or** deferred-sweep block sentinel (`docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked`) previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
@@ -127,9 +127,9 @@ $ARGUMENTS
    if ! (set -C; printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-     FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
+       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
      else
        LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
      fi
@@ -240,7 +240,7 @@ $ARGUMENTS
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
-5. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
+5. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**.
 6. **Route:**
    - **If** `state` = MERGED → **Step 9**.
    - **Else** → next sub-step.
@@ -261,8 +261,8 @@ $ARGUMENTS
           else empty end)' "$WT/$DIR/status.json" > "$STATUS"
    fi
    [ -f "$STATUS" ] || : > "$STATUS"
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
    if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "ship" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
      jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-started", workflow:"ship", at:$t}' >> "$STATUS"
    fi
@@ -292,7 +292,7 @@ $ARGUMENTS
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
+- [ ] `PR_NUMBER` non-empty; merge attempt derived per-block
 - [ ] PR base verified (`PR_BASE` = dev)
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
@@ -365,7 +365,7 @@ $ARGUMENTS
 
 **Run only if:** Sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists after Step 2.
 
-1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `Task` tool:
    Context: You are a subagent in the Ship phase. Lockfile-only fast-path already attempted and did not match. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Update: Conflicted source files.
@@ -406,7 +406,7 @@ $ARGUMENTS
 
 ## 🧠 Step 5 — Deferred Sweep
 
-1. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-ship-deferred-sweep` using `Task` tool:
    Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
@@ -446,7 +446,14 @@ $ARGUMENTS
 
 ## 🤖 Step 6 — Merge PR
 
-1. Increment `MERGE_ATTEMPT` + 1.
+1. Derive `{MERGE_ATTEMPT}`:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   MERGE_ATTEMPT=$(counter_next "$STATUS" ship ship-merge-pr) || exit 2
+   ```
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -519,6 +526,10 @@ $ARGUMENTS
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   MERGE_ATTEMPT=$(counter_next "$STATUS" ship ship-merge-pr) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$MERGE_VERDICT" --argjson a "$MERGE_ATTEMPT" --argjson f "$MERGE_FAILURES" \
      '{type:"step-done", workflow:"ship", step:"ship-merge-pr", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
@@ -535,17 +546,21 @@ $ARGUMENTS
 - **If** `state` != MERGED — run counter-bus routing:
   ```bash
   REPO_ROOT=$(git rev-parse --show-toplevel)
+  . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
-  decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path 2>/dev/null
+  STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+  MERGE_ATTEMPT=$(counter_current "$STATUS" ship ship-merge-pr) || exit 2
+  decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path
   ```
   - **If** exit 0 (printed `step-7`) → Step 7.
   - **If** exit 1 (printed `failure-path`) → **Failure Path**.
+  - **If** any other exit → **Failure Path**.
 - **Else** → **Failure Path**.
 
 ### 🔒 Gate 6 — Merge PR
 
-- [ ] Merge attempt incremented (`MERGE_ATTEMPT` + 1)
+- [ ] Merge attempt derived (active run)
 - [ ] HEAD-Subject Assertion passed
 - [ ] PR head CI re-checked at `PRE_HEAD` (`completed` and `success`; query failure is NOT pass)
 - [ ] PR merge attempted
@@ -564,7 +579,7 @@ $ARGUMENTS
 
 **Run only if** `state` != MERGED.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+1. **Subagent:** Invoke `/bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
@@ -574,6 +589,10 @@ $ARGUMENTS
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   MERGE_ATTEMPT=$(counter_current "$STATUS" ship ship-merge-pr) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$MERGE_ATTEMPT" \
      '{type:"step-done", workflow:"ship", step:"ship-failure-diagnose", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-'"${MERGE_ATTEMPT}"'.md"]}' \
      >> "$STATUS"
@@ -605,37 +624,39 @@ $ARGUMENTS
 
 1. Read status.jsonl and extract `PRIOR_STRATEGY`:
    ```bash
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   PRIOR_STRATEGY=$(jq -s -r --arg s "failure-remediate" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
-     "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PRIOR_STRATEGY=$(route_last_strategy "$STATUS" ship ship-failure-remediate) || exit 2
+   STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
    ```
-2. Decide `STRATEGY`:
-   - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
-   - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
-   - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-   - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+2. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
-4. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
-6. Update status and commit:
+3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+4. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+   MERGE_ATTEMPT=$(counter_current "$STATUS" ship ship-merge-pr) || exit 2
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$MERGE_ATTEMPT" --arg strat "$STRATEGY" \
      '{type:"step-done", workflow:"ship", step:"ship-failure-remediate", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-'"${MERGE_ATTEMPT}"'-log.md"]}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT}"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-8. Re-run merge → Step 6.
+7. Re-run merge → Step 6.
 
 ### 🔒 Gate 8 — Failure Remediate
 
@@ -708,7 +729,7 @@ $ARGUMENTS
 ### 🔒 Gate 9 — Switch to Dev
 
 - [ ] On `dev` branch
-- [ ] `dev` up to date with origin
+- [ ] Dev branch up to date with origin (`dev`)
 - [ ] Workflow status updated (step `ship-switch-to-dev` recorded with `parentSha`)
 
 
@@ -724,12 +745,12 @@ $ARGUMENTS
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
 3. Launch both subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `@bkit-ship-update-docs`
+   - **Subagent:** Invoke `/bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
      Update: Doc files.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
-   - **Subagent:** Invoke `@bkit-ship-summary`
+   - **Subagent:** Invoke `/bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
@@ -860,7 +881,7 @@ $ARGUMENTS
 ### 🔒 Gate 12 — Worktree Cleanup
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent)
-- [ ] `git worktree prune` executed
+- [ ] Worktree prune executed (`git worktree prune`)
 - [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
@@ -923,13 +944,15 @@ $ARGUMENTS
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   COUNTER_VALUE=$(jq -s --arg wf "ship" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
    jq -nc \
      --arg repo "$REPO_SLUG" \
      --arg bkitVersion "$BKIT_VER" \
      --arg step "ship-close-workflow" \
      --arg counterName "SHIP_ATTEMPT" \
-     --argjson counterValue 1 \
-     --arg counterSource "model-self-report" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
      --arg parentSha "$PARENT_SHA" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
@@ -1008,7 +1031,7 @@ $ARGUMENTS
    #### Telemetry
    {TELEMETRY}
    ```
-7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
 ### 🔒 Gate 13 — Close Workflow

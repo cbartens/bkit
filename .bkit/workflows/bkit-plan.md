@@ -101,9 +101,9 @@ description: "Plan Feature — Autonomous plan generation"
    if ! (set -C; printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-     FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
+     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
+       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
      else
        LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
      fi
@@ -258,8 +258,8 @@ description: "Plan Feature — Autonomous plan generation"
           else empty end)' "$WT/$DIR/status.json" > "$STATUS"
    fi
    [ -f "$STATUS" ] || : > "$STATUS"
-   FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-   LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
    if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "plan" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
      jq -nc --arg t "$(date -u +%FT%TZ)" --arg p "$(git rev-parse HEAD 2>/dev/null || echo '')" '{type:"workflow-started", workflow:"plan", at:$t, parentSha:$p}' >> "$STATUS"
    fi
@@ -305,18 +305,12 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🧠 Step 3 — Generate Plan
 
-1. <!-- bkit:tracker github start -->
-   `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` (feature nouns, no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` (feature nouns, no stopwords) → `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## {identifier} — {title} ({state.name})` heading, the `description` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-   <!-- bkit:tracker linear end -->
-2. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-4. Update status and commit:
+2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+3. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -325,7 +319,7 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
-5. <!-- bkit:tracker github start -->
+4. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -348,27 +342,98 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 4 — Review Plan
+## 🤖 Step 4 — Fetch Context
+
+1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces + feature nouns, no stopwords), space-separated. Derived here — tracker-independent — so the local-ledger scans below still have a query when no tracker is connected.
+2. <!-- bkit:tracker github start -->
+   `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## {identifier} — {title} ({state.name})` heading, the `description` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   <!-- bkit:tracker linear end -->
+3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md` (matching lines verbatim; a line matches when it contains >=2 distinct query terms, or the sole term when only one — reduces single-common-word noise; case-insensitive substring; 0 matches / file absent → `None.`):
+   ```bash
+   TERMS='{QUERY}'
+   OUT="docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md"
+   SRC="docs/deferrals.jsonl"
+   if [ -f "$SRC" ]; then
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) print}' "$SRC")
+     if [ -n "$M" ]; then printf '%s\n' "$M" > "$OUT"; else printf 'None.\n' > "$OUT"; fi
+   else
+     printf 'None.\n' > "$OUT"
+   fi
+   ```
+4. Scan `docs/failures.jsonl` with the same rule → write `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`:
+   ```bash
+   TERMS='{QUERY}'
+   OUT="docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"
+   SRC="docs/failures.jsonl"
+   if [ -f "$SRC" ]; then
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) print}' "$SRC")
+     if [ -n "$M" ]; then printf '%s\n' "$M" > "$OUT"; else printf 'None.\n' > "$OUT"; fi
+   else
+     printf 'None.\n' > "$OUT"
+   fi
+   ```
+5. Update status and commit:
+   ```bash
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PARENT_SHA=$(git rev-parse HEAD)
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '{type:"step-done", workflow:"plan", step:"plan-fetch-context", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/related-issues.md","docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md","docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"]}' \
+     >> "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): fetch-context"
+   ```
+6. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Step 4 — Fetch Context
+   [related-issues.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-issues.md)
+   [related-deferrals.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md)
+   [related-failures.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-failures.md)
+   ```
+   <!-- bkit:tracker true end -->
+
+### 🔒 Gate 4 — Fetch Context
+
+- [ ] Related-issues search attempted when a tracker is connected (or `None` / `Search unavailable`)
+- [ ] Artifacts written (`related-deferrals.md`, `related-failures.md`; `related-issues.md` when a tracker is connected)
+- [ ] Workflow status updated (step `plan-fetch-context` recorded with `parentSha`)
+
+<!-- bkit:tracker true start -->
+
+- [ ] Issue comment attempted (`Step 4` section)
+
+<!-- bkit:tracker true end -->
+
+---
+
+## 🧠 Step 5 — Review Plan
 
 1. Launch all three subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-review-1`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
    - **Subagent:** Invoke `@bkit-plan-review-2`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
    - **Subagent:** Invoke `@bkit-plan-review-3`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures from each.
@@ -390,11 +455,11 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 4 — Review Plan - Verdict: {REVIEW_VERDICT} - Failures: {REVIEW_FAILURES}
+   ### Step 5 — Review Plan - Verdict: {REVIEW_VERDICT} - Failures: {REVIEW_FAILURES}
    ```
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 4 — Review Plan
+### 🔒 Gate 5 — Review Plan
 
 - [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-review-3`, no inline work)
 - [ ] Artifacts written (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`, non-empty)
@@ -404,13 +469,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 4` section)
+- [ ] Issue comment attempted (`Step 5` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 5 — Apply Review
+## 🧠 Step 6 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
    Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
@@ -436,12 +501,12 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 5 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
+   ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [plan-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md)
    ```
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 5 — Apply Review
+### 🔒 Gate 6 — Apply Review
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
@@ -451,13 +516,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 5` section)
+- [ ] Issue comment attempted (`Step 6` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 6 — Scope Check
+## 🧠 Step 7 — Scope Check
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-scope-check-1`
@@ -488,11 +553,11 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 6 — Scope Check - Verdict: {SCOPE_VERDICT} - Failures: {SCOPE_FAILURES}
+   ### Step 7 — Scope Check - Verdict: {SCOPE_VERDICT} - Failures: {SCOPE_FAILURES}
    ```
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 6 — Scope Check
+### 🔒 Gate 7 — Scope Check
 
 - [ ] Subagents invoked (`@bkit-plan-scope-check-1`, `@bkit-plan-scope-check-2`, no inline work)
 - [ ] Artifacts written (`plan-scope-check-1.md` and `plan-scope-check-2.md`, non-empty)
@@ -502,13 +567,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Issue comment attempted (`Step 7` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 7 — Apply Scope
+## 🧠 Step 8 — Apply Scope
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
    Context: You are a subagent in the Plan phase applying scope-check critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -535,12 +600,12 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 7 — Apply Scope - Verdict: {APPLY_SCOPE_VERDICT}
+   ### Step 8 — Apply Scope - Verdict: {APPLY_SCOPE_VERDICT}
    [plan-v3-checked.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md)
    ```
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 7 — Apply Scope
+### 🔒 Gate 8 — Apply Scope
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Scope expansions in `docs/deferrals.jsonl` (if any)
@@ -551,13 +616,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 8` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 8 — Complexity Check
+## 🧠 Step 9 — Complexity Check
 
 1. **Subagent:** Invoke `@bkit-plan-complexity-check` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -583,11 +648,11 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 8 — Complexity Check - Verdict: {COMPLEXITY_VERDICT}
+   ### Step 9 — Complexity Check - Verdict: {COMPLEXITY_VERDICT}
    ```
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 8 — Complexity Check
+### 🔒 Gate 9 — Complexity Check
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
@@ -596,15 +661,15 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 9` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 9 — Complexity Split
+## 🧠 Step 10 — Complexity Split
 
-**Run only if** Step 8 `COMPLEXITY_VERDICT` = SPLIT.
+**Run only if** Step 9 `COMPLEXITY_VERDICT` = SPLIT.
 
 1. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -630,16 +695,16 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 9 — Complexity Split - Verdict: {SPLIT_VERDICT}
+   ### Step 10 — Complexity Split - Verdict: {SPLIT_VERDICT}
    [plan-v4-split.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md)
    ```
    <!-- bkit:tracker true end -->
 6. Route:
-   - **If** `SPLIT_VERDICT` = PASS → Step 10.
+   - **If** `SPLIT_VERDICT` = PASS → Step 11.
    - **If** `SPLIT_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
 
-### 🔒 Gate 9 — Complexity Split
+### 🔒 Gate 10 — Complexity Split
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
 - [ ] Artifact written (`plan-v4-split.md`, non-empty)
@@ -650,13 +715,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 10` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🧠 Step 10 — Summary
+## 🧠 Step 11 — Summary
 
 1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-plan-summary` using `Agent` tool:
@@ -687,17 +752,17 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 10 — Summary - Verdict: {SUMMARY_VERDICT}
+   ### Step 11 — Summary - Verdict: {SUMMARY_VERDICT}
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
    ```
    <!-- bkit:tracker true end -->
 8. Route:
-   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
    - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
    - **Else** → **Failure Path**.
 
-### 🔒 Gate 10 — Summary
+### 🔒 Gate 11 — Summary
 
 - [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
@@ -709,13 +774,13 @@ description: "Plan Feature — Autonomous plan generation"
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 10` section)
+- [ ] Issue comment attempted (`Step 11` section)
 
 <!-- bkit:tracker true end -->
 
 ---
 
-## 🤖 Step 11 — Close Workflow
+## 🤖 Step 12 — Close Workflow
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
@@ -750,13 +815,15 @@ description: "Plan Feature — Autonomous plan generation"
    STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   COUNTER_VALUE=$(jq -s --arg wf "plan" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
    jq -nc \
      --arg repo "$REPO_SLUG" \
      --arg bkitVersion "$BKIT_VER" \
      --arg step "plan-close-workflow" \
      --arg counterName "PLAN_ATTEMPT" \
-     --argjson counterValue 1 \
-     --arg counterSource "model-self-report" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
      --arg parentSha "$PARENT_SHA" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "plan" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
@@ -825,7 +892,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 11 — Close Workflow
+   ### Step 12 — Close Workflow
    #### Artifacts
    {ARTIFACTS}
    #### Telemetry
@@ -837,7 +904,7 @@ description: "Plan Feature — Autonomous plan generation"
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
    <!-- bkit:tracker true end -->
 
-### 🔒 Gate 11 — Close Workflow
+### 🔒 Gate 12 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
@@ -850,7 +917,7 @@ description: "Plan Feature — Autonomous plan generation"
 <!-- bkit:tracker true start -->
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
-- [ ] Artifact link list embedded in `Step 11` comment
-- [ ] Issue comment attempted (`Step 11` section)
+- [ ] Artifact link list embedded in `Step 12` comment
+- [ ] Issue comment attempted (`Step 12` section)
 
 <!-- bkit:tracker true end -->

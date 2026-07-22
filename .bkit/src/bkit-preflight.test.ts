@@ -1,6 +1,5 @@
 // bkit-preflight.test.ts — Unit tests for Phase 1 preflight detectors (BAR-141).
 
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -1046,6 +1045,10 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
 //   - Brew-bin check is Darwin-gated (Linux sandbox / CI pass through).
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
 //   - Missing LINEAR_API_KEY still hard-stops when a Linear issue is present.
+//
+// Runtime behaviour (real bash subprocess) is covered in
+// bkit-preflight.integration.test.ts; only the source-level (no-subprocess)
+// check stays here.
 // ---------------------------------------------------------------------------
 
 const SESSIONSTART_HOOK_PATH = path.join(
@@ -1057,29 +1060,6 @@ const SESSIONSTART_HOOK_PATH = path.join(
   "preflight.sh",
 );
 
-function runSessionStartHook(env: Record<string, string | undefined>): {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-} {
-  // Strip undefined keys so we don't leak the parent process env back in.
-  const cleanEnv: Record<string, string> = {};
-  for (const [k, v] of Object.entries(env)) {
-    if (v !== undefined) cleanEnv[k] = v;
-  }
-  const result = spawnSync("bash", [SESSIONSTART_HOOK_PATH], {
-    env: { PATH: process.env.PATH ?? "", ...cleanEnv },
-    input: "{}",
-    encoding: "utf-8",
-    timeout: 10_000,
-  });
-  return {
-    status: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
-}
-
 describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
   it("brew-bin loop is wrapped in a Darwin OS gate", () => {
     const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
@@ -1090,23 +1070,6 @@ describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
     expect(darwinIdx).toBeGreaterThan(-1);
     expect(brewBinsIdx).toBeGreaterThan(-1);
     expect(darwinIdx).toBeLessThan(brewBinsIdx);
-  });
-});
-
-describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
-  it("exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)", () => {
-    const result = runSessionStartHook({});
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe("");
-  });
-
-  it("missing LINEAR_API_KEY hard-stops when LINEAR_ISSUE_ID is present (regression guard)", () => {
-    const result = runSessionStartHook({
-      LINEAR_ISSUE_ID: "BAR-186-test",
-      // no LINEAR_API_KEY
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("LINEAR_API_KEY not set");
   });
 });
 

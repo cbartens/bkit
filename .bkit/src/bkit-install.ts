@@ -11,6 +11,7 @@ import {
   type ModuleFlag,
   type CloudVariant,
   type UpgradeFlags,
+  type Verb,
 } from "./bkit-cli.js";
 import {
   runGrader,
@@ -33,7 +34,7 @@ import {
   type ModuleContext,
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
-import { resolveTokens } from "./bkit-tokens.js";
+import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
@@ -316,9 +317,10 @@ const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
   cerebras: "Cerebras",
   openrouter: "OpenRouter",
   ollama: "Ollama (Cloud)",
-  // opencode-native gateway: bkit key `opencode`, column header "OpenCode", cells are
-  // opencode-side ids (opencode/<id>), matching the gateway's reference format.
-  opencode: "OpenCode",
+  // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
+  // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
+  "opencode-zen": "OpenCode Zen",
+  "opencode-go": "OpenCode Go",
 };
 
 /**
@@ -334,8 +336,8 @@ export function buildOpencodeModelLookup(
   const header = OPENCODE_PROVIDER_COLUMN[provider];
   const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
-  // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
-  // openrouter, ollama, opencode) ship a curated prompts.md column and never reach here.
+  // Sentinel fallback. All eight allowlisted providers (ollama-local, nvidia, groq, cerebras,
+  // openrouter, ollama, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
   // This path is the safety net for a FUTURE allowlisted provider added before its column
   // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
   // model id (see providers.md § Models for the live-probe recipe). The prefix is the
@@ -521,45 +523,48 @@ export function applyOpencodeAgent(
 export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
 
 /**
+ * T2: Cursor/OpenCode command invocation rewrite (shared — also OC2 step 2 via
+ * applyOpencodeCommand). Paired with applyT1 in the Cursor render pipeline.
+ * - `Agent` tool → `Task` tool (subagent invocations)
+ * - `Skill` tool → `Task` tool (slash-command invocations — Cursor/OpenCode
+ *   `Task` covers both surfaces; Claude splits them into `Agent` + `Skill`)
+ * - @name → /name on **Subagent:** lines:
+ *   - bare `**Subagent:** @name` (legacy exact line)
+ *   - real workflow shape `**Subagent:** Invoke \`@name\`…` (incl. indented lists)
+ * - Caution placeholder `Invoke using \`@name\`` → `\`/name\``
+ * Does NOT rewrite body prose, npm scopes, emails, or gate-checklist `@agent` refs.
+ */
+export function applyT2(content: string): string {
+  let result = content.replace(/`Agent` tool/g, "`Task` tool");
+  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+  // Backticked `@agent` on any **Subagent:** line (numbered, list-indented, or bare).
+  result = result.replace(/^([^\n]*?\*\*Subagent:\*\*[^\n]*?)`@([a-z][a-z0-9-]*)`/gm, "$1`/$2`");
+  // Bare `@agent` immediately after **Subagent:** (legacy exact-line form).
+  result = result.replace(/^([^\n]*?\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)\b/gm, "$1/$2");
+  result = result.replace(/Invoke using `@name`/g, "Invoke using `/name`");
+  return result;
+}
+
+/**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
- * - Rewrites invocation spelling for opencode:
- *   - `Agent` tool → `Task` tool (subagent invocations)
- *   - `Skill` tool → `Task` tool (slash-command invocations)
- *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ * - Rewrites invocation spelling for opencode (same as T2 — see `applyT2`).
  * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
   const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
   // Step 2: rewrite invocations (same as T2)
-  let result = stripped.replace(/`Agent` tool/g, "`Task` tool");
-  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
-  result = result.replace(/`Skill` tool/g, "`Task` tool");
-  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
-  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  const result = applyT2(stripped);
   // Step 3: prepend the session-prompt anchor so the slash-command args survive.
-  result = OPENCODE_SESSION_PROMPT_ANCHOR + result;
-  return result;
+  return OPENCODE_SESSION_PROMPT_ANCHOR + result;
 }
 
 // T1: Strip leading YAML frontmatter block from command files for Cursor
 export function applyT1(content: string): string {
   return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
-}
-
-// T2: Rewrite command body for Cursor invocation
-// - `Agent` tool → `Task` tool (subagent invocation)
-// - `Skill` tool → `Task` tool (slash-command invocation — Cursor's `Task`
-//   tool covers both surfaces; Claude splits them into `Agent` + `Skill`)
-// - @name → /name ONLY on exact **Subagent:** lines (anchored)
-export function applyT2(content: string): string {
-  let result = content.replace(/`Agent` tool/g, "`Task` tool");
-  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
-  result = result.replace(/`Skill` tool/g, "`Task` tool");
-  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
-  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
-  return result;
 }
 
 // Parse simple YAML frontmatter block (key: value, or key: | multiline)
@@ -1390,6 +1395,59 @@ export function modulesToCliFlags(
 }
 
 /**
+ * #252 Step 2/3 — validate the verb/module-flag combination before any dispatch
+ * work runs. `install` requires >=1 module flag (bare install errors; replaces
+ * the old implicit empty→full); `check` / `upgrade` take NO module flags — they
+ * operate on everything already installed, so a stray flag is a hard error
+ * pointing at the no-flag form. Returns the error message to print, or `null`
+ * when the combination is valid.
+ */
+export function validateModuleFlagsForVerb(
+  verb: Verb,
+  moduleFlags: Set<ModuleFlag>,
+): string | null {
+  if (verb === "install" && moduleFlags.size === 0) {
+    return (
+      "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
+      "--claude, --cursor, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
+      "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage."
+    );
+  }
+  if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
+    return (
+      `[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
+      `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`
+    );
+  }
+  return null;
+}
+
+/**
+ * Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4): cloud=claude and
+ * cloud=opencode both require tracker=github (both render bkit-cloud.yml);
+ * cloud=cursor requires tracker=linear. Mismatch is a hard error — checked BEFORE
+ * any package.json write so no state is recorded on mismatch ("no files written
+ * on hard error" invariant). Returns the error message to print, or `null` when
+ * the tracker matches (or no cloud module/variant is in play).
+ */
+export function validateCloudTrackerMatch(
+  cloudVariant: CloudVariant | null,
+  hasCloudModule: boolean,
+  issueTracker: IssueTracker,
+): string | null {
+  if (cloudVariant === null || !hasCloudModule) return null;
+  const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
+  if (issueTracker === requiredTracker) return null;
+  return (
+    `[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
+    `but the resolved tracker is "${issueTracker}". ` +
+    (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
+      ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
+      : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`)
+  );
+}
+
+/**
  * Detect the bkit opencode provider key a consumer installed.
  *
  * Resolution order:
@@ -1431,7 +1489,10 @@ export function detectOpencodeProvider(cwd: string): string | null {
       provider?: Record<string, unknown>;
     };
     if (cfg.provider && typeof cfg.provider === "object") {
-      return Object.keys(cfg.provider)[0] ?? null;
+      const first = Object.keys(cfg.provider)[0];
+      if (!first) return null;
+      // Zen's opencode.json block is keyed by the built-in id `opencode`, not the CLI key.
+      return normalizeOpencodeProvider(first === "opencode" ? "opencode-zen" : first);
     }
   } catch {
     return null; // unparseable opencode.json — fall back to the default provider
@@ -1462,12 +1523,13 @@ export function detectOpencodeProvider(cwd: string): string | null {
  */
 export function detectRenovateRunner(cwd: string): RenovateRunner {
   const pkgPath = path.join(cwd, "package.json");
+  let pkg: Record<string, unknown> = {};
   if (fs.existsSync(pkgPath)) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
-        bkit?: { renovateRunner?: unknown };
-      };
-      const stored = parseRenovateRunner(pkg.bkit?.renovateRunner);
+      pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+      const stored = parseRenovateRunner(
+        (pkg.bkit as { renovateRunner?: unknown })?.renovateRunner,
+      );
       if (stored !== null) return stored;
     } catch {
       // fall through to file-presence detection
@@ -1476,10 +1538,16 @@ export function detectRenovateRunner(cwd: string): RenovateRunner {
   const workflowDst = path.join(cwd, ".github", "workflows", "renovate.yml");
   const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml");
   if (fs.existsSync(workflowDst) && fs.existsSync(templatePath)) {
-    // Byte-equal to the canonical template → bkit-owned self-hosted workflow (the
-    // token-free template renders verbatim). A differing file is a consumer's own
-    // bespoke workflow, NOT bkit-owned (see the doc comment above, #325).
-    if (fs.readFileSync(workflowDst, "utf-8") === fs.readFileSync(templatePath, "utf-8")) {
+    // Byte-equal to the canonical template → bkit-owned self-hosted workflow. The
+    // template carries a `{{RENOVATE_RUNNER}}` token (#362), so render it with the
+    // consumer's configured label before comparing — otherwise a custom runner
+    // (bkit-owned, but non-ubuntu) would look like a bespoke consumer file and lose
+    // its "self" classification. A file that still differs after rendering is a
+    // consumer's own bespoke workflow, NOT bkit-owned (see the doc comment above, #325).
+    const rendered = fs
+      .readFileSync(templatePath, "utf-8")
+      .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => resolveRunnerLabel(pkg, "renovate"));
+    if (fs.readFileSync(workflowDst, "utf-8") === rendered) {
       return "self";
     }
   }
@@ -1619,6 +1687,12 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
   process.exit(re.status ?? 1);
 }
 
+// Not exported: this is the CLI entrypoint, driven by real argv/fs/process.exit
+// side effects, and its ~70 spawn-based scenarios in bkit-install.integration.test.ts
+// are what actually exercise it (v8 in-process coverage can't see a child process —
+// see docs/testing.md § Coverage on PRs, bkit-tests-unit). Pull genuinely pure
+// decision logic OUT into an exported function (see validateModuleFlagsForVerb /
+// validateCloudTrackerMatch above) when you want it unit-covered here instead.
 async function main() {
   const {
     verb,
@@ -1816,6 +1890,31 @@ async function main() {
         for (const line of summary.lines) console.log(line);
         return;
       }
+      // `bkit telemetry validate` — read-only alias-collision scan. Exits 1 on a
+      // collision (one DE-<n>/KN-<n> claimed by unrelated rows) — the loud signal
+      // the merge=union append never surfaces. WARNs (exit 0) on minted keys.
+      if (telemetrySubverb === "validate") {
+        const { lintLedgers } = await import("./bkit-telemetry-lint.js");
+        const result = lintLedgers(process.cwd());
+        for (const line of result.lines) console.log(line);
+        if (!result.ok) process.exitCode = 1;
+        return;
+      }
+      // `bkit telemetry normalise [--dry-run]` — one-shot, idempotent rewrite off
+      // the retired sequential-alias scheme (parity-gated; original untouched on abort).
+      if (telemetrySubverb === "normalise") {
+        const { runNormalise } = await import("./bkit-telemetry-normalise.js");
+        const result = await runNormalise({
+          cwd: process.cwd(),
+          dryRun: telemetryMigrateFlags.dryRun,
+        });
+        for (const line of result.lines) console.log(line);
+        if (!result.ok && result.error) {
+          console.error(`[bkit-telemetry] normalise failed: ${result.error}`);
+          process.exitCode = 1;
+        }
+        return;
+      }
       if (telemetrySubverb === "migrate") {
         const pkgPath = path.join(process.cwd(), "package.json");
         let bkitVersion = "unknown";
@@ -1839,7 +1938,9 @@ async function main() {
           console.error(`[bkit-telemetry] migrate failed: ${result.error}`);
         }
       } else {
-        console.error(`[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate`);
+        console.error(
+          `[bkit] \`bkit telemetry\` requires a sub-verb. Valid values: migrate, summary, validate, normalise`,
+        );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1856,25 +1957,11 @@ async function main() {
     return;
   }
 
-  // #252 Step 2 — install requires ≥1 module flag (bare install errors; replaces the
-  // old implicit empty→full). `--tracker` / `--auto-revert` are modifiers and do not
-  // count. moduleFlags holds only the explicitly-named modules (core is implicit).
-  if (verb === "install" && moduleFlags.size === 0) {
-    console.error(
-      "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-        "--claude, --cursor, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
-        "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage.",
-    );
-    process.exit(1);
-  }
-
-  // #252 Step 3 / S4 — check/upgrade take NO module flags; they operate on everything
-  // already installed. A stray module flag is a hard error pointing to the no-flag form.
-  if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
-    console.error(
-      `[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
-        `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`,
-    );
+  // #252 Step 2/3 — install requires >=1 module flag; check/upgrade take NONE.
+  // See validateModuleFlagsForVerb for the full rationale.
+  const moduleFlagsError = validateModuleFlagsForVerb(verb, moduleFlags);
+  if (moduleFlagsError) {
+    console.error(moduleFlagsError);
     process.exit(1);
   }
 
@@ -1939,7 +2026,8 @@ async function main() {
         cerebras: ["CEREBRAS_API_KEY"],
         openrouter: ["OPENROUTER_API_KEY"],
         ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
-        opencode: ["OPENCODE_API_KEY"], // opencode-native gateway
+        "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
+        "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
         // ollama-local: local server, no API key required
       };
       // Local-only providers that use no remote API key
@@ -2536,29 +2624,25 @@ async function main() {
   const ws: WriteSet = { writes: [] };
   const postDispatch: Array<() => void> = [];
 
-  // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
-  // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
-  // cloud=cursor requires tracker=linear.
-  // Mismatch is a hard error — checked BEFORE any package.json write so no state
-  // is recorded on mismatch ("no files written on hard error" invariant).
+  // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see
+  // validateCloudTrackerMatch for the full rationale. Checked BEFORE any
+  // package.json write so no state is recorded on mismatch.
+  const cloudTrackerError = validateCloudTrackerMatch(
+    cloudVariant,
+    modules.has("cloud"),
+    issueTracker,
+  );
+  if (cloudTrackerError) {
+    console.error(cloudTrackerError);
+    process.exit(1);
+  }
   if (cloudVariant !== null && modules.has("cloud")) {
-    const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
-    if (issueTracker !== requiredTracker) {
-      console.error(
-        `[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
-          `but the resolved tracker is "${issueTracker}". ` +
-          (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
-            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
-            : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`),
-      );
-      process.exit(1);
-    }
     // auto=opencode additionally requires the local opencode host to be installed first
     // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
     if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
       console.error(
         `[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
-          `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode)\n` +
+          `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode-zen)\n` +
           `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
       );
       process.exit(1);
@@ -2581,7 +2665,7 @@ async function main() {
             console.warn(
               `[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
                 `The cloud opencode job requires a remote provider with an API key — ` +
-                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode) to switch.`,
+                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode-zen) to switch.`,
             );
           }
         } catch {

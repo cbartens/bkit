@@ -1,6 +1,6 @@
-// bkit-workflow-lock-snippet.test.ts — Behavioural regression for the YYYYMM
-// bucket-extraction snippet embedded in the Step 1 lock-acquisition blocks of
-// the workflow files.
+// bkit-workflow-lock-snippet.integration.test.ts — Behavioural regression for the
+// YYYYMM bucket-extraction snippet embedded in the Step 1 lock-acquisition blocks
+// of the workflow files. Spawns real bash to execute the extracted snippet.
 //
 // Root cause (consumer friction, 2026-05-24): the snippet derives the month
 // bucket from a glob with a TRAILING SLASH:

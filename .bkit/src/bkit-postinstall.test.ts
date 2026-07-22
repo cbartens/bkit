@@ -25,6 +25,7 @@ import {
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
   detectDevDepsNeedFetch,
+  detectLedgerAliasCollisions,
   detectBkitStubs,
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
@@ -1109,6 +1110,54 @@ describe("detectTestIntegrationEnv", () => {
       '{"scripts":{"test:integration":"supabase start && vitest run"}}',
     );
     expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when the CI workflow lane provisions the real-service env", () => {
+    // Script is intentionally env-agnostic (keeps local runs from forcing real-API mode);
+    // the ci.yml job that runs test:integration provisions the env instead.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts --passWithNoTests"}}',
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "jobs:",
+        "  integration:",
+        "    env:",
+        '      TEST_REAL_APIS: "true"',
+        "    steps:",
+        "      - run: env -u SUPABASE_PROJECT_ID npx supabase start",
+        "      - run: turbo run test:integration",
+      ].join("\n"),
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when the vitest integration config documents the in-file guard", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts"}}',
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "vitest.integration.config.ts"),
+      "// Integration tests run only when TEST_REAL_APIS=true. Guard is in each test file.\n",
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("still fires when a workflow runs test:integration but provisions no real-service env", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config vitest.integration.config.ts"}}',
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "jobs:\n  integration:\n    steps:\n      - run: turbo run test:integration\n",
+    );
+    expect(detectTestIntegrationEnv(tmpDir)!.id).toBe("test-integration-env-not-asserted");
   });
 });
 
@@ -2393,6 +2442,20 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     expect(f?.id).toBe("tagged-tests-no-ci-home");
     expect(f?.action).toContain("packages/utils");
   });
+  it("returns null when @live only appears inside a fixture string literal (tag-linter package)", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("tooling/eslint", { test: "vitest run" }); // tag-linter, no test:live
+    // A tag-linter embeds sample test source as a template-literal fixture to lint it —
+    // the inner `describe(...)`/`it(...)` is a string, not a runnable @live test.
+    writeTest(
+      "tooling/eslint/rule.test.ts",
+      [
+        'const FIXTURE = `describe.skipIf(!LIVE_API)("@live Families", () => { it("x", () => {}); })`;',
+        'it("flags a mislabelled live-tier fixture", () => { expect(lint(FIXTURE)).toHaveLength(1); });',
+      ].join("\n"),
+    );
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -2638,6 +2701,26 @@ describe("detectManagedDocsStale", () => {
     expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
   });
 
+  it("does NOT treat inline prose vX.Y.Z as a stamp when the first block has no full-line marker", () => {
+    // Dogfood architecture.md shape: unexpanded {{BKIT_MANAGED_MARKER}} + prose
+    // documenting `vX.Y.Z` — the prose must report as "(no marker)", never "(vX.Y.Z)".
+    declareCanonical("architecture.md");
+    const p = path.join(tmpDir, "docs", "architecture.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(
+      p,
+      "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# Architecture\n\n" +
+        "carries `<!-- bkit:managed vX.Y.Z … -->` stamped by bkit.\n<!-- bkit:end -->\n" +
+        "\n## Consumer section\n\n" +
+        `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Architecture\n<!-- bkit:end -->\n`,
+    );
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.detect).toContain("docs/architecture.md");
+    expect(f?.detect).toContain("no marker");
+    expect(f?.detect).not.toContain("(vX.Y.Z)");
+  });
+
   it("truncates the example list and reports the overflow count", () => {
     for (let i = 0; i < 8; i++) {
       declareCanonical(`doc-${i}.md`);
@@ -2690,5 +2773,52 @@ describe("isOnProtectedBranch", () => {
     // tmpDir is a fresh mkdtemp dir, not a git work tree → git HEAD resolution
     // fails → null → treated as protected so an unknown env never downgrades.
     expect(isOnProtectedBranch(tmpDir)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectLedgerAliasCollisions — DE-<n>/KN-<n> silent-duplicate-id advisory
+// (fs-only; no child_process, so it runs under the mocked module unchanged)
+// ---------------------------------------------------------------------------
+
+describe("detectLedgerAliasCollisions", () => {
+  function writeDecisions(rows: object[]): void {
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "docs", "decisions.jsonl"),
+      rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
+    );
+  }
+  const base = {
+    ts: 1,
+    kind: "decision",
+    repo: "acme/app",
+    workflow: "plan",
+    bkitVersion: "4.5.0",
+  };
+
+  it("advisory when one DE-<n> is claimed by unrelated rows", () => {
+    writeDecisions([
+      { ...base, key: "de-114-sentry", aliases: ["DE-114"] },
+      { ...base, key: "de-114-e2e-parallelism", aliases: ["DE-114"] },
+    ]);
+    const f = detectLedgerAliasCollisions(tmpDir);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("ledger-alias-collisions");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("DE-114");
+    expect(f?.action).toContain("bkit telemetry normalise");
+  });
+
+  it("null when the ledgers are clean (no collisions)", () => {
+    writeDecisions([
+      { ...base, key: "de-3-distribution", workflow: "migrate" },
+      { ...base, key: "content-slug-decision" },
+    ]);
+    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
+  });
+
+  it("null when no ledgers exist", () => {
+    expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
   });
 });

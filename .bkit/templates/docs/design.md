@@ -11,7 +11,7 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - No ad-hoc hex in UI — theme tokens only. All colours MUST support Dark Mode.
-> - Touch targets >=44x44px. WCAG 2.1 AA contrast.
+> - No ad-hoc hex — theme tokens only; all colours MUST support Dark Mode.
+> - Touch targets >=44x44px; WCAG 2.1 AA contrast.
 
 <!-- bkit:end -->

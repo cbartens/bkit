@@ -32,10 +32,13 @@ import {
   detectOpencodeProvider,
   detectOpencodeProviders,
   modulesToCliFlags,
+  validateModuleFlagsForVerb,
+  validateCloudTrackerMatch,
   getInstallingVersion,
   runStatus,
 } from "./bkit-install";
-import type { ModuleFlag } from "./bkit-cli";
+import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
+import type { IssueTracker } from "./bkit-manifest";
 import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
@@ -101,6 +104,23 @@ describe("T2 — command body rewrites", () => {
     expect(applyT2(input)).toBe("**Subagent:** /build-plan\n");
   });
 
+  it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
+    const input = "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    expect(applyT2(input)).toBe(
+      "1. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:\n",
+    );
+  });
+
+  it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
+    const input = "   - **Subagent:** Invoke `@bkit-build-challenge-1`\n";
+    expect(applyT2(input)).toBe("   - **Subagent:** Invoke `/bkit-build-challenge-1`\n");
+  });
+
+  it("rewrites caution placeholder Invoke using `@name` → `/name`", () => {
+    const input = "> - **Subagents:** Invoke using `@name` with `Agent` tool.\n";
+    expect(applyT2(input)).toBe("> - **Subagents:** Invoke using `/name` with `Task` tool.\n");
+  });
+
   it("does NOT rewrite @name inside body text", () => {
     const input = "See @build-plan for details.\n";
     expect(applyT2(input)).toBe(input);
@@ -118,6 +138,11 @@ describe("T2 — command body rewrites", () => {
 
   it("does NOT rewrite markdown anchors like [text](#section)", () => {
     const input = "See [section](#overview) for details.\n";
+    expect(applyT2(input)).toBe(input);
+  });
+
+  it("does NOT rewrite gate-checklist `@agent` outside **Subagent:** lines", () => {
+    const input = "- [ ] Subagent invoked (`@bkit-build-install-skills`, no inline work)\n";
     expect(applyT2(input)).toBe(input);
   });
 
@@ -962,6 +987,28 @@ describe("applyOpencodeCommand", () => {
     expect(result).toContain("See @build-plan for details.");
   });
 
+  it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
+    const input =
+      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("**Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:");
+    expect(result).not.toContain("`@bkit-build-plan-execute`");
+  });
+
+  it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
+    const input = "---\ndescription: x\n---\n   - **Subagent:** Invoke `@bkit-build-challenge-1`\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("   - **Subagent:** Invoke `/bkit-build-challenge-1`");
+  });
+
+  it("rewrites caution placeholder Invoke using `@name` → `/name`", () => {
+    const input =
+      "---\ndescription: x\n---\n> - **Subagents:** Invoke using `@name` with `Agent` tool.\n";
+    const result = applyOpencodeCommand(input);
+    expect(result).toContain("Invoke using `/name` with `Task` tool.");
+    expect(result).not.toContain("Invoke using `@name`");
+  });
+
   it("does NOT rewrite @name inside body text (not on **Subagent:** line)", () => {
     const input = `---\ndescription: x\n---\nSee @build-plan for details.\n`;
     expect(applyOpencodeCommand(input)).toBe(
@@ -1176,10 +1223,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "nvidia");
     // opus-tier general → kimi
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("nvidia/moonshotai/kimi-k2.6");
-    // sonnet-tier → qwen3-coder
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe(
-      "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
-    );
+    // sonnet-tier → flagship general Qwen3.5 (NIM dropped the Qwen3-Coder-480B)
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("nvidia/qwen/qwen3.5-397b-a17b");
     // haiku-tier → gpt-oss
     expect(lookup.get("bkit-design-summary")).toBe("nvidia/openai/gpt-oss-20b");
     // reasoning lens (opus-tier but CoT override) → deepseek
@@ -1190,19 +1235,19 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
-  it("openrouter: matches nvidia opus/sonnet/haiku identities; v3.2 reasoner for convergent", () => {
+  it("openrouter: kimi-k3 opus, deepseek-v4-pro reasoner for convergent (aggressive-latest)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k2.6");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k3");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/qwen/qwen3-coder");
     expect(lookup.get("bkit-design-summary")).toBe("openrouter/openai/gpt-oss-20b");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v3.2");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v3.2");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v4-pro");
   });
 
-  it("ollama (cloud): identical model identities to nvidia across all four tiers", () => {
+  it("ollama (cloud): kimi-k2.7-code opus, qwen3.5:397b sonnet, deepseek-v4-pro convergent", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.6");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3-coder:480b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.7-code");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3.5:397b");
     expect(lookup.get("bkit-design-summary")).toBe("ollama/gpt-oss:20b");
     expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
   });
@@ -1210,7 +1255,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   it("groq: opus+convergent collapse onto gpt-oss-120b (no Kimi/Qwen3-Coder in catalog)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "groq");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/openai/gpt-oss-120b");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3-32b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3.6-27b");
     expect(lookup.get("bkit-design-summary")).toBe("groq/openai/gpt-oss-20b");
     expect(lookup.get("bkit-build-challenge-2")).toBe("groq/openai/gpt-oss-120b");
   });
@@ -1223,7 +1268,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all seven)", () => {
+  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all eight)", () => {
     for (const provider of [
       "ollama-local",
       "nvidia",
@@ -1231,7 +1276,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       "cerebras",
       "openrouter",
       "ollama",
-      "opencode",
+      "opencode-zen",
+      "opencode-go",
     ]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
       for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
@@ -1244,20 +1290,34 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 
-  it("opencode (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
-    // opencode gateway ships a curated "OpenCode" column probed against the live
-    // https://opencode.ai/zen/v1/models endpoint (2026-06-12). Cells are opencode/<id>.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode");
+  it("opencode-zen: curated OpenCode Zen column (opencode/<id> — models.dev built-in id)", () => {
+    // CLI key is opencode-zen; agent pins use the OpenCode built-in provider id `opencode`.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode\//);
+      expect(model).not.toMatch(/^opencode-zen\//);
       expect(model).not.toContain("set-model-id");
     }
-    // Tier identities from the OpenCode column (opus=kimi-k2.7-code re-pinned 2026-07-12, convergent=deepseek-v4-pro).
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.7-code"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
+  });
+
+  it("opencode-go: curated OpenCode Go column (minimax-m3, qwen3.7-plus)", () => {
+    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog
+    // (incl. minimax-m3 / qwen3.7-plus) is invisible to /zen/v1/models — sourced via models.dev.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
+    expect(lookup.size).toBeGreaterThan(0);
+    for (const [, model] of lookup) {
+      expect(model).toMatch(/^opencode-go\//);
+      expect(model).not.toContain("set-model-id");
+    }
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/minimax-m3"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/qwen3.7-plus"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("opencode-go/deepseek-v4-flash"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("opencode-go/deepseek-v4-pro"); // convergent
   });
 });
 
@@ -1402,6 +1462,89 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
   });
 });
 
+describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validation", () => {
+  const flags = (mods: ModuleFlag[] = []) => new Set<ModuleFlag>(mods);
+
+  it("errors when install is given zero module flags", () => {
+    const err = validateModuleFlagsForVerb("install", flags());
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit install` requires at least one module flag");
+  });
+
+  it("passes when install is given at least one module flag", () => {
+    expect(validateModuleFlagsForVerb("install", flags(["claude"]))).toBeNull();
+  });
+
+  it("errors when check is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("check", flags(["claude"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit check` takes no module flags");
+  });
+
+  it("errors when upgrade is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("upgrade", flags(["cursor"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit upgrade` takes no module flags");
+  });
+
+  it("passes when check/upgrade are given zero module flags", () => {
+    expect(validateModuleFlagsForVerb("check", flags())).toBeNull();
+    expect(validateModuleFlagsForVerb("upgrade", flags())).toBeNull();
+  });
+
+  it("does not constrain other verbs (uninstall, doctor, help, ...)", () => {
+    const otherVerbs: Verb[] = ["uninstall", "doctor", "help", "status", "harvest"];
+    for (const verb of otherVerbs) {
+      expect(validateModuleFlagsForVerb(verb, flags())).toBeNull();
+      expect(validateModuleFlagsForVerb(verb, flags(["claude", "cursor"]))).toBeNull();
+    }
+  });
+});
+
+describe("validateCloudTrackerMatch — FINAL SCOPE decision 3/4 symmetric cloud/tracker constraint", () => {
+  it("passes when no cloud variant is set", () => {
+    expect(validateCloudTrackerMatch(null, true, "github")).toBeNull();
+  });
+
+  it("passes when the cloud module isn't in the install set, even with a variant", () => {
+    expect(validateCloudTrackerMatch("claude", false, "linear")).toBeNull();
+  });
+
+  it("passes when cloud=claude and tracker=github (matching)", () => {
+    expect(validateCloudTrackerMatch("claude", true, "github")).toBeNull();
+  });
+
+  it("passes when cloud=opencode and tracker=github (matching)", () => {
+    expect(validateCloudTrackerMatch("opencode", true, "github")).toBeNull();
+  });
+
+  it("passes when cloud=cursor and tracker=linear (matching)", () => {
+    expect(validateCloudTrackerMatch("cursor", true, "linear")).toBeNull();
+  });
+
+  it("errors when cloud=claude but tracker is not github", () => {
+    const err = validateCloudTrackerMatch("claude", true, "linear");
+    expect(err).not.toBeNull();
+    expect(err).toContain("--auto=claude requires tracker=github");
+  });
+
+  it("errors when cloud=cursor but tracker is not linear", () => {
+    const err = validateCloudTrackerMatch("cursor", true, "github");
+    expect(err).not.toBeNull();
+    expect(err).toContain("--auto=cursor requires tracker=linear");
+  });
+
+  it("suggests setting the tracker (not switching) when the tracker is still 'none' (default)", () => {
+    const err = validateCloudTrackerMatch("cursor", true, "none" as IssueTracker);
+    expect(err).toContain("Set the tracker first");
+  });
+
+  it("suggests re-running with the matching tracker when a different tracker is already set", () => {
+    const err = validateCloudTrackerMatch("claude", true, "linear" as IssueTracker);
+    expect(err).toContain("tracker switching is free");
+  });
+});
+
 describe("detectInstalledModules — sentinel-file module detection", () => {
   let cwd: string;
   beforeEach(() => {
@@ -1506,9 +1649,9 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
     expect(detectOpencodeProvider(cwd)).toBe("nvidia");
   });
 
-  it("normalizes a legacy provider key (zen → opencode)", () => {
+  it("normalizes a legacy provider key (zen → opencode-zen)", () => {
     writePkg({ opencodeProvider: "zen" });
-    expect(detectOpencodeProvider(cwd)).toBe("opencode");
+    expect(detectOpencodeProvider(cwd)).toBe("opencode-zen");
   });
 
   it("ignores an out-of-allowlist provider and falls through to null", () => {
@@ -1545,7 +1688,7 @@ describe("detectOpencodeProviders — all installed providers", () => {
 
   it("reads and allowlist-filters bkit.opencodeProviders, normalizing legacy keys", () => {
     writePkg({ opencodeProviders: ["nvidia", "zen", "bogus"] });
-    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode"]);
+    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode-zen"]);
   });
 
   it("falls back to the single bkit.opencodeProvider for legacy installs", () => {

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -12,7 +12,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - List the technology and how it's used. **Why** belongs in `decisions.jsonl`.
+> - List technology and usage; **Why** → `decisions.jsonl`.
 
 <!-- bkit:end -->
 
@@ -45,7 +45,7 @@
 
 ## Execution Hosts
 
-bkit renders agent payload for three IDE/agent-host runtimes. Hosts are additive — `--claude` and `--cursor` are always-on; opencode is opt-in.
+bkit renders agent payload for three IDE/agent-host runtimes. Hosts additive — `--claude` and `--cursor` always-on; opencode opt-in.
 
 <!-- prettier-ignore -->
 | Host | Install flag | Notes |
@@ -54,7 +54,7 @@ bkit renders agent payload for three IDE/agent-host runtimes. Hosts are additive
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
 | opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; seven allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode` |
 
-`ollama-local` is localhost/keyless; `ollama` is the cloud service (ollama.com) — distinct keys. OpenAI-compatible providers (all except `opencode`) use the npm `@ai-sdk/openai-compatible` driver. `opencode` is the opencode-native built-in gateway (Zen; opencode's "Go" plan) authenticated via `OPENCODE_API_KEY` (`{env:OPENCODE_API_KEY}` in a minimal `provider.opencode` block, no npm driver / `baseURL`). The allowlist is duplicated in three places that MUST move together: `OPENCODE_PROVIDERS` (`bkit-cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts`), `OPENCODE_PROVIDER_COLUMN` (`bkit-install.ts`). Per-agent model pins live in `.bkit/prompts.md` § Models, one column per provider.
+`ollama-local` = localhost/keyless; `ollama` = cloud (ollama.com) — distinct keys. OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` (`bkit-cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts`), `OPENCODE_PROVIDER_COLUMN` (`bkit-install.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
 
 ## Testing
 
@@ -95,8 +95,8 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Release publish | `.github/workflows/release.yml` | Git tag push |
 | Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + opencode jobs, each secret-gated |
 
-Single package — no turbo, no affected-graph. CI is a flat DAG: the `bkit-tests-scope` planner fans out to every `bkit-tests-*` lane, `bkit-tests-check` joins them and is the SOLE required check. See `docs/testing.md` § CI execution for the lane breakdown, `docs/deployments.md` for pipeline rules, branch protection, and secrets management.
+Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` planner → every `bkit-tests-*` lane → `bkit-tests-check` (SOLE required check). See `docs/testing.md` § CI execution; `docs/deployments.md` for pipeline rules, branch protection, secrets.
 
 ## Naming Conventions
 
-See `docs/../.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.
+See `.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.

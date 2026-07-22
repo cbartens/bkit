@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true
@@ -11,7 +11,7 @@ tools:
   edit: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.
@@ -32,7 +32,7 @@ reasoningEffort: low
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` index — full catalog of docs to check.
 3. Per doc, ALWAYS follow its `Rules` headers when making edits.
 4. Per doc, four passes in order: **Sync** (gaps vs implementation) → **Reorganize** (dedup, move misplaced) → **Compress** (token-efficient) → **Cross-Reference** (inline `docs/*.md` links).

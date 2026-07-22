@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -16,7 +16,7 @@
 
 <!-- bkit:end -->
 
-> Consumer install and auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/cloud.md`](../.bkit/cloud.md).
+> Consumer install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root `README.md`. Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → `.bkit/cloud.md`.
 
 ## Required tools
 
@@ -32,22 +32,22 @@
 
 ## Local environment variables
 
-bkit ships `.bkit/.env.example` (placeholders) and `.envrc` (`dotenv_if_exists .bkit/.env`). The canonical local-secrets file is `.bkit/.env` (gitignored), auto-loaded via direnv on every `cd` into the repo.
+bkit ships `.bkit/.env.example` (placeholders) and `.envrc` (`dotenv_if_exists .bkit/.env`). Canonical local secrets: `.bkit/.env` (gitignored), auto-loaded via direnv on every `cd`.
 
 ```bash
 # One-time per machine
 brew install direnv
-echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash users use ~/.bashrc
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash: ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # then fill in GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
-direnv allow                            # trust the .envrc; auto-loads on subsequent cd
+cp .bkit/.env.example .bkit/.env   # fill GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
+direnv allow                            # trust .envrc; auto-loads on subsequent cd
 
 # Verify
 echo "len=${#GH_BKIT_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
 ```
 
-`LINEAR_ISSUE_ID` is injected per-session by the cloud integration — never put it in `.bkit/.env`. Cloud sessions (Claude on the web, Cursor Background Agents) set the same variable names in their respective dashboards, not via this file.
+`LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`. Cloud sessions set the same variable names in their dashboards, not this file.
 
 ## Bootstrap
 
@@ -58,16 +58,16 @@ pnpm tsx .bkit/src/bkit-install.ts check                                # drift 
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
-`install` requires >= 1 module flag (v4.0.0+) — a bare `install` exits 1. `bkit upgrade` is the exception: flag-free, it re-renders every installed module.
+`install` requires ≥1 module flag (v4.0.0+) — bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
-Consumer repos run `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --tooling` instead of the dogfood call.
+Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --tooling` (not the dogfood call).
 
 ## Verify
 
-bkit is a single package — there is no turbo / affected-graph. Run the scripts directly:
+Single package — no turbo / affected-graph. Run scripts directly:
 
 ```bash
-pnpm typecheck && pnpm format:check && pnpm lint:prose && pnpm test   # pre-push gates (see docs/deployments.md § Pre-push checklist)
+pnpm typecheck && pnpm format:check && pnpm lint:prose && pnpm test   # pre-push gates (docs/deployments.md § Pre-push checklist)
 pnpm bkit check                                                       # drift gate
 pnpm check:dist                                                       # dist freshness (source-repo only)
 pnpm exec bkit doctor                                                 # token + advisory sweep (read-only, never fails)
@@ -75,8 +75,8 @@ pnpm exec bkit doctor                                                 # token + 
 
 ## Troubleshooting
 
-- **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — either `GH_BKIT_TOKEN_INSTALL` is unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or the token was never written to pnpm's user-level config. pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` and retry (see `docs/knowledge.jsonl` KN-CORE-7).
-- **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` ran without `pnpm exec bkit install`. Re-run install; commit the resync.
-- **Linear preflight blocks session** — issue missing `bkit:auto` label or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels carry the `bkit:` prefix; the unprefixed `Auto` label is retired.)
-- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` and `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
-- **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` comment in setup script to force rebuild.
+- **`pnpm install` 401/404 on `@cbartens/bkit`** — `GH_BKIT_TOKEN_INSTALL` unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or token never written to pnpm user-level config. pnpm >=10.34.3 401s on project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` (see `docs/knowledge.jsonl` KN-CORE-7).
+- **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
+- **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done`/`Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix; unprefixed `Auto` retired.)
+- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
+- **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` in setup script to force rebuild.

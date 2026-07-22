@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs
 description: Senior SRE scanning GCP logs for unique error signatures and regressions.
-model: opencode/qwen3.6-plus
+model: opencode-go/qwen3.7-plus
 tools:
   read: true
   grep: true
@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior SRE scanning GCP logs for unique error signatures and regressions.
 **Scope:** As specified by input or session prompt.
@@ -34,8 +34,8 @@ reasoningEffort: low
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Run `bash scripts/tooling/audit-gcp-errors.sh [TIMEFRAME] [ENV]` (defaults: `48h`, both envs; alternatives: `24h`, `48h dev`, `48h prod`).
 4. Overwrite `docs/audits/errors-audit.log` — unique signatures by count (DEV/PROD), correlation IDs, Inngest/GHA failures. Raw JSON in `tmp/gcp-audit/`.
 5. Create / update `docs/audits/errors-audit.md`. Existing file = baseline → flag NEW/REGRESSION per **Update rules** below.

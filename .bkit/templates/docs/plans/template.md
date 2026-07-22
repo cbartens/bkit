@@ -14,20 +14,20 @@
 > 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
 > [!IMPORTANT]
-> **Docs & stack are project-resolved.** Core docs are named inline below; other docs are resolved per project, and no specific stack is assumed.
+> **Docs & stack project-resolved.** Core docs named inline; other docs per project; no stack assumed.
 >
-> - **Docs:** Universal/core docs (`.agents/docs.md` § Universal Documents — architecture, technology, data-schema, security, design, testing, deployments, observability, and the knowledge/decisions/deferrals/failures ledgers) are named directly below. For any OTHER domain, consult `.agents/docs.md` and cite the specific project doc inline; skip domains your project has no doc for; never invent a path. Never name a doc's internal section (a project's doc may not carry it).
-> - **Stack:** Any concrete tool named below is an **example only**, not a requirement. Swap Vercel / Supabase / Inngest / etc for your project's actual stack; drop rows and checks that do not apply.
+> - **Docs:** Universal/core docs (`.agents/docs.md` § Universal Documents — architecture, technology, data-schema, security, design, testing, deployments, observability, knowledge/decisions/deferrals/failures ledgers) named below. OTHER domain → consult `.agents/docs.md`, cite project doc inline; skip domains with no doc; never invent path. Never name doc's internal section.
+> - **Stack:** Concrete tools below = **examples only**. Swap Vercel / Supabase / Inngest / etc for actual stack; drop inapplicable rows/checks.
 
 ## Context & Goals
 
 [High-level overview of problem/feature. Why is it necessary?]
 
-> Success criteria live ONCE in `Acceptance Scenario → Success Criteria`; each runbook task carries its own `Done when`. Do NOT restate a success list here.
+> Success criteria ONCE in `Acceptance Scenario → Success Criteria`; each runbook task has own `Done when`. Do NOT restate success list here.
 
 **Related Issues:**
 
-- [Related issues search results. Tracker issue refs ONLY (e.g. `#N — title (state)`); NOT full content. Considered for dedup / scope-awareness; NOT a scope mandate. None / scan unavailable → `None`.]
+- [Issue references from plan input (linked/referenced in issue text). Tracker refs ONLY (e.g. `#N — title (state)`); NOT full content. Dedupe/scope-awareness; NOT scope mandate. None → `None`. Workflow fetch-context step runs fresh tracker search for reviewers, NOT this section.]
 
 ---
 
@@ -37,12 +37,12 @@
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 > This is the testable contract for the feature. Everything below — implementation, tests, verification — is derived from what you confirm here. If this is wrong, everything downstream is wrong.
 >
-> **You only need to read the 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). The agent handles the rest.
+> **You only need 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). Agent handles rest.
 
 ### Spec — what good looks like _(canonical; both design and plan phases follow this)_
 
 > [!IMPORTANT]
-> Subagents (design synthesise, design summary, plan generate, plan review, plan summary) MUST follow this spec. No subagent restates these rules; this section is the single source of truth.
+> Subagents (design synthesise, design summary, plan generate, plan review, plan summary) MUST follow this spec. No subagent restates rules; this section = single source of truth.
 
 - **Narrative:** 1–2 sentences, user POV (not system POV). Describes what the user does and what they get back.
 - **Success Criteria:** <=5 bullets, each measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT implementation steps (e.g. "call API, render component"). If design doc lists fewer or more, prefer the smallest set that still proves the feature works.
@@ -174,27 +174,27 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Out of Scope
 
-[List features/fixes explicitly excluded to prevent scope creep.]
-
-## Merge Method
-
-**Merge method: always squash.** Plans MUST NOT propose `rebase` or `merge-commit` as the integration method into `dev`. Default is hardcoded to `gh pr merge --squash --delete-branch --body ""`. If a plan needs commit-boundary preservation for ordering reasons, decompose into separate PRs rather than requesting a non-squash merge.
-
-## Supersession Inventory
-
-[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None".]
+[Features/fixes excluded to prevent scope creep. Every exclusion is `Exempt` per the rule below, with a reason + a home. If none, write "None".]
 
 <!-- prettier-ignore -->
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| `path/to/old-thing` | `path/to/new-thing` | DELETE | [reason] |
+| Excluded item | Why `Exempt` | Where it belongs |
+| --- | --- | --- |
+| [feature/fix] | [why genuinely-additive] | [design non-goal / follow-up #N / future phase] |
 
 > [!CAUTION]
-> **Default = `DELETE`.** `RETAIN-WITH-REASON` only allowed for:
-> (a) external contract — atomic migration impossible (third-party callers, public API);
-> (b) staged rollout with kill-date + follow-up issue link.
->
-> NEVER accept `@deprecated` + still exported as a resolution. Each `DELETE` row MUST be mirrored as `[DELETE] path/to/file` in `Architecture & Component Changes` AND as a removal task in `Agent Execution Runbook`.
+> **Default = in-scope.** An item is `Exempt` ONLY if genuinely-additive — NOT required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section (declared non-goals excepted). Anything so required is an `Agent Execution Runbook` task, NEVER a deferral; parking it here is a `Blocking` deferral that plan review / scope-check pull back into scope. Mirror each `Exempt` row in `docs/deferrals.jsonl`.
+
+## Suggested Scope Expansion
+
+[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures — surfaced as candidate expansions for the human. If none, write "None".]
+
+<!-- prettier-ignore -->
+| Candidate | Source | Overlaps | Recommendation |
+| --- | --- | --- | --- |
+| [what it is] | [`#N` / `docs/deferrals.jsonl` / `docs/failures.jsonl`] | [surface / task it touches] | [fold in / keep deferred / needs design decision] |
+
+> [!CAUTION]
+> **Candidates, not scope.** Entries are surfaced for human review; they do NOT become `Agent Execution Runbook` tasks and MUST NOT expand plan scope. Fold one in only once it traces to design scope or an explicit human decision — then it becomes a task and leaves this list.
 
 ## Security & Privacy
 
@@ -269,13 +269,13 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 ## Architecture & Component Changes
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers.]
-**CRITICAL:** Justify new file locations using `docs/architecture.md` topology.
-**CRITICAL:** Prefer `[MODIFY]` (extend existing) over `[NEW]`. Every `[NEW]` MUST state **why an existing artifact can't be evolved** — no parallel reimplementation of an existing capability. Anything it supersedes goes in `Supersession Inventory` as `DELETE`.
-**CRITICAL:** For Frontend/Mobile changes, verify styling/components adhere to `docs/design.md`.
-**CRITICAL:** Use file search to verify `[MODIFY]` files exist (otherwise `[NEW]`). Before changing any exported symbol / signature / contract, grep its callers / importers / dependent schemas / API consumers and list the blast radius — never assume it.
-**CRITICAL:** Explicitly include backend actions to execute newly created schema validations (e.g. Zod `schema.parse`).
-**CRITICAL:** NEVER weaken a gate to pass: no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / deleted assertions / empty `catch` / error-swallowing / mocking-away the unit under test. Fix root causes; a genuinely-warranted per-file opt-out needs explicit human sign-off.
-**CRITICAL:** Where observability is automated (e.g. log drains / CDC), you **MUST** still mandate `console.error("[Context] Message", payload)` for edge cases escaping auto-capture (orphaned records, fallbacks, API aborts). See `docs/observability.md` for naming conventions, severity mapping, correlation IDs, and label taxonomy.
+**CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
+**CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` MUST state **why existing artifact can't be evolved** — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
+**CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
+**CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: grep callers/importers/schemas/consumers, list blast radius.
+**CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
+**CRITICAL:** NEVER weaken gate to pass: no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / deleted assertions / empty `catch` / error-swallowing / mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
+**CRITICAL:** Automated observability (log drains / CDC) still mandates `console.error("[Context] Message", payload)` for edge cases escaping auto-capture. See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.
 
 ### Database Migrations
 
@@ -309,6 +309,22 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 [Define scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). Record them in the project's cron/scheduled-jobs doc if it has one (resolve via `.agents/docs.md`).]
 
+## Supersession Inventory
+
+[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None".]
+
+<!-- prettier-ignore -->
+| Existing artifact | Replaced by | Decision | Justification |
+| --- | --- | --- | --- |
+| `path/to/old-thing` | `path/to/new-thing` | DELETE | [reason] |
+
+> [!CAUTION]
+> **Default = `DELETE`.** `RETAIN-WITH-REASON` only allowed for:
+> (a) external contract — atomic migration impossible (third-party callers, public API);
+> (b) staged rollout with kill-date + follow-up issue link.
+>
+> NEVER accept `@deprecated` + still exported as a resolution. Each `DELETE` row MUST be mirrored as `[DELETE] path/to/file` in `Architecture & Component Changes` AND as a removal task in `Agent Execution Runbook`.
+
 ## Documentation Updates
 
 > List only docs this change actually touches; delete the rest. Core docs named below; for any OTHER affected doc resolve it via `.agents/docs.md`. Treat as code changes — rewrite prose, no lazy bullet appends.
@@ -341,11 +357,11 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 [Chronological, step-by-step checklist guiding implementation. **MANDATORY**]
 
 > [!IMPORTANT]
-> **Continuous Execution:** Work through this runbook autonomously. Do not pause for user permission at any Gate. Continuously check off `[x]` tasks as you go.
-> **Blockers:** If a task cannot be completed, **DO NOT fail silently**. Create a tracker issue (label `blocker`) with context before stopping, via the configured tracker MCP.
-> **Never drop work silently:** append deferred / out-of-scope items to `docs/deferrals.jsonl` and discovered bugs to `docs/failures.jsonl` (`.bkit/jsonl.md` format; check existing entries first).
-> **Step Isolation:** Do NOT jump ahead. Complete each task fully (including its specific verification and checking its box) before starting the exact next task in the list.
-> **Progress Updates:** After checking off each major task, post a structured summary as a comment on the issue via the configured tracker MCP (`.agents/rules.md` § Tracker MCP).
+> **Continuous Execution:** Work runbook autonomously. No pause for user permission at any Gate. Check `[x]` tasks as you go.
+> **Blockers:** Task incomplete → **DO NOT fail silently**. Create tracker issue (label `blocker`) with context before stopping, via configured tracker MCP.
+> **Never drop work silently:** append deferred/out-of-scope to `docs/deferrals.jsonl`, bugs to `docs/failures.jsonl` (`.bkit/jsonl.md` format; check existing entries first).
+> **Step Isolation:** Complete each task fully (verification + checkbox) before next task.
+> **Progress Updates:** After each major task, post structured summary as issue comment via configured tracker MCP (`.agents/rules.md` § Tracker MCP).
 
 **Implementation Tasks (Examples):**
 
@@ -412,5 +428,9 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
 - [ ] **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
+
+## Merge Method
+
+**Merge method: always squash.** Plans MUST NOT propose `rebase` or `merge-commit` as the integration method into `dev`. Default is hardcoded to `gh pr merge --squash --delete-branch --body ""`. If a plan needs commit-boundary preservation for ordering reasons, decompose into separate PRs rather than requesting a non-squash merge.
 
 <!-- bkit:end -->

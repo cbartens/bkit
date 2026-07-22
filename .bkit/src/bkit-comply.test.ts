@@ -5,15 +5,21 @@
 //   - Unit test asserts each rule's pass/fail.
 //   - Every emitted `kind:"compliance"` row carries `bkitVersion`.
 
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ruleNoMirrorEdit,
   ruleSkipCiNotHead,
   runGrader,
   buildComplianceRows,
+  appendComplianceRows,
   formatComplianceSummary,
+  readBkitVersion,
   type GraderInput,
   type GitAdapter,
+  type ComplianceRow,
 } from "./bkit-comply.js";
 
 // ---------------------------------------------------------------------------
@@ -398,5 +404,117 @@ describe("formatComplianceSummary", () => {
       },
     ]);
     expect(summary).toContain("Compliance Violations");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// appendComplianceRows — best-effort ledger append
+// ---------------------------------------------------------------------------
+
+describe("appendComplianceRows", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-comply-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function makeRow(rule: "no-mirror-edit" | "skip-ci-not-head", ts: number): ComplianceRow {
+    return {
+      ts,
+      kind: "compliance",
+      repo: "cbartens/bkit",
+      bkitVersion: "4.1.4",
+      workflow: "ship",
+      step: "close-gate",
+      rule,
+      result: "pass",
+      phase: "ship",
+      parentSha: "abc1234",
+    };
+  }
+
+  it("appends one NDJSON line per row to statsPath", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    appendComplianceRows([makeRow("no-mirror-edit", 1), makeRow("skip-ci-not-head", 2)], statsPath);
+
+    const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]!).rule).toBe("no-mirror-edit");
+    expect(JSON.parse(lines[1]!).rule).toBe("skip-ci-not-head");
+  });
+
+  it("appends to an existing file rather than truncating it", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    fs.writeFileSync(statsPath, JSON.stringify({ kind: "outcome", ts: 0 }) + "\n", "utf8");
+
+    appendComplianceRows([makeRow("no-mirror-edit", 1)], statsPath);
+
+    const lines = fs.readFileSync(statsPath, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(JSON.parse(lines[0]!).kind).toBe("outcome");
+  });
+
+  it("writes a bare newline (no throw) when rows is empty", () => {
+    const statsPath = path.join(tmpDir, "stats.jsonl");
+    expect(() => appendComplianceRows([], statsPath)).not.toThrow();
+    expect(fs.existsSync(statsPath)).toBe(true);
+    expect(fs.readFileSync(statsPath, "utf8")).toBe("\n");
+  });
+
+  it("fails open: logs and does not throw when the write target is invalid", () => {
+    // A statsPath inside a non-existent parent directory makes appendFileSync throw ENOENT.
+    const statsPath = path.join(tmpDir, "no-such-dir", "stats.jsonl");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(() => appendComplianceRows([makeRow("no-mirror-edit", 1)], statsPath)).not.toThrow();
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("[bkit-comply] append failed:"));
+    expect(fs.existsSync(statsPath)).toBe(false);
+
+    errSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readBkitVersion — nearest-package.json walk-up
+// ---------------------------------------------------------------------------
+
+describe("readBkitVersion", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-comply-version-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("reads version from the nearest package.json", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "9.9.9" }));
+    expect(readBkitVersion(tmpDir)).toBe("9.9.9");
+  });
+
+  it("walks up past a directory with no package.json at all", () => {
+    const sub = path.join(tmpDir, "sub");
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "5.5.5" }));
+    expect(readBkitVersion(sub)).toBe("5.5.5");
+  });
+
+  it("walks up past a package.json that has no version field", () => {
+    const sub = path.join(tmpDir, "sub");
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(sub, "package.json"), JSON.stringify({ name: "no-version-here" }));
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ version: "6.6.6" }));
+    expect(readBkitVersion(sub)).toBe("6.6.6");
+  });
+
+  it("returns '0.0.0' when package.json contains invalid JSON (fail-open)", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), "not valid json{{{");
+    expect(readBkitVersion(tmpDir)).toBe("0.0.0");
   });
 });

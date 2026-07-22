@@ -24,8 +24,13 @@ import {
   DEFAULT_CLOUD_AGENTS,
   type CloudAgents,
 } from "./bkit-manifest.js";
-import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
+import {
+  readBkitVersion,
+  MANAGED_MARKER_LINE_RE,
+  MANAGED_MARKER_VERSION_RE,
+} from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
+import { lintLedgers } from "./bkit-telemetry-lint.js";
 
 export type { PreflightFinding };
 
@@ -622,10 +627,67 @@ function walkRepoForHomeCheck(
 const TEST_DEF_TITLE =
   /\b(?:it|test|describe|bench|suite)(?:\.\w+)*\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
 
-function tagUsedInTestTitle(text: string, tag: string): boolean {
+// Mark every byte that sits inside a string, template literal, or comment. A REAL
+// test definition's `it`/`describe` keyword is code (mask 0); a keyword that appears
+// INSIDE a string is a fixture — a tag-linter package embeds sample test source as a
+// string literal (`const F = \`describe("@live X", …)\``) to lint it, and the title
+// regex, scanning raw text, would otherwise read the fixture's inner title as a real
+// tagged test. Skipping masked keyword positions rejects those without risk of a
+// false negative: real, runnable tests are never authored inside a quote.
+//
+// `'`/`"` strings terminate at end-of-line (unescaped newlines are illegal in them
+// anyway); only template literals span lines. This bounds any mis-lex from an exotic
+// regex literal that happens to contain a lone quote to its own line, so it can never
+// swallow a later real test def. Regex literals are otherwise treated as plain code —
+// a regex containing a test-definition keyword + quoted title is not a real construct.
+function stringCommentMask(text: string): Uint8Array {
+  const mask = new Uint8Array(text.length);
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    if (c === "/" && text[i + 1] === "/") {
+      while (i < n && text[i] !== "\n") mask[i++] = 1;
+      continue;
+    }
+    if (c === "/" && text[i + 1] === "*") {
+      mask[i++] = 1;
+      mask[i++] = 1;
+      while (i < n && !(text[i] === "*" && text[i + 1] === "/")) mask[i++] = 1;
+      if (i < n) {
+        mask[i++] = 1;
+        mask[i++] = 1;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      const singleLine = c !== "`";
+      mask[i++] = 1;
+      while (i < n) {
+        if (text[i] === "\\") {
+          mask[i++] = 1;
+          if (i < n) mask[i++] = 1;
+          continue;
+        }
+        if (text[i] === c) {
+          mask[i++] = 1;
+          break;
+        }
+        if (singleLine && text[i] === "\n") break; // unterminated — stop at line end
+        mask[i++] = 1;
+      }
+      continue;
+    }
+    i++;
+  }
+  return mask;
+}
+
+function tagUsedInTestTitle(text: string, tag: string, mask: Uint8Array): boolean {
   TEST_DEF_TITLE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = TEST_DEF_TITLE.exec(text)) !== null) {
+    if (mask[m.index]) continue; // keyword sits inside a string/comment — a fixture, not a real test
     if (m[2].includes(tag)) return true;
   }
   return false;
@@ -682,10 +744,12 @@ export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | 
     } catch {
       continue;
     }
+    let mask: Uint8Array | null = null; // lazily built on the first tag that survives fast-reject
     for (const { tag, script } of TAG_SCRIPT_HOMES) {
       if (!declaredScripts.has(script)) continue; // convention not active for this tag
       if (!text.includes(tag)) continue; // fast reject before the title-context regex
-      if (!tagUsedInTestTitle(text, tag)) continue; // tag must be in a test TITLE, not a comment/other string
+      mask ??= stringCommentMask(text);
+      if (!tagUsedInTestTitle(text, tag, mask)) continue; // tag must be in a real test TITLE, not a comment/string/fixture
       const pj = nearestPkg(path.dirname(file));
       if (!pj) continue;
       if (typeof pkgScripts.get(pj)?.[script] !== "string") {
@@ -1090,10 +1154,16 @@ export function detectTurboIntegrationInputs(cwd: string): PreflightFinding[] {
 }
 
 /**
- * Detect whether the consumer's `test:integration` script asserts real-service
- * runtime env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A script
- * that silently mocks integration tests passes CI without exercising real
- * services — the worst-case ghost-green from KN-23. Returns null if no script.
+ * Detect whether the consumer's `test:integration` lane asserts real-service runtime
+ * env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A lane that silently mocks
+ * integration tests passes CI without exercising real services — the worst-case
+ * ghost-green from KN-23. Returns null if no `test:integration` script.
+ *
+ * The gating can legitimately live at any of three layers, so all three are inspected
+ * before flagging a no-op lane: (1) the script string itself, (2) the CI workflow job
+ * that invokes `test:integration` (a deliberately env-agnostic script keeps local runs
+ * from forcing real-API mode, provisioning instead at the lane), (3) the vitest
+ * integration config the script points at (home of the documented in-file guard).
  */
 export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
   const pkgPath = path.join(cwd, "package.json");
@@ -1106,8 +1176,6 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
   }
   const script = pkg.scripts?.["test:integration"];
   if (!script) return null;
-  // Hints of real-service gating in the script body OR in the script chain
-  // (consumers commonly wrap real-API setup in a sibling script).
   const realServiceHints = [
     "TEST_REAL_APIS",
     "SUPABASE_SERVICE_ROLE",
@@ -1115,16 +1183,48 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
     "service_role",
     "supabase start",
   ];
-  if (realServiceHints.some((hint) => script.includes(hint))) return null;
+  const hasHint = (t: string): boolean => realServiceHints.some((h) => t.includes(h));
+
+  // 1. Script body / chain (consumers commonly wrap real-API setup in a sibling script).
+  if (hasHint(script)) return null;
+
+  // 2. CI workflow lane: a workflow file that BOTH invokes `test:integration` AND
+  //    provisions a real-service hint is the lane doing the gating — the correct pattern
+  //    for an intentionally env-agnostic script (`supabase start` + `TEST_REAL_APIS` +
+  //    service-role export around `turbo run test:integration`).
+  const workflowsDir = path.join(cwd, ".github", "workflows");
+  if (fs.existsSync(workflowsDir) && fs.statSync(workflowsDir).isDirectory()) {
+    for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) continue;
+      const wf = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
+      if (wf.includes("test:integration") && hasHint(wf)) return null;
+    }
+  }
+
+  // 3. vitest integration config the script points at (or a conventional default) —
+  //    where consumers document/enforce the per-file `TEST_REAL_APIS` guard.
+  const configFromScript = /--config[=\s]+(\S+)/.exec(script)?.[1];
+  const configCandidates = [
+    ...(configFromScript ? [configFromScript] : []),
+    "vitest.integration.config.ts",
+    "vitest.integration.config.mts",
+    "vitest.integration.config.js",
+  ];
+  for (const rel of configCandidates) {
+    const cfgPath = path.join(cwd, rel);
+    if (fs.existsSync(cfgPath) && hasHint(fs.readFileSync(cfgPath, "utf-8"))) return null;
+  }
+
   return {
     id: "test-integration-env-not-asserted",
     severity: "advisory",
     detect:
-      "`package.json#scripts.test:integration` exists but the script body shows no real-service env gating (TEST_REAL_APIS=true, SUPABASE_SERVICE_ROLE, or `supabase start` chain).",
+      "`package.json#scripts.test:integration` exists, but no real-service env gating (TEST_REAL_APIS, SUPABASE_SERVICE_ROLE, service-role URL, or a `supabase start` chain) was found in the script, the CI workflow lane that runs it, or the vitest integration config.",
     action:
-      "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Add an explicit gate to the script, for example:\n\n" +
-      '    "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n\n' +
-      "Or chain a real-service preflight (e.g. `supabase start && vitest run …`). If the absence is intentional (pure-mock integration suite), add a comment in the script and dismiss this advisory by tagging the package — there is no auto-suppress mechanism yet.",
+      "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Provision the real-service env at ANY one of these layers (all are recognised):\n\n" +
+      '  - script: "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n' +
+      "  - CI lane: set `TEST_REAL_APIS` / export the service-role URL / chain `supabase start` around `turbo run test:integration` in the `.github/workflows/*.yml` job that runs it (keeps local `pnpm test:integration` env-agnostic)\n" +
+      "  - vitest integration config: document/enforce the per-file `TEST_REAL_APIS` guard in the config the script `--config`s to.",
   };
 }
 
@@ -2324,6 +2424,26 @@ export function detectRenderedPromptsStale(
 
 /** Opening delimiter of a bkit-managed block — the signal that a doc is bkit-owned. */
 const MANAGED_REGION_START = "<!-- bkit:start -->";
+/** Closing delimiter — bounds the first block so deeper prose / appended blocks are ignored. */
+const MANAGED_REGION_END = "<!-- bkit:end -->";
+
+/**
+ * Read the managed-version stamp from a doc's first `bkit:start`…`bkit:end` block.
+ * Only a full-line `<!-- bkit:managed v… -->` counts — inline prose examples
+ * (`vX.Y.Z` in architecture.md) must not be mistaken for the stamp.
+ */
+export function readManagedDocStampVersion(content: string): string | null {
+  const startIdx = content.indexOf(MANAGED_REGION_START);
+  if (startIdx === -1) return null;
+  const endIdx = content.indexOf(MANAGED_REGION_END, startIdx + MANAGED_REGION_START.length);
+  const region =
+    endIdx === -1
+      ? content.slice(startIdx)
+      : content.slice(startIdx, endIdx + MANAGED_REGION_END.length);
+  const line = region.match(MANAGED_MARKER_LINE_RE)?.[0] ?? null;
+  if (!line) return null;
+  return line.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+}
 
 /** Recursively collect `*.md` paths under `dir` (docs trees are shallow). */
 function collectManagedDocMarkdown(dir: string, acc: string[] = []): string[] {
@@ -2354,10 +2474,10 @@ function collectManagedDocMarkdown(dir: string, acc: string[] = []): string[] {
  * markers keep their stale value), no-op in real install/upgrade (markers were
  * just re-stamped in Phase 2 before Phase 3 runs).
  *
- * The marker is searched only from the `bkit:start` delimiter onward, so a
- * consumer-owned line above the block (e.g. template.md's path note) and the prose
- * references to the marker DEEPER in some docs (architecture.md / decisions.md
- * document the mechanism) cannot be mistaken for the real first-line stamp.
+ * The stamp is read ONLY as a full-line `<!-- bkit:managed v… -->` inside the
+ * first `bkit:start`…`bkit:end` block (`readManagedDocStampVersion`). Consumer
+ * lines above the block, inline prose examples (`vX.Y.Z` in architecture.md), and
+ * any later appended blocks cannot be mistaken for the real first-line stamp.
  *
  * The managed-doc SET is enumerated from the package's template tree
  * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
@@ -2388,11 +2508,9 @@ export function detectManagedDocsStale(
     const file = path.join(cwd, "docs", rel);
     if (!fs.existsSync(file)) continue; // consumer may not have every doc
     const content = fs.readFileSync(file, "utf-8");
-    const startIdx = content.indexOf(MANAGED_REGION_START);
-    if (startIdx === -1) continue; // consumer dropped the managed block — not ours to gate
+    if (!content.includes(MANAGED_REGION_START)) continue; // consumer dropped the managed block — not ours to gate
     scanned++;
-    const region = content.slice(startIdx);
-    const found = region.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+    const found = readManagedDocStampVersion(content);
     if (found !== installingVersion) {
       stale.push(`docs/${rel}${found ? ` (v${found})` : " (no marker)"}`);
     }
@@ -2417,6 +2535,32 @@ export function detectManagedDocsStale(
 // ---------------------------------------------------------------------------
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
+
+/**
+ * DE-<n>/KN-<n> alias collisions in the key-bearing ledgers — one number claimed
+ * by more than one unrelated row. The retired "scan-highest-and-increment" scheme
+ * let two concurrent workflows mint the same id off the same base commit, and
+ * `merge=union` appended both silently (their slug `key`s differ, so nothing
+ * conflicts). A bare citation of that number then resolves ambiguously. Advisory,
+ * never a blocker: it is pre-existing ledger data, not an install fault, and the
+ * fix (`bkit telemetry normalise`) is the consumer's to run. Read-only fs scan.
+ */
+export function detectLedgerAliasCollisions(cwd: string): PreflightFinding | null {
+  const { collisions } = lintLedgers(cwd);
+  if (collisions.length === 0) return null;
+  const sample = collisions
+    .slice(0, 5)
+    .map((c) => `${c.id} (${c.keys.length} rows)`)
+    .join(", ");
+  const more = collisions.length > 5 ? `, and ${collisions.length - 5} more` : "";
+  return {
+    id: "ledger-alias-collisions",
+    severity: "advisory",
+    detect: `${collisions.length} DE-<n>/KN-<n> alias collision(s) in docs/decisions.jsonl / docs/knowledge.jsonl — one id claimed by unrelated rows, so a bare citation is ambiguous: ${sample}${more}.`,
+    action:
+      "Run `bkit telemetry normalise` to demote each number to references[] and re-key the colliding rows (parity-gated + idempotent), then cite the slug `key` (not the bare number) going forward. Verify first with `bkit telemetry validate`.",
+  };
+}
 
 /**
  * Re-run token-surface + ci.yml + vale-sync + devDeps detectors after writes.
@@ -2736,6 +2880,11 @@ export function runPostInstallCheck(
   // devDeps need fetch
   const devDeps = detectDevDepsNeedFetch(ws);
   if (devDeps) phase3.push(devDeps);
+
+  // DE-<n>/KN-<n> alias collisions in the key-bearing ledgers (silent duplicate ids
+  // from the retired scan-highest-and-increment scheme). Read-only fs scan.
+  const ledgerCollisions = detectLedgerAliasCollisions(cwd);
+  if (ledgerCollisions) phase3.push(ledgerCollisions);
 
   // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
   // Wired here in Phase 3 — scaffolds (.bkit/.env.example, .envrc) only exist

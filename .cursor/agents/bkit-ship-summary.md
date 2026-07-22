@@ -7,7 +7,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a ship cycle for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.
@@ -31,12 +31,12 @@ tools:
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-7. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = merged green, no retries.
    - `FAIL` = merge blocked.
    - `CONCERNS` = merge succeeded but follow-up needed (required merge retries, post-merge issues observable from CI logs / status.json).
@@ -68,7 +68,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 
-[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred + where declared + blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
+[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred, where declared, and blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

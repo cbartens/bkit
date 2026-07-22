@@ -612,19 +612,24 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     });
   }
 
-  // #245 Phase 3 — opencode-native gateway. bkit key is `opencode`; the opencode-side
-  // provider id is also `opencode`. Accepted at the CLI; render path differs (built-in provider,
-  // auth via OPENCODE_API_KEY).
-  it("--opencode=opencode is accepted (#245 Phase 3)", () => {
-    expect(parseArgs(["install", "--opencode=opencode"]).opencodeProvider).toBe("opencode");
+  // opencode-native gateways — two providers `opencode-zen` + `opencode-go`, both auth via
+  // OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).
+  it("--opencode=opencode-zen is accepted", () => {
+    expect(parseArgs(["install", "--opencode=opencode-zen"]).opencodeProvider).toBe("opencode-zen");
+  });
+  it("--opencode=opencode-go is accepted", () => {
+    expect(parseArgs(["install", "--opencode=opencode-go"]).opencodeProvider).toBe("opencode-go");
   });
 
-  // Legacy aliases — `zen` and `go` normalise to the canonical `opencode` key.
-  it("--opencode=zen normalises to opencode (legacy alias)", () => {
-    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("opencode");
+  // Legacy aliases: bare `opencode` + `zen` normalise to opencode-zen; `go` to opencode-go.
+  it("--opencode=opencode normalises to opencode-zen (legacy alias)", () => {
+    expect(parseArgs(["install", "--opencode=opencode"]).opencodeProvider).toBe("opencode-zen");
   });
-  it("--opencode=go normalises to opencode (legacy alias, #282)", () => {
-    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("opencode");
+  it("--opencode=zen normalises to opencode-zen (legacy alias)", () => {
+    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("opencode-zen");
+  });
+  it("--opencode=go normalises to opencode-go (legacy alias, #282)", () => {
+    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("opencode-go");
   });
 
   const rejected: Array<[string, string]> = [

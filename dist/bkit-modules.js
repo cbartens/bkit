@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepContains, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
@@ -1111,17 +1111,25 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "Ollama (Cloud)",
     },
-    // opencode-native gateway (Zen; opencode's "Go" plan, alias `go`). First-class built-in
-    // opencode provider (id "opencode"; models opencode/<id>). Auth is via OPENCODE_API_KEY,
-    // referenced as {env:OPENCODE_API_KEY} — renderOpencodeJson emits a minimal provider block
-    // with only that apiKey (no npm driver, no baseURL: opencode resolves the built-in provider).
-    opencode: {
+    // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
+    // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
+    // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
+    // `opencode` (agent pins opencode/<id>), Go's id is `opencode-go` (opencode-go/<id>).
+    "opencode-zen": {
         envVar: "OPENCODE_API_KEY",
         baseURL: "",
         apiPlaceholder: "{env:OPENCODE_API_KEY}",
         builtin: true,
         providerId: "opencode",
-        displayName: "OpenCode",
+        displayName: "OpenCode Zen",
+    },
+    "opencode-go": {
+        envVar: "OPENCODE_API_KEY",
+        baseURL: "",
+        apiPlaceholder: "{env:OPENCODE_API_KEY}",
+        builtin: true,
+        providerId: "opencode-go",
+        displayName: "OpenCode Go",
     },
 };
 /**
@@ -1175,9 +1183,9 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
         if (mcp && Object.keys(mcp).length === 0) {
             delete parsed.mcp;
         }
-        // Built-in opencode gateway: opencode resolves the provider itself, so there is no
-        // npm driver and no baseURL to seed — emit a minimal block keyed by the opencode-side
-        // provider id carrying only the apiKey ({env:OPENCODE_API_KEY}). Models are opencode/<id>.
+        // Built-in opencode gateways (Zen/Go): opencode resolves the provider from models.dev,
+        // so there is no npm driver and no baseURL — emit a minimal block keyed by the
+        // opencode-side provider id carrying only the apiKey ({env:OPENCODE_API_KEY}).
         if (providerDefaults.builtin) {
             const pid = providerDefaults.providerId ?? provider;
             const options = {};
@@ -1211,14 +1219,17 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
 }
 /**
  * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template.
- * Install is purely additive: existing provider blocks (bkit-seeded or consumer-added) are
- * preserved unchanged. Only the current provider's template block is deep-merged in.
+ * Install is additive across provider keys: existing blocks for other providers
+ * (bkit-seeded or consumer-added) are preserved. For each provider key present in the
+ * template, the block is REPLACED (not deep-merged) so a hijacked npm/baseURL cannot
+ * survive reinstall — deepContains alone would treat a corrupted supersets-of-template
+ * block as already satisfied.
  *
  * To remove a stale bkit provider block (e.g. after switching providers), use the surgical
  * `removeOpencodeProviderBlock` below — called by the uninstall path, not install.
  *
  * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
- * deepContains, else merge), so dry-run and real runs compute the identical writeset.
+ * final equality, else merge), so dry-run and real runs compute the identical writeset.
  */
 export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
     const template = JSON.parse(renderedTemplate);
@@ -1244,11 +1255,38 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
     if (existing === null) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
-    // Idempotent no-op: skip write if existing already contains the template.
-    if (deepContains(template, existing).ok) {
-        return;
-    }
     const merged = deepMergeJson(existing, template);
+    // Replace (do not deep-merge) each provider key the template seeds — heals hijacked
+    // npm/baseURL/name while keeping other provider keys additive.
+    //
+    // Preserve the EXISTING file's provider key order. deepMergeJson orders template keys
+    // first (correct for last-match-wins maps like permission.bash), but for the provider
+    // map that reordering is churn: reconciling one provider (e.g. an "additional provider"
+    // block on `bkit upgrade`) would move it ahead of the others, so install (active
+    // provider only) and upgrade (every installed provider) render a DIFFERENT order and
+    // `bkit check` never settles. Rebuild from the existing order — replacing template-seeded
+    // blocks in place — then append genuinely-new template providers in template order.
+    const tmplProv = template.provider;
+    if (tmplProv !== null && typeof tmplProv === "object" && !Array.isArray(tmplProv)) {
+        const tmplProvObj = tmplProv;
+        const existingProvObj = existing.provider !== null &&
+            typeof existing.provider === "object" &&
+            !Array.isArray(existing.provider)
+            ? existing.provider
+            : {};
+        const orderedProv = {};
+        for (const k of Object.keys(existingProvObj)) {
+            orderedProv[k] =
+                k in tmplProvObj
+                    ? JSON.parse(JSON.stringify(tmplProvObj[k]))
+                    : existingProvObj[k];
+        }
+        for (const [k, v] of Object.entries(tmplProvObj)) {
+            if (!(k in orderedProv))
+                orderedProv[k] = JSON.parse(JSON.stringify(v));
+        }
+        merged.provider = orderedProv;
+    }
     const mergedStr = JSON.stringify(merged, null, 2) + "\n";
     if (mergedStr === fs.readFileSync(relDst, "utf-8"))
         return; // idempotent guard
@@ -1369,13 +1407,14 @@ export function runOpencodeModule(ctx) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
                 }
-                // Built-in opencode gateway → keyed via OPENCODE_API_KEY, no baseURL to seed.
-                // Checked BEFORE the empty-apiPlaceholder branch so its guidance is gateway-specific.
-                if (pd.builtin) {
-                    return (`  1. opencode is the opencode-native gateway. Create an API key at https://opencode.ai/auth.\n` +
+                // opencode-native gateways (opencode-zen / opencode-go) → OPENCODE_API_KEY only.
+                // Built-in: no baseURL to seed; models use the opencode-side provider id.
+                if (pd.builtin || pd.envVar === "OPENCODE_API_KEY") {
+                    const modelPrefix = opencodeProviderId(provider);
+                    return (`  1. opencode gateway "${provider}". Create an API key at https://opencode.ai/auth (one OPENCODE_API_KEY covers both opencode-zen and opencode-go).\n` +
                         `  2. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
                         `     ${pd.envVar}=<your-api-key>\n` +
-                        `  3. Models are referenced as opencode/<id>; opencode resolves the built-in provider.\n`);
+                        `  3. Built-in provider (no npm/baseURL). Models are referenced as ${modelPrefix}/<id>.\n`);
                 }
                 // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
                 // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
@@ -1402,8 +1441,8 @@ export function runOpencodeModule(ctx) {
             `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
-            `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode gateway pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your OPENCODE_API_KEY set.\n` +
+            `  4. Model IDs: all eight providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }
@@ -2243,6 +2282,10 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 // is bkit-owned and overwritten on every install, so any override that would
 // conflict with it belongs in renovate-local.json5, which survives install/upgrade.
 const RENOVATE_CUSTOMIZE_NOTE = "Customizing Renovate: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`/`bkit upgrade`, so changes there are lost on the next run. Put repo-specific rules in `.github/renovate-local.json5` instead (consumer-owned; bkit never overwrites it). On conflict renovate-local ADDS to bkit's rules and can set keys bkit leaves unset (notably `enabled: false` to fence a package) but canNOT override a key bkit sets explicitly (e.g. `automerge`). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.";
+// Shared note appended to the cloud-setup advisories (#362). Both bkit-cloud.yml jobs
+// share one configurable runner label; do NOT hand-edit the canonical workflow (the
+// drift gate reverts it) — set the label in config and let bkit render it.
+const CLOUD_RUNNER_NOTE = "RUNNER (optional — cost / perf): both cloud jobs' `runs-on` is bkit-substituted from `bkit.runners.bkitCloud` in `package.json` (default `ubuntu-latest`). The label is arbitrary — a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. bkit renders it on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. Do NOT hand-edit `runs-on` in `.github/workflows/bkit-cloud.yml` — that edit is reverted on the next run. See docs/deployments.md § Self-hosted Renovate (runner-label config).";
 function isRenovateConfigOnDefaultBranch(defaultBranch, cwd) {
     try {
         // Strip git hook env vars so this git command operates on the repo at `cwd`
@@ -2371,7 +2414,8 @@ export function runRenovateModule(ctx) {
                 "  3. Confirm a repo Actions secret `GH_BKIT_TOKEN_INSTALL` (a PAT with `read:packages`) exists — the workflow injects it via `RENOVATE_HOST_RULES` so private `@cbartens/bkit` lockfile regen succeeds. Keep the `token:` line in `.github/renovate-local.json5` COMMENTED (the workflow supplies the token; an uncommented Mend-style `{{ secrets.* }}` line adds an empty-token rule self-hosted and 401s).\n" +
                 "  4. Enable GitHub's vulnerability feed (Settings -> Advanced Security): turn ON `Dependency graph` and `Dependabot alerts`. Keep `Dependabot security updates` and `Dependabot version updates` OFF — those make Dependabot open its OWN PRs, competing with Renovate. Renovate reads the alerts and opens the security-fix PRs itself (and already carries `osvVulnerabilityAlerts` for an OSV source too).\n" +
                 "  5. SUSPEND the Mend Renovate App for this repo if it is installed (GitHub UI -> Settings -> Applications -> Renovate -> Configure -> remove this repo; no `gh api` equivalent). Otherwise Mend AND this workflow open the same `renovate/*` PRs. bkit cannot verify the App state (off-repo).\n" +
-                "  6. Trigger the workflow once from the Actions tab -> Renovate -> Run workflow (optionally `dryRun=full`, `logLevel=debug`) to confirm auth + config load before the schedule takes over. It adopts any existing Dependency Dashboard issue and open `renovate/*` PRs (the default `renovate/` branch prefix is unchanged).\n\n" +
+                "  6. Trigger the workflow once from the Actions tab -> Renovate -> Run workflow (optionally `dryRun=full`, `logLevel=debug`) to confirm auth + config load before the schedule takes over. It adopts any existing Dependency Dashboard issue and open `renovate/*` PRs (the default `renovate/` branch prefix is unchanged).\n" +
+                "  7. (Optional — cost / headroom) The `runs-on` label is configurable via `bkit.runners.renovate` in `package.json` (default `ubuntu-latest`). The label is arbitrary: a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04-4`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. Keep >=16 GB of headroom (KN-CORE-10). bkit renders the label on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. See docs/deployments.md § Self-hosted Renovate.\n\n" +
                 RENOVATE_CUSTOMIZE_NOTE,
         });
         return;
@@ -2404,7 +2448,7 @@ export function runRenovateModule(ctx) {
             "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
             "  5. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
             "  6. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
-            "If Mend's hosted runner later OOMs on your monorepo (large pnpm graph → every run fails `kernel-out-of-memory` at the 3 GB ceiling), switch off Mend to the self-hosted runner: re-run `pnpm bkit install --renovate=self` (runs on `ubuntu-latest`, ~16 GB). See docs/deployments.md § Self-hosted Renovate.\n\n" +
+            "If Mend's hosted runner later OOMs on your monorepo (large pnpm graph → every run fails `kernel-out-of-memory` at the 3 GB ceiling), switch off Mend to the self-hosted runner: re-run `pnpm bkit install --renovate=self` (runs on `ubuntu-latest` ~16 GB by default; point `bkit.runners.renovate` at a Depot label or larger runner for more headroom / lower cost). See docs/deployments.md § Self-hosted Renovate.\n\n" +
             RENOVATE_CUSTOMIZE_NOTE,
     });
 }
@@ -2567,7 +2611,8 @@ export function runCloudModule(ctx) {
                 "  - Do NOT add `GH_BKIT_TOKEN_INSTALL` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
                 "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
-                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).",
+                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).\n\n" +
+                CLOUD_RUNNER_NOTE,
         });
         // Advisory — cloud env scaffolding (Claude half).
         advisories.push({
@@ -2619,7 +2664,8 @@ export function runCloudModule(ctx) {
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
-                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.",
+                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.\n\n" +
+                CLOUD_RUNNER_NOTE,
         });
     }
     else {

@@ -336,9 +336,11 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(fs.existsSync(WORKFLOW)).toBe(true);
   });
 
-  it("runs renovatebot/github-action SHA-pinned (KN-CORE-5) on ubuntu-latest", () => {
+  it("runs renovatebot/github-action SHA-pinned (KN-CORE-5) on the configurable runner (#362)", () => {
     expect(content).toMatch(/uses:\s*renovatebot\/github-action@[0-9a-f]{40}\s*#/);
-    expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
+    // runs-on is now a bkit-substituted token (bkit.runners.renovate → ubuntu-latest
+    // default); the literal is no longer hard-coded (#362).
+    expect(content).toMatch(/runs-on:\s*\{\{RENOVATE_RUNNER\}\}/);
   });
 
   it("wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos)", () => {

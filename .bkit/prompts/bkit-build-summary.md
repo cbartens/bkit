@@ -33,15 +33,15 @@ maxTurns: 25
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-7. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan done, all tests pass, no unresolved findings; ONLY original out-of-scope items unresolved.
    - `FAIL` = some plan tasks not done, tests failing, or unresolved CRITICAL severity findings from challenge.
-   - `CONCERNS` = real risks/defects/unresolved gaps that do NOT meet `FAIL` threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-CRITICAL verify gap).
+   - `CONCERNS` = real risks/defects/unresolved gaps below `FAIL` threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-CRITICAL verify gap).
 
 **Output format:**
 

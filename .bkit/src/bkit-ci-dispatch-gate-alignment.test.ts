@@ -15,13 +15,19 @@
 // Only the AUTO_ROUTE sourcing tail + workflow/step jq strings legitimately differ.
 //
 // This file is modeled on bkit-workflow-lock-snippet.test.ts.
+//
+// The ciDispatch FOLD reducer round-trip (real bash + jq subprocess) is covered
+// in bkit-ci-dispatch-gate-alignment.integration.test.ts.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
+// __dirname-anchored, not CWD-relative (G4, build-plan-gaps-remediate-1-1) —
+// matches every sibling suite (e.g. bkit-status-fold.test.ts's REPO_ROOT) so
+// this file resolves correctly regardless of vitest's invocation cwd.
+const REPO_ROOT = path.resolve(__dirname, "../..");
+const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
 
 function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8");
@@ -227,73 +233,6 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. ciDispatch FOLD reducer round-trip
-//    A step-done record carrying ciDispatch folds cleanly through the #209
-//    FOLD reducer — the additive field survives del(.type,.workflow) unchanged.
-// ---------------------------------------------------------------------------
-describe("ciDispatch field — #209 FOLD reducer round-trip", () => {
-  // Extract the FOLD jq string verbatim from bkit-build.md (same reducer used everywhere).
-  function extractFoldJq(content: string): string | null {
-    const m = content.match(/FOLD='(def lastIdx[^']+)'/);
-    return m ? m[1] : null;
-  }
-
-  it("ciDispatch.outcome / .head / .attempts survive the FOLD reducer unchanged", () => {
-    const foldJq = extractFoldJq(buildMd);
-    expect(foldJq).not.toBeNull();
-
-    const testSha = "abc123def456";
-    // Fabricate a minimal status.jsonl with one workflow-started + one step-done carrying ciDispatch.
-    const statusNdjson = [
-      JSON.stringify({
-        type: "workflow-started",
-        workflow: "build",
-        at: "2026-06-16T10:00:00Z",
-      }),
-      JSON.stringify({
-        type: "step-done",
-        workflow: "build",
-        step: "build-close-workflow",
-        status: "DONE",
-        at: "2026-06-16T10:01:00Z",
-        parentSha: testSha,
-        artifacts: [],
-        ciDispatch: {
-          outcome: "dispatched",
-          head: testSha,
-          attempts: 1,
-          retrigger: false,
-        },
-      }),
-    ].join("\n");
-
-    // Run the FOLD reducer via bash + jq, extract the ciDispatch field from the folded step.
-    const script = `
-echo '${statusNdjson.replace(/'/g, "'\\''")}' | jq -rs '
-  ${foldJq}
-  fold |
-  [.[] | select(.workflow=="build")] | last |
-  .steps[] | select(.step=="build-close-workflow") |
-  .ciDispatch
-'`;
-
-    const result = execFileSync("bash", ["-c", script], { encoding: "utf-8" }).trim();
-    const ciDispatch = JSON.parse(result) as {
-      outcome: string;
-      head: string;
-      attempts: number;
-      retrigger: boolean;
-    };
-
-    // Assert full values survive — not just key presence.
-    expect(ciDispatch.outcome).toBe("dispatched");
-    expect(ciDispatch.head).toBe(testSha);
-    expect(ciDispatch.attempts).toBe(1);
-    expect(ciDispatch.retrigger).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // 6. retrigger-suppressed maps to unresolved ONLY (never no-ci)
 //    The assignment CI_REASON="retrigger-suppressed" must ALWAYS appear on a
 //    line that also sets CI_OUTCOME="unresolved" (same shell statement).
@@ -471,7 +410,8 @@ describe("intentional-non-push rationale documented in workflows.md, not inline 
     expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
     expect(workflowsMd).toContain("KN-11");
     // Must explicitly forbid the rejected fix.
-    expect(workflowsMd).toContain('Do NOT "fix" this by adding a post-gate commit+push');
+    // Wording compressed on current `dev`; keep the forbid-the-rejected-fix lock-in.
+    expect(workflowsMd).toContain('Do NOT "fix" with post-gate commit+push');
   });
 
   it("bkit-build.md does NOT inline the non-push rationale (it belongs in workflows.md)", () => {

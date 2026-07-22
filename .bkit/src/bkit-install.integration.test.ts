@@ -1800,8 +1800,13 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
 
 describe("detectRenovateRunner — runner resolution + clobber guard (#325)", () => {
   const WF_REL = path.join(".github", "workflows", "renovate.yml");
-  const CANONICAL = () =>
-    fs.readFileSync(path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml"), "utf-8");
+  // Render the canonical template the way `bkit install` writes it: the
+  // `{{RENOVATE_RUNNER}}` token (#362) resolves to the given label (default
+  // ubuntu-latest). The raw template is never what lands on disk.
+  const CANONICAL = (runner = "ubuntu-latest") =>
+    fs
+      .readFileSync(path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml"), "utf-8")
+      .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => runner);
   const writeWorkflow = (content: string) => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, WF_REL), content, "utf-8");
@@ -1836,6 +1841,16 @@ describe("detectRenovateRunner — runner resolution + clobber guard (#325)", ()
     writePkg();
     writeWorkflow("name: My Own Renovate\non:\n  schedule:\n    - cron: '0 0 * * 0'\n");
     expect(detectRenovateRunner(tmpDir)).toBe("mend");
+  });
+
+  it("no field + workflow rendered with a custom runner label → self (#362)", () => {
+    // A consumer on `bkit.runners.renovate=depot-…` (but no legacy renovateRunner
+    // field): the on-disk file has the Depot label, and detectRenovateRunner must
+    // render the template with the same config before comparing, still classifying
+    // it bkit-owned rather than a bespoke consumer workflow.
+    writePkg({ runners: { renovate: "depot-ubuntu-24.04-4" } });
+    writeWorkflow(CANONICAL("depot-ubuntu-24.04-4"));
+    expect(detectRenovateRunner(tmpDir)).toBe("self");
   });
 
   it("no field + no workflow → mend (fresh install default)", () => {

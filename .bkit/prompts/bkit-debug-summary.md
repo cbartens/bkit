@@ -33,14 +33,14 @@ maxTurns: 25
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Extract `Rot Signals` from diagnose attempts → aggregate (dedupe slugs, retain all evidence).
 7. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
 8. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = failure resolved (no retries, no fragility, no rot signals).
    - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = CONCERNS, or any rot signals detected).
    - `FAIL` = aborted at attempt N, root cause unresolved, or any remediation input has non-empty `Blockers`.
@@ -64,11 +64,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Rot Signals
 
-[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs + all provided evidence. If no rot signals then `None`; initially set to `PENDING`.]
+[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs and all provided evidence. If no rot signals then `None`; initially set to `PENDING`.]
 
 ## Out-of-Scope Recommendations
 
-[Aggregated across diagnose attempts: deduped file paths + all rationales. If nothing out-of-scope then `None`; initially set to `PENDING`.]
+[Aggregated across diagnose attempts: deduped file paths and all rationales. If nothing out-of-scope then `None`; initially set to `PENDING`.]
 
 ## Remediation Status
 

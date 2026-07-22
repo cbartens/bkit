@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Security
 
@@ -16,15 +16,15 @@
 
 ## Supply-Chain (GitHub Actions)
 
-Action SHA-pinning and the dependency-update pipeline — Renovate / Dependabot activation, private-registry read-auth, consumer customization (`renovate-local.json5`), and CVE handling — are CI/CD pipeline rules. Their canonical home is `deployments.md` § GitHub Actions pinning; this section keeps only the security-relevant invariant.
+Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot activation, private-registry read-auth, `renovate-local.json5` customization, CVE handling) are CI/CD pipeline rules → canonical home `deployments.md` § GitHub Actions pinning; this section keeps only the security invariant.
 
-**Token isolation:** Renovate PRs run with a restricted `GITHUB_TOKEN` and have no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. A compromised or malicious dependency PR therefore cannot reach the agent's API credentials.
+**Token isolation:** Renovate PRs use a restricted `GITHUB_TOKEN` with no access to cloud-lane model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. A compromised dependency PR cannot reach agent API credentials.
 
 <!-- bkit:end -->
 
 ## Scope
 
-bkit has no database, no server, no user-authentication surface. Security concerns: secrets management (tokens), supply-chain (action pinning), shell-injection guards, PII avoidance in logs.
+No database, server, or user-auth surface. Security concerns: secrets management (tokens), supply-chain (action pinning), shell-injection guards, PII avoidance in logs.
 
 ## Secrets Management
 
@@ -32,9 +32,9 @@ bkit has no database, no server, no user-authentication surface. Security concer
 
 `.bkit/.env` (gitignored, auto-loaded via `.envrc`/direnv) holds **bkit and agent-tooling secrets ONLY**: tracker / cloud-agent tokens (`GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`, `LINEAR_API_KEY`, `ANTHROPIC_API_KEY`, `CURSOR_API_KEY`) and opencode provider keys (`OPENCODE_API_KEY`, `NVIDIA_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`).
 
-App/stack credentials do NOT belong here — an app's runtime keys AND the `/bkit-debug` observability tokens (e.g. a deploy-host or database log-read token) live in the app's own env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/config.md` (see `docs/observability.md`).
+App/stack credentials do NOT belong here — runtime keys AND `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/config.md` (see `docs/observability.md`).
 
-`LINEAR_ISSUE_ID` is injected per-session by the cloud integration — never put it in `.bkit/.env`.
+`LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`.
 
 ### Credential surfaces
 
@@ -49,20 +49,20 @@ App/stack credentials do NOT belong here — an app's runtime keys AND the `/bki
 
 ### `GH_BKIT_TOKEN_INSTALL`
 
-Must be a **classic** GitHub PAT with `read:packages` scope. A fine-grained PAT cannot authenticate to the GitHub Packages npm registry — never substitute one (`bkit install` Phase 3 states classic; `docs/deployments.md` § presence matrix scaffolds `<classic PAT>`).
+Must be a **classic** GitHub PAT with `read:packages` scope. Fine-grained PATs cannot auth GitHub Packages npm — never substitute (`bkit install` Phase 3 states classic; `docs/deployments.md` § presence matrix scaffolds `<classic PAT>`).
 
-- NEVER commit the token as a literal value anywhere. The committed `.npmrc` carries ONLY the registry mapping; the token goes into pnpm's user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` (not the project `.npmrc` — pnpm >=10.34.3 401s on a project-`.npmrc` env-substitution; see `docs/knowledge.jsonl` KN-CORE-7).
-- NEVER log or print the token value. `detectShellToken` (Phase 3) reads the env var's presence; it does NOT log its value.
-- `git status` review before every commit — `.env*` files are in `.gitignore` and must never be staged.
+- NEVER commit the token literally. Committed `.npmrc` carries ONLY registry mapping; token → pnpm user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` (not project `.npmrc` — pnpm >=10.34.3 401s on env-substitution; see `docs/knowledge.jsonl` KN-CORE-7).
+- NEVER log or print the token. `detectShellToken` (Phase 3) checks presence only.
+- `git status` before every commit — `.env*` in `.gitignore`, must never be staged.
 
 ### `.claude/cloud.md` — generated, holds live secrets
 
-`bkit install` / `upgrade` generate `.claude/cloud.md` with the Claude-Code-on-the-web env block resolved to **REAL secret values**. Handling rules:
+`bkit install` / `upgrade` generate `.claude/cloud.md` with Claude-Code-on-the-web env block resolved to **REAL secret values**. Rules:
 
-- **Gitignored + `chmod 600`. NEVER commit it.** It is deliberately UNTRACKED — absent from every WriteSet / manifest / `canonicalHashes` — so it never enters `bkit check` drift or the upgrade template walk (its values are machine-local and expected to differ).
-- **Resolution follows the consumer's `.envrc`** — bkit reads whatever dotenv files it sources and honours its `unset` lines. bkit hardcodes NO stack-specific key list; that knowledge stays in the consumer's `.envrc`, keeping bkit's shipped surface stack-independent.
-- **Session-hijack keys are always dropped** from the paste block: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`. Exporting them into a cloud env redirects Claude Code's OWN model calls onto API-key billing instead of the user's subscription.
-- Empty-valued keys are skipped; absent baseline tokens (`GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`) emit a placeholder, never a fabricated value.
+- **Gitignored + `chmod 600`. NEVER commit.** Deliberately UNTRACKED — absent from WriteSet / manifest / `canonicalHashes` — so no `bkit check` drift or upgrade template walk (machine-local values expected to differ).
+- **Resolution follows consumer `.envrc`** — bkit reads sourced dotenv files, honours `unset` lines. No hardcoded stack-specific key list; knowledge stays in consumer `.envrc` (stack-independent shipped surface).
+- **Session-hijack keys always dropped** from paste block: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` — exporting them redirects Claude Code model calls to API-key billing vs subscription.
+- Empty-valued keys skipped; absent baseline tokens (`GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`) → placeholder, never fabricated.
 
 ## Shell Injection
 
@@ -73,19 +73,19 @@ execFileSync("vercel", ["env", "ls", env]); // correct
 execSync(`vercel env ls ${env}`); // PROHIBITED
 ```
 
-`execSync` is permitted ONLY with a constant, fully-literal command string. Prefer non-throwing `spawnSync` where a non-zero exit is an expected answer rather than an error — a try/catch-default-return around it reads as an error-obscuring catch to `slop:delta`.
+`execSync` permitted ONLY with constant, fully-literal command string. Prefer non-throwing `spawnSync` when non-zero exit is expected — try/catch-default-return reads as error-obscuring catch to `slop:delta`.
 
-Add runtime type-guards for any string passed to subprocess arguments, even TypeScript-typed ones (type erasure at runtime). See `docs/knowledge.jsonl` KN-6.
+Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at runtime). See `docs/knowledge.jsonl` KN-6.
 
-GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) reaches a `run:` body ONLY via `env:` (runtime expansion), never inlined into `${{ }}` — see `docs/deployments.md` § `bkit-cloud.yml`.
+GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) → `run:` body ONLY via `env:` (runtime expansion), never inlined into `${{ }}` — see `docs/deployments.md` § `bkit-cloud.yml`.
 
 ## CI Auto-Route Trust (bkit-cloud)
 
-**PR-body marker trust:** The `bkit-cloud.yml` SHARED-DERIV block parses `bkit:issue=#N` / `bkit:fid=X` from the PR body to resolve which issue's `bkit:auto` label to re-check (kill switch). The PR body is editable by anyone with triage/write on the PR — it is collaborator-trusted, not commit-signed. A collaborator who edits the PR body to point at a different issue could defeat the live kill switch for the original issue (if the replacement issue still carries `bkit:auto`). Mitigation: the `bkit [auto route]` commit marker (free tier) must still be present on HEAD; editing the PR body cannot forge a commit marker. The trust gap is collaborator-vs-collaborator only (not external), and the branch-derived FID fallback fires when body markers are absent. Future hardening: cross-check `bkit:issue` against `gh pr view --json closingIssuesReferences`.
+**PR-body marker trust:** `bkit-cloud.yml` SHARED-DERIV parses `bkit:issue=#N` / `bkit:fid=X` from PR body to resolve which issue's `bkit:auto` label to re-check (kill switch). PR body is collaborator-trusted (triage/write), not commit-signed — editing it to point at another issue could defeat the kill switch for the original (if replacement still carries `bkit:auto`). Mitigation: `bkit [auto route]` commit marker (free tier) must be on HEAD; PR body cannot forge commit markers. Gap is collaborator-vs-collaborator only; branch-derived FID fallback when body markers absent. Future hardening: cross-check `bkit:issue` vs `gh pr view --json closingIssuesReferences`.
 
 ## PII
 
-bkit does not process, store, or transmit user PII. Log lines use the `[bkit-*]` prefix format per the naming convention. Never log consumer repo content verbatim in production output paths.
+No user PII processed, stored, or transmitted. Log lines use `[bkit-*]` prefix per naming convention. NEVER log consumer repo content verbatim in production output paths.
 
 ## RLS
 

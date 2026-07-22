@@ -12,7 +12,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Topology and boundaries only. Operational rules and library lists belong in domain docs.
-> - Update when packages are added/removed or domain boundaries shift.
+> - Topology/boundaries only; operational rules and library lists → domain docs.
+> - Update on package add/remove or boundary shift.
 
 <!-- bkit:end -->

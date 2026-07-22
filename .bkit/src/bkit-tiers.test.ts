@@ -185,6 +185,25 @@ describe("writeTier2 — html-comment markers", () => {
     expect(fs.existsSync(dst)).toBe(false);
     expect(ws.writes).toHaveLength(1);
   });
+
+  it("does NOT append when dest has duplicate/unparseable markers (avoids compounding corruption)", () => {
+    const src = path.join(tmpDir, "tpl.md");
+    const dst = path.join(tmpDir, "architecture.md");
+    fs.writeFileSync(src, "<!-- bkit:start -->\nnew\n<!-- bkit:end -->\n", "utf-8");
+    // Dogfood corruption shape: double end + trailing stamped block → extractManagedBlock null.
+    const corrupted =
+      "<!-- bkit:start -->\nold\n<!-- bkit:end -->\n<!-- bkit:end -->\n\n## Consumer\n\n" +
+      "<!-- bkit:start -->\nstamped append\n<!-- bkit:end -->\n";
+    fs.writeFileSync(dst, corrupted, "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "html-comment", false, ws);
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toBe(corrupted); // untouched
+    expect(result.match(/<!-- bkit:start -->/g)?.length).toBe(2); // did not grow
+    expect(ws.writes).toHaveLength(0);
+  });
 });
 
 describe("writeTier2 — hash-comment markers", () => {

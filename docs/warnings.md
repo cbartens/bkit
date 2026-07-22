@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Warnings
 
@@ -11,7 +11,7 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Append-only. One entry per file/line that is downgraded.
-> - Only downgrade when trigger is **known and expected**. Never silence — log at lower level.
+> - Append-only; one entry per downgraded file/line.
+> - Downgrade only when trigger is **known and expected**; Never silence — log at lower level.
 
 <!-- bkit:end -->

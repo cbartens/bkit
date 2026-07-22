@@ -6,6 +6,38 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.8.0] — 2026-07-22
+
+Makes workflow retry-counting deterministic — attempt counters now derive from `status.jsonl` instead of model-tracked prose — and expands the OpenCode host with first-class Zen and Go built-in providers alongside the install-drift fixes that surfaced beside them. Consumers can now redirect managed CI to their own runners, ledger slugs are collision-checked on install, and the OpenCode host gains the same secret-file read guardrails the Claude host already enforced.
+
+### Added
+
+- **Configurable CI runners for the managed Renovate and cloud workflows.** A new `bkit.runners` map substitutes the `runs-on` label (default `ubuntu-latest`) into `renovate.yml` and `bkit-cloud.yml`, so a consumer can point them at Depot / larger / self-hosted runners without tripping the canonical drift gate. (#362)
+- **First-class OpenCode Zen and Go built-in providers.** `opencode-zen` and `opencode-go` are now modelled as OpenCode builtins (apiKey only) rather than generic openai-compatible blocks, so per-model Anthropic-vs-openai-compatible routing works; a reinstall heals a hijacked provider block, and agents pin to `opencode/*` / `opencode-go/*` from the central `prompts.md` table. (#371)
+- **Ledger slug identity is validated and normalised.** Doctrine already retired the sequential `DE-N` / `KN-N` alias scheme; a loud collision scan, a postinstall advisory, and an idempotent normaliser now stop a legacy-seeded ledger from re-arming the duplicate-slug race. (#361)
+
+### Changed
+
+- **Workflow retry counters derive from `status.jsonl`, not model-tracked prose.** Every attempt counter (VERIFY / TEST / CHALLENGE_REMEDIATE / DEBUG / NORMAL / SOAK / MERGE) is now counted deterministically by the shell from step-done rows in the active run, replacing the inline `jq` prelude across the five workflows with a single-sourced fold (`bkit-status-fold.sh`). Caps, routing, and retry semantics are unchanged — only the number's provenance moves from long-context prose to the status bus. `decide_next` / `check_max` fail closed on empty or non-integer input, and every call site routes a non-0/1 exit to the Failure Path. (#58)
+- **Seeded E2E CI describes PR/push parity, not `@smoke` tiering.** The seeded `ci.yml` and `docs/testing.md` no longer advise running an `@smoke` subset on PRs with the full suite only on push — a tiering that let a real consumer's rendering regression slip through every PR and surface only post-merge. The templates now describe PR/push E2E parity (scale a slow suite by sharding, not subsetting); the separate `@live` push-only tier and the migration-coupled DB divergence stay documented exceptions.
+- **Refreshed model pins.** Cursor cross-family agent slots pin to `cursor-grok-4.5-high`, and the OpenCode Go opus slot pins to `minimax-m3` for the 5-hour window. (#205)
+- **Shipped prompts, workflows, and docs get a wording / formatting pass** with the host mirrors regenerated, and the `.gitignore` template (and bkit's own) now ignore Claude Code's live `.claude/worktrees/` directory.
+
+### Fixed
+
+- **`bkit check` no longer reports perpetual drift on `.opencode/opencode.json` and `.bkit/version`.** Two pre-existing causes from the #371 provider work made check exit 1 on every run (blocking the pre-push and CI drift gates): the JSON was prettier-linted in the repo but bkit renders canonical single-line JSON (now prettier-ignored, like `.mcp.json`), and the upgrade "additional providers" loop reordered provider keys so install and upgrade never converged (the render now preserves the existing provider key order). (#371)
+- **Cursor and OpenCode command mirrors rewrite an `Invoke @agent` reference to the `/agent` slash form.** The host rewrite only matched bare `**Subagent:** @name` lines, so the slash-form rewrite never fired for the `Invoke @agent` form real workflows use; the shared rewrite is widened and the mirrors refreshed.
+- **Install no longer appends duplicate managed blocks.** Prose version stamps are ignored and a broken marker never triggers an append, so duplicate managed blocks stop compounding on every install.
+- **The workflow close-gate grader actually runs.** `bkit comply` accepts only `--phase=<value>`, but the telemetry script and ship close-gate passed the space form `--phase <value>` behind a fail-open `|| skip`, so the grader silently no-opped on every run since 4.7.0 and wrote no `compliance` rows. All call sites now use the equals form. (surfaced by the 4.7.0 pre-release audit)
+- **The debug workflow runs without an FID or plan.** `YYYYMM` now defaults to the current UTC month when no feature bucket is found, instead of stranding a debug run that has none.
+- **Two postinstall advisories stop firing false positives.** `tagged-tests-no-ci-home` now masks string / comment regions so a `@live` inside a fixture string literal is not counted as a real tagged test, and `test-integration-env-not-asserted` recognises real-service env provisioned at the CI lane or the vitest integration config, not only the script string. (#360)
+- **The unit test lane is genuinely subprocess-free.** Every unit-suffixed test that spawns a real subprocess is reclassified to `*.integration.test.ts`, the coverage table no longer hides fully-covered files (vitest 4.x auto-forced `skipFull` under agent detection), and `docs/testing.md`'s Unit tier row is reworded to match. (#374 #375)
+- **The `bkit uninstall` example no longer over-claims "zero footprint."** The short help line now states that generated artefacts (`.bkit/advisories.md`, `.bkit/friction.jsonl`) are kept and `--nuke` purges them, matching the detailed help and the deliberate preserve-artefacts behaviour. (surfaced by the 4.8.0 pre-release audit)
+
+### Security
+
+- **The OpenCode host now gates secret-file reads, matching the Claude host.** `.opencode/opencode.json` shipped `"read": "allow"`, overriding even OpenCode's own default `.env` denial — so an OpenCode-run agent could read `.env` / `*.pem` / `*.p12` / `id_rsa` unprompted while the Claude host asked or denied. The `read` permission is now a per-path map that asks on `.env` / `.env.*` (allowing `.env.example`) and denies private-key material, closing the cross-host guardrail asymmetry. (surfaced by the 4.8.0 pre-release audit)
+
 ## [4.7.0] — 2026-07-19
 
 Generalises the workflow telemetry that landed in 4.6.0 from a build-only summary into a per-workflow run ledger every phase emits, and overhauls the plan template to be documentation- and stack-agnostic so it reads the same in any consumer repo. Two workflow/CLI fixes round it out: a dirty primary checkout no longer strands a worktree cut, and `bkit check`'s help text plus a bare `bkit` invocation now match documented behaviour.
