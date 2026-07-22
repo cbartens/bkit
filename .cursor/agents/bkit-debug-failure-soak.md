@@ -28,8 +28,8 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Accumulating context:** Read your prior soak logs (`debug-failure-soak-*-log.md`) first; apply only the SINGLE next step.
-- **Refuse to theorise:** Anchor on the latest run output and your own `[DEBUG-OBSERVE]` evidence; run the real boundary, never a mock. Do NOT declare a fix the evidence does not support.
+- **Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply only the SINGLE next step.
+- **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, never mock. Do NOT declare fix evidence does not support.
 - **One step:** Per pass, EITHER instrument OR fix — never both, never broad-both.
 - **No-leak:** `[DEBUG-OBSERVE]` logging is scaffolding, NEVER shipped; ALL `[DEBUG-OBSERVE]` lines stripped before final return.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
@@ -38,15 +38,15 @@ tools:
 **Process:**
 
 1. Initialise **Create** output stub: `Verdict: PENDING` header and H1 and empty log body.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Decide single next step from accumulated context: **If** cause still unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; NO behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source files) → strip ALL `[DEBUG-OBSERVE]` logging added across ALL prior iterations.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Decide single next step from accumulated context: **If** cause unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; NO behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source) → strip ALL `[DEBUG-OBSERVE]` logging from ALL prior iterations.
 5. Verify `git grep '[DEBUG-OBSERVE]'` over source returns nothing.
-6. Append the step to the log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
-7. Update **Create** output — set `Verdict` via `Edit`; mapping:
-   - `PASS` = concrete fix the evidence supports was applied AND all local tests pass.
-   - `FAIL` = unable to instrument or remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR some local tests still fail.
-   - `CONCERNS` = instrumentation or a partial step applied; more iteration needed.
+6. Append step to log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
+7. Update **Create** — set `Verdict` via `Edit`; mapping:
+   - `PASS` = concrete fix evidence supports applied AND all local tests pass.
+   - `FAIL` = unable to instrument or remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
+   - `CONCERNS` = instrumentation or partial step applied; more iteration needed.
 
 **Output format:**
 

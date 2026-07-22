@@ -34,27 +34,27 @@ tools:
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory. CI / runtime logs = primary signal.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory. CI / runtime logs = primary signal.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted diagnosis.
-   - `PIVOT` → Identify what prior attempts failed and why. Explicitly answer: Re-application of prior commit SHA / debug log? **If** yes → what new evidence makes it work this time? Different angle — do NOT repeat verbatim.
-   - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-6. Read historical gotchas: Search `docs/knowledge.jsonl` → grep entries by symptom / error-class / workflow-step. **If** any matches → add to `Prior Knowledge`.
-7. Read scar-tissue: Search for reverted commits with candidate files. **If** any matches capture what was tried and why reverted → add to `Prior Knowledge`.
-8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs, related issues. **If** any live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** any live tests could not reach boundaries (auth / credential / connection / missing env) → treat as environment problem, NEVER as features being broken. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
-9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent dep bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
-10. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
-11. Rot-signal check: **If** stack trace / root-cause analysis shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis already require.
-12. Scope-split: **If** files are named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** files only surfacing elsewhere (failure logs / error traces) → out-of-scope; add to `Out-of-Scope Recommendations` with one-line rationale.
-13. Anti-recurrence check: **If** any `Recommended Remediation` resembles a reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
-14. Blast-radius check: **If** `Recommended Remediation` change effects could reach anything beyond files being modified (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on) → enumerate affected surfaces under `Blast Radius` → verify each remains compatible; NEVER skip silently. **If** unhandled break in any surface → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-15. Update **Create** output — set `Verdict` via `Edit`; mapping:
+   - `PIVOT` → Identify prior attempt failures and why. Explicitly answer: Re-application of prior commit SHA / debug log? **If** yes → what new evidence makes it work this time? Different angle — do NOT repeat verbatim.
+   - `FINAL` → Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
+6. Read historical gotchas: search `docs/knowledge.jsonl` → grep by symptom / error-class / workflow-step. **If** matches → add to `Prior Knowledge`.
+7. Read scar-tissue: search reverted commits with candidate files. **If** matches capture what was tried and why reverted → add to `Prior Knowledge`.
+8. Investigate inputs: CI logs, diff vs last-passing CI, local/E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. ONLY re-run narrower filters via Bash if hypothesis needs probing.
+9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
+10. Update **Create** with ALL hypotheses including dismissed — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` unknown when appending → write `PENDING`, set later via `Edit`.
+11. Rot-signal check: **If** stack trace / root-cause analysis shows ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis require.
+12. Scope-split: **If** files named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** files only in failure logs / error traces → out-of-scope; add to `Out-of-Scope Recommendations` with one-line rationale.
+13. Anti-recurrence check: **If** any `Recommended Remediation` resembles reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
+14. Blast-radius check: **If** `Recommended Remediation` effects reach beyond modified files (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on) → enumerate affected surfaces under `Blast Radius` → verify each compatible; NEVER skip silently. **If** unhandled break → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+15. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified, concrete fix, blast radius handled.
     - `CONCERNS` = ambiguous root cause but plausible fix, or any rot-signals detected.
     - `FAIL` = cannot diagnose, or blast radius shows unhandled break in any affected surface.
-16. Escalation check: Default `Mode` = NORMAL. **If** `Verdict` != PASS **and** root cause cannot be localised from evidence (no stack-trace / failing-assertion pinpoint) and only iterative instrument-fix-reverify against real boundary will crack it → set `Mode` = `SOAK` via `Edit` and record one-line reason in `Mode Reasoning`.
+16. Escalation check: Default `Mode` = NORMAL. **If** `Verdict` != PASS **and** root cause cannot be localised from evidence (no stack-trace / failing-assertion pinpoint) and only iterative instrument-fix-reverify against real boundary will crack it → set `Mode` = `SOAK` via `Edit`, record one-line reason in `Mode Reasoning`.
 
 **Output format:**
 

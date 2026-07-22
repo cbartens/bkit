@@ -36,9 +36,9 @@ reasoningEffort: medium
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
 6. If `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → CRITICAL.
 7. Verify plan reflects source — no drift, no omissions, no silent expansion.
@@ -49,9 +49,9 @@ reasoningEffort: medium
 9. Generate alternatives. Identify risks, edge cases, missing considerations.
 10. All `Out of Scope` entries are `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → CRITICAL.
 11. Suggested Scope Expansion: From `related-*.md` context overlapping plan surfaces — candidates, sources, and recommendations (fold in / keep deferred / needs design decision). Advisory ONLY; never CRITICAL, never tasks.
-12. Verify all `Agent Execution Runbook` tasks have `Done when` completion criteria entries that are terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Missing / vague → CRITICAL.
-13. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-14. Update **Create** output — set `Verdict` via `Edit`; mapping:
+12. Verify all `Agent Execution Runbook` tasks have `Done when` completion criteria — terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Missing / vague → CRITICAL.
+13. Sort findings into standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
+14. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no CRITICAL items.
     - `FAIL` = plan drifts from source or violates template.
     - `CONCERNS` = CRITICAL items flagged for orchestrator merge.

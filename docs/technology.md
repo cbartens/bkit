@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -14,7 +14,6 @@
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - List technology and usage; **Why** → `decisions.jsonl`.
 
-<!-- bkit:end -->
 <!-- bkit:end -->
 
 ## Runtime & Language
@@ -101,21 +100,3 @@ Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` 
 ## Naming Conventions
 
 See `.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.
-
-<!-- bkit:start -->
-
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
-# Technology
-
-> [!CAUTION]
-> **Purpose:** Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`.
->
-> **Rules:**
->
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - List technology and usage; **Why** → `decisions.jsonl`.
-
-<!-- bkit:end -->

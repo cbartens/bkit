@@ -5,7 +5,7 @@ import { execSync, execFileSync, spawnSync } from "node:child_process";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_UPDATER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
-import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
+import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
 /**
@@ -2240,6 +2240,26 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
 // ---------------------------------------------------------------------------
 /** Opening delimiter of a bkit-managed block — the signal that a doc is bkit-owned. */
 const MANAGED_REGION_START = "<!-- bkit:start -->";
+/** Closing delimiter — bounds the first block so deeper prose / appended blocks are ignored. */
+const MANAGED_REGION_END = "<!-- bkit:end -->";
+/**
+ * Read the managed-version stamp from a doc's first `bkit:start`…`bkit:end` block.
+ * Only a full-line `<!-- bkit:managed v… -->` counts — inline prose examples
+ * (`vX.Y.Z` in architecture.md) must not be mistaken for the stamp.
+ */
+export function readManagedDocStampVersion(content) {
+    const startIdx = content.indexOf(MANAGED_REGION_START);
+    if (startIdx === -1)
+        return null;
+    const endIdx = content.indexOf(MANAGED_REGION_END, startIdx + MANAGED_REGION_START.length);
+    const region = endIdx === -1
+        ? content.slice(startIdx)
+        : content.slice(startIdx, endIdx + MANAGED_REGION_END.length);
+    const line = region.match(MANAGED_MARKER_LINE_RE)?.[0] ?? null;
+    if (!line)
+        return null;
+    return line.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+}
 /** Recursively collect `*.md` paths under `dir` (docs trees are shallow). */
 function collectManagedDocMarkdown(dir, acc = []) {
     let ents;
@@ -2271,10 +2291,10 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * markers keep their stale value), no-op in real install/upgrade (markers were
  * just re-stamped in Phase 2 before Phase 3 runs).
  *
- * The marker is searched only from the `bkit:start` delimiter onward, so a
- * consumer-owned line above the block (e.g. template.md's path note) and the prose
- * references to the marker DEEPER in some docs (architecture.md / decisions.md
- * document the mechanism) cannot be mistaken for the real first-line stamp.
+ * The stamp is read ONLY as a full-line `<!-- bkit:managed v… -->` inside the
+ * first `bkit:start`…`bkit:end` block (`readManagedDocStampVersion`). Consumer
+ * lines above the block, inline prose examples (`vX.Y.Z` in architecture.md), and
+ * any later appended blocks cannot be mistaken for the real first-line stamp.
  *
  * The managed-doc SET is enumerated from the package's template tree
  * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
@@ -2298,12 +2318,10 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
         if (!fs.existsSync(file))
             continue; // consumer may not have every doc
         const content = fs.readFileSync(file, "utf-8");
-        const startIdx = content.indexOf(MANAGED_REGION_START);
-        if (startIdx === -1)
+        if (!content.includes(MANAGED_REGION_START))
             continue; // consumer dropped the managed block — not ours to gate
         scanned++;
-        const region = content.slice(startIdx);
-        const found = region.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+        const found = readManagedDocStampVersion(content);
         if (found !== installingVersion) {
             stale.push(`docs/${rel}${found ? ` (v${found})` : " (no marker)"}`);
         }

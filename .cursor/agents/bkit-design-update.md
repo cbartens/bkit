@@ -40,12 +40,12 @@ tools:
    ```bash
    T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
    ```
-3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-4. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-5. Update **Create** output — apply findings via `Edit` as content becomes available.
-6. Identify all CRITICAL items — these MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
+3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+5. Update **Create** — apply findings via `Edit` as content becomes available.
+6. Identify all CRITICAL items — MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
 7. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
-8. Update **Create** output — set `Verdict` via `Edit`; mapping:
+8. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
    - `CONCERNS` = some OPTIONAL items skipped.
    - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.

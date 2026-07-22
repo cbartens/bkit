@@ -27,19 +27,19 @@ reasoningEffort: none
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Summarise only; do NOT build, install, or write code.
-- **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
+- **Output cap:** MAX 500 token limit on **Create** outputs; NO other output limits.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Unchecked human-confirmation gates EXPECTED on new plan. Do NOT downgrade verdict for this alone; note under `Action Items`.
-8. Update **Create** output — set `Verdict` via `Edit`; mapping:
+8. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
    - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps, `Blocking` out-of-scope deferral).

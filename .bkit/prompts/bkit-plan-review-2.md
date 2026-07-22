@@ -36,17 +36,17 @@ maxTurns: 50
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Build the task dependency graph from `Agent Execution Runbook` declared dependencies (`Requires:` / `Blocked by:` / `After:` fields).
-6. For each declared edge `A → B`: verify B actually consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → CRITICAL.
-7. For each task: Identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → CRITICAL. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
-8. Design-coverage: If design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") are reflected as task dependencies. Missing dependencies → CRITICAL. Respect declared sub-plan coverage scopes if produced.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+5. Build task dependency graph from `Agent Execution Runbook` declared dependencies (`Requires:` / `Blocked by:` / `After:` fields).
+6. For each declared edge `A → B`: verify B consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → CRITICAL.
+7. For each task: identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → CRITICAL. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
+8. Design-coverage: If design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → CRITICAL. Respect declared sub-plan coverage scopes if produced.
 9. Cycle detection: Any cyclic dep → CRITICAL.
 10. Verify strict adherence to `docs/plans/template.md` — `Done when` criteria and template structure intact.
-11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-12. Update **Create** output — set `Verdict` via `Edit`; mapping:
+11. Sort findings into standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
+12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no CRITICAL items.
     - `FAIL` = plan drifts from source or violates template.
     - `CONCERNS` = CRITICAL items flagged for orchestrator merge.

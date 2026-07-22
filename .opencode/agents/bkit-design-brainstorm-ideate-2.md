@@ -33,9 +33,9 @@ reasoningEffort: low
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-3. Propose 2-3 approaches reasoned from first principles — what is the best long-term shape if existing constraints did NOT matter? Lead with recommended. Ignore "we already have X" as a default; for each approach, flag the existing-codebase friction it creates. Per approach evaluate trade-offs:
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+3. Propose 2-3 approaches from first principles — best long-term shape if existing constraints did NOT matter. Lead recommended. Ignore "we already have X" as default; per approach flag existing-codebase friction. Per approach trade-offs:
    - Complexity: LOW / MEDIUM / HIGH.
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.

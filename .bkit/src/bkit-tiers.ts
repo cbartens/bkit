@@ -498,6 +498,19 @@ export function writeTier2(
   const blockContent = extractManagedBlock(destContent, markerStyle);
 
   if (blockContent === null) {
+    // extractManagedBlock returns null for BOTH "no markers" and "ambiguous markers"
+    // (duplicates / inverted). Only the former should append — appending on the latter
+    // compounds corruption (dogfood docs grew a second stamped block every install).
+    const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
+    const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+    const starts = findLineAnchoredMarkers(destContent, startMarker);
+    const ends = findLineAnchoredMarkers(destContent, endMarker);
+    if (starts.length > 0 || ends.length > 0) {
+      console.warn(
+        `[bkit] Managed block markers present but unparseable in ${dstPath} — skipping (expected exactly one start/end)`,
+      );
+      return;
+    }
     // dest has no markers → append full block at EOF (with tokens applied)
     const appliedBlock = applyTokens(fullBlock, tokens);
     const sep =

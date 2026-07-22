@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -14,7 +14,6 @@
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Local seed/test fixtures must never run against remote projects.
 
-<!-- bkit:end -->
 <!-- bkit:end -->
 
 > Consumer install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root `README.md`. Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → `.bkit/cloud.md`.
@@ -81,21 +80,3 @@ pnpm exec bkit doctor                                                 # token + 
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done`/`Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix; unprefixed `Auto` retired.)
 - **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
 - **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` in setup script to force rebuild.
-
-<!-- bkit:start -->
-
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
-# Setup
-
-> [!CAUTION]
-> **Purpose:** Local dev — CLIs, configuration, secrets, troubleshooting. Humans only.
->
-> **Rules:**
->
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Local seed/test fixtures must never run against remote projects.
-
-<!-- bkit:end -->

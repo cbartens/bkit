@@ -39,24 +39,24 @@ maxTurns: 50
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task but specifically `docs/security.md`; skip missing.
-4. Update **Create** output after each finding — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to scope of provided content.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/security.md`; skip missing.
+4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
-   - Auth & AuthZ: Missing checks, role/permission gaps, session/token handling, privilege escalation.
+   - Auth & AuthZ: missing checks, role/permission gaps, session/token handling, privilege escalation.
    - RLS / tenancy: RLS bypasses, missing `deleted_at` filters, tenant-id leaks, cross-tenant exposure, policies stale vs new schema.
-   - Input validation: Injection (SQL/NoSQL/command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
+   - Input validation: injection (SQL/NoSQL/command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
    - Secrets: hardcoded keys/tokens, `NEXT_PUBLIC_*` leaks, secrets in logs / errors / repo.
    - Data exposure: PII in logs/responses, internal IDs, over-fetching, sensitive serialized fields, missing redaction.
-   - OWASP Top 10 catch-all: Cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification/integrity/logging failures.
-   - Supply chain: New dependencies — CVEs, maintainer trust, install scripts.
-7. Per finding, ALL five required: Severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix. **If** incomplete findings → not counted in `Failures`.
-   - `class: mechanical` = surgical edit, NO redesign required (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
+   - OWASP Top 10 catch-all: cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification/integrity/logging failures.
+   - Supply chain: new dependencies — CVEs, maintainer trust, install scripts.
+7. Per finding, ALL five required: Severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix. **If** incomplete → not counted in `Failures`.
+   - `class: mechanical` = surgical edit, NO redesign (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
    - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, RLS policy structurally broken, requires plan / design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md` but specifically `docs/security.md`.
-9. Update **Create** output — set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
-10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+9. Update **Create** — set `Failures` via `Edit` = CRITICAL count; do NOT count incomplete findings.
+10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no findings.
     - `CONCERNS` = findings present, max severity <= HIGH.
     - `FAIL` = any CRITICAL finding.

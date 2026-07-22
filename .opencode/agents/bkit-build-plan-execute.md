@@ -38,16 +38,16 @@ reasoningEffort: low
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Read plan (`[x]` task checkboxes = done, `[ ]` = pending). Find first `[ ]` task and resume.
-5. Read each task `Done when` entry — completion criteria MUST be satisfied before moving to next task. Missing `Done when` entry on any task → set `Verdict` = FAIL via `Edit`.
-6. Update **Create** output after each task — append `DONE` / `BLOCKED` log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
-7. Implement sequentially — edit / create source files per task → at every 🔒 Gate confirm gate conditions met → append log entries → proceed.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Read plan (`[x]` = done, `[ ]` = pending). Find first `[ ]` task, resume.
+5. Read each task `Done when` — criteria MUST be satisfied before next task. Missing `Done when` on any task → set `Verdict` = FAIL via `Edit`.
+6. Update **Create** after each task — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+7. Implement sequentially — edit / create source per task → at every 🔒 Gate confirm conditions met → append log → proceed.
 8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck --filter='...[origin/dev]' --continue; else set -e; for s in typecheck format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local lint/typecheck MUST pass.
-9. Update **Create** output — set `Verdict` via `Edit`; mapping:
-   - `PASS` = every pending `[ ]` plan task has a `DONE` log entry AND local lint/typecheck pass.
-   - `FAIL` = any pending `[ ]` plan task ends in a `BLOCKED` log entry with NO later `DONE` entry OR local lint/typecheck fail.
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
+   - `PASS` = every pending `[ ]` plan task has `DONE` log entry AND local lint/typecheck pass.
+   - `FAIL` = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint/typecheck fail.
 
 **Output format:**
 

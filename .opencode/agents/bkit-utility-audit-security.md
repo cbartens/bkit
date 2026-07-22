@@ -33,15 +33,15 @@ reasoningEffort: medium
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Auth — Clerk middleware, protected routes, JWT, RLS.
 4. Validation — Zod on all endpoints, sanitized inputs, SQL injection.
 5. Secrets — No hardcoded, env scoped (server/client), `NEXT_PUBLIC_*` audit.
 6. API — Rate limiting, CORS, webhook signatures (Svix/Stripe/Resend), debug endpoints.
 7. Data — PII in logs/telemetry, permissive SELECTs, React Query cache leaks.
 8. Deps — run `pnpm audit`; check CVEs and unmaintained packages.
-9. Per finding, ALL four required: severity (CRITICAL / HIGH / MEDIUM / LOW), location (file:line), exploit scenario, suggested fix. **If** incomplete findings → not counted.
+9. Per finding, ALL four required: severity (CRITICAL / HIGH / MEDIUM / LOW), location (file:line), exploit scenario, suggested fix. **If** incomplete → not counted.
 10. Cross-reference findings against relevant docs in `.agents/docs.md`.
 11. Create / update report → `docs/audits/security-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: **CRITICAL** → **HIGH** → **MEDIUM** → **LOW**.
 

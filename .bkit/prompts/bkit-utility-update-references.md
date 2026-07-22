@@ -32,7 +32,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Verify actual file locations (especially `docs/`, `docs/plans/`).
 3. Fix broken/absolute/outdated paths.
 4. Use repo-relative paths (e.g. `apps/web/src/...`); never absolute disk paths.

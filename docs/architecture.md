@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -15,7 +15,6 @@
 > - Topology/boundaries only; operational rules and library lists → domain docs.
 > - Update on package add/remove or boundary shift.
 
-<!-- bkit:end -->
 <!-- bkit:end -->
 
 ## What bkit Is
@@ -172,22 +171,3 @@ Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race
 ## Distribution
 
 `@cbartens/bkit` published to GitHub Packages on every git tag via `.github/workflows/release.yml`. Consumers auth with `GH_BKIT_TOKEN_INSTALL` PAT (`read:packages`). See `docs/deployments.md` (four-surface matrix) + `docs/decisions.jsonl` DE-3.
-
-<!-- bkit:start -->
-
-<!-- bkit:managed v4.7.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
-# Architecture
-
-> [!CAUTION]
-> **Purpose:** System design — service boundaries, deployment topology, integration sketch.
->
-> **Rules:**
->
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Topology/boundaries only; operational rules and library lists → domain docs.
-> - Update on package add/remove or boundary shift.
-
-<!-- bkit:end -->

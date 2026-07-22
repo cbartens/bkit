@@ -36,22 +36,22 @@ maxTurns: 25
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
-6. Verify every `Agent Execution Runbook` task carries scope, `Done when` completion criteria entry, and verification step.
-7. Verify every scope item has BOTH a build task AND a verification task.
-8. Verify test matrix against `Agent Execution Runbook`: Rows in `Derived Test Matrix` map 1:1 (bidirectional) to verification tasks. Any gaps → add task or row.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+5. Verify `docs/plans/template.md` — all mandated sections present and populated.
+6. Verify every `Agent Execution Runbook` task has scope, `Done when`, and verification step.
+7. Verify every scope item has BOTH build task AND verification task.
+8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
-10. Any replaced/superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
-11. All `Out of Scope` entries are `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → CRITICAL.
-12. Verify no task scopes edits inside `bkit:start` / `bkit:end` managed blocks; ALWAYS edit below `bkit:end` markers.
-13. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-14. Update **Create** output — set `Verdict` via `Edit`; mapping:
+10. Replaced/superseded code → `Supersession Inventory` with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
+11. All `Out of Scope` entries `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → CRITICAL.
+12. No task scopes edits inside `bkit:start` / `bkit:end` blocks; ALWAYS edit below `bkit:end`.
+13. Sort findings: CRITICAL / OPTIONAL / OUT OF SCOPE.
+14. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = scope complete.
-    - `FAIL` = template structure broken or matrix<->runbook mapping unrecoverable.
-    - `CONCERNS` = CRITICAL gaps present (apply via plan-update).
+    - `FAIL` = template broken or matrix<->runbook mapping unrecoverable.
+    - `CONCERNS` = CRITICAL gaps (apply via plan-update).
 
 **Output format:**
 

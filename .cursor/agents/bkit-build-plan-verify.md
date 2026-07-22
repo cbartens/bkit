@@ -33,18 +33,18 @@ tools:
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available. For each gap found — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any FAIL → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any FAIL → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
-6. **If** `Single` → every checklist item and 🔒 Gate in this sub-plan maps to real codebase changes. Identify missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks against all `DONE` log entries.
-7. **If** `Holistic` → run step 6 across all sub-plans, PLUS integration: Components from different sub-plans work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? **If** `turbo.json` exists → `pnpm turbo test --filter='...[origin/dev]' --continue`. **Else** → `pnpm test`.
-8. For each pending plan task read its `Done when` entry.
-   - **If** entry missing → set `Verdict` = FAIL via `Edit`.
-   - **Else** assert codebase satisfies completion criteria (file exists, function signature matches, test passes, observable behaviour):
-     - **If** criteria satisfied → tick checkbox `[ ]` → `[x]` → continue.
-     - **Else** → leave `[ ]`, append log entry, set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-9. Update **Create** output — set `Verdict` via `Edit`; mapping:
+6. **If** `Single` → every checklist item and 🔒 Gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks vs all `DONE` log entries.
+7. **If** `Holistic` → step 6 across all sub-plans, PLUS integration: sub-plan components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? **If** `turbo.json` exists → `pnpm turbo test --filter='...[origin/dev]' --continue`. **Else** → `pnpm test`.
+8. For each pending plan task read `Done when`:
+   - **If** missing → set `Verdict` = FAIL via `Edit`.
+   - **Else** assert codebase satisfies criteria (file exists, signature matches, test passes, observable behaviour):
+     - **If** satisfied → tick `[ ]` → `[x]` → continue.
+     - **Else** → leave `[ ]`, append log, set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = no gaps.
    - `FAIL` = blocking gaps requiring remediation loop.
    - `CONCERNS` = gaps addressable by gap-remediate.

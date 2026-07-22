@@ -33,12 +33,12 @@ maxTurns: 25
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-7. Update **Create** output — set `Verdict` via `Edit`; mapping:
+7. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = merged green, no retries.
    - `FAIL` = merge blocked.
    - `CONCERNS` = merge succeeded but follow-up needed (required merge retries, post-merge issues observable from CI logs / status.json).

@@ -35,9 +35,9 @@ reasoningEffort: low
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-3. Run `bash scripts/tooling/audit-gcp-errors.sh 1h` — Vercel / Resend / Stripe / Inngest log drains and GHA failures (DEV+PROD).
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+3. Run `bash scripts/tooling/audit-gcp-errors.sh 1h` — Vercel / Resend / Stripe / Inngest log drains and GHA failures (DEV / PROD).
 4. Interpret script output (`docs/audits/errors-audit.log` and `tmp/gcp-audit/*.json`): surface API 5xx, new Inngest `function.failed`, Vercel build errors. Existing `docs/audits/errors-audit.md` = baseline → flag NEW / REGRESSION only.
 5. **If** DB changes shipped → CDC freshness check:
    ```bash

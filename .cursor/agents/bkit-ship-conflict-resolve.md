@@ -27,7 +27,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Resolve mechanical conflicts only. On any ambiguity, abort cleanly and emit `FAIL`.
+- **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
 - **Allowed resolutions:**
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
   - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
@@ -39,20 +39,20 @@ tools:
   - Same line edited both sides with different content.
   - Any conflict where merged intent is not unambiguously mechanical.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output after each substep — append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** after each substep — append log at EOF via Bash `echo {log entry} >> {output}`.
 5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass → append log entry.
 6. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry.
 7. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 9. **If** `Verdict` != FAIL → verify `pnpm install --frozen-lockfile` and if defined `pnpm typecheck`. **If** `turbo.json` exists → `pnpm test --filter='...[origin/dev]'`. **Else** → `pnpm test` and if defined `pnpm build`. All MUST exit 0 → append log entry with exit codes. **If** any non-zero → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for a non-mechanical reason; OR any verify command exited non-zero.
 11. **If** `Verdict` = FAIL:

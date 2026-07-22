@@ -30,7 +30,7 @@ maxTurns: 50
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Update plan only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on CRITICAL, apply OPTIONAL on merit. Single-input findings are normal, not outvoted.
+- **Multi-lens inputs:** Distinct lenses; merge max-wins on CRITICAL, apply OPTIONAL on merit. Single-input findings normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -39,23 +39,22 @@ maxTurns: 50
    ```bash
    cp <prior-versioned-plan-from-Read> <Create>
    ```
-2. Prepend verdict placeholder header to output in **Create** path:
+2. Prepend verdict placeholder header to **Create** path:
    ```bash
    T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
    ```
-3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-4. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-5. Update **Create** output — apply findings via `Edit` as content becomes available.
-6. Every `Agent Execution Runbook` task's `Done when` entry MUST survive merge intact. Critique may edit surrounding task text; `Done when` text may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
-7. Identify all CRITICAL items — these MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
-8. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
-9. **If** an input carries a `## Suggested Scope Expansion` section → write its candidates into the plan's `Suggested Scope Expansion` section; advisory list, never `Agent Execution Runbook` tasks, no scope expansion.
-10. Update **Create** output — set `Verdict` via `Edit`; mapping:
-    - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
-    - `CONCERNS` = some OPTIONAL items skipped.
+3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+5. Update **Create** — apply findings via `Edit` as content becomes available.
+6. Every `Agent Execution Runbook` task's `Done when` MUST survive merge intact. Critique may edit surrounding task text; `Done when` may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
+7. CRITICAL items MUST be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
+8. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
+9. **If** input carries `## Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion`; advisory list, never `Agent Execution Runbook` tasks, no scope expansion.
+10. Update **Create** — set `Verdict` via `Edit`; mapping:
+    - `PASS` = all CRITICAL applied; OPTIONAL applied on merit.
+    - `CONCERNS` = some OPTIONAL skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-
-11. Re-read **Create** output → assert plan template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
+11. Re-read **Create** → assert template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
 
 **Output format:**
 

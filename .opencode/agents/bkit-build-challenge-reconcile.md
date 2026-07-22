@@ -35,15 +35,15 @@ reasoningEffort: high
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Deduplicate same `file:line` reference or same root-cause keyword cluster → merge into one finding citing both reviewers; else keep separate with attribution.
-5. For merged findings with divergent severities, adopt the higher severity (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justification and citing both reviewers' evidence. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-6. Add `agreement: {N}/{total}` counts per finding.
-7. Per finding check → ALL require: Severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix.
-8. Write unified Findings section to **Create** output via `Edit`; sort findings by descending severity.
-9. Update **Create** output — set `Failures` count via `Edit`; `Failures` count = number of CRITICAL findings post-deduplication; do NOT count incomplete findings.
-10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Deduplicate same `file:line` or same root-cause keyword cluster → merge one finding citing both reviewers; else keep separate with attribution.
+5. Merged findings with divergent severities → adopt higher (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justification citing both reviewers' evidence. **If** any CRITICAL → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+6. Add `agreement: {N}/{total}` per finding.
+7. Per finding → ALL require: Severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix.
+8. Write unified Findings to **Create** via `Edit`; sort by descending severity.
+9. Update **Create** — set `Failures` via `Edit` = CRITICAL count post-deduplication; do NOT count incomplete findings.
+10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no findings.
     - `CONCERNS` = findings present, max severity <= HIGH.
     - `FAIL` = any CRITICAL finding.

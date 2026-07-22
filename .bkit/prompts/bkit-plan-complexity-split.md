@@ -33,10 +33,10 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-3. Treat any proposed groupings in inputs as ADVISORY only — verify independently.
-4. Estimate total agent tokens required to execute the master plan end-to-end. Target sub-plan count = `ceil(total / 85K)`. Each sub-plan budget <= 85K tokens.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+3. Treat proposed groupings in inputs as ADVISORY only — verify independently.
+4. Estimate total agent tokens to execute master plan end-to-end. Target sub-plan count = `ceil(total / 85K)`. Each sub-plan budget <= 85K tokens.
 5. Partition tasks, constraints, 🔒 Gates into sub-plans by domain (API/DB/web/mobile/infra) and dependency order. Each sub-plan <= 85K tokens.
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
 7. Copy ALL tasks (preserve `Done when` entry verbatim), constraints, 🔒 Gates from master into sub-plans.
@@ -45,7 +45,7 @@ maxTurns: 50
 10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
     - Confirm every task, constraint, and 🔒 Gate appears in exactly one sub-plan.
-    - Confirm every task's `Done when` entry survived the copy verbatim.
+    - Confirm every task's `Done when` entry survived copy verbatim.
     - Confirm each sub-plan's estimated tokens <= 85K.
     - Confirm master is high-level index with correct bidirectional links.
     - Confirm each sub-plan references parent and is self-contained per `docs/plans/template.md`.

@@ -36,9 +36,9 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing; exclude `knowledge.jsonl`, `decisions.jsonl`.
-3. Run `git log --oneline --stat origin/dev..HEAD` for shipped files in this cycle.
+1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; exclude `knowledge.jsonl`, `decisions.jsonl`.
+3. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
 4. Per doc, ALWAYS follow its `Rules` headers when making edits.
 5. Per doc, four passes in order: **Sync** (gaps vs shipped code) → **Reorganize** (dedup, move misplaced) → **Compress** (token-efficient) → **Cross-Reference** (inline `docs/*.md` links).
 6. **If** cycle delivered shipped plan → append `docs/completed.md` entry.

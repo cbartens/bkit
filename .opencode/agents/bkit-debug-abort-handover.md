@@ -33,10 +33,10 @@ reasoningEffort: low
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Extract `Rot Signals` from diagnose attempts → aggregate into handover - dedupe slugs but retain all evidence.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+5. Extract `Rot Signals` from diagnose attempts → aggregate into handover — dedupe slugs, retain all evidence.
 6. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
 7. Append failure rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 8. Append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.

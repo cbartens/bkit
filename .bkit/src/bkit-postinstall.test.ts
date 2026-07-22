@@ -2701,6 +2701,26 @@ describe("detectManagedDocsStale", () => {
     expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
   });
 
+  it("does NOT treat inline prose vX.Y.Z as a stamp when the first block has no full-line marker", () => {
+    // Dogfood architecture.md shape: unexpanded {{BKIT_MANAGED_MARKER}} + prose
+    // documenting `vX.Y.Z` — the prose must report as "(no marker)", never "(vX.Y.Z)".
+    declareCanonical("architecture.md");
+    const p = path.join(tmpDir, "docs", "architecture.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(
+      p,
+      "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# Architecture\n\n" +
+        "carries `<!-- bkit:managed vX.Y.Z … -->` stamped by bkit.\n<!-- bkit:end -->\n" +
+        "\n## Consumer section\n\n" +
+        `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Architecture\n<!-- bkit:end -->\n`,
+    );
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.detect).toContain("docs/architecture.md");
+    expect(f?.detect).toContain("no marker");
+    expect(f?.detect).not.toContain("(vX.Y.Z)");
+  });
+
   it("truncates the example list and reports the overflow count", () => {
     for (let i = 0; i < 8; i++) {
       declareCanonical(`doc-${i}.md`);
