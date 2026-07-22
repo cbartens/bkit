@@ -46,11 +46,10 @@ maxTurns: 50
 9. Cycle detection: Any cyclic dep → CRITICAL.
 10. Verify strict adherence to `docs/plans/template.md` — `Done when` criteria and template structure intact.
 11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-12. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no CRITICAL items.
-- `FAIL` = plan drifts from source or violates template.
-- `CONCERNS` = CRITICAL items flagged for orchestrator merge.
+12. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no CRITICAL items.
+    - `FAIL` = plan drifts from source or violates template.
+    - `CONCERNS` = CRITICAL items flagged for orchestrator merge.
 
 **Output format:**
 

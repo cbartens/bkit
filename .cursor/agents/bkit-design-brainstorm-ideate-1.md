@@ -33,7 +33,7 @@ tools:
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
-3. Propose 2–3 approaches grounded in current constraints — existing code, minimal new infra, ship fastest. Lead with recommended; each implementable in existing stack (no greenfield, no hypothetical infra). Reuse > extend > new; YAGNI ruthlessly. Per approach evaluate trade-offs:
+3. Propose 2-3 approaches grounded in current constraints — existing code, minimal new infra, ship fastest. Lead with recommended; each implementable in existing stack (no greenfield, no hypothetical infra). Reuse > extend > new; YAGNI ruthlessly. Per approach evaluate trade-offs:
    - Complexity: LOW / MEDIUM / HIGH.
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.

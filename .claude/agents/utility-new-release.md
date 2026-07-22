@@ -9,7 +9,7 @@ tools:
   - Edit
   - Write
 permissionMode: acceptEdits
-maxTurns: 120
+maxTurns: 100
 ---
 
 **Role:** Release cutter — promote a version dev → main, publish the npm tag.

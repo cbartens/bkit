@@ -38,7 +38,7 @@ reasoningEffort: none
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-7. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = merged green, no retries.
    - `FAIL` = merge blocked.
    - `CONCERNS` = merge succeeded but follow-up needed (required merge retries, post-merge issues observable from CI logs / status.json).

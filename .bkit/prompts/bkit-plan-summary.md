@@ -39,7 +39,7 @@ maxTurns: 25
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Unchecked human-confirmation gates EXPECTED on new plan. Do NOT downgrade verdict for this alone; note under `Action Items`.
-8. Update **Create** output - set `Verdict` via `Edit`; mapping:
+8. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
    - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps, `Blocking` out-of-scope deferral).
@@ -75,7 +75,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Design Alignment
 
-[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope ⊆ design scope?; initially set to `PENDING`.]
+[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
 
 ## Deferred & Out-of-Scope
 

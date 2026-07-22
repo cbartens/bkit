@@ -45,7 +45,7 @@ reasoningEffort: low
 6. Update **Create** output after each task — append `DONE` / `BLOCKED` log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
 7. Implement sequentially — edit / create source files per task → at every 🔒 Gate confirm gate conditions met → append log entries → proceed.
 8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck --filter='...[origin/dev]' --continue; else set -e; for s in typecheck format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local lint/typecheck MUST pass.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = every pending `[ ]` plan task has a `DONE` log entry AND local lint/typecheck pass.
    - `FAIL` = any pending `[ ]` plan task ends in a `BLOCKED` log entry with NO later `DONE` entry OR local lint/typecheck fail.
 

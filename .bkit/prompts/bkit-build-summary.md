@@ -38,7 +38,7 @@ maxTurns: 25
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-7. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan done, all tests pass, no unresolved findings; ONLY original out-of-scope items unresolved.
    - `FAIL` = some plan tasks not done, tests failing, or unresolved CRITICAL severity findings from challenge.
    - `CONCERNS` = real risks/defects/unresolved gaps that do NOT meet `FAIL` threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-CRITICAL verify gap).

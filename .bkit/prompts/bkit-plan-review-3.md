@@ -53,11 +53,10 @@ maxTurns: 50
 7. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections identifying touched surfaces need plan tasks with regression-test coverage OR out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → CRITICAL. Respect declared sub-plan coverage scopes if produced.
 8. Knowledge cross-reference: Search `docs/knowledge.jsonl` and `related-failures.md` for past regressions / known failures in touched surfaces. Plan tasks re-entering known-broken patterns, or touching surfaces with unacknowledged known failures / without acknowledging prior fixes → CRITICAL.
 9. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no CRITICAL items; surface touches are contained or covered.
-- `FAIL` = plan introduces a regression vector with no mitigation (e.g. schema migration without ordering plan).
-- `CONCERNS` = CRITICAL items flagged for orchestrator merge.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no CRITICAL items; surface touches are contained or covered.
+    - `FAIL` = plan introduces a regression vector with no mitigation (e.g. schema migration without ordering plan).
+    - `CONCERNS` = CRITICAL items flagged for orchestrator merge.
 
 **Output format:**
 

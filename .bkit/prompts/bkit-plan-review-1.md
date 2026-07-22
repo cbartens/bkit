@@ -51,11 +51,10 @@ maxTurns: 50
 11. Suggested Scope Expansion: From `related-*.md` context overlapping plan surfaces — candidates, sources, and recommendations (fold in / keep deferred / needs design decision). Advisory ONLY; never CRITICAL, never tasks.
 12. Verify all `Agent Execution Runbook` tasks have `Done when` completion criteria entries that are terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Missing / vague → CRITICAL.
 13. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-14. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no CRITICAL items.
-- `FAIL` = plan drifts from source or violates template.
-- `CONCERNS` = CRITICAL items flagged for orchestrator merge.
+14. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no CRITICAL items.
+    - `FAIL` = plan drifts from source or violates template.
+    - `CONCERNS` = CRITICAL items flagged for orchestrator merge.
 
 **Output format:**
 

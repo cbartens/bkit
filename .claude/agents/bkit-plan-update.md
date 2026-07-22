@@ -49,11 +49,13 @@ maxTurns: 50
 6. Every `Agent Execution Runbook` task's `Done when` entry MUST survive merge intact. Critique may edit surrounding task text; `Done when` text may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
 7. Identify all CRITICAL items — these MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
 8. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
-   - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
-   - `CONCERNS` = some OPTIONAL items skipped.
-   - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-10. Re-read **Create** output → assert plan template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
+9. **If** an input carries a `## Suggested Scope Expansion` section → write its candidates into the plan's `Suggested Scope Expansion` section; advisory list, never `Agent Execution Runbook` tasks, no scope expansion.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
+    - `CONCERNS` = some OPTIONAL items skipped.
+    - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
+
+11. Re-read **Create** output → assert plan template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
 
 **Output format:**
 

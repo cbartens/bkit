@@ -40,10 +40,10 @@ maxTurns: 25
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Unchecked human-confirmation gates EXPECTED on new plan. Do NOT downgrade verdict for this alone; note under `Action Items`.
-8. Update **Create** output - set `Verdict` via `Edit`; mapping:
+8. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
-   - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps).
+   - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps, `Blocking` out-of-scope deferral).
 
 **Output format:**
 
@@ -76,7 +76,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Design Alignment
 
-[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope ⊆ design scope?; initially set to `PENDING`.]
+[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope within design scope?; initially set to `PENDING`.]
+
+## Deferred & Out-of-Scope
+
+[Every `Out of Scope` row. One line each: what is excluded + where it belongs + `Exempt` (genuinely-additive) or `Blocking` (required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section, declared non-goals excepted). List all; do NOT condense or trim. Any `Blocking` → CONCERNS + Action Items. If none then `None`; initially set to `PENDING`.]
+
+## Suggested Scope Expansion
+
+[Every `Suggested Scope Expansion` row: candidate + source + recommendation. Advisory only; does NOT gate the verdict. If none then `None`; initially set to `PENDING`.]
 
 ## Risks
 

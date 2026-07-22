@@ -27,7 +27,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate design only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate strongest 2–3 approaches, NOT a watered-down union; single-input approaches are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate strongest 2-3 approaches, NOT a watered-down union; single-input approaches are normal, not outvoted.
 
 **Process:**
 
@@ -38,7 +38,7 @@ tools:
 5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer them onto whichever approach is selected, NOT as a separate approach.
 6. Each conflict → pick stronger, justify.
 7. Draft `Acceptance Scenario` — initial draft only (expanded later):
-   - Narrative: 2–3 sentences, user POV (NOT system POV).
+   - Narrative: 2-3 sentences, user POV (NOT system POV).
    - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
    - Process Sketch: Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps.
@@ -60,7 +60,7 @@ tools:
 
 ### Narrative
 
-[2–3 sentences, user POV (NOT system POV); initially set to `PENDING`.]
+[2-3 sentences, user POV (NOT system POV); initially set to `PENDING`.]
 
 ### Success Criteria
 

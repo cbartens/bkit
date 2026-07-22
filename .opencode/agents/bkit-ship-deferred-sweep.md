@@ -50,7 +50,7 @@ reasoningEffort: medium
 8. Scan explicit deferral markers — supplied diff `TODO` / `FIXME` / `HACK` / `XXX`, silently skipped tests (`.skip` / `.todo` / `xfail`), and "deferred"/"later"/"out of scope" notes across logs and summaries:
    - **If** in the exempt set → record under `Exempt`.
    - **Else** → record under `Blocking Deferrals`; append entry at EOF via Bash `echo >>`; set `Verdict` = FAIL via `Edit` immediately.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = no blocking deferrals; every intended deliverable `Delivered` or `Exempt`.
    - `FAIL` = >= 1 blocking deferral (unmet `Done when`, mid-build `TODO` / `FIXME`, silently skipped test not in the exempt set).
 

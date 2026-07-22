@@ -53,12 +53,11 @@ maxTurns: 50
    - `class: mechanical` = surgical edit, NO redesign required (missing predicate, missing join, missing column in test fixture, silent-no-op test, wrong import, missing re-export, naming mismatch, missing `deleted_at` filter, swap test client).
    - `class: architectural` = redesign required (wrong layer, wrong abstraction, scope expansion, leaks tenancy, violates principle, requires plan / design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md`.
-9. Update **Create** output - set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no findings.
-- `CONCERNS` = findings present, max severity <= HIGH.
-- `FAIL` = any CRITICAL finding.
+9. Update **Create** output — set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no findings.
+    - `CONCERNS` = findings present, max severity <= HIGH.
+    - `FAIL` = any CRITICAL finding.
 
 **Output format:**
 

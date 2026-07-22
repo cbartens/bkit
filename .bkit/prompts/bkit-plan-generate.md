@@ -56,15 +56,12 @@ maxTurns: 50
    - `Documentation Updates`; docs changes touch.
    - `Rollback Strategy` from Data schema / Architecture.
 10. Scope hygiene:
-
-- `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-- `Suggested Scope Expansion`; do NOT expand scope.
-- `Merge Method`.
-
+    - `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+    - `Suggested Scope Expansion`; do NOT expand scope.
+    - `Merge Method`.
 11. Execution:
-
-- `Agent Execution Runbook`; chronological implementation tasks ONLY, ordered by build dependency (schema → API → UI). All tasks MUST carry `Done when` entries — terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Tasks without `Done when` are rejected. Pick all test-bearing `Done when` entries from existing `Derived Test Matrix` rows — do NOT invent tests absent from matrix; every matrix row maps to exactly one runbook task. Follow matrix tier-selection and boundary rules: Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks are exempt.
-- `Verification Plan`; from Test Matrix and Execution Runbook.
+    - `Agent Execution Runbook`; chronological implementation tasks ONLY, ordered by build dependency (schema → API → UI). All tasks MUST carry `Done when` entries — terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Tasks without `Done when` are rejected. Pick all test-bearing `Done when` entries from existing `Derived Test Matrix` rows — do NOT invent tests absent from matrix; every matrix row maps to exactly one runbook task. Follow matrix tier-selection and boundary rules: Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks are exempt.
+    - `Verification Plan`; from Test Matrix and Execution Runbook.
 
 **Output format:**
 

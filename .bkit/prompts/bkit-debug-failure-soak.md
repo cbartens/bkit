@@ -40,12 +40,12 @@ maxTurns: 100
 **Process:**
 
 1. Initialise **Create** output stub: `Verdict: PENDING` header and H1 and empty log body.
-2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
+2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
 4. Decide single next step from accumulated context: **If** cause still unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; NO behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source files) → strip ALL `[DEBUG-OBSERVE]` logging added across ALL prior iterations.
 5. Verify `git grep '[DEBUG-OBSERVE]'` over source returns nothing.
 6. Append the step to the log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
-7. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = concrete fix the evidence supports was applied AND all local tests pass.
    - `FAIL` = unable to instrument or remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR some local tests still fail.
    - `CONCERNS` = instrumentation or a partial step applied; more iteration needed.

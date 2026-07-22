@@ -55,12 +55,11 @@ maxTurns: 50
    - `class: mechanical` = surgical edit, NO redesign required (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
    - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, RLS policy structurally broken, requires plan / design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md` but specifically `docs/security.md`.
-9. Update **Create** output - set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no findings.
-- `CONCERNS` = findings present, max severity <= HIGH.
-- `FAIL` = any CRITICAL finding.
+9. Update **Create** output — set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no findings.
+    - `CONCERNS` = findings present, max severity <= HIGH.
+    - `FAIL` = any CRITICAL finding.
 
 **Output format:**
 

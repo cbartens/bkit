@@ -37,7 +37,7 @@
     "docs/warnings.md": "c100876fa4313f2ad64a88efb68af38a7e9f45ddf34d0fd561136072603581e5",
     "slop-scan.config.json": "ad3286675dc07012b0dacde58bed9b33157147891ca22db9bb08bbec48a7e101",
     ".gitattributes": "69f2eb0952af97d30bbecbad5c64cab79f321e6d7bd6e7da359f88b5ea4f2692",
-    "docs/plans/template.md": "0677d64f629d255c852dee69ba696447f46a74a9b1b0e7b7723b6fd1efa8cc0d",
+    "docs/plans/template.md": "88d2f7a775cb0df1a1c57ea689d2f8536b4389751025e5aa91d9769aba76de24",
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
     ".claude/hooks/cloud-bootstrap.sh": "784a0cec31565f99319bb98202def7d5c3c07bedeb0c2c8f0fb667c8a461c08d",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",

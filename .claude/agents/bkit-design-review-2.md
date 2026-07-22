@@ -59,11 +59,10 @@ maxTurns: 50
    - Alert noise — threshold tuned, or pages on transient blips?
 8. Failure-mode coverage: Cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → OPTIONAL or CRITICAL by severity.
 9. Operational dependencies: New on-call burden (dashboard / alert / runbook)? Surface explicitly; not a blocker but must be acknowledged.
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = operable as designed; failure modes have observability and recovery paths; proceed.
-- `CONCERNS` = operable with caveats — observability or runbook gaps that are addressable.
-- `FAIL` = NOT operable in current monitoring/oncall stack — design does NOT proceed.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = operable as designed; failure modes have observability and recovery paths; proceed.
+    - `CONCERNS` = operable with caveats — observability or runbook gaps that are addressable.
+    - `FAIL` = NOT operable in current monitoring/oncall stack — design does NOT proceed.
 
 **Output format:**
 

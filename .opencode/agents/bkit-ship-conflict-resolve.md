@@ -54,7 +54,7 @@ reasoningEffort: low
 7. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 9. **If** `Verdict` != FAIL → verify `pnpm install --frozen-lockfile` and if defined `pnpm typecheck`. **If** `turbo.json` exists → `pnpm test --filter='...[origin/dev]'`. **Else** → `pnpm test` and if defined `pnpm build`. All MUST exit 0 → append log entry with exit codes. **If** any non-zero → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
     - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for a non-mechanical reason; OR any verify command exited non-zero.
 11. **If** `Verdict` = FAIL:

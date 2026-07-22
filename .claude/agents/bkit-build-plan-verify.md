@@ -47,7 +47,7 @@ maxTurns: 50
    - **Else** assert codebase satisfies completion criteria (file exists, function signature matches, test passes, observable behaviour):
      - **If** criteria satisfied → tick checkbox `[ ]` → `[x]` → continue.
      - **Else** → leave `[ ]`, append log entry, set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = no gaps.
    - `FAIL` = blocking gaps requiring remediation loop.
    - `CONCERNS` = gaps addressable by gap-remediate.

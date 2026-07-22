@@ -42,12 +42,11 @@ reasoningEffort: high
 6. Add `agreement: {N}/{total}` counts per finding.
 7. Per finding check → ALL require: Severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix.
 8. Write unified Findings section to **Create** output via `Edit`; sort findings by descending severity.
-9. Update **Create** output - set `Failures` count via `Edit`; `Failures` count = number of CRITICAL findings post-deduplication; do NOT count incomplete findings.
-10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-
-- `PASS` = no findings.
-- `CONCERNS` = findings present, max severity <= HIGH.
-- `FAIL` = any CRITICAL finding.
+9. Update **Create** output — set `Failures` count via `Edit`; `Failures` count = number of CRITICAL findings post-deduplication; do NOT count incomplete findings.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no findings.
+    - `CONCERNS` = findings present, max severity <= HIGH.
+    - `FAIL` = any CRITICAL finding.
 
 **Output format:**
 

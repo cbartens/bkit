@@ -34,7 +34,7 @@ tools:
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory. CI / runtime logs = primary signal.
+2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory. CI / runtime logs = primary signal.
 3. Read `.agents/docs.md` → load docs relevant to workflow / step / task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
@@ -50,7 +50,7 @@ tools:
 12. Scope-split: **If** files are named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** files only surfacing elsewhere (failure logs / error traces) → out-of-scope; add to `Out-of-Scope Recommendations` with one-line rationale.
 13. Anti-recurrence check: **If** any `Recommended Remediation` resembles a reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
 14. Blast-radius check: **If** `Recommended Remediation` change effects could reach anything beyond files being modified (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on) → enumerate affected surfaces under `Blast Radius` → verify each remains compatible; NEVER skip silently. **If** unhandled break in any surface → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-15. Update **Create** output - set `Verdict` via `Edit`; mapping:
+15. Update **Create** output — set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified, concrete fix, blast radius handled.
     - `CONCERNS` = ambiguous root cause but plausible fix, or any rot-signals detected.
     - `FAIL` = cannot diagnose, or blast radius shows unhandled break in any affected surface.

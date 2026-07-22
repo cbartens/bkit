@@ -37,7 +37,7 @@ tools:
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Unchecked human-confirmation gates EXPECTED on new design. Do NOT downgrade verdict for this alone; note under `Action Items`.
-8. Update **Create** output - set `Verdict` via `Edit`; mapping:
+8. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = design ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope concerns.
    - `CONCERNS` = revisions needed; content-level issues (Acceptance Scenario violates `docs/plans/template.md` § Acceptance Scenario → Spec).

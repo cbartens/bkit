@@ -42,12 +42,13 @@ tools:
 7. Verify every scope item has BOTH a build task AND a verification task.
 8. Verify test matrix against `Agent Execution Runbook`: Rows in `Derived Test Matrix` map 1:1 (bidirectional) to verification tasks. Any gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
-10. Any replaced/superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
-11. Verify no task scopes edits inside `bkit:start` / `bkit:end` managed blocks; ALWAYS edit below `bkit:end` markers.
-12. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-13. Update **Create** output - set `Verdict` via `Edit`; mapping:
+10. Any replaced / superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
+11. Out-of-scope legitimacy: every `Out of Scope` entry is `Exempt` — genuinely-additive; not required by `Success Criteria`, an `Acceptance Scenario` / `Derived Test Matrix` row, or a design section (declared non-goals excepted). Required work parked out of scope = `Blocking` → CRITICAL.
+12. Verify no task scopes edits inside `bkit:start` / `bkit:end` managed blocks; ALWAYS edit below `bkit:end` markers.
+13. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
+14. Update **Create** output — set `Verdict` via `Edit`; mapping:
     - `PASS` = scope complete.
-    - `FAIL` = template structure broken or matrix↔runbook mapping unrecoverable.
+    - `FAIL` = template structure broken or matrix<->runbook mapping unrecoverable.
     - `CONCERNS` = CRITICAL gaps present (apply via plan-update).
 
 **Output format:**
@@ -64,7 +65,7 @@ Lens: Scope, criteria, verification audit.
 
 ## CRITICAL
 
-[Gaps that block plan progress — missing build task, missing verification task, broken matrix↔runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed; initially set to `PENDING`.]
+[Gaps that block plan progress — missing build task, missing verification task, broken matrix<->runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to `PENDING`.]
 
 ## OPTIONAL
 

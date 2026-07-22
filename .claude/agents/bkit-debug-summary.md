@@ -41,7 +41,7 @@ maxTurns: 25
 6. Extract `Rot Signals` from diagnose attempts → aggregate (dedupe slugs, retain all evidence).
 7. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
 8. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** output — set `Verdict` via `Edit`; mapping:
    - `PASS` = failure resolved (no retries, no fragility, no rot signals).
    - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, most recent remediation input = CONCERNS, or any rot signals detected).
    - `FAIL` = aborted at attempt N, root cause unresolved, or any remediation input has non-empty `Blockers`.
