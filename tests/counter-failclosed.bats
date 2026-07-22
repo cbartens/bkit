@@ -1,17 +1,17 @@
 #!/usr/bin/env bats
 # counter-failclosed.bats — Fail-closed integration tests for #58 T2.7/T2.9.
 #
-# T2.7: today's dev decide_next/check_max fail OPEN on an unset/empty/
-# non-integer counter — `[ "" -gt 3 ]` is indistinguishable from "condition
-# false", so an unusable counter silently CONTINUES. This suite asserts the
-# HARDENED contract (empty stdout, exit 2, never continue) and is therefore
-# EXPECTED TO BE RED against the current, unhardened bkit-counter-bus.sh —
-# both the template (until sub-plan 2's T3.8 hardens it) and against `dev`
-# (captured below as red-vs-dev.txt). Hardening `decide_next`/`check_max`
-# themselves is OUT OF SCOPE for this sub-plan (KN-26 — see #58 Breaking
-# Changes item 1); it ships atomically with the derivation conversion in
-# `58-workflow-counters-plan-2.md`'s T3.8. Do NOT harden the guard here to
-# make these tests pass early.
+# T2.7: an unset/empty/non-integer counter must fail CLOSED — `[ "" -gt 3 ]`
+# is indistinguishable from "condition false", so an unhardened guard lets an
+# unusable counter silently CONTINUE. This suite asserts the HARDENED contract
+# (empty stdout, exit 2, never continue). It was authored RED against the then
+# unhardened bkit-counter-bus.sh and went green when sub-plan 2's T3.8 hardened
+# `decide_next`/`check_max` (shipped atomically with the derivation conversion
+# in `58-workflow-counters-plan-2.md`; KN-26 / #58 Breaking Changes item 1).
+# A one-time "RED-vs-dev" capture that re-derived the pre-fix fail-open from
+# `git show dev:` was removed once #58 merged into dev (dev's bus is now the
+# hardened version, so the capture was self-invalidating); its proof is
+# preserved as docs/plans/202607/logs/58-workflow-counters/red-vs-dev.txt.
 #
 # T2.9: count-0 is a LEGAL answer at a position-3 routing site (routing on a
 # prior/not-yet-executed step), and MAX=0 is a valid threshold
@@ -41,8 +41,8 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
-# T2.7 — fail-closed contract (RED against today's unhardened guard, and
-# against dev — see the red-vs-dev.txt capture below)
+# T2.7 — fail-closed contract (asserts the hardened guard: empty stdout,
+# exit 2, never continue; see red-vs-dev.txt for the one-time pre-fix capture)
 # ---------------------------------------------------------------------------
 
 @test "T2.7: decide_next — unset counter must refuse (empty stdout, exit 2), never continue" {
@@ -98,50 +98,17 @@ teardown() {
   [ "$status" -eq 2 ]
 }
 
-@test "T2.7: RED-vs-dev capture — dev's decide_next fail-opens on an unset counter (documented, not fixed here)" {
-  DEV_BUS="$TMPD/dev-bus.sh"
-  if ! git show dev:.bkit/scripts/bkit-counter-bus.sh > "$DEV_BUS" 2>/dev/null; then
-    skip "dev ref unavailable in this environment (e.g. shallow clone) — cannot capture red-vs-dev.txt here"
-  fi
-  # Capture stdout only for the assertion (stderr carries bash's own
-  # "integer expected" diagnostic, which is a separate, expected fact — not
-  # part of the fail-open stdout/exit-code proof).
-  run bash -c ". '$DEV_BUS'; unset TEST_ATTEMPT; decide_next TEST_ATTEMPT \"\$TEST_ATTEMPT\" 3 step-14 failure-path 2>$TMPD/dev-stderr.txt"
-  DEV_STDOUT="$output"
-  DEV_EXIT="$status"
-  DEV_STDERR="$(cat "$TMPD/dev-stderr.txt" 2>/dev/null || true)"
-  # Write the proof to a SCRATCH file only (T2.7/G3) — this suite must never
-  # mutate the tracked docs/ tree on every run (see committed
-  # red-vs-dev.txt's own header for why). The committed artifact is a
-  # deliberate, one-time capture; re-running the suite must reproduce its
-  # substance without rewriting it.
-  SCRATCH_LOG="$TMPD/red-vs-dev.txt"
-  TRACKED_LOG="$REPO_ROOT/docs/plans/202607/logs/58-workflow-counters/red-vs-dev.txt"
-  {
-    echo "=== RED-vs-dev proof (#58 T2.7) — captured $(date -u +%FT%TZ) ==="
-    echo "dev's .bkit/scripts/bkit-counter-bus.sh: decide_next TEST_ATTEMPT \"\" 3 step-14 failure-path"
-    echo "exit=${DEV_EXIT}"
-    echo "stdout=${DEV_STDOUT}"
-    echo "stderr=${DEV_STDERR}"
-    echo "Expected (hardened, this suite's contract): empty stdout, exit 2 (refused)."
-    echo "Actual (dev, fail-open): stdout='step-14', exit=0 — an unset counter silently CONTINUES."
-  } > "$SCRATCH_LOG"
-  # The proof: dev prints 'step-14' on stdout and exits 0 (the fail-open) —
-  # NOT 'command not found', which would mean the template-relative wiring
-  # (T2.0) is broken rather than proving the documented defect.
-  [ "$DEV_STDOUT" = "step-14" ]
-  [ "$DEV_EXIT" -eq 0 ]
-  # Provenance check (not regeneration): the freshly-derived scratch capture
-  # must match the tracked artifact apart from the "captured <timestamp>"
-  # line and the stderr line (which embeds a fresh, per-run mktemp path) —
-  # proving the committed red-vs-dev.txt genuinely came from running this
-  # same proof against dev's bus, not a hand-typed transcript, without this
-  # suite ever writing to the tracked path.
-  if [ -f "$TRACKED_LOG" ]; then
-    diff <(grep -Ev '^(=== RED-vs-dev proof|stderr=)' "$SCRATCH_LOG") \
-         <(grep -Ev '^(=== RED-vs-dev proof|stderr=)' "$TRACKED_LOG")
-  fi
-}
+# NOTE: A "RED-vs-dev capture" test formerly lived here. It ran
+# `git show dev:.bkit/scripts/bkit-counter-bus.sh` and asserted dev's bus still
+# fail-opened on an unset counter (stdout='step-14', exit 0), re-deriving the
+# one-time proof that the pre-fix defect existed. That was a TRANSITION-only
+# check: it only held while T3.8's hardening sat on a feature branch and dev
+# still carried the unhardened bus. Once #58 merged into dev, dev's bus IS the
+# hardened version (empty stdout, exit 2), so the capture could never reproduce
+# and the assertion became self-invalidating. The one-time proof is preserved as
+# the committed docs/plans/202607/logs/58-workflow-counters/red-vs-dev.txt, and
+# the hardened contract itself is asserted directly by the decide_next/check_max
+# tests above — so the capture was removed rather than salvaged.
 
 # ---------------------------------------------------------------------------
 # T2.9 — count-0 is legal at a position-3 routing site; MAX=0 is a valid
