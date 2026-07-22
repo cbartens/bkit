@@ -32,10 +32,13 @@ import {
   detectOpencodeProvider,
   detectOpencodeProviders,
   modulesToCliFlags,
+  validateModuleFlagsForVerb,
+  validateCloudTrackerMatch,
   getInstallingVersion,
   runStatus,
 } from "./bkit-install";
-import type { ModuleFlag } from "./bkit-cli";
+import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
+import type { IssueTracker } from "./bkit-manifest";
 import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
@@ -1456,6 +1459,89 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
     expect(flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "renovate"])).toBe(
       "--claude --cursor --tooling --renovate=mend",
     );
+  });
+});
+
+describe("validateModuleFlagsForVerb — #252 Step 2/3 verb/module-flag validation", () => {
+  const flags = (mods: ModuleFlag[] = []) => new Set<ModuleFlag>(mods);
+
+  it("errors when install is given zero module flags", () => {
+    const err = validateModuleFlagsForVerb("install", flags());
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit install` requires at least one module flag");
+  });
+
+  it("passes when install is given at least one module flag", () => {
+    expect(validateModuleFlagsForVerb("install", flags(["claude"]))).toBeNull();
+  });
+
+  it("errors when check is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("check", flags(["claude"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit check` takes no module flags");
+  });
+
+  it("errors when upgrade is given a module flag", () => {
+    const err = validateModuleFlagsForVerb("upgrade", flags(["cursor"]));
+    expect(err).not.toBeNull();
+    expect(err).toContain("`bkit upgrade` takes no module flags");
+  });
+
+  it("passes when check/upgrade are given zero module flags", () => {
+    expect(validateModuleFlagsForVerb("check", flags())).toBeNull();
+    expect(validateModuleFlagsForVerb("upgrade", flags())).toBeNull();
+  });
+
+  it("does not constrain other verbs (uninstall, doctor, help, ...)", () => {
+    const otherVerbs: Verb[] = ["uninstall", "doctor", "help", "status", "harvest"];
+    for (const verb of otherVerbs) {
+      expect(validateModuleFlagsForVerb(verb, flags())).toBeNull();
+      expect(validateModuleFlagsForVerb(verb, flags(["claude", "cursor"]))).toBeNull();
+    }
+  });
+});
+
+describe("validateCloudTrackerMatch — FINAL SCOPE decision 3/4 symmetric cloud/tracker constraint", () => {
+  it("passes when no cloud variant is set", () => {
+    expect(validateCloudTrackerMatch(null, true, "github")).toBeNull();
+  });
+
+  it("passes when the cloud module isn't in the install set, even with a variant", () => {
+    expect(validateCloudTrackerMatch("claude", false, "linear")).toBeNull();
+  });
+
+  it("passes when cloud=claude and tracker=github (matching)", () => {
+    expect(validateCloudTrackerMatch("claude", true, "github")).toBeNull();
+  });
+
+  it("passes when cloud=opencode and tracker=github (matching)", () => {
+    expect(validateCloudTrackerMatch("opencode", true, "github")).toBeNull();
+  });
+
+  it("passes when cloud=cursor and tracker=linear (matching)", () => {
+    expect(validateCloudTrackerMatch("cursor", true, "linear")).toBeNull();
+  });
+
+  it("errors when cloud=claude but tracker is not github", () => {
+    const err = validateCloudTrackerMatch("claude", true, "linear");
+    expect(err).not.toBeNull();
+    expect(err).toContain("--auto=claude requires tracker=github");
+  });
+
+  it("errors when cloud=cursor but tracker is not linear", () => {
+    const err = validateCloudTrackerMatch("cursor", true, "github");
+    expect(err).not.toBeNull();
+    expect(err).toContain("--auto=cursor requires tracker=linear");
+  });
+
+  it("suggests setting the tracker (not switching) when the tracker is still 'none' (default)", () => {
+    const err = validateCloudTrackerMatch("cursor", true, "none" as IssueTracker);
+    expect(err).toContain("Set the tracker first");
+  });
+
+  it("suggests re-running with the matching tracker when a different tracker is already set", () => {
+    const err = validateCloudTrackerMatch("claude", true, "linear" as IssueTracker);
+    expect(err).toContain("tracker switching is free");
   });
 });
 

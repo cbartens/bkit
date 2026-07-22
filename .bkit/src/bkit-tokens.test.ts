@@ -9,16 +9,12 @@ import { applyTokens, resolveTokens, resolveRunnerLabel } from "./bkit-tokens";
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let originalCwd: string;
 
 beforeEach(() => {
-  originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tokens-test-"));
-  process.chdir(tmpDir);
 });
 
 afterEach(() => {
-  process.chdir(originalCwd);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -121,50 +117,8 @@ describe("resolveTokens — BKIT_MANAGED_MARKER", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// REPO_SLUG resolution — parsed from `git remote get-url origin`
-// ---------------------------------------------------------------------------
-
-describe("resolveTokens — REPO_SLUG", () => {
-  function initRepoWithOrigin(url: string): void {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    // Strip git hook env vars so these commands operate on the temp dir,
-    // not on the parent repo injected via GIT_DIR during pre-push hooks.
-    const env = { ...process.env };
-    delete env["GIT_DIR"];
-    delete env["GIT_WORK_TREE"];
-    const opts = { cwd: tmpDir, stdio: "ignore" as const, env };
-    execSync("git init", opts);
-    execSync(`git remote add origin ${url}`, opts);
-  }
-
-  it("returns '' when origin remote is absent / not a git repo", async () => {
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.REPO_SLUG).toBe("");
-  });
-
-  it("parses owner/repo from an HTTPS remote with .git suffix", async () => {
-    writeJson("package.json", { name: "proj" });
-    initRepoWithOrigin("https://github.com/acme/widget.git");
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.REPO_SLUG).toBe("acme/widget");
-  });
-
-  it("parses owner/repo from an HTTPS remote without .git suffix", async () => {
-    writeJson("package.json", { name: "proj" });
-    initRepoWithOrigin("https://github.com/acme/widget");
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.REPO_SLUG).toBe("acme/widget");
-  });
-
-  it("parses owner/repo from an SSH scp-style remote", async () => {
-    writeJson("package.json", { name: "proj" });
-    initRepoWithOrigin("git@github.com:acme/widget.git");
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.REPO_SLUG).toBe("acme/widget");
-  });
-});
+// resolveTokens — REPO_SLUG is covered in bkit-tokens.integration.test.ts (real
+// `git init` + `git remote add` subprocess).
 
 // ---------------------------------------------------------------------------
 // Runner labels — configurable runs-on for bkit-managed workflows (#362)
