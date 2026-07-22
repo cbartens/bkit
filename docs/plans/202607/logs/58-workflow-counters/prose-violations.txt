@@ -1,0 +1,94 @@
+
+ RUN  v4.1.9 /Users/christian/Documents/GitHub/bkit/.worktrees/58-workflow-counters
+
+ ❯ .bkit/src/bkit-counter-prose-audit.test.ts (61 tests | 3 failed) 15ms
+     × .bkit/workflows/bkit-build.md: no bare *_ATTEMPT token in non-fenced prose 2ms
+     × .bkit/workflows/bkit-debug.md: no bare *_ATTEMPT token in non-fenced prose 1ms
+     × .bkit/workflows/bkit-ship.md: no bare *_ATTEMPT token in non-fenced prose 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .bkit/src/bkit-counter-prose-audit.test.ts > #58 T5.1: no bare *_ATTEMPT token reference in workflow prose (assignment, increment, reset, comparison — all of it) > .bkit/workflows/bkit-build.md: no bare *_ATTEMPT token in non-fenced prose
+AssertionError: [bkit-counter-prose-audit] .bkit/workflows/bkit-build.md has bare *_ATTEMPT token references in prose:
+  line ~196: 6. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
+  line ~216: - [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0
+  line ~300: 2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-{SUB_PLAN}.md`. Reset `VERIFY_ATTEM
+  line ~347: 8. Derive `VERIFY_ATTEMPT` (position 1 — derive-at-START):
+  line ~380: - [ ] Verify attempt incremented (`VERIFY_ATTEMPT` + 1)
+  line ~573: **Run only if** Step 10 (`CHALLENGE_VERDICT` = CONCERNS **or** FAIL) **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
+  line ~575: 1. Derive `CHALLENGE_REMEDIATE_ATTEMPT` (position 1 — derive-at-START):
+  line ~602: - [ ] Challenge-remediate attempt incremented (`CHALLENGE_REMEDIATE_ATTEMPT` + 1)
+  line ~663: 1. Derive `TEST_ATTEMPT` (position 1 — derive-at-START):
+  line ~694: - [ ] Test attempt incremented (`TEST_ATTEMPT` + 1)
+→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.1 removes the substitution prose (Init counters:/Increment X + 1/Set X = 0/Run-only-if headers). Captured to prose-violations.txt as T4.1's removal worklist — do NOT delete prose here (sub-plan 2 is gated on Gate 2b before that is safe).
+→ Move these into fenced shell blocks using bkit-counter-bus.sh.
+ ❯ .bkit/src/bkit-counter-prose-audit.test.ts:126:16
+    124|       if (hits.length > 0) {
+    125|         const lines = hits.map((h) => `  line ~${h.line}: ${h.text.sli…
+    126|         expect.fail(
+       |                ^
+    127|           `[bkit-counter-prose-audit] ${wfFile} has bare *_ATTEMPT tok…
+    128|             `→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  .bkit/src/bkit-counter-prose-audit.test.ts > #58 T5.1: no bare *_ATTEMPT token reference in workflow prose (assignment, increment, reset, comparison — all of it) > .bkit/workflows/bkit-debug.md: no bare *_ATTEMPT token in non-fenced prose
+AssertionError: [bkit-counter-prose-audit] .bkit/workflows/bkit-debug.md has bare *_ATTEMPT token references in prose:
+  line ~49: > - **Limits:** Three attempt counters (mode-matched pairs): `DEBUG_ATTEMPT` / `MAX_DEBUG_ATTEMPT` (cross-invocation ind
+  line ~50: > - **Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects 
+  line ~130: 7. Extract `PRIOR_DEBUG_ATTEMPT` from most recent `workflow == "debug"` entry and set this invocation's `DEBUG_ATTEMPT`:
+  line ~135: - **If** the ACTIVE-RUN count of `debug-failure-soak` steps (position 4, `counter_count`, 0 legal) is > 0 → `DEBUG_MODE`
+  line ~138: - Otherwise run counter-bus routing for `DEBUG_ATTEMPT >= MAX_DEBUG_ATTEMPT` check:
+  line ~186: - [ ] Debug attempt incremented (`DEBUG_ATTEMPT` = prior + 1, folded from status.jsonl; `1` if first run)
+  line ~205: 5. Init counters: `NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0.
+  line ~225: - [ ] Counters initialised (`NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0)
+  line ~239: 1. Derive `NORMAL_ATTEMPT` (position 1 — derive-at-START):
+  line ~259: 7. **If** `TEST_VERDICT` = PASS — derive `NORMAL_ATTEMPT` and route:
+  line ~261: - **If** `NORMAL_ATTEMPT` > 1 → Step 8.
+  line ~262: - **If** `NORMAL_ATTEMPT` = 1 → Step 9.
+  line ~279: - [ ] Test attempt incremented (`NORMAL_ATTEMPT` + 1)
+  line ~299: 2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch failed jobs / steps, error-annotation subset,
+  line ~301: 3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-di
+  line ~303: 4. **If** current run output captured → write local test output to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-l
+  line ~305: 5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download ou
+  line ~309: 7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure 
+  line ~312: `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) 
+  line ~315: `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) 
+  line ~452: 1. Derive `SOAK_ATTEMPT` (position 1 — derive-at-START; `--since soakEntryAt` so a resumed invocation-start SOAK never i
+  line ~477: - [ ] Soak iteration counter incremented (`SOAK_ATTEMPT` + 1, bounded by `MAX_SOAK_ATTEMPT`)
+  line ~495: **Run only if** `TEST_VERDICT` = PASS **and** `NORMAL_ATTEMPT` > 1.
+→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.1 removes the substitution prose (Init counters:/Increment X + 1/Set X = 0/Run-only-if headers). Captured to prose-violations.txt as T4.1's removal worklist — do NOT delete prose here (sub-plan 2 is gated on Gate 2b before that is safe).
+→ Move these into fenced shell blocks using bkit-counter-bus.sh.
+ ❯ .bkit/src/bkit-counter-prose-audit.test.ts:126:16
+    124|       if (hits.length > 0) {
+    125|         const lines = hits.map((h) => `  line ~${h.line}: ${h.text.sli…
+    126|         expect.fail(
+       |                ^
+    127|           `[bkit-counter-prose-audit] ${wfFile} has bare *_ATTEMPT tok…
+    128|             `→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  .bkit/src/bkit-counter-prose-audit.test.ts > #58 T5.1: no bare *_ATTEMPT token reference in workflow prose (assignment, increment, reset, comparison — all of it) > .bkit/workflows/bkit-ship.md: no bare *_ATTEMPT token in non-fenced prose
+AssertionError: [bkit-counter-prose-audit] .bkit/workflows/bkit-ship.md has bare *_ATTEMPT token references in prose:
+  line ~218: - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
+  line ~350: 1. Derive `MERGE_ATTEMPT` (position 1 — derive-at-START):
+  line ~390: - [ ] Merge attempt incremented (`MERGE_ATTEMPT` + 1)
+→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.1 removes the substitution prose (Init counters:/Increment X + 1/Set X = 0/Run-only-if headers). Captured to prose-violations.txt as T4.1's removal worklist — do NOT delete prose here (sub-plan 2 is gated on Gate 2b before that is safe).
+→ Move these into fenced shell blocks using bkit-counter-bus.sh.
+ ❯ .bkit/src/bkit-counter-prose-audit.test.ts:126:16
+    124|       if (hits.length > 0) {
+    125|         const lines = hits.map((h) => `  line ~${h.line}: ${h.text.sli…
+    126|         expect.fail(
+       |                ^
+    127|           `[bkit-counter-prose-audit] ${wfFile} has bare *_ATTEMPT tok…
+    128|             `→ EXPECTED RED until 58-workflow-counters-plan-3.md's T4.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 58 passed (61)
+   Start at  17:37:13
+   Duration  98ms (transform 20ms, setup 9ms, import 19ms, tests 15ms, environment 0ms)
+

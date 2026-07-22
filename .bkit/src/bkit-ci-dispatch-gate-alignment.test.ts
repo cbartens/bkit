@@ -23,7 +23,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
+// __dirname-anchored, not CWD-relative (G4, build-plan-gaps-remediate-1-1) —
+// matches every sibling suite (e.g. bkit-status-fold.test.ts's REPO_ROOT) so
+// this file resolves correctly regardless of vitest's invocation cwd.
+const REPO_ROOT = path.resolve(__dirname, "../..");
+const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
 
 function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8");
@@ -406,6 +410,7 @@ describe("intentional-non-push rationale documented in workflows.md, not inline 
     expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
     expect(workflowsMd).toContain("KN-11");
     // Must explicitly forbid the rejected fix.
+    // Wording compressed on current `dev`; keep the forbid-the-rejected-fix lock-in.
     expect(workflowsMd).toContain('Do NOT "fix" with post-gate commit+push');
   });
 

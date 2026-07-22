@@ -292,6 +292,21 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 
 When adding bkit-managed file types or scope keys, extend fixture — single source of truth for real consumer surface; do not mock.
 
+## Counter derivation test coverage (#58)
+
+`*_ATTEMPT` counters **derived** from `status.jsonl` at use — never carried across Bash calls (§ Attempt counters, `.bkit/workflows.md`). Shell state does not persist between fenced blocks → value crosses only via `status.jsonl`.
+
+`tests/counter-bus.bats` sources helpers once in a single `bash -c` (not the live shape). `tests/counter-derive.bats` / `tests/counter-failclosed.bats` use a fresh subprocess per block against a real `status.jsonl`: row counting, fold dedup (retries survive / replays collapse), active-run scoping, sub-plan isolation, fail-closed (empty/non-integer → exit 2).
+
+`BKIT_COUNTER_BUS` / `BKIT_COUNTER_CONFIG` override the template scripts (default `.bkit/templates/.bkit/scripts/…`) — enables RED-vs-`dev` without a second worktree (`BKIT_COUNTER_BUS=/tmp/dev-bus.sh npx bats tests/counter-failclosed.bats`).
+
+<!-- prettier-ignore -->
+| File | Tier | Scope |
+| --- | --- | --- |
+| `tests/counter-derive.bats` | Shell (cross-process, real `status.jsonl`) | Row counting; fold dedup; active-run vs `PRIOR_STRATEGY` all-runs; sub-plan isolation |
+| `tests/counter-failclosed.bats` | Shell (cross-process, exit codes, `sh`/`bash`/`dash`/`zsh`) | `decide_next`/`check_max` refuse empty/non-integer (exit 2); legal `0` kept |
+| `tests/route-state.bats` | Shell (cross-process, real `status.jsonl`) | `debugMode`/`pushMode` meta; `route_last_verdict`/`failures`; `ladder_next`; all-runs strategy |
+
 ## Key test files
 
 <!-- prettier-ignore -->
