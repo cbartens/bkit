@@ -14,7 +14,7 @@
 
 ## Context & Goals (inherited from parent)
 
-bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`). Mechanism (settled design `docs/plans/202607/341-three-runtimes-design.md`): a sourced runtime shim (`bkit-runtime.sh`) emits a 4-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`); workflow headers branch on `CAN_*`; **invariants land in `.agents/rules.md`**; the close path gains transport-agnostic guards. Spikes A/B/C are CLOSED — fold findings.
+bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`), Cursor cloud agent (mode 4). Mechanism (settled design `docs/plans/202607/341-three-runtimes-design.md`): a sourced runtime shim (`bkit-runtime.sh`) emits a 5-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`); workflow headers branch on `CAN_*`; **invariants land in `.agents/rules.md`**; the close path gains transport-agnostic guards. Spikes A/B/C are CLOSED — fold findings.
 
 **This sub-plan (2 of 6) — Invariants + CI-wait kernel (T6–T7).**
 
@@ -23,7 +23,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 
 ### Inherited Success Criteria (whole effort — this sub-plan owns SC7 + the rules doctrine behind SC2–5)
 
-1. All five phases + `bkit-auto` complete in each of the three runtimes; mode-1 non-regressed by a real run.
+1. All five phases + `bkit-auto` complete in each of the four runtimes (mode 4 = Cursor, gated on detection-var confirmation); mode-1 non-regressed by a real run.
 2. No run mutates the checked-out branch in a runtime that cannot restore it (D6/D23).
 3. Every phase-close body free of CI-suppression tokens (D24); `dev` CI-dispatch asserted (D1).
 4. Any gh→MCP transition is bounded (max 1/run), recorded, cross-checked (D25).

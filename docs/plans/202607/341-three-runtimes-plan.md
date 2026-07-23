@@ -15,9 +15,9 @@ Verdict: PASS
 
 ## Context & Goals
 
-bkit's five phase workflows (`/bkit-{design,plan,build,debug,ship}`) + `bkit-auto` were authored for a laptop (mode 1) but now run in **three materially different runtimes**: laptop (mode 1), GitHub-Actions runner (mode 2), and a **claude.ai cloud session** (mode 3, `CLAUDE_CODE_REMOTE=true`). Several steps assume laptop-only capabilities. Running phases on the claude.ai runner surfaced a cluster of deviations culminating in a **silent CI-suppression bug (D1)**: `[skip ci]` leaked into a squash-merge _body_ on `dev` because an unauthed `gh` was replaced by an ad-hoc, unguarded MCP `merge_pull_request` that defaulted the body.
+bkit's five phase workflows (`/bkit-{design,plan,build,debug,ship}`) + `bkit-auto` were authored for a laptop (mode 1) but now run in **four materially different runtimes**: laptop (mode 1), GitHub-Actions runner (mode 2), a **claude.ai cloud session** (mode 3, `CLAUDE_CODE_REMOTE=true`), and a **Cursor cloud agent** (mode 4). Several steps assume laptop-only capabilities. Running phases on the claude.ai runner surfaced a cluster of deviations culminating in a **silent CI-suppression bug (D1)**: `[skip ci]` leaked into a squash-merge _body_ on `dev` because an unauthed `gh` was replaced by an ad-hoc, unguarded MCP `merge_pull_request` that defaulted the body.
 
-This plan implements the **settled design** (`docs/plans/202607/341-three-runtimes-design.md`, verdict CONCERNS) whose guiding principle is **minimal, additive changes gated on one capability table — not a rewrite of every call site**. The mechanism: a sourced runtime shim (`bkit-runtime.sh`) emits a 4-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`); workflow headers branch on `CAN_*`; invariants land in `.agents/rules.md`; the close path gains transport-agnostic guards (D23/D24/D25). Three pre-build spikes (A/B/C) have **run and closed** (`spike-findings.md`, `design-addendum-spikes.md`) — their findings are folded, and they are NOT re-planned as open spikes; the only residuals are live-mode-3 observations owned by the terminal verification task (Sub-Plan 6).
+This plan implements the **settled design** (`docs/plans/202607/341-three-runtimes-design.md`, verdict CONCERNS) whose guiding principle is **minimal, additive changes gated on one capability table — not a rewrite of every call site**. The mechanism: a sourced runtime shim (`bkit-runtime.sh`) emits a 5-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`; row 4 = Cursor cloud agent, mode-2-equivalent, exact detection var held for live confirmation); workflow headers branch on `CAN_*`; invariants land in `.agents/rules.md`; the close path gains transport-agnostic guards (D23/D24/D25). Three pre-build spikes (A/B/C) have **run and closed** (`spike-findings.md`, `design-addendum-spikes.md`) — their findings are folded, and they are NOT re-planned as open spikes; the only residuals are live-mode-3 observations owned by the terminal verification task (Sub-Plan 6).
 
 > Success criteria live ONCE below; each runbook task (in the sub-plans) carries its own `Done when`.
 
@@ -34,7 +34,7 @@ This plan implements the **settled design** (`docs/plans/202607/341-three-runtim
 
 ## Success Criteria _(inherited from design — the shared testable contract; each sub-plan repeats the subset it owns)_
 
-1. All five phases + `bkit-auto` complete end-to-end in each of the three runtimes; the mode-1 laptop path is verified non-regressed by a real end-to-end run (not a rule-text-presence test). This run is also the only guarantee that prose rules _honour_ the capability flags — no static engine can assert that.
+1. All five phases + `bkit-auto` complete end-to-end in each of the four runtimes (mode 4 = Cursor cloud agent, gated on live confirmation of its detection var); the mode-1 laptop path is verified non-regressed by a real end-to-end run (not a rule-text-presence test). This run is also the only guarantee that prose rules _honour_ the capability flags — no static engine can assert that.
 2. No run ever mutates the session's checked-out branch in a runtime that cannot restore it — zero `git checkout dev` when dev-push capability is absent (D6). Held by a double-guard plus a reversible checkout (D23).
 3. Every phase-close lands on `dev` with a commit/merge body free of CI-suppression tokens — asserted post-hoc against the landed commit on whichever transport ran (D24) — and the resulting CI-dispatch outcome on `dev` is asserted rather than assumed (D1 closed on both transports).
 4. Any gh→MCP transition is bounded (max 1 per run), recorded in `status.jsonl`, confirmed by an independent re-read, and cross-checked mechanically (D25).
@@ -76,7 +76,7 @@ This plan implements the **settled design** (`docs/plans/202607/341-three-runtim
 
 ## Out of Scope
 
-Shell-native MCP CLI shim; uniform PR-close all runtimes; Runtime-#4 (Cursor bg agent) first-class detection; narrow gh read-path corroboration outside MCP; root-cause of MCP `search_issues` zero-on-private-repo; periodic transport-fallback frequency summariser; mode-tuned subagent-fan-out pacing; the `/Users/jesse` vendored skill "fix" (D20 correction). Each mirrored in `docs/deferrals.jsonl` (OQ3 in `docs/failures.jsonl`).
+Shell-native MCP CLI shim; uniform PR-close all runtimes; narrow gh read-path corroboration outside MCP; root-cause of MCP `search_issues` zero-on-private-repo; periodic transport-fallback frequency summariser; mode-tuned subagent-fan-out pacing; the `/Users/jesse` vendored skill "fix" (D20 correction). Each mirrored in `docs/deferrals.jsonl` (OQ3 in `docs/failures.jsonl`). **Runtime 4 (Cursor bg agent) was PROMOTED out of this list into scope (2026-07-23)** — first-class row in the capability table; exact detection var held for live confirmation (verify-first).
 
 ## Security & Privacy
 
@@ -132,7 +132,7 @@ Code-only — `git revert {COMMIT}` per landed workstream + `pnpm bkit install` 
 | [341-three-runtimes-plan-3.md](./341-three-runtimes-plan-3.md) | Branch model + close-guard kernel (adopt-or-mint 13-site commit, D23/D24/D25) | T8, T9 | 7–9 | Sub-Plans 1 (T2/T3), 2 (T7 shared files) | OQ-C (branch protection, Risk 4) |
 | [341-three-runtimes-plan-4.md](./341-three-runtimes-plan-4.md) | Close shapes B/C + §6d skip-ci + shape A | T10, T11, T12, T13 | 12 | Sub-Plans 2 (T7), 3 (T9 kernel) | **OQ-A** (D5(a) vs D5 — picks whether T12 exists), **OQ-D** (docs-close CI cost) |
 | [341-three-runtimes-plan-5.md](./341-three-runtimes-plan-5.md) | gh→MCP fallback lane + peripherals (worktree self-skip, debug egress, Playwright seam) | T14, T15 | 16 | Sub-Plans 1 (T4 `actions`), 3 (T9 D25) | OQ-B (job-logs default); owns Manual Step 5 |
-| [341-three-runtimes-plan-6.md](./341-three-runtimes-plan-6.md) | Terminal verification: prose audit, batch mirror regen, live mode-1/2/3 runs, SC1–7 | T16 | 14, 15 | ALL (Sub-Plans 1–5) | 🔒 Gate 4 final suite; Manual Steps 1–4; OQ-C confirm |
+| [341-three-runtimes-plan-6.md](./341-three-runtimes-plan-6.md) | Terminal verification: prose audit, batch mirror regen, live mode-1/2/3/4 runs, SC1–7 | T16 | 14, 15 | ALL (Sub-Plans 1–5) | 🔒 Gate 4 final suite; Manual Steps 1–4; OQ-C confirm |
 
 **Derived Test Matrix → task → sub-plan map (all 16 rows, one task each):** rows 1–4→T3 (SP1), 5–6→T7 (SP2), 7–9→T9 (SP3), 10→T4 (SP1), 11→T1 (SP1), 12→T12 (SP4), 13→T5 (SP1), 14–15→T16 (SP6), 16→T15 (SP5). No uncovered row; no duplicated row.
 
