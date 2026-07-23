@@ -23,3 +23,6 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-22T08:24:05Z","parentSha":"bd2c7786fca9bf04bc99696ec79698f533a00cdd","artifacts":["docs/plans/202607/logs/341-three-runtimes/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-07-22T08:26:40Z","parentSha":"5eba2bf5025f5772674b39d5f0ac59df9b51428e","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-07-22T08:26:40Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-07-23T23:56:51Z","parentSha":"7d0afb121676b5130673c8249df38084ab7ad64a"}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-07-23T23:56:51Z","parentSha":"7d0afb121676b5130673c8249df38084ab7ad64a","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-07-23T23:56:51Z","parentSha":"7d0afb121676b5130673c8249df38084ab7ad64a","artifacts":["docs/plans/202607/logs/341-three-runtimes/build-input.md"]}
