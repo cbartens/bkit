@@ -278,9 +278,9 @@ The fold scopes the on-disk scan to non-completed FIDs (skip anything in the com
 
 Rows key on **FID** always. When a tracker is connected the tracker id is embedded in the FID (`{ISSUE_ID}-{slug}`), so no separate issue-number column is needed; under `tracker: none` the FID stands alone.
 
-### G. Convert `docs/completed.md` -> `docs/completed.jsonl` (finding #4) — RECOMMENDED, confirm scope
+### G. Convert `docs/completed.md` -> `docs/completed.jsonl` (finding #4) — IN SCOPE for #380 (owner-confirmed 2026-07-23)
 
-Recommend a structured `docs/completed.jsonl` shipped-FID ledger (peer of `deferrals.jsonl`/`failures.jsonl`, `.bkit/jsonl.md` format) as the machine-readable "is this FID shipped?" source, replacing free-form markdown parsing. `@bkit-ship-update-docs` appends a row at ship close; the human-readable `docs/completed.md` is kept or generated from the ledger. **Scope note:** this touches the ship workflow + any existing `completed.md` readers, so it is a companion change to confirm, not silently absorbed into this issue.
+Add a structured `docs/completed.jsonl` shipped-FID ledger (peer of `deferrals.jsonl`/`failures.jsonl`, `.bkit/jsonl.md` format) as the machine-readable "is this FID shipped?" source, replacing free-form markdown parsing. `@bkit-ship-update-docs` appends a row at ship close; the human-readable `docs/completed.md` is kept or generated from the ledger. **In-scope surface:** the ship workflow (`@bkit-ship-update-docs` writer) and any existing `completed.md` readers migrate together in the same change; the exclude-completed scan (E) reads the new ledger. This adds `@bkit-ship-update-docs` (and the ship Close step) to the edited shipped surface, so it joins WS-6's mirror-regen + install/upgrade dogfood.
 
 ### Reconciliation of the conflict-safety model
 
@@ -288,7 +288,8 @@ Making roadmap.md canonical does NOT abandon regenerate-on-conflict. The `roadma
 
 ### Workstream impact
 
-- **WS-1** gains the phase-section layout, the Backlog region contract, exclude-completed scoping, and the `completed.jsonl` schema (if G confirmed).
+- **WS-1** gains the phase-section layout, the Backlog region contract, exclude-completed scoping, and the `completed.jsonl` schema + the `docs/completed.md`->`docs/completed.jsonl` migration (G, in scope), including the `@bkit-ship-update-docs` writer edit.
 - **WS-2** gains build/debug dev-located roadmap writes under the dev-lock (all five workflows now refresh dev at close).
 - **WS-4** gains the reverse tracker-label sync (D) on the cadence.
-- Consider a dedicated workstream for D (reverse sync) + G (`completed.jsonl`) if either grows beyond a fold-in.
+- **WS-6** now also mirror-regens + dogfoods the edited ship Close / `@bkit-ship-update-docs` surface (from G).
+- Consider a dedicated workstream for D (reverse sync) if it grows beyond a fold-in.
