@@ -31,6 +31,7 @@ import {
 } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
+import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 
 export type { PreflightFinding };
 
@@ -2836,6 +2837,12 @@ export function runPostInstallCheck(
   // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
   const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
   if (cloudGate) phase3.push(cloudGate);
+
+  // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
+  // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for
+  // claude.yml (its @claude handler is provider-fixed). bkit-cloud.yml self-syncs, so exempt.
+  const opencodeYmlDrift = detectOpencodeYmlProviderDrift(cwd);
+  if (opencodeYmlDrift) phase3.push(opencodeYmlDrift);
 
   // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
   const ciActionlint = detectCiYmlMissingActionlint(cwd);

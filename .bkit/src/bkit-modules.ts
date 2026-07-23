@@ -1409,6 +1409,111 @@ export function opencodeProviderId(providerKey: string): string {
   return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
 }
 
+/**
+ * The provider secret env var name for a bkit provider key (`NVIDIA_API_KEY`, `OPENCODE_API_KEY`,
+ * `OLLAMA_HOST` for the keyless local host, ...). Empty string for an unknown key. Mirrors
+ * {@link opencodeProviderId}; used to compare a self-installed opencode.yml handler's `env:`
+ * secret against the installed provider.
+ */
+export function opencodeProviderEnvVar(providerKey: string): string {
+  return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.envVar ?? "";
+}
+
+/**
+ * Detect drift between the self-installed `.github/workflows/opencode.yml` reactive `/oc` handler
+ * and the installed opencode provider.
+ *
+ * opencode.yml is NOT bkit-managed: it is self-installed via `opencode github install` (the `/oc`
+ * | `/opencode` comment handler — the opencode analogue of the App-generated claude.yml). It
+ * HARDCODES two provider-specific values: a `model: <providerId>/<model>` line and a provider
+ * secret `env:` var. `bkit install --opencode=<provider>` rewrites neither, so switching providers
+ * silently leaves the handler calling the wrong provider's model and authenticating with the wrong
+ * (likely-unset) secret.
+ *
+ * bkit-cloud.yml (the bkit-MANAGED cloud lane) has NO such problem: it runs `opencode run` against
+ * the committed `.opencode/` config and fans one `OPENCODE_PROVIDER_KEY` secret out to every
+ * provider env var, so it self-syncs on a provider switch. Only the unmanaged reactive handler
+ * drifts — hence a manual-fix advisory rather than an auto-rewrite.
+ *
+ * File-existence guarded (no-op when opencode.yml is absent) so it is safe to ship: it fires only
+ * for repos that self-installed the /oc handler. No equivalent check for claude.yml — the @claude
+ * handler is provider-fixed to Claude and has nothing to compare. Non-fatal (severity "advisory"):
+ * bkit does not own the file, so this never gates `bkit check`; it surfaces on both check and
+ * postinstall as a nudge to hand-edit.
+ */
+export function detectOpencodeYmlProviderDrift(cwd: string): PreflightFinding | null {
+  const ymlPath = path.join(cwd, ".github", "workflows", "opencode.yml");
+  if (!fs.existsSync(ymlPath)) return null;
+
+  // The installed provider — package.json `bkit.opencodeProvider` is the authoritative record
+  // written on install. Absent/broken → we cannot know the intended provider; the null-guard
+  // below skips silently (no false alarm).
+  let provider: string | null = null;
+  const pkgPath = path.join(cwd, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        bkit?: { opencodeProvider?: unknown };
+      };
+      if (typeof pkg.bkit?.opencodeProvider === "string") provider = pkg.bkit.opencodeProvider;
+    } catch {
+      // Malformed package.json — leave provider null; a JSON-drift advisory covers that separately.
+    }
+  }
+  if (!provider) return null;
+
+  const expectedPrefix = opencodeProviderId(provider); // model id form is `<providerId>/<model>`
+  const expectedEnvVar = opencodeProviderEnvVar(provider);
+  if (!expectedEnvVar) return null; // unknown provider key — no registry entry to compare against.
+
+  const content = fs.readFileSync(ymlPath, "utf-8");
+
+  // The handler's hardcoded `model: <providerId>/<model>` line (opencode `run --model`).
+  const ymlModel = content.match(/^\s*model:\s*(\S+)/m)?.[1] ?? null;
+  const ymlPrefix = ymlModel ? ymlModel.split("/")[0] : null;
+  // The handler's hardcoded provider secret — an `env:` key like NVIDIA_API_KEY / OPENCODE_API_KEY.
+  const ymlEnvVar = content.match(/^\s*([A-Z][A-Z0-9_]*(?:_API_KEY|_HOST)):/m)?.[1] ?? null;
+
+  // Two independent drift signals. The model prefix is the precise one (it distinguishes the two
+  // opencode gateways that share OPENCODE_API_KEY); the env var catches a wrong/absent secret.
+  const modelDrift = ymlPrefix !== null && ymlPrefix !== expectedPrefix;
+  const envDrift = !new RegExp(`\\b${expectedEnvVar}\\b`).test(content);
+  if (!modelDrift && !envDrift) return null;
+
+  const foundModel = ymlModel ?? "(none)";
+  const foundEnvVar = ymlEnvVar ?? "(none)";
+
+  return {
+    id: "opencode-yml-provider-drift",
+    severity: "advisory",
+    detect:
+      ".github/workflows/opencode.yml (the self-installed /oc handler, NOT bkit-managed) is pinned to model `" +
+      foundModel +
+      "` with secret `" +
+      foundEnvVar +
+      "`, but the installed opencode provider is `" +
+      provider +
+      "` (model ids `" +
+      expectedPrefix +
+      "/<model>`, secret `" +
+      expectedEnvVar +
+      "`). The reactive handler will call the wrong provider's model and/or authenticate with the wrong (likely-unset) secret. bkit install does not rewrite this file.",
+    action:
+      "opencode.yml is self-installed via `opencode github install` and is NOT bkit-managed, so `bkit install --opencode=<provider>` will not fix it. Hand-edit the two hardcoded lines to match the installed provider:\n\n" +
+      "      env:\n" +
+      "        " +
+      expectedEnvVar +
+      ": ${{ secrets." +
+      expectedEnvVar +
+      " }}\n" +
+      "      with:\n" +
+      "        model: " +
+      expectedPrefix +
+      "/<model>   # a model your provider serves (see .opencode/opencode.json)\n\n" +
+      "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and fans OPENCODE_PROVIDER_KEY out to every provider env var.)",
+  };
+}
+
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
 const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
 const OPENCODE_PROVIDER_KEY_SENTINEL = "@@OPENCODE_PROVIDER_KEY@@";

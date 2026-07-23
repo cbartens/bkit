@@ -8,6 +8,7 @@ import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_
 import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
+import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 /**
  * Detect whether GH_BKIT_TOKEN_INSTALL is set in the shell environment.
  * - "present"  → set and non-empty
@@ -2621,6 +2622,12 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
     if (cloudGate)
         phase3.push(cloudGate);
+    // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
+    // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for
+    // claude.yml (its @claude handler is provider-fixed). bkit-cloud.yml self-syncs, so exempt.
+    const opencodeYmlDrift = detectOpencodeYmlProviderDrift(cwd);
+    if (opencodeYmlDrift)
+        phase3.push(opencodeYmlDrift);
     // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
     const ciActionlint = detectCiYmlMissingActionlint(cwd);
     if (ciActionlint)
