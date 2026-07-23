@@ -1268,7 +1268,23 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all eight)", () => {
+  it("zai: single GLM family — glm-4.7 opus/convergent, glm-4.6 sonnet, glm-4.5-air haiku", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zai");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("zai/glm-4.7"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-4.6"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("zai/glm-4.5-air"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("zai/glm-4.7"); // convergent
+  });
+
+  it("moonshot: single Kimi family — kimi-k3 opus/convergent, kimi-k2.7-code sonnet, kimi-k2.5 haiku", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "moonshot");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("moonshot/kimi-k3"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("moonshot/kimi-k2.7-code"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("moonshot/kimi-k2.5"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("moonshot/kimi-k3"); // convergent
+  });
+
+  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all ten)", () => {
     for (const provider of [
       "ollama-local",
       "nvidia",
@@ -1276,6 +1292,8 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       "cerebras",
       "openrouter",
       "ollama",
+      "zai",
+      "moonshot",
       "opencode-zen",
       "opencode-go",
     ]) {

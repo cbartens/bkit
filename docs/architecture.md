@@ -137,7 +137,7 @@ Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed 
 
 - `.claude/commands/` + `.claude/agents/` — byte-identical copies of `.bkit/workflows/` + `.bkit/prompts/`
 - `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed for Cursor
-- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`. See `docs/technology.md` § Execution Hosts.
+- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; ten providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zai`, `moonshot`, `opencode-zen`, `opencode-go`. See `docs/technology.md` § Execution Hosts.
 
 Every rendered agent/command file — and every bkit-managed `docs/*.md` block (first line of `bkit:start` via `{{BKIT_MANAGED_MARKER}}`) — carries `<!-- bkit:managed vX.Y.Z … -->` stamped by `bkit install`/`upgrade` (v4.0.0+). Marker drift → `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (canonical doc set, never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main`/`dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches — stale render usually inherited from base bump without atomic re-render, not created on feature branch. Advisory still in checklist for visibility; no longer blocks intermediate push.
 

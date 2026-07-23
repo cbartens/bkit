@@ -612,6 +612,20 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     });
   }
 
+  // #376 — GLM (zai) + Kimi (moonshot) coding-subscription gateways.
+  const codingGateways = ["zai", "moonshot"] as const;
+  for (const value of codingGateways) {
+    it(`--opencode=${value} is accepted (#376)`, () => {
+      expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
+    });
+  }
+  it("--opencode=glm normalises to zai (family alias, #376)", () => {
+    expect(parseArgs(["install", "--opencode=glm"]).opencodeProvider).toBe("zai");
+  });
+  it("--opencode=kimi normalises to moonshot (family alias, #376)", () => {
+    expect(parseArgs(["install", "--opencode=kimi"]).opencodeProvider).toBe("moonshot");
+  });
+
   // opencode-native gateways — two providers `opencode-zen` + `opencode-go`, both auth via
   // OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).
   it("--opencode=opencode-zen is accepted", () => {

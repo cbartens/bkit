@@ -371,14 +371,16 @@ jobs:
           # Fan out the single OPENCODE_PROVIDER_KEY secret to every supported cloud provider's
           # env var name, so the committed .opencode/opencode.json {env:VAR} reference resolves
           # regardless of which provider the consumer installed (nvidia/groq/cerebras/openrouter/
-          # ollama/opencode). ollama-local is keyless, so it reads no key here. `opencode` (the
-          # opencode-native Zen gateway) reads OPENCODE_API_KEY. No Claude identity leak —
-          # ANTHROPIC_API_KEY is absent.
+          # ollama/zai/moonshot/opencode). ollama-local is keyless, so it reads no key here.
+          # `opencode` (the opencode-native Zen gateway) reads OPENCODE_API_KEY. No Claude
+          # identity leak — ANTHROPIC_API_KEY is absent.
           NVIDIA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           GROQ_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OLLAMA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          ZAI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          MOONSHOT_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).

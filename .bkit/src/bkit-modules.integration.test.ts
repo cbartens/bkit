@@ -2819,7 +2819,16 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 // ---------------------------------------------------------------------------
 describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
   it("passes through custom providers (key === opencode id)", () => {
-    for (const key of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+    for (const key of [
+      "ollama-local",
+      "nvidia",
+      "groq",
+      "cerebras",
+      "openrouter",
+      "ollama",
+      "zai",
+      "moonshot",
+    ]) {
       expect(opencodeProviderId(key)).toBe(key);
     }
   });
@@ -2852,6 +2861,28 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.baseURL).toBe("https://integrate.api.nvidia.com/v1");
     expect(block.options.apiKey).toBe("{env:NVIDIA_API_KEY}");
     // No shell-style interpolation in the provider block (opencode reads {env:VAR}).
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("zai (remote): npm driver, GLM coding-plan baseURL, apiKey via {env:ZAI_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zai"));
+    const block = parsed.provider?.zai;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://api.z.ai/api/coding/paas/v4");
+    expect(block.options.apiKey).toBe("{env:ZAI_API_KEY}");
+    expect(block.api).toBeUndefined(); // an "api" field makes opencode reject the whole config
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("moonshot (remote): npm driver, Kimi coding baseURL, apiKey via {env:MOONSHOT_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "moonshot"));
+    const block = parsed.provider?.moonshot;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://api.moonshot.ai/v1");
+    expect(block.options.apiKey).toBe("{env:MOONSHOT_API_KEY}");
+    expect(block.api).toBeUndefined();
     expect(JSON.stringify(block)).not.toContain("${");
   });
 

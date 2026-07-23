@@ -1121,6 +1121,23 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "Ollama (Cloud)",
     },
+    // Coding-subscription gateways — same OpenAI-compatible npm driver as nvidia, one GLM/Kimi
+    // family each. Endpoints are the coding-plan hosts (cheapest for heavy agent use), NOT the
+    // pay-as-you-go platform APIs. See providers.md § Models.
+    zai: {
+        envVar: "ZAI_API_KEY",
+        baseURL: "https://api.z.ai/api/coding/paas/v4",
+        apiPlaceholder: "{env:ZAI_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Z.AI (GLM)",
+    },
+    moonshot: {
+        envVar: "MOONSHOT_API_KEY",
+        baseURL: "https://api.moonshot.ai/v1",
+        apiPlaceholder: "{env:MOONSHOT_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Moonshot (Kimi)",
+    },
     // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
     // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
     // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
@@ -1549,7 +1566,7 @@ export function runOpencodeModule(ctx) {
             `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
-            `  4. Model IDs: all eight providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
+            `  4. Model IDs: all ten providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
             `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });

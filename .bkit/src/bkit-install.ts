@@ -322,6 +322,9 @@ const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
   cerebras: "Cerebras",
   openrouter: "OpenRouter",
   ollama: "Ollama (Cloud)",
+  // Coding-subscription gateways (single-family): GLM (zai/<model>) and Kimi (moonshot/<model>).
+  zai: "Z.AI",
+  moonshot: "Moonshot",
   // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
   // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
   "opencode-zen": "OpenCode Zen",
@@ -341,8 +344,8 @@ export function buildOpencodeModelLookup(
   const header = OPENCODE_PROVIDER_COLUMN[provider];
   const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
-  // Sentinel fallback. All eight allowlisted providers (ollama-local, nvidia, groq, cerebras,
-  // openrouter, ollama, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
+  // Sentinel fallback. All ten allowlisted providers (ollama-local, nvidia, groq, cerebras,
+  // openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
   // This path is the safety net for a FUTURE allowlisted provider added before its column
   // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
   // model id (see providers.md § Models for the live-probe recipe). The prefix is the
@@ -2031,6 +2034,8 @@ async function main() {
         cerebras: ["CEREBRAS_API_KEY"],
         openrouter: ["OPENROUTER_API_KEY"],
         ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
+        zai: ["ZAI_API_KEY"], // Z.AI GLM coding-subscription gateway
+        moonshot: ["MOONSHOT_API_KEY"], // Moonshot/Kimi coding-subscription gateway
         "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
         "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
         // ollama-local: local server, no API key required
