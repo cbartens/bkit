@@ -35,7 +35,12 @@ import {
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
-import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import {
+  CLAUDE_CLOUD_RELPATH,
+  CURSOR_CLOUD_RELPATH,
+  writeClaudeCloudDoc,
+  writeCursorCloudDoc,
+} from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
@@ -2245,12 +2250,13 @@ async function main() {
           } else if (ent.isFile()) {
             // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
             const relPath = remapTemplateDest(entRel);
-            // `.claude/cloud.md` is a GENERATED output file (writeClaudeCloudDoc),
-            // not a template to reconcile: install/upgrade regenerate it with
-            // resolved secret values, so the raw template is never a byte-match and
-            // the walk must never drift-flag or overwrite it. Regenerated explicitly
-            // in the runUpgrade block below (claude-host-gated, non-dry-run).
-            if (relPath === CLAUDE_CLOUD_RELPATH) continue;
+            // `.claude/cloud.md` + `.cursor/cloud.md` are GENERATED output files
+            // (writeClaudeCloudDoc / writeCursorCloudDoc), not templates to reconcile:
+            // install/upgrade regenerate them with resolved secret values, so the raw
+            // template is never a byte-match and the walk must never drift-flag or
+            // overwrite them. Regenerated explicitly in the runUpgrade block below
+            // (host-gated, non-dry-run).
+            if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH) continue;
             // Skip opt-in-module files the consumer hasn't opted into (dest absent).
             if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
               continue;
@@ -2425,6 +2431,17 @@ async function main() {
       if (writeClaudeCloudDoc(process.cwd(), tokens)) {
         console.log(
           `${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`,
+        );
+      }
+    }
+
+    // Same for `.cursor/cloud.md` — cursor-host-gated twin (see writeCursorCloudDoc).
+    // Uses upgradeTracker so the Linear/GitHub env-var policy matches the installed
+    // tracker; excluded from the template walk above for the same reason as the Claude doc.
+    if (!upgradeFlags.dryRun && renderModules.has("cursor") && tokens) {
+      if (writeCursorCloudDoc(process.cwd(), tokens, upgradeTracker)) {
+        console.log(
+          `${LOG_PREFIX} upgrade: .cursor/cloud.md (regenerated — gitignored, holds resolved secrets)`,
         );
       }
     }

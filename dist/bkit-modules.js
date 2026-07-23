@@ -14,7 +14,7 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencod
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1040,6 +1040,16 @@ export function runCursorModule(ctx) {
             'Alternative: `launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"` (session-scoped; must re-run after reboot) ' +
             "then relaunch from Dock.",
     });
+    // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/cloud.md`.
+    // Twin of `.claude/cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
+    // secret values resolved from `.envrc` under the Cursor env-var policy (Linear tracker
+    // adds LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
+    // `bkit check` drift — values are machine-local and expected to differ. Skipped on
+    // dry-run (`bkit check`) so a read-only check never writes secrets. Upgrade regenerates
+    // it via the same helper (see runUpgrade caller).
+    if (!dryRun && writeCursorCloudDoc(process.cwd(), tokens, issueTracker)) {
+        console.log(`${logPrefix} ${tag}cursor: .cursor/cloud.md (generated — gitignored, holds resolved secrets)`);
+    }
 }
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
 // ---------------------------------------------------------------------------
@@ -2808,7 +2818,7 @@ export function runCloudModule(ctx) {
                 "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
                 "  - Prompt (paste literally, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`.\n" +
                 "  - Allowed concurrency: latest-supersedes.\n" +
-                "  - Set `LINEAR_API_KEY` in Cursor → Settings → Background Agents → Environment Variables.\n" +
+                "  - Set `LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
                 "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
                 "IN REPO (Tier 2 markered; consumer customises outside `# <!-- bkit:start -->` markers):\n" +
                 "  - `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below the bkit block.\n" +
@@ -2818,12 +2828,13 @@ export function runCloudModule(ctx) {
         advisories.push({
             id: "cloud-env-customize",
             severity: "advisory",
-            detect: "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor app dashboard (env vars + auth tokens, manual).",
-            action: "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
+            detect: "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor Cloud Agents dashboard (secrets, manual).",
+            action: "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/cloud.md` (gitignored) on every install.\n\n" +
+                "IN THE CLOUD AGENTS DASHBOARD (https://cursor.com/dashboard/cloud-agents → your environment → Secrets tab) — add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript):\n" +
                 "  - `GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`.\n" +
-                "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
+                "  - Tracker secret (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
                 "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
-                "Full recipe in bkit's `cloud.md`.",
+                "Full recipe in bkit's `cloud.md`; the paste-ready block is in `.cursor/cloud.md`.",
         });
     }
 }

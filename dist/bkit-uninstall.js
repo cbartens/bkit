@@ -27,7 +27,7 @@ import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
-import { CLAUDE_CLOUD_RELPATH } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH } from "./bkit-cloud-env.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
 // ---------------------------------------------------------------------------
@@ -556,6 +556,19 @@ export async function runUninstall(modules, ctx) {
             if (!ctx.dryRun) {
                 fs.rmSync(cloudAbs, { force: true });
                 console.log(`${ctx.logPrefix} delete: ${CLAUDE_CLOUD_RELPATH} (generated cloud setup doc)`);
+            }
+        }
+    }
+    // Same for the Cursor twin `.cursor/cloud.md` (writeCursorCloudDoc) — untracked,
+    // gitignored, holds resolved secrets; delete it explicitly when the cursor host is
+    // uninstalled so a live-secrets file is never left behind.
+    if (moduleList.includes("cursor")) {
+        const cloudAbs = path.join(ctx.cwd, CURSOR_CLOUD_RELPATH);
+        if (fs.existsSync(cloudAbs)) {
+            result.deleted.push(CURSOR_CLOUD_RELPATH);
+            if (!ctx.dryRun) {
+                fs.rmSync(cloudAbs, { force: true });
+                console.log(`${ctx.logPrefix} delete: ${CURSOR_CLOUD_RELPATH} (generated cloud setup doc)`);
             }
         }
     }

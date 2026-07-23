@@ -1726,7 +1726,8 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-secrets-three-locations");
     expect(result!.action).toContain("GitHub Actions");
-    expect(result!.action).toContain("Cursor Background Agents");
+    expect(result!.action).toContain("Cursor Cloud Agents");
+    expect(result!.action).toContain("Runtime Secret");
     expect(result!.action).toContain("Claude Code (web)");
   });
 

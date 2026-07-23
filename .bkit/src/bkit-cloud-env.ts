@@ -14,13 +14,16 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { IssueTracker } from "./bkit-manifest.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 
-// Consumer-relative path of the generated doc. Shared so the upgrade template walk
-// (bkit-install.ts) can exclude it — it is a generated OUTPUT file, never a
-// template to reconcile.
+// Consumer-relative paths of the generated docs. Shared so the upgrade template walk
+// (bkit-install.ts) can exclude them — they are generated OUTPUT files, never
+// templates to reconcile. One per cloud host (Claude Code on the web / Cursor
+// Background Agents); both inline resolved secrets, both gitignored + chmod 600.
 export const CLAUDE_CLOUD_RELPATH = path.join(".claude", "cloud.md");
+export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "cloud.md");
 
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
@@ -36,9 +39,48 @@ const BASELINE_TOKEN_PLACEHOLDERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 // Earlier-compaction override — a bkit constant, not a secret. Appended to the
-// block when not already resolved from a source file.
+// block when not already resolved from a source file. Claude-harness-only knob —
+// Cursor has no equivalent, so it is NOT in the Cursor policy's constants.
 const AUTOCOMPACT_KEY = "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE";
 const AUTOCOMPACT_VALUE = "70";
+
+// Per-cloud env-var policy. The `.envrc`-following resolver core is identical for
+// both clouds (same dotenv sources, same unset/hijack/empty drops) — only the
+// baseline placeholder set and the appended constants differ. Claude pairs with the
+// GitHub tracker and wants the autocompact override; Cursor pairs with Linear (and
+// so also needs `LINEAR_API_KEY`) and has no autocompact knob. Keeping one resolver
+// with a small policy object is what guarantees the two generated docs describe the
+// SAME cloud environment — just different mechanics (pasted setup vs. Dockerfile).
+export interface CloudEnvPolicy {
+  /** Baseline env-var NAMES this cloud always needs; emitted as `NAME=<placeholder>`
+   *  when absent from the resolved `.envrc` set. */
+  baseline: ReadonlyArray<readonly [string, string]>;
+  /** Constant KEY/value pairs appended when not already resolved from a source. */
+  constants: ReadonlyArray<readonly [string, string]>;
+}
+
+// Claude Code on the web: GitHub tracker, autocompact override.
+export const CLAUDE_CLOUD_POLICY: CloudEnvPolicy = {
+  baseline: BASELINE_TOKEN_PLACEHOLDERS,
+  constants: [[AUTOCOMPACT_KEY, AUTOCOMPACT_VALUE]],
+};
+
+// Cursor Background Agents: `LINEAR_API_KEY` prepended for the Linear tracker
+// (preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
+// tracker uses the same GH baseline as Claude, minus the autocompact knob.
+const CURSOR_LINEAR_PLACEHOLDER: readonly [string, string] = [
+  "LINEAR_API_KEY",
+  "<Linear personal API key — https://linear.app/settings/api>",
+];
+export function cursorCloudPolicy(tracker: IssueTracker): CloudEnvPolicy {
+  return {
+    baseline:
+      tracker === "linear"
+        ? [CURSOR_LINEAR_PLACEHOLDER, ...BASELINE_TOKEN_PLACEHOLDERS]
+        : BASELINE_TOKEN_PLACEHOLDERS,
+    constants: [],
+  };
+}
 
 export interface CloudEnvResolution {
   /** Resolved KEY/value pairs, non-empty, ordered first-seen with last-source value. */
@@ -118,7 +160,10 @@ export function parseDotenv(content: string): Array<[string, string]> {
  * Applies `.envrc` unsets, then drops session-hijack keys. Returns empty when no
  * `.envrc` exists — the caller still emits a usable placeholder doc.
  */
-export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
+export function resolveCloudEnvVars(
+  cwd: string,
+  policy: CloudEnvPolicy = CLAUDE_CLOUD_POLICY,
+): CloudEnvResolution {
   const res: CloudEnvResolution = {
     included: [],
     unset: [],
@@ -173,7 +218,7 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
 
   // Baseline names absent from the resolved set → emitted as placeholders.
   const present = new Set(res.included.map(([k]) => k));
-  for (const [name] of BASELINE_TOKEN_PLACEHOLDERS) {
+  for (const [name] of policy.baseline) {
     if (!present.has(name)) res.placeholders.push(name);
   }
 
@@ -184,14 +229,17 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
  * Render the `.env`-format paste block: resolved KEY=value lines, then placeholder
  * lines for any absent baseline token, then the autocompact override if unset.
  */
-export function renderCloudEnvBlock(res: CloudEnvResolution): string {
+export function renderCloudEnvBlock(
+  res: CloudEnvResolution,
+  policy: CloudEnvPolicy = CLAUDE_CLOUD_POLICY,
+): string {
   const lines: string[] = [];
   for (const [k, v] of res.included) lines.push(`${k}=${v}`);
-  for (const [name, placeholder] of BASELINE_TOKEN_PLACEHOLDERS) {
+  for (const [name, placeholder] of policy.baseline) {
     if (res.placeholders.includes(name)) lines.push(`${name}=${placeholder}`);
   }
-  if (!res.included.some(([k]) => k === AUTOCOMPACT_KEY)) {
-    lines.push(`${AUTOCOMPACT_KEY}=${AUTOCOMPACT_VALUE}`);
+  for (const [key, value] of policy.constants) {
+    if (!res.included.some(([k]) => k === key)) lines.push(`${key}=${value}`);
   }
   return lines.join("\n");
 }
@@ -221,7 +269,7 @@ export function renderCloudEnvNotes(res: CloudEnvResolution): string {
   }
   if (res.hijackDropped.length) {
     bullets.push(
-      `- **Dropped — session-billing hijack:** ${fmtList(res.hijackDropped)} — would bill Claude Code's own model calls to your API key instead of your subscription.`,
+      `- **Dropped — session-billing hijack:** ${fmtList(res.hijackDropped)} — would redirect the agent's own model calls onto API-key billing instead of your subscription.`,
     );
   }
   if (res.emptySkipped.length) {
@@ -478,6 +526,105 @@ export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
     .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
     .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res));
   const dst = path.join(cwd, CLAUDE_CLOUD_RELPATH);
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.writeFileSync(dst, content, "utf-8");
+  fs.chmodSync(dst, 0o600);
+  return true;
+}
+
+/**
+ * Render the `@@CURSOR_DEBUG_FETCH@@` region of `.cursor/cloud.md`: the consumer's
+ * `debug-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
+ * are enabled. On Claude these CLIs are baked into the pasted setup script (see
+ * renderCloudDebugFetchProvision); Cursor has no setup script, so — to keep the two
+ * cloud environments aligned — the same recipes are surfaced as a copy-paste block for
+ * the per-snapshot `install` command in `.cursor/environment.json`. The recipes are
+ * already idempotent (`command -v X || pnpm add -g X`), so they are safe to re-run on
+ * every snapshot build. Reuses the SAME extractor as the Claude path so the two clouds
+ * never diverge on which CLIs they provision.
+ */
+export function renderCursorDebugFetchProvision(cwd: string): string {
+  const recipes = extractDebugFetchProvisionRecipes(cwd);
+  // Empty → "" and the template's sentinel line collapses to a single blank between
+  // sections; non-empty → a self-contained section with its own leading/trailing blank.
+  if (recipes.length === 0) return "";
+  return (
+    "\n## Debug-fetch CLIs (parity with the Claude setup script)\n\n" +
+    "Your `.agents/config.md` declares these debug-fetch CLIs. The Claude setup script\n" +
+    "bakes them into its snapshot; for the SAME tools on Cursor, chain them into the\n" +
+    "`install` command in `.cursor/environment.json` (idempotent — safe every rebuild):\n\n" +
+    "```bash\n" +
+    recipes.join("\n") +
+    "\n```\n"
+  );
+}
+
+/**
+ * Render the `@@CURSOR_NETWORK@@` region — Cursor Cloud Agents DO have an egress
+ * allowlist (dashboard → Security: "Allow all" / "Default + allowlist" / "Allowlist
+ * only"), unlike the earlier assumption. Reuses the SAME declared `allowed-domains`
+ * as the Claude side, but — critically — does NOT apply Claude's apex+`*.`
+ * expansion: Cursor's own docs warn that a broad wildcard (`*.s3….amazonaws.com`)
+ * opens egress far wider than intended, so the declared apex entries are emitted
+ * verbatim with a note to add only the specific subdomains you need.
+ */
+export function renderCursorNetworkAllowlist(cwd: string): string {
+  const declared = extractAllowedDomains(cwd);
+  if (declared.length === 0) {
+    return (
+      "Cloud Agents get network access by default. Egress is configurable in the Cloud\n" +
+      "Agents dashboard → **Security** (Allow all / Default + allowlist / Allowlist only),\n" +
+      "per user, per environment, or team-locked. No `allowed-domains` block is declared in\n" +
+      "`.agents/config.md`, so nothing extra is required here — if your org enforces\n" +
+      "**Allowlist only**, declare your app + log-backend hosts there (apex per line) and this\n" +
+      "section will list them."
+    );
+  }
+  return (
+    "If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
+    "(dashboard → **Security**), add the domains your `.agents/config.md` declares so cloud\n" +
+    "`/bkit-debug` + e2e can reach your app and log backends:\n\n" +
+    "```text\n" +
+    declared.join("\n") +
+    "\n```\n\n" +
+    `_${declared.length} domain(s) from \`allowed-domains\` in \`.agents/config.md\`._ Add only the\n` +
+    "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
+    "wildcard opens egress far wider than intended. (The Claude side auto-expands to apex + `*.`;\n" +
+    "Cursor's allowlist is deliberately narrower.)"
+  );
+}
+
+/**
+ * Generate `.cursor/cloud.md` — the Cursor Cloud Agents analogue of
+ * `.claude/cloud.md`. Both describe the SAME bkit cloud environment; only the
+ * mechanics differ. On Claude the doc carries a pasted setup script + network
+ * selector; on Cursor the toolchain lives in `.cursor/Dockerfile` + the per-snapshot
+ * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
+ * is narrower: it resolves the **dashboard environment variables** to real values from
+ * the consumer's `.envrc` (Cursor policy — Linear tracker adds `LINEAR_API_KEY`, no
+ * autocompact knob) and surfaces any debug-fetch CLIs for parity.
+ *
+ * Like `.claude/cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
+ * any WriteSet / manifest / canonicalHashes) — its values are machine-local and
+ * expected to differ, so it never enters `bkit check` drift or the upgrade template
+ * walk. Shared by install (runCursorModule) and upgrade. Callers MUST guard on
+ * `!dryRun` (never write secrets during `bkit check` / `--dry-run`) and on the cursor
+ * host being installed. Returns true when a file was written (false when the template
+ * is absent). Never logs the resolved values.
+ */
+export function writeCursorCloudDoc(cwd: string, tokens: TokenMap, tracker: IssueTracker): boolean {
+  const src = path.join(getTemplatesRoot(), ".cursor", "cloud.md");
+  if (!fs.existsSync(src)) return false;
+  const policy = cursorCloudPolicy(tracker);
+  const res = resolveCloudEnvVars(cwd, policy);
+  // Function-form replacers: resolved secret values may contain `$`, which a string
+  // replacement would interpret ($&, $1, …).
+  const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
+    .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res, policy))
+    .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res))
+    .replace(/@@CURSOR_NETWORK@@/g, () => renderCursorNetworkAllowlist(cwd))
+    .replace(/@@CURSOR_DEBUG_FETCH@@/g, () => renderCursorDebugFetchProvision(cwd));
+  const dst = path.join(cwd, CURSOR_CLOUD_RELPATH);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.writeFileSync(dst, content, "utf-8");
   fs.chmodSync(dst, 0o600);

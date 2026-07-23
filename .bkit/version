@@ -42,7 +42,7 @@
     ".claude/hooks/cloud-bootstrap.sh": "784a0cec31565f99319bb98202def7d5c3c07bedeb0c2c8f0fb667c8a461c08d",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
     "docs/observability.md": "07e65885b1f2aa2a40cf7568ed7992382324a0d59cc8bb7d9efd7a8e1373b70a",
-    ".gitignore": "81e5c50f3e3c7873a6077b145769c55382e67e3470dcd9b5011a7567b33c7cfc",
+    ".gitignore": "229aa9791c36a2249728338814dc09741970e46d242710a0b89c63693c6c6b64",
     ".cursor/mcp.json": "dd07b8eb46eff755655fff7b114d4347487764fa7a6894caaa635eba4dc5b2f5",
     ".envrc": "d2c6438e118864fc7b1c726c58cb9912c2d1474b64108bca7404aeb937d0743b",
     "docs/security.md": "52daf4828e00ff90184e7bb3c0b04a13999940a2a87e62a34772b843a471a86a",

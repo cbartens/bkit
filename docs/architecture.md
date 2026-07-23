@@ -47,7 +47,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
 │   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
 │   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
-│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` env block by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
 │   ├── bkit-config-migrate.ts # Content-preserving relocation of consumer debug-fetch blocks docs/observability.md -> .agents/config.md (#334). MOVE, never transform; wired into BOTH install and upgrade (separate engines)
 │   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
 │   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
