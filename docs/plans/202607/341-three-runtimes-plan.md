@@ -76,7 +76,7 @@ This plan implements the **settled design** (`docs/plans/202607/341-three-runtim
 
 ## Out of Scope
 
-Shell-native MCP CLI shim; uniform PR-close all runtimes; narrow gh read-path corroboration outside MCP; root-cause of MCP `search_issues` zero-on-private-repo; periodic transport-fallback frequency summariser; mode-tuned subagent-fan-out pacing; the `/Users/jesse` vendored skill "fix" (D20 correction). Each mirrored in `docs/deferrals.jsonl` (OQ3 in `docs/failures.jsonl`). **Runtime 4 (Cursor bg agent) was PROMOTED out of this list into scope (2026-07-23)** — first-class row in the capability table; exact detection var held for live confirmation (verify-first).
+Shell-native MCP CLI shim; uniform PR-close all runtimes; narrow gh read-path corroboration outside MCP; root-cause of MCP `search_issues` zero-on-private-repo; periodic transport-fallback frequency summariser; mode-tuned subagent-fan-out pacing; the `/Users/jesse` vendored skill "fix" (D20 correction). Each mirrored in `docs/deferrals.jsonl` (OQ3 in `docs/failures.jsonl`). **Runtime 4 (Cursor Cloud Agent) was PROMOTED out of this list into scope (2026-07-23)** — first-class row in the capability table; detection bridges the `is_background_agent` hook signal to an env marker (bkit seam, #75), held for live confirmation (verify-first).
 
 ## Security & Privacy
 
