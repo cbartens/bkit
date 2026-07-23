@@ -3,6 +3,9 @@ Verdict: PASS
 
 # Design: Constant roadmap analysis refresh (#380)
 
+> [!IMPORTANT]
+> **Post-review revision (2026-07-23):** the owner inverted the authority model — `docs/roadmap.md` is now the **canonical home for issue state** (phase sections + a consumer-managed backlog), and the tracker is a downstream mirror that roadmap.md is used to verify and keep in sync. See **Addendum — Canonical-home revision** at the end of this doc; where it conflicts with the body below, **the addendum wins**.
+
 ## Related Issues
 
 - #260 — Milestone Orchestrator autonomous PM loop that drives workstreams (open) — comment `#260-4724691125` ("auto update … roadmap.md to always suggest best next issue") is the direct precursor; #380 is the extraction of that sub-requirement, and #380's fold is #260's tick-step-1 sense primitive.
@@ -246,3 +249,46 @@ The utility is a thin composition that reuses the mechanical fold path and the a
 #### Rationale
 
 Mirror regen must run once, after every edited workflow/agent/utility surface exists, per the batch-at-session-end rule; a stale mirror ships silently, so this terminal verification depends on all shipped-surface-editing workstreams being complete.
+
+## Addendum — Canonical-home revision (post-review, 2026-07-23)
+
+> Owner direction after the design passed review. Where this addendum conflicts with the body above, **the addendum wins**; the affected body decisions are named inline. Net effect: `docs/roadmap.md` moves from a derived view of the tracker to the **canonical home for issue state**, with the tracker as a downstream mirror.
+
+### A. `docs/roadmap.md` is the CANONICAL home for issue state; the tracker is a downstream mirror
+
+Supersedes the body's "tracker labels = live-phase authority" and "mechanical status = a projection of tracker labels" framing (Success Criterion #1, the build/debug edge case, the two Decisions rows on live-phase authority, and the Trade-off on build/debug lag). The authority chain is now **workflow execution -> on-disk artifacts + `docs/roadmap.md` (canonical) -> tracker labels (synced FROM roadmap, see D)**. Every item being worked on MUST appear in `docs/roadmap.md` under exactly one phase section; the tracker, when connected, is a nice-to-have enrichment, not the source of truth.
+
+### B. Phase-sectioned board + consumer backlog
+
+The `roadmap-status` machine region is organised into phase sections — **Backlog -> Design -> Plan -> Build -> Debug -> Ship** — each listing the FIDs currently in that phase. On ship an item moves to the completed ledger (see G) and drops off the board. The **Backlog** is the free-form, consumer-managed region at the bottom of the file — this is the body's "Ideas / New Work" region, renamed and promoted to a first-class phase: open things to work on, never regenerated, read by the analysis tier and promotable into design.
+
+### C. build/debug now write roadmap status to `dev` — resolves OPEN #1
+
+Supersedes the body's "v1 = no build/debug dev-write" decision and its accepted "build/debug status lags on dev" trade-off. Because roadmap.md must show build/debug as canonical, build and debug closes write their FID's row into the `dev` `roadmap-status` region under ship's existing dev-lock idiom. All five workflows now refresh the dev roadmap at close (design/plan/ship already reach dev; build/debug gain a bounded dev-located write). This is the only way a `tracker: none` repo can show build/debug phase on dev, and it is now required, not optional — the earlier "make build/debug a no-op" simplification is void.
+
+### D. Reverse tracker-label sync (roadmap -> tracker)
+
+New capability: on the cadence trigger (and at analysis), reconcile the tracker TO roadmap.md's canonical state — verify each open issue's `bkit:*` phase label matches its roadmap section and update it if drifted. MCP-only (per rules), best-effort, never gates, idempotent, and must not fight a workflow's own in-flight label write (reconcile only settled drift, not a phase actively transitioning). No-op under `tracker: none`.
+
+### E. On-disk scan excludes completed (finding #2)
+
+The fold scopes the on-disk scan to non-completed FIDs (skip anything in the completed ledger) so `docs/plans/**` growth does not inflate per-close cost.
+
+### F. FID is the universal key (finding #3)
+
+Rows key on **FID** always. When a tracker is connected the tracker id is embedded in the FID (`{ISSUE_ID}-{slug}`), so no separate issue-number column is needed; under `tracker: none` the FID stands alone.
+
+### G. Convert `docs/completed.md` -> `docs/completed.jsonl` (finding #4) — RECOMMENDED, confirm scope
+
+Recommend a structured `docs/completed.jsonl` shipped-FID ledger (peer of `deferrals.jsonl`/`failures.jsonl`, `.bkit/jsonl.md` format) as the machine-readable "is this FID shipped?" source, replacing free-form markdown parsing. `@bkit-ship-update-docs` appends a row at ship close; the human-readable `docs/completed.md` is kept or generated from the ledger. **Scope note:** this touches the ship workflow + any existing `completed.md` readers, so it is a companion change to confirm, not silently absorbed into this issue.
+
+### Reconciliation of the conflict-safety model
+
+Making roadmap.md canonical does NOT abandon regenerate-on-conflict. The `roadmap-status` phase sections stay regenerable from (dev-visible on-disk artifacts + each closing workflow's authoritative knowledge of its own FID's phase — now written to dev for build/debug too); the **Backlog** is consumer-canonical and protected by living outside the machine markers (never regenerated). Conflict-safety holds via serial-workflow execution + the dev-lock + regenerate-from-sources, so an `-X ours` collision on the status region is still a non-event. The plan must specify the per-FID upsert-vs-full-regenerate mechanism for the phase sections.
+
+### Workstream impact
+
+- **WS-1** gains the phase-section layout, the Backlog region contract, exclude-completed scoping, and the `completed.jsonl` schema (if G confirmed).
+- **WS-2** gains build/debug dev-located roadmap writes under the dev-lock (all five workflows now refresh dev at close).
+- **WS-4** gains the reverse tracker-label sync (D) on the cadence.
+- Consider a dedicated workstream for D (reverse sync) + G (`completed.jsonl`) if either grows beyond a fold-in.
