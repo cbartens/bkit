@@ -1,0 +1,184 @@
+#!/usr/bin/env bats
+# bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3 / WS-6).
+#
+# Covers Derived Test Matrix rows 1-4:
+#   1. bkit_runtime_detect maps env inputs -> RUNTIME + 4 CAN_* per the
+#      4-row table; unknown (no primitive) -> least-capable, never mode-1.
+#   2. Sourced shim state does NOT survive a Bash-call boundary; env-only
+#      flags re-derive per block; GH_OK round-trips through the
+#      runtime-resolved row (D21).
+#   3. Shim-source failure / an unset CAN_* is loud + distinguishable from
+#      an explicit false (Flow 1 emptiness checks; distinct reason).
+#   4. WORKTREE_PATH resolves mint (CAN_WORKTREE=true ->
+#      $REPO_ROOT/.worktrees/{FID}) vs adopt (false -> $REPO_ROOT).
+#
+# Run: bats tests/bkit-runtime.bats
+# Requires: bats >= 1.0
+
+REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+# Template-relative by default (same convention as tests/counter-bus.bats):
+# every code task in this feature edits .bkit/templates/.bkit/scripts/, and
+# `bkit install` (which produces the installed .bkit/scripts/ mirror) is
+# deferred to the batch mirror regen (Sub-Plan 6). An installed-copy default
+# would make this suite unrunnable until then.
+RUNTIME_SH="${BKIT_RUNTIME_SH:-$REPO_ROOT/.bkit/templates/.bkit/scripts/bkit-runtime.sh}"
+
+# A fake `gh` on PATH so GH_OK is deterministic across test environments
+# (real gh auth may or may not be logged in on the machine running bats).
+setup() {
+  FAKE_BIN="$(mktemp -d)"
+  cat >"$FAKE_BIN/gh" <<'EOF'
+#!/usr/bin/env sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  if [ "${FAKE_GH_AUTH_OK:-1}" = "1" ]; then
+    echo "Logged in to github.com" >&2
+    exit 0
+  else
+    echo "You are not logged into any GitHub hosts" >&2
+    exit 1
+  fi
+fi
+exit 1
+EOF
+  chmod +x "$FAKE_BIN/gh"
+}
+
+teardown() {
+  rm -rf "$FAKE_BIN"
+}
+
+# ---------------------------------------------------------------------------
+# 1. RUNTIME + CAN_* table mapping
+# ---------------------------------------------------------------------------
+
+@test "detect: local (no primitives) -> RUNTIME=local, CAN_WORKTREE/CAN_PUSH_DEV/CAN_SLEEP=true" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME=local"* ]]
+  [[ "$output" == *"CAN_WORKTREE=true"* ]]
+  [[ "$output" == *"CAN_PUSH_DEV=true"* ]]
+  [[ "$output" == *"CAN_SLEEP=true"* ]]
+}
+
+@test "detect: GITHUB_ACTIONS=true -> RUNTIME=actions, CAN_*=true" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME=actions"* ]]
+  [[ "$output" == *"CAN_WORKTREE=true"* ]]
+  [[ "$output" == *"CAN_PUSH_DEV=true"* ]]
+  [[ "$output" == *"CAN_SLEEP=true"* ]]
+}
+
+@test "detect: CI=true -> RUNTIME=actions (CI is also a mode-2 primitive)" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 CI=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s\n' \"\$RUNTIME\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME=actions"* ]]
+}
+
+@test "detect: CLAUDE_CODE_REMOTE=true -> RUNTIME=cloud, CAN_*=false" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME=cloud"* ]]
+  [[ "$output" == *"CAN_WORKTREE=false"* ]]
+  [[ "$output" == *"CAN_PUSH_DEV=false"* ]]
+  [[ "$output" == *"CAN_SLEEP=false"* ]]
+}
+
+@test "detect: ambiguous primitives (e.g. GITHUB_ACTIONS=false, no CI/CLAUDE_CODE_REMOTE) -> RUNTIME=unknown, least-capable, never mode-1" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=false REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME=unknown"* ]]
+  [[ "$output" == *"CAN_WORKTREE=false"* ]]
+  [[ "$output" == *"CAN_PUSH_DEV=false"* ]]
+  [[ "$output" == *"CAN_SLEEP=false"* ]]
+}
+
+@test "detect: GH_OK=true when gh auth status succeeds" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'GH_OK=%s GH_PROBE_EXIT=%s\n' \"\$GH_OK\" \"\$GH_PROBE_EXIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GH_OK=true"* ]]
+  [[ "$output" == *"GH_PROBE_EXIT=0"* ]]
+}
+
+@test "detect: GH_OK=false (loud, non-zero probe exit) when gh auth status fails" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'GH_OK=%s GH_PROBE_EXIT=%s\n' \"\$GH_OK\" \"\$GH_PROBE_EXIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"GH_OK=false"* ]]
+  [[ "$output" == *"GH_PROBE_EXIT=1"* ]]
+  [[ "$stderr" == *"gh-preflight: GH_OK=false"* ]] || [[ "$output" == *"gh-preflight: GH_OK=false"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 2. State does NOT survive a Bash-call boundary; GH_OK round-trips via the row
+# ---------------------------------------------------------------------------
+
+@test "state: RUNTIME/CAN_* are unset in a fresh process that has not sourced+called this block" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c 'printf "RUNTIME=[%s]\n" "${RUNTIME:-}"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == "RUNTIME=[]" ]]
+}
+
+@test "state: a second independent process re-derives the same table without inheriting the first's variables" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && printf '%s\n' \"\$RUNTIME\""
+  first="$output"
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c 'printf "RUNTIME=[%s]\n" "${RUNTIME:-}"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == "RUNTIME=[]" ]]
+  [ "$first" = "local" ]
+}
+
+@test "row: GH_OK round-trips through the runtime-resolved row (D21 — durable cross-block record)" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row build '2026-07-24T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"type":"runtime-resolved"'* ]]
+  [[ "$output" == *'"workflow":"build"'* ]]
+  [[ "$output" == *'"runtime":"cloud"'* ]]
+  [[ "$output" == *'"ghOk":false'* ]]
+  # Reading the emitted row back (simulating a later block) recovers GH_OK
+  # without re-probing gh.
+  gh_ok=$(printf '%s' "$output" | jq -r '.ghOk')
+  [ "$gh_ok" = "false" ]
+}
+
+@test "row: bkit_runtime_row fails closed (exit 2, nothing on stdout) when WORKFLOW is empty" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row '' '2026-07-24T00:00:00Z' 2>/dev/null"
+  [ "$status" -eq 2 ]
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# 3. Flow 1 — loud, distinguishable emptiness
+# ---------------------------------------------------------------------------
+
+@test "flow1: bkit_runtime_assert_resolved fails loudly (exit 2) when detect was never called" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_runtime_assert_resolved"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"UNRESOLVED"* ]]
+}
+
+@test "flow1: bkit_runtime_assert_resolved passes (exit 0) for a legitimate least-capable (explicit false) resolution" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_assert_resolved"
+  [ "$status" -eq 0 ]
+}
+
+@test "flow1: bkit_runtime_detect itself fails loudly (exit 2) when REPO_ROOT/FID are missing — distinct from an explicit false capability" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_runtime_detect"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"REPO_ROOT and FID must both be non-empty"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 4. WORKTREE_PATH mint vs adopt
+# ---------------------------------------------------------------------------
+
+@test "worktree: CAN_WORKTREE=true (local) -> WORKTREE_PATH mints REPO_ROOT/.worktrees/FID" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf '%s\n' \"\$WORKTREE_PATH\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "/tmp/repo/.worktrees/42-x" ]
+}
+
+@test "worktree: CAN_WORKTREE=false (cloud) -> WORKTREE_PATH adopts REPO_ROOT (no mint)" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect 2>/dev/null && printf '%s\n' \"\$WORKTREE_PATH\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "/tmp/repo" ]
+}

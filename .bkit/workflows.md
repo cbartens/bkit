@@ -215,6 +215,7 @@ Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source
 | `workflow-meta` | `{type, workflow, at, …fields}` | Workflow-level metadata merged onto the run (e.g. `debugAttempt`). |
 | `workflow-done` | `{type, workflow, at}` | Terminal — sets the run's `status` to `DONE`. |
 | `workflow-failed` | `{type, workflow, at}` | Terminal — sets the run's `status` to `FAILED`. |
+| `runtime-resolved` | `{type, workflow, at, runtime, canWorktree, canPushDev, canSleep, ghOk, ghProbeExit, ghProbeErr}` | Step-1 record of `bkit_runtime_detect`'s capability table for this run (#341). Not folded by `BKIT_STATUS_FOLD` (unrecognised `type` — ignored, no-op) — later steps re-read `GH_OK` from THIS row instead of re-probing `gh` (D21 durable cross-block record). Emitted by `.bkit/scripts/bkit-runtime.sh`'s `bkit_runtime_row`. |
 
 `workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ `PASS`/`CONCERNS`/`FAIL`; `strategy` ∈ `STANDARD`/`PIVOT`/`FINAL`; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL). Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
 

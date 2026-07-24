@@ -5,7 +5,7 @@
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
         "Authorization": "Bearer ${GH_BKIT_TOKEN}",
-        "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
+        "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects,actions"
       }
     }
   }

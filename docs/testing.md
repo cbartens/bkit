@@ -313,6 +313,22 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 | `tests/counter-failclosed.bats` | Shell (cross-process, exit codes, `sh`/`bash`/`dash`/`zsh`) | `decide_next`/`check_max` refuse empty/non-integer (exit 2); legal `0` kept |
 | `tests/route-state.bats` | Shell (cross-process, real `status.jsonl`) | `debugMode`/`pushMode` meta; `route_last_verdict`/`failures`; `ladder_next`; all-runs strategy |
 
+## Runtime shim + gh-preflight test coverage (#341)
+
+`.bkit/scripts/bkit-runtime.sh` is a stateless, re-source-per-block shim (same idiom as the counter bus, D21) that maps the three runtime detection primitives (`CLAUDE_CODE_REMOTE`, `GITHUB_ACTIONS`/`CI`) to a 4-flag capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`) — workflow headers branch on the `CAN_*` flags instead of re-deriving runtime logic per call site. `GH_OK` is the shim's ONE live probe (`gh auth status`, once, loud); `CAN_PUSH_DEV` is deliberately never probed (D23 — a `--dry-run` push probe fails dangerously). `tests/bkit-runtime.bats` runs each scenario in a fresh subprocess with a fake `gh` on `PATH` for deterministic `GH_OK` — covers the table mapping (incl. `unknown` → least-capable, never mode-1), Bash-call-boundary statelessness + `GH_OK` round-tripping through the `runtime-resolved` row, Flow-1 loud unset-vs-explicit-`false` distinction, and `WORKTREE_PATH` mint-vs-adopt.
+
+`tests/cloud-bootstrap-preflight.bats` isolates the gh-preflight block inside `.claude/hooks/cloud-bootstrap.sh` (a tmp `CLAUDE_PROJECT_DIR` with no `pnpm-lock.yaml`/`.vale.ini`/`.agents/config.md` self-skips the rest of the hook) — covers: sanctioned `GH_TOKEN`/`GITHUB_TOKEN` env preferred over `gh auth login --with-token`; `GH_OK` recorded loudly every run; the dual-lane WARNING (non-blocking — SessionStart hooks cannot hard-stop a session) firing only when `GH_BKIT_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` are ALL unset.
+
+`BKIT_RUNTIME_SH` / `BKIT_CLOUD_BOOTSTRAP_SH` override the template-relative default script path (same convention as `BKIT_COUNTER_BUS`).
+
+<!-- prettier-ignore -->
+| File | Tier | Scope |
+| --- | --- | --- |
+| `tests/bkit-runtime.bats` | Shell (cross-process, fake `gh`) | `RUNTIME`/`CAN_*` table mapping incl. `unknown`; state dies across Bash calls; `GH_OK` round-trip via `runtime-resolved` row; Flow-1 loud unset-vs-`false`; `WORKTREE_PATH` mint-vs-adopt |
+| `tests/cloud-bootstrap-preflight.bats` | Shell (cross-process, fake `gh`) | `GH_TOKEN`/`GITHUB_TOKEN` precedence over `--with-token`; loud `GH_OK` record; non-blocking dual-lane WARNING gating |
+| `.bkit/src/bkit-mcp-toolsets.test.ts` | Unit | `.mcp.json`/template `X-MCP-Toolsets` include `actions`; live == real `buildMcpJson("github")` render of the template |
+| `.bkit/src/bkit-template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan template or its repo copy (D20) |
+
 ## Key test files
 
 <!-- prettier-ignore -->

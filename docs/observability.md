@@ -101,3 +101,7 @@ Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces; 
 | `detectVercelEnv` | Vercel preview and production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.
+
+## Runtime capability row (#341)
+
+Each phase workflow's Step 1 resolves `.bkit/scripts/bkit-runtime.sh`'s capability table (`RUNTIME`/`CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`) and records it once as a `runtime-resolved` `status.jsonl` row — the durable, cross-block record later steps read `GH_OK` back from instead of re-probing `gh` (D21). Row shape → `.bkit/workflows.md` § Status. `gh`-preflight loudness (never silent, non-blocking dual-lane signal) lives in `.claude/hooks/cloud-bootstrap.sh`.
