@@ -229,3 +229,95 @@ bkit_runtime_row() {
     "$GH_PROBE_EXIT" "$(printf '%s' "$GH_PROBE_ERR" | sed 's/"/\\"/g')"
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# bkit_wait_ci PR_NUMBER [POLL_BUDGET_S] [POLL_INTERVAL_S]
+#
+# #341 / WS-8, D22 — the CAN_SLEEP=true bash branch ONLY. Bounded poll for a
+# bkit CI check's dispatch on a PR's statusCheckRollup — the mechanism the
+# three CI-Dispatch Gate call sites (build close-workflow, debug PR-mode
+# close-workflow, debug LOCAL-mode create-pr) share (#261 "WS-6 contract").
+#
+# The CAN_SLEEP=false branch is agent prose in the CALLING workflow header,
+# NOT bash (D4/D22 boundary — bash cannot yield an orchestrator turn). Do NOT
+# call this function when CAN_SLEEP=false; the header's prose yield branch
+# governs instead.
+#
+# `timeout`-wrapped around every `sleep` call so a BLOCKED sleep primitive
+# (a mode-3 harness policy, not a shell capability) fails LOUD — non-zero
+# return, message on stderr — instead of hanging the whole run for the
+# duration of an external session timeout (D22 Risk 3: a hang emits ZERO
+# observability, defeating every other success criterion this effort names).
+#
+# Sets (current shell only — same D21 state-model caveat as
+# bkit_runtime_detect; re-call per block, do not expect these to survive a
+# Bash-tool-call boundary):
+#   CI_WAIT_RESULT      found | none | err
+#   CI_WAIT_ATTEMPTS     number of poll iterations run this call
+#   CI_WAIT_ELAPSED      seconds elapsed this call (bounded by POLL_BUDGET_S)
+#   CI_WAIT_ALL_ERRORED  true|false — every poll iteration errored (gh unavailable/unauthed)
+#
+# Args: PR_NUMBER required. POLL_BUDGET_S/POLL_INTERVAL_S default 60/10
+# (the values every existing call site already used).
+#
+# Returns 0 once resolved (found/none/err from a normal poll cycle). Returns
+# 2 if PR_NUMBER is empty, or if a `sleep` call is blocked past its
+# `timeout` window — in both cases CI_WAIT_RESULT is set to "err" so callers
+# can branch uniformly. NEVER hangs: the loop's only blocking primitive
+# (`sleep`) is `timeout`-wrapped, so the worst case is a loud, bounded abort.
+# ---------------------------------------------------------------------------
+bkit_wait_ci() {
+  _bwc_pr="$1"
+  _bwc_budget="${2:-60}"
+  _bwc_interval="${3:-10}"
+
+  CI_WAIT_RESULT=""
+  CI_WAIT_ATTEMPTS=0
+  CI_WAIT_ELAPSED=0
+  CI_WAIT_ALL_ERRORED="true"
+
+  if [ -z "$_bwc_pr" ]; then
+    echo "[bkit-ci-gate] bkit_wait_ci: PR_NUMBER must be non-empty" >&2
+    CI_WAIT_RESULT="err"
+    return 2
+  fi
+
+  # NOTE: this function is invoked via a `$(...)` command substitution below
+  # (needed to capture its "found"/"none"/"err" echo) — a substitution runs
+  # in a SUBSHELL, so any assignment made INSIDE `_bwc_poll` (e.g. to
+  # CI_WAIT_ALL_ERRORED) would silently vanish on return. Bug discovered
+  # while extracting this from the inline `poll_dispatch()` it replaces (the
+  # same subshell trap existed there, unfixed, since #261) — see
+  # docs/failures.jsonl. Fixed here by deriving CI_WAIT_ALL_ERRORED from the
+  # echoed result AFTER the substitution returns, in the caller's own shell.
+  _bwc_poll() {
+    _bwc_out=$(gh pr view "$_bwc_pr" --json statusCheckRollup --jq \
+      '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length' 2>/dev/null)
+    _bwc_rc=$?
+    if [ "$_bwc_rc" -ne 0 ]; then
+      echo "err"
+      return
+    fi
+    [ "${_bwc_out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
+  }
+
+  while [ "$CI_WAIT_ELAPSED" -lt "$_bwc_budget" ]; do
+    CI_WAIT_ATTEMPTS=$((CI_WAIT_ATTEMPTS + 1))
+    _bwc_r=$(_bwc_poll)
+    [ "$_bwc_r" != "err" ] && CI_WAIT_ALL_ERRORED="false"
+    echo "[bkit-ci-gate] attempt ${CI_WAIT_ATTEMPTS}: $_bwc_r (elapsed ${CI_WAIT_ELAPSED}s)" >&2
+    if [ "$_bwc_r" = "found" ]; then
+      CI_WAIT_RESULT="found"
+      return 0
+    fi
+    if ! timeout "$((_bwc_interval + 5))" sleep "$_bwc_interval"; then
+      echo "[bkit-ci-gate] bkit_wait_ci: sleep did not return within $((_bwc_interval + 5))s — blocked/foreground-sleep-restricted runtime; aborting LOUD instead of hanging (D22)" >&2
+      CI_WAIT_RESULT="err"
+      return 2
+    fi
+    CI_WAIT_ELAPSED=$((CI_WAIT_ELAPSED + _bwc_interval))
+  done
+
+  CI_WAIT_RESULT="none"
+  return 0
+}

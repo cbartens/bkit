@@ -220,6 +220,75 @@ describe("build vs debug — shared kernel byte-equality", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 3b. #341 WS-8 — the shared kernel is EXTRACTED into bkit_wait_ci, not
+//     inlined. The poll loop + `sleep` + `poll_dispatch()` function body
+//     moved into `.bkit/templates/.bkit/scripts/bkit-runtime.sh`; each
+//     workflow kernel now only sources the shim and calls `bkit_wait_ci`.
+// ---------------------------------------------------------------------------
+describe("CI-Dispatch kernel is extracted into bkit_wait_ci (#341 WS-8)", () => {
+  const kernelText = (blocks: string[][]) => blocks.map((b) => b.join("\n"));
+
+  it("build kernel calls bkit_wait_ci and sources bkit-runtime.sh", () => {
+    const blocks = extractAllSharedKernelBlocks(buildMd)!;
+    const text = kernelText(blocks).join("\n");
+    expect(text).toContain("bkit_wait_ci");
+    expect(text).toContain(".bkit/scripts/bkit-runtime.sh");
+  });
+
+  it("debug kernels (both sites) call bkit_wait_ci and source bkit-runtime.sh", () => {
+    const blocks = extractAllSharedKernelBlocks(debugMd)!;
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    for (const block of blocks) {
+      const text = block.join("\n");
+      expect(text).toContain("bkit_wait_ci");
+      expect(text).toContain(".bkit/scripts/bkit-runtime.sh");
+    }
+  });
+
+  it("no kernel block re-inlines the old poll_dispatch()/local-function pattern (build)", () => {
+    const blocks = extractAllSharedKernelBlocks(buildMd)!;
+    const text = kernelText(blocks).join("\n");
+    expect(text).not.toContain("poll_dispatch");
+    expect(text).not.toContain("local out rc");
+  });
+
+  it("no kernel block re-inlines the old poll_dispatch()/local-function pattern (debug)", () => {
+    const blocks = extractAllSharedKernelBlocks(debugMd)!;
+    for (const block of blocks) {
+      const text = block.join("\n");
+      expect(text).not.toContain("poll_dispatch");
+      expect(text).not.toContain("local out rc");
+    }
+  });
+
+  it("no bare `sleep` call remains inside any CI-Dispatch kernel block (moved into the timeout-wrapped bkit_wait_ci)", () => {
+    const buildBlocks = extractAllSharedKernelBlocks(buildMd)!;
+    const debugBlocks = extractAllSharedKernelBlocks(debugMd)!;
+    for (const block of [...buildBlocks, ...debugBlocks]) {
+      const text = block.join("\n");
+      expect(text).not.toContain("sleep ");
+    }
+  });
+
+  it("build.md/bkit-debug.md carry the CAN_SLEEP=false agent turn-loop prose branch (the non-bash half of D22)", () => {
+    expect(buildMd).toContain("CAN_SLEEP` = `false`");
+    const canSleepMatches = [...debugMd.matchAll(/CAN_SLEEP` = `false`/g)];
+    // Two sites: PR-mode (step 2) + LOCAL-mode (step 8).
+    expect(canSleepMatches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("the retrigger re-poll (self-healed path) also calls bkit_wait_ci, not a duplicated inline loop", () => {
+    for (const md of [buildMd, debugMd]) {
+      const selfHealedIdx = md.indexOf('CI_OUTCOME="self-healed"');
+      expect(selfHealedIdx).toBeGreaterThan(-1);
+      // The nearest preceding bkit_wait_ci call (within 400 chars) drives this outcome.
+      const preceding = md.slice(Math.max(0, selfHealedIdx - 400), selfHealedIdx);
+      expect(preceding).toContain("bkit_wait_ci");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 4. Ship has NO CI-Dispatch gate (negative assertion)
 // ---------------------------------------------------------------------------
 describe("bkit-ship.md — no CI-Dispatch gate", () => {

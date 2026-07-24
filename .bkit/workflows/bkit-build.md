@@ -1300,7 +1300,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 6. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
 7. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
-8. Run PR-title Assertion, record `build-create-pr`, run the CI-Dispatch Gate, and record `build-close-workflow` in one block:
+8. **If** `CAN_SLEEP` = `false` → run the CI-Dispatch Gate as an agent turn-loop instead of bash: each orchestrator turn, run once: `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 sets `CI_OUTCOME=dispatched`; the 6th unresolved turn sets `CI_OUTCOME=unresolved`/`CI_REASON=gh-error`; otherwise end the turn and repeat next turn — set `CI_ATTEMPTS` to the turn count and `GH_ALL_ERRORED=false` unless every turn errored, then continue at the status-write below. **Else** run PR-title Assertion, record `build-create-pr`, run the CI-Dispatch Gate, and record `build-close-workflow` in one block:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -1324,25 +1324,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
    PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
    # --- CI-Dispatch Gate shared kernel ---
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ci-gate] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    POLL_BUDGET_S=60; POLL_INTERVAL_S=10
    PUSHED_HEAD=$(git rev-parse HEAD)
-   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
+   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
    echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-   poll_dispatch() {
-     local out rc
-     out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
-       '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length' 2>/dev/null); rc=$?
-     [ "$rc" -ne 0 ] && { echo "err"; return; }
-     GH_ALL_ERRORED="false"
-     [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
-   }
-   elapsed=0
-   while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-     echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-     [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
-     sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-   done
+   bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+   CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+   [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
    # --- end CI-Dispatch Gate shared kernel ---
    if [ -z "$CI_OUTCOME" ]; then
      if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -1356,14 +1346,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
        if [ -z "$CI_OUTCOME" ]; then
          git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
          B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
-         PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
-         echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
-         while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-           echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-           [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
-           sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-         done
+         echo "[bkit-ci-gate] re-trigger pushed; re-polling"
+         bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+         CI_ATTEMPTS=$((CI_ATTEMPTS + CI_WAIT_ATTEMPTS))
+         PUSHED_HEAD=$(git rev-parse HEAD)
+         [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="self-healed"
          RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
          if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
            CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"

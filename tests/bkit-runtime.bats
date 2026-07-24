@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3 / WS-6).
+# bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3/T7 / WS-6/WS-8).
 #
-# Covers Derived Test Matrix rows 1-4:
+# Covers Derived Test Matrix rows 1-5:
 #   1. bkit_runtime_detect maps env inputs -> RUNTIME + 4 CAN_* per the
 #      4-row table; unknown (no primitive) -> least-capable, never mode-1.
 #   2. Sourced shim state does NOT survive a Bash-call boundary; env-only
@@ -11,6 +11,8 @@
 #      an explicit false (Flow 1 emptiness checks; distinct reason).
 #   4. WORKTREE_PATH resolves mint (CAN_WORKTREE=true ->
 #      $REPO_ROOT/.worktrees/{FID}) vs adopt (false -> $REPO_ROOT).
+#   5. bkit_wait_ci's `timeout`-wrapped cap fires on a blocked/never-returning
+#      `sleep` (never hangs); attempt/elapsed bounds enforced (D22).
 #
 # Run: bats tests/bkit-runtime.bats
 # Requires: bats >= 1.0
@@ -181,4 +183,57 @@ teardown() {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect 2>/dev/null && printf '%s\n' \"\$WORKTREE_PATH\""
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/repo" ]
+}
+
+# ---------------------------------------------------------------------------
+# 5. bkit_wait_ci — timeout-wrapped cap on a blocked sleep (D22, row 5)
+# ---------------------------------------------------------------------------
+
+# A fake `gh` that always answers "0 matching checks" (rc=0, empty result) so
+# every poll iteration falls through to the sleep — the only path that
+# exercises the timeout wrapper.
+setup_fake_gh_zero() {
+  cat >"$FAKE_BIN/gh" <<'EOF'
+#!/usr/bin/env sh
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  echo "0"
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$FAKE_BIN/gh"
+}
+
+@test "wait_ci: resolves 'none' within budget when gh reports zero matching checks every poll" {
+  setup_fake_gh_zero
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_wait_ci 1 2 1; printf 'RESULT=%s ATTEMPTS=%s ELAPSED=%s ALLERR=%s\n' \"\$CI_WAIT_RESULT\" \"\$CI_WAIT_ATTEMPTS\" \"\$CI_WAIT_ELAPSED\" \"\$CI_WAIT_ALL_ERRORED\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RESULT=none"* ]]
+  [[ "$output" == *"ATTEMPTS=2"* ]]
+  [[ "$output" == *"ELAPSED=2"* ]]
+  [[ "$output" == *"ALLERR=false"* ]]
+}
+
+@test "wait_ci: a BLOCKED (never-returning) sleep is timeout-capped -- never hangs, fails loud with RESULT=err (D22)" {
+  setup_fake_gh_zero
+  # A `sleep` that never returns — simulates the mode-3 harness blocking the
+  # foreground primitive rather than erroring it (D22's worst-case Risk 3).
+  cat >"$FAKE_BIN/sleep" <<'EOF'
+#!/usr/bin/env sh
+while true; do :; done
+EOF
+  chmod +x "$FAKE_BIN/sleep"
+  # `timeout` itself must come from the real PATH (not faked) to enforce the cap.
+  run env -i PATH="$FAKE_BIN:$PATH" timeout 15 bash -c ". '$RUNTIME_SH' && bkit_wait_ci 1 5 1; printf 'RESULT=%s\n' \"\$CI_WAIT_RESULT\""
+  # The outer `timeout 15` is a hang-detector for the TEST itself — bkit_wait_ci's
+  # own internal timeout (interval+5=6s) must resolve well inside that budget.
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RESULT=err"* ]]
+}
+
+@test "wait_ci: empty PR_NUMBER fails closed (RESULT=err, exit 2) without attempting a poll" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_wait_ci '' 5 1; printf 'RESULT=%s ATTEMPTS=%s\n' \"\$CI_WAIT_RESULT\" \"\$CI_WAIT_ATTEMPTS\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RESULT=err"* ]]
+  [[ "$output" == *"ATTEMPTS=0"* ]]
 }
