@@ -19,9 +19,16 @@ $ARGUMENTS
 
 1. `git branch --show-current` → extract `CURRENT_BRANCH`. Assert non-empty.
 2. `git rev-parse --show-toplevel` → extract `REPO_ROOT`. Assert non-empty.
-3. Assert `{FID}` argument was provided and is non-empty. **If** missing → print `Usage: /bkit-worktree-sync {FID}` and STOP.
-4. `WORKTREE_PATH` = `"$REPO_ROOT/.worktrees/{FID}"`
-5. **If** `$WORKTREE_PATH` does not exist (`[ ! -d "$WORKTREE_PATH" ]`) → print `Error: worktree not found at $WORKTREE_PATH` and STOP.
+3. Self-skip check (#341 Flow 7 — `CAN_WORKTREE` disposition, WS-15):
+   ```bash
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_worktree_helper_guard "$REPO_ROOT" "worktree-sync"
+   BKIT_WHG_RC=$?
+   ```
+   **If** `BKIT_WHG_RC` = `1` → the guard already printed its loud self-skip message (`CAN_WORKTREE=false` — this runtime has no `.worktrees/` tree to sync) → STOP, this is a no-op, NOT an error. **If** `BKIT_WHG_RC` = `2` → detect/assert failure → STOP, print the guard's error. **Else** (`0`) → continue.
+4. Assert `{FID}` argument was provided and is non-empty. **If** missing → print `Usage: /bkit-worktree-sync {FID}` and STOP.
+5. `WORKTREE_PATH` = `"$REPO_ROOT/.worktrees/{FID}"`
+6. **If** `$WORKTREE_PATH` does not exist (`[ ! -d "$WORKTREE_PATH" ]`) → print `Error: worktree not found at $WORKTREE_PATH` and STOP.
 
 ## Step 2 — Pre-merge Clean-tree Guard
 

@@ -12,6 +12,13 @@
 ## Parse Arguments
 
 1. `git rev-parse --show-toplevel` → extract `REPO_ROOT`. Assert non-empty.
+2. Self-skip check (#341 Flow 7 — `CAN_WORKTREE` disposition, WS-15):
+   ```bash
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_worktree_helper_guard "$REPO_ROOT" "worktree-prune"
+   BKIT_WHG_RC=$?
+   ```
+   **If** `BKIT_WHG_RC` = `1` → the guard already printed its loud self-skip message (`CAN_WORKTREE=false` — this runtime has no `.worktrees/` tree to prune) → STOP, this is a no-op, NOT an error. **If** `BKIT_WHG_RC` = `2` → detect/assert failure → STOP, print the guard's error. **Else** (`0`) → continue.
 
 **If** `{FID}` argument provided → jump to **Single Worktree Path**.
 **Else** → **List All Path**.

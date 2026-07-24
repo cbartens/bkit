@@ -341,6 +341,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
+   # Emit the durable `runtime-resolved` row NOW (same block as `bkit_runtime_detect`,
+   # D21 — later blocks read this row back instead of re-probing gh; #341 T16 fix for
+   # the never-emitted gap in docs/failures.jsonl key runtime-resolved-row-never-emitted-step1).
+   bkit_runtime_row debug "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.

@@ -68,19 +68,19 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
 5. **If** `MODE` = CI → set `PR_NUMBER="$ARG"`.
 6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
-7. **If** `PR_STATE` != OPEN → **Failure Path**. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**.
-8. Extract `FID` from `BRANCH`: `FID="${BRANCH#feat/}"`. Assert `FID` non-empty and `FID` != `BRANCH`. **Else** → **Failure Path**.
-9. Resolve CI run id that triggered the workflow:
+7. **If** `PR_STATE` != OPEN → **Failure Path**.
+8. Resolve CI run id that triggered the workflow:
    ```bash
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
-10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
+9. Extract `ISSUE_ID` and `FID` from PR body metadata (marker-primary — D9; works regardless of `BRANCH` naming, e.g. a `claude/…` mode-3 session branch):
      Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` and `FID`:
-    ```html
-    <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
-    ```
-    **If** marker missing or malformed → **Failure Path**.
+   ```html
+   <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
+   ```
+   **If** marker missing or malformed → fall through to step 10 (branch-derive fallback).
+10. **Branch-derive fallback (D9) — only reached when step 9's marker was missing or malformed.** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty and `FID` != `BRANCH`. **Else** → **Failure Path**. (`ISSUE_ID` stays whatever step 9 resolved — Gate 1's "Issue ID non-empty, if tracker wired" catches an unresolved tracker-wired case.)
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links):
     ```comment

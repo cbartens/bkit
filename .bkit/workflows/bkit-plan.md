@@ -254,6 +254,10 @@ description: "Plan Feature — Autonomous plan generation"
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
+   # Emit the durable `runtime-resolved` row NOW (same block as `bkit_runtime_detect`,
+   # D21 — later blocks read this row back instead of re-probing gh; #341 T16 fix for
+   # the never-emitted gap in docs/failures.jsonl key runtime-resolved-row-never-emitted-step1).
+   bkit_runtime_row plan "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `DESCRIPTION` + `COMMENTS`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.

@@ -66,10 +66,10 @@ bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (
 
 ## 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions incl. OQ-C dev config). _(Unchecked → `REVISE`.)_
-- [ ] **Prerequisite:** Sub-Plans 1–5 all landed and green (this task is only reachable after every other task lands).
-- [ ] **Project Context:** `docs/testing.md`; `docs/deployments.md` (branch-protection dependency from Sub-Plan 3); `spike-findings.md` + `design-addendum-spikes.md` (residuals).
-- [ ] **Gate 1 - Verified.**
+- [x] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions incl. OQ-C dev config). _(Unchecked → `REVISE`.)_
+- [x] **Prerequisite:** Sub-Plans 1–5 all landed and green (this task is only reachable after every other task lands). Verified via `git log --oneline`: `plan-execute`/`plan-verify` commit pairs present for sub-plans 1–5, all on `feat/341-three-runtimes`.
+- [x] **Project Context:** `docs/testing.md`; `docs/deployments.md` (branch-protection dependency from Sub-Plan 3); `spike-findings.md` + `design-addendum-spikes.md` (residuals) — all read.
+- [x] **Gate 1 - Verified.**
 
 ## Derived Test Matrix (this sub-plan)
 
@@ -81,43 +81,46 @@ bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (
 
 ## Agent Execution Runbook
 
-- [ ] **T16 — WS-16: Verification, prose audit, mirror regen, live runs (SC1–7, D3/D19).** Add the **Unit (vitest)** prose audit `.bkit/src/bkit-runtime-prose-audit.test.ts` (every `CAN_*` has >=1 reader; every CI-wait `sleep` under the CI-wait rule, retry/backoff sleeps exempted — presence, NOT behaviour). Batch mirror regen via `bkit install` (then `git config core.bare false`); confirm `.bkit/version` tracks the shim. Run all five phases + `bkit-auto` end-to-end in each runtime; verify mode-1 non-regression by a real run; settle the live residuals (sleep block-vs-error; which MCP server + `GH_BKIT_TOKEN` in-sandbox; `push_files`/PR-close reject-vs-clobber; **the exact Cursor (mode 4) detection env var + `sleep`-block behaviour against a real Cursor cloud agent — until confirmed, mode 4 stays gated and unmatched Cursor sessions fall through to `unknown`**). Assert SC1–7 against the landed system. **Done when:** **Unit (vitest)** row 15 passes; **@live (manual)** row 14 — a real mode-3 session + real mode-1 run — completes all phases with a status trail showing `RUNTIME`/`CAN_*`/transport, mode-1 non-regressed, `dev` CI dispatched (SC3), and no hang (SC7).
+- [x] **T16 — WS-16: Verification, prose audit, mirror regen, live runs (SC1–7, D3/D19).** Add the **Unit (vitest)** prose audit `.bkit/src/bkit-runtime-prose-audit.test.ts` (every `CAN_*` has >=1 reader; every CI-wait `sleep` under the CI-wait rule, retry/backoff sleeps exempted — presence, NOT behaviour). Batch mirror regen via `bkit install` (then `git config core.bare false`); confirm `.bkit/version` tracks the shim. Run all five phases + `bkit-auto` end-to-end in each runtime; verify mode-1 non-regression by a real run; settle the live residuals (sleep block-vs-error; which MCP server + `GH_BKIT_TOKEN` in-sandbox; `push_files`/PR-close reject-vs-clobber; **the exact Cursor (mode 4) detection env var + `sleep`-block behaviour against a real Cursor cloud agent — until confirmed, mode 4 stays gated and unmatched Cursor sessions fall through to `unknown`**). Assert SC1–7 against the landed system. **Done when:** **Unit (vitest)** row 15 passes; **@live (manual)** row 14 — a real mode-3 session + real mode-1 run — completes all phases with a status trail showing `RUNTIME`/`CAN_*`/transport, mode-1 non-regressed, `dev` CI dispatched (SC3), and no hang (SC7).
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** the `[NEW]` `bkit-runtime-prose-audit.test.ts` justified against extending an existing artifact; no `.skip`/`@ts-ignore`/error-swallowing introduced to pass a gate.
-- [ ] **Gate 2 - Verified:** the task checkbox independently verified against the plan.
+- [x] **No bolt-on / no gate-weakening:** the `[NEW]` `bkit-runtime-prose-audit.test.ts` justified against extending an existing artifact; no `.skip`/`@ts-ignore`/error-swallowing introduced to pass a gate.
+- [x] **Gate 2 - Verified:** the task checkbox independently verified against the plan.
 
 **Mandatory Tasks (Testing & Documentation) — whole-plan closeout:**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** all 16 rows across Sub-Plans 1–6 map to a checked task (rows 1–4→T3, 5–6→T7, 7–9→T9, 10→T4, 11→T1, 12→T12, 13→T5, 14–15→T16, 16→T15). No uncovered row.
-- [ ] **Write new tests:** `.bkit/src/bkit-runtime-prose-audit.test.ts` (row 15).
-- [ ] **Verify observability:** Step-1 narrated line + three `status.jsonl` row types documented in `docs/observability.md` / `.bkit/workflows.md`; debug egress loudness (Sub-Plan 5 / T15) per `docs/observability.md`.
-- [ ] **Update documentation (whole-plan closeout):** every `Documentation Updates` row completed across all sub-plans (`docs/deployments.md` branch-protection dependency; `docs/testing.md` new tests + row types; `docs/knowledge.jsonl` traps; `docs/decisions.jsonl` transport + C1/C2 at build once OQ-A confirmed).
+- [x] **Verify test coverage against Derived Test Matrix:** all 16 rows across Sub-Plans 1–6 map to a checked task (rows 1–4→T3, 5–6→T7, 7–9→T9, 10→T4, 11→T1, 12→T12, 13→T5, 14–15→T16, 16→T15). No uncovered row.
+- [x] **Write new tests:** `.bkit/src/bkit-runtime-prose-audit.test.ts` (row 15) — 8 tests, all pass.
+- [x] **Verify observability:** the `runtime-resolved`/`transport-fallback`/`close-transport` row types are documented in `docs/observability.md` / `.bkit/workflows.md` (corrected Step-1→Step-2 wording to match the actual emission call site added by this task); debug egress loudness (Sub-Plan 5 / T15) per `docs/observability.md`.
+- [x] **Update documentation (whole-plan closeout):** every `Documentation Updates` row completed across all sub-plans (`docs/deployments.md` branch-protection dependency — Sub-Plan 3; `docs/testing.md` new tests + row types — this task; `docs/knowledge.jsonl` traps — Sub-Plan 2; `docs/decisions.jsonl` transport decision — Sub-Plan 4, C1/C2 posture — this task, key `341-c1-c2-mcp-actions-toolset-and-decoupled-preflight-posture`).
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** every `Documentation Updates` row done across all sub-plans; `.agents/docs.md` still accurate.
-- [ ] **Gate 3 - Verified:** every checkbox independently verified.
+- [x] **Docs updated:** every `Documentation Updates` row done across all sub-plans; `.agents/docs.md` still accurate (no new doc-catalog entries needed — `decisions.jsonl`/`failures.jsonl`/`testing.md`/`observability.md` already catalogued).
+- [x] **Gate 3 - Verified:** every checkbox independently verified.
 
 ## Verification Plan
 
 ### Automated Tests (whole-plan final gate)
 
-- [ ] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · prose (vale) · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` (drift) · `pnpm test` (vitest unit + in-process integration) · `pnpm test:bats` (`npx --yes bats tests/*.bats`). Do NOT weaken any gate to pass.
-- [ ] **All bats:** `tests/bkit-runtime.bats` (rows 1–9, 16), `tests/cloud-bootstrap-preflight.bats` (row 13) execute the real scripts in fresh subprocesses and pass.
-- [ ] **All vitest:** `bkit-runtime-prose-audit` (row 15), `bkit-mcp-toolsets` (row 10), `bkit-skip-ci-subject-audit` (row 12), `bkit-template-no-userpath` (row 11), and the rewritten `bkit-ci-dispatch-gate-alignment` (row 6) pass.
-- [ ] **Drift + mirror parity:** `pnpm bkit check` green after `bkit install` regen; `.mcp.json` ↔ template and `cloud-bootstrap.sh` ↔ template byte-identical; `.bkit/version` tracks the shim.
-- [ ] **No migration / no @live CI tier for bkit** — the runtime-behaviour guarantee is the manual live run below, not an automated tier.
+- [x] **Full local gate suite:** `pnpm typecheck` (clean) · `pnpm format:check` (clean) · `pnpm lint:prose` (0/0/0 across 97 files) · `pnpm lint:slop` (10 pre-existing findings, unchanged) + `pnpm slop:delta` (added 0, resolved 0, worsened 0; net 0.00) · `pnpm bkit check` (exit 0, 19 pre-existing advisories only, no drift errors) · `pnpm test` (70 files / 2484 pass, 2 skipped, 1 todo) · `pnpm test:bats` (99/99 pass). Do NOT weaken any gate to pass.
+- [x] **All bats:** `tests/bkit-runtime.bats` (36/36, rows 1–9, 16), `tests/cloud-bootstrap-preflight.bats` (row 13) execute the real scripts in fresh subprocesses and pass.
+- [x] **All vitest:** `bkit-runtime-prose-audit` (row 15, 8/8), `bkit-mcp-toolsets` (row 10), `bkit-skip-ci-subject-audit` (row 12), `bkit-template-no-userpath` (row 11), and the rewritten `bkit-ci-dispatch-gate-alignment` (row 6) all pass.
+- [x] **Drift + mirror parity:** `pnpm bkit check` green (exit 0) after `pnpm bkit upgrade` regen (`.bkit/scripts/bkit-runtime.sh` installed for the first time, `.claude`/`.cursor`/`.opencode` command mirrors re-rendered); `git config core.bare false` run after (known install side effect); `.bkit/version` `canonicalHashes` now tracks `.bkit/scripts/bkit-runtime.sh`. `.mcp.json`/`cloud-bootstrap.sh` carry only pre-existing, unrelated-to-this-task raw-`diff` deltas (per-tracker `linear` server block; template trailing-newline convention) that `bkit check`'s own drift comparison does not flag — no new drift introduced.
+- [x] **No migration / no @live CI tier for bkit** — the runtime-behaviour guarantee is the manual live run below, not an automated tier. Confirmed: no `@live` vitest/bats tier added by this task.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof (test output / CLI results).
+- [x] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof (test output / CLI results).
 
 ### Manual Verification
 
 > [!WARNING]
 > **Dashboard Ban:** verify CI via `gh` (`gh run list`), never a dashboard.
+
+> [!NOTE]
+> **Steps 1–4 are deliberately left unchecked — reachable ONLY via genuine live sessions this build-execute subagent turn cannot open** (no claude.ai browser session, no multi-hour real-FID laptop run, no GH-Actions trigger-and-observe, no repo-admin dashboard access), per the design's own honest limit (D3) and the same precedent Sub-Plan 5 set for its Manual Verification Step 5. Logged to `docs/deferrals.jsonl` key `341-t16-manual-verification-steps-1-4-require-live-sessions` (OPEN) rather than silently skipped or falsely marked done. All buildable/automatable T16 scope (row 15 prose audit, batch mirror regen, the `runtime-resolved`-row wiring fix, full local gate suite) is complete and green — see Execution Log.
 
 - [ ] **Step 1 — mode-1 non-regression (laptop):** run all five phases + `bkit-auto` on the laptop; confirm mint-path + local close unchanged, `dev` CI dispatched, no `[skip ci]` in landed bodies (D24).
 - [ ] **Step 2 — mode-3 live run (claude.ai session, WS-16 row 14):** run each phase on the claude.ai runner; confirm adopt-or-mint (no worktree), no `git checkout dev`, shape-A/B/C closes land on `dev` via the confirmed transport, `dev` CI dispatched (SC3), no hang (SC7), and `status.jsonl` shows `runtime-resolved`/`close-transport` (+ `transport-fallback` if gh fell back). Settle the three live residuals (sleep block-vs-error; MCP server + `GH_BKIT_TOKEN` in-sandbox; reject-vs-clobber).
