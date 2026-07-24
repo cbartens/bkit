@@ -282,6 +282,21 @@ bkit_wait_ci() {
     return 2
   fi
 
+  # Resolve a `timeout`-wrapper binary once, if any is on PATH. `timeout(1)`
+  # is GNU coreutils and is NOT present on a stock macOS (BSD) userland —
+  # this shim ships to consumers via `bkit install`, so a Mac without
+  # coreutils must not misdiagnose "no timeout binary" as a blocked/
+  # foreground-sleep-restricted runtime (D22). When neither `timeout` nor
+  # `gtimeout` (homebrew coreutils) is available, fall back to a plain
+  # `sleep` (the pre-#341 inline behaviour) — only a REAL timeout wrapper
+  # that actually times out is classified as a blocked-sleep abort.
+  _bwc_timeout_bin=""
+  if command -v timeout >/dev/null 2>&1; then
+    _bwc_timeout_bin="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    _bwc_timeout_bin="gtimeout"
+  fi
+
   # NOTE: this function is invoked via a `$(...)` command substitution below
   # (needed to capture its "found"/"none"/"err" echo) — a substitution runs
   # in a SUBSHELL, so any assignment made INSIDE `_bwc_poll` (e.g. to
@@ -310,10 +325,17 @@ bkit_wait_ci() {
       CI_WAIT_RESULT="found"
       return 0
     fi
-    if ! timeout "$((_bwc_interval + 5))" sleep "$_bwc_interval"; then
-      echo "[bkit-ci-gate] bkit_wait_ci: sleep did not return within $((_bwc_interval + 5))s — blocked/foreground-sleep-restricted runtime; aborting LOUD instead of hanging (D22)" >&2
-      CI_WAIT_RESULT="err"
-      return 2
+    if [ -n "$_bwc_timeout_bin" ]; then
+      if ! "$_bwc_timeout_bin" "$((_bwc_interval + 5))" sleep "$_bwc_interval"; then
+        echo "[bkit-ci-gate] bkit_wait_ci: sleep did not return within $((_bwc_interval + 5))s — blocked/foreground-sleep-restricted runtime; aborting LOUD instead of hanging (D22)" >&2
+        CI_WAIT_RESULT="err"
+        return 2
+      fi
+    else
+      # No `timeout`/`gtimeout` on PATH — cannot distinguish a blocked sleep
+      # from a normal one; fall back to a plain, unwrapped sleep rather than
+      # misdiagnosing a missing binary as D22 abort (see comment above).
+      sleep "$_bwc_interval"
     fi
     CI_WAIT_ELAPSED=$((CI_WAIT_ELAPSED + _bwc_interval))
   done
@@ -379,8 +401,14 @@ bkit_close_guard_checkout() {
     return 2
   fi
 
-  # shellcheck disable=SC2064 # BKIT_CLOSE_GUARD_ORIG_BRANCH is intentionally expanded now
-  trap "git checkout '$BKIT_CLOSE_GUARD_ORIG_BRANCH' >/dev/null 2>&1 || true" EXIT
+  # Single-quoted trap body: BKIT_CLOSE_GUARD_ORIG_BRANCH resolves at FIRE
+  # time (not re-parsed as literal branch text now) — `git check-ref-format`
+  # permits `'`, `$`, `(`, `)`, `;`, `&` in branch names, so interpolating
+  # the value into a double-quoted/expanded trap body would let a
+  # maliciously-named branch break out of the quoting and execute arbitrary
+  # shell at EXIT. Never interpolate a variable into a shell-interpreted
+  # string (docs/security.md § Shell Injection).
+  trap 'git checkout "$BKIT_CLOSE_GUARD_ORIG_BRANCH" >/dev/null 2>&1 || true' EXIT
 
   if ! git checkout "$_bcg_target"; then
     echo "[bkit-close-guard] bkit_close_guard_checkout: 'git checkout $_bcg_target' failed" >&2
@@ -424,7 +452,7 @@ bkit_close_guard_scan_body() {
     return 2
   fi
 
-  if printf '%s' "$_bcs_body" | grep -qE '\[skip ci\]|\[skip actions\]'; then
+  if printf '%s' "$_bcs_body" | grep -qiE '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
     echo "[bkit-close-guard] D24: landed commit '$_bcs_sha' body carries a CI-suppression token" >&2
     return 1
   fi
