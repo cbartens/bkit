@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "4.8.0",
+  "pinnedVersion": "4.9.0",
   "tier3Hashes": {
     ".cursor/mcp.json": "dd07b8eb46eff755655fff7b114d4347487764fa7a6894caaa635eba4dc5b2f5",
     ".envrc": "dd6b15dcb3c81b78219e66acee10cf4ccce377de40989dc151750248031de41f",
@@ -46,7 +46,7 @@
     ".gitignore": "229aa9791c36a2249728338814dc09741970e46d242710a0b89c63693c6c6b64",
     ".cursor/mcp.json": "dd07b8eb46eff755655fff7b114d4347487764fa7a6894caaa635eba4dc5b2f5",
     ".envrc": "d2c6438e118864fc7b1c726c58cb9912c2d1474b64108bca7404aeb937d0743b",
-    "docs/security.md": "c08c83556700a1e71f5053faf8d74578c5e060ccd5faeb8cde8f8e6fe282785a",
+    "docs/security.md": "3f2775cac3e674f7b7c873935015a4f6f3f94c88fa8b9f5f706f01e371ab18ec",
     ".github/renovate.json5": "5d248e5945c9b4ddfb1860c2e204320797345ef81394825b03b2ca7fadad91ab",
     ".mcp.json": "1aea759cf1f261b8e340f6f34bd3c561e8c5283235a63fede0b177703877c66a",
     "docs/architecture.md": "fd01d2bd5cd51c5fd6b7db45e69b85d35a5f2b9bd59a6d8c6a4b8da703074dd4",
@@ -69,7 +69,7 @@
     ".bkit/scripts/bkit-status-fold.sh": "ac9666ed7ca351c534e9e0794f389e7b964b7e1c468347b8cf0aa66f3119b509",
     ".bkit/scripts/bkit-status-route.sh": "b66ce83d84676949bf945944277e5a243951d9781d55a9242984a2576a517291",
     ".cursor/hooks/guardrails.cjs": "58922c075c9ee9dc8efbd9579414798190ba6f5555e7cdf517a9130463eff93f",
-    ".claude/commands/bkit-auto.md": "68539fa039f612efa1795484d613e642860a642aa6305a1542b3496d558f7ee3",
+    ".claude/commands/bkit-auto.md": "8a2b4291fad1f8b1bab3586adb8f51a6ff7a61af94b6ff7b01f7d61e049b7030",
     ".claude/commands/bkit-build.md": "98dbbc85a593127e0bc99bd1836ce8f2eff8382f81fdf12f4e40c07d2c23fb01",
     ".claude/commands/bkit-debug.md": "06553cb71c5c34784f7776a3030f18408e7b770eba61f6dc37192eb4221c8071",
     ".claude/commands/bkit-design.md": "d735c74bb03bfdb33f500e818bdcaee944057eb44f2b2095295b87e074ead16c",
@@ -123,7 +123,7 @@
     ".claude/agents/bkit-utility-compress-markdown.md": "68125bc63cdaecad75a52247188a443c13f391b104163aee4c4e0c2765935eab",
     ".claude/agents/bkit-utility-update-documentation.md": "7c4ed28f0f94a2bd11672d8408d7bb544359713492ffb2c397a04e6abf36fdcf",
     ".claude/agents/bkit-utility-update-references.md": "8d3fc0abe66224c360834a36aa7b7370aa93caf12a74e4e7fca84d1d4a1ffb1d",
-    ".cursor/commands/bkit-auto.md": "a363718e9ada48f2946145fa222e1a7110033c51fa89895b5b976aa414fafcba",
+    ".cursor/commands/bkit-auto.md": "890a2165ba6289e151d1c8a054f5f13ce25cffdf52e5a22391ba3a06136c60c0",
     ".cursor/commands/bkit-build.md": "ca643b881f9820f5b042d43b92c639683259991546b5e3186430c03358f6ff3b",
     ".cursor/commands/bkit-debug.md": "c1ea5aee61bb554430bfc0f417415b3712810e76f019570d83195b7f4fd9aaad",
     ".cursor/commands/bkit-design.md": "c28a80e6b7c85818b7f2ceac501a416dfa324650be3cc8e1fa1f09128372cd4e",
@@ -223,7 +223,7 @@
     ".opencode/agents/bkit-utility-compress-markdown.md": "2985bfcf7c2ffcae405fabb4f3b65ae7cebad305705335dfedc3dbc56c7a36c3",
     ".opencode/agents/bkit-utility-update-documentation.md": "3a614bb8601feedb386568276c15dda14a01e9dcb09f2431fb494794ced84d10",
     ".opencode/agents/bkit-utility-update-references.md": "6c70048097c2ea7e00d7ed4e8c9e75be1a3e465f3b360107373b2d347c26639d",
-    ".opencode/commands/bkit-auto.md": "8141d46ab5d71ee08c0705b8d84d2e1c56d498f7f2e75e3c59bae7a81f2a2995",
+    ".opencode/commands/bkit-auto.md": "20a53b22546444ca288b393f9ab103f82f6c34c64ebe39b44afe380c531702ff",
     ".opencode/commands/bkit-build.md": "76ca15c4f2c7444d8543a239bed462506925748565db99353a07712283bf6b97",
     ".opencode/commands/bkit-debug.md": "c1ea5aee61bb554430bfc0f417415b3712810e76f019570d83195b7f4fd9aaad",
     ".opencode/commands/bkit-design.md": "c28a80e6b7c85818b7f2ceac501a416dfa324650be3cc8e1fa1f09128372cd4e",
@@ -231,7 +231,7 @@
     ".opencode/commands/bkit-ship.md": "33574e6c1ee99979de7a76fd5e9c4d431315d1baf08abc6d5f1d8b93fb46bec7",
     ".opencode/commands/bkit-worktree-prune.md": "1cbf37544e33f3f4515242f975f0235c6c817d0d2eed3c8f7fcd5d652e1c0bed",
     ".opencode/commands/bkit-worktree-sync.md": "23b9fdb27b0871b8f3841213269ede7a295a103dc8aa0fd0a3fde361fe147c8b",
-    ".bkit/scripts/bkit-runtime.sh": "62ede76c7a8929298285ff9b6744e2d3e60a6c90fd061e30d8a952f75c2d024b"
+    ".bkit/scripts/bkit-runtime.sh": "c85865ea4ffca5f7a89f5de83a91d21f90518003eb6e63bc186d9f018388d26a"
   },
   "managedHashes": {}
 }

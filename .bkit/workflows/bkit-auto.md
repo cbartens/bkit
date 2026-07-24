@@ -95,23 +95,26 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```html
    <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
    ```
-   **If** marker missing or malformed → fall through to step 10 (branch-derive fallback).
+   Assert `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]` (canonical slug allowlist — rejects path traversal and shell metacharacters in the untrusted PR-body marker before `{FID}` reaches any filesystem path or downstream dispatch).
+   **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10 (branch-derive fallback).
      <!-- bkit:tracker github end -->
      <!-- bkit:tracker linear start -->
    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` and `FID`:
    ```html
    <!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
    ```
-   **If** marker missing or malformed → fall through to step 10 (branch-derive fallback).
+   Lowercase `{FID}`. Assert `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]` (canonical slug allowlist — rejects path traversal and shell metacharacters in the untrusted PR-body marker before `{FID}` reaches any filesystem path or downstream dispatch).
+   **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10 (branch-derive fallback).
      <!-- bkit:tracker linear end -->
      <!-- bkit:tracker false start -->
    Parse `FID` from marker below:
    ```html
    <!-- bkit:fid={FID} -->
    ```
-   **If** marker missing or malformed → fall through to step 10 (branch-derive fallback).
+   Assert `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]` (safe-slug allowlist — rejects path traversal and shell metacharacters in the untrusted PR-body marker before `{FID}` reaches any filesystem path or downstream dispatch).
+   **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10 (branch-derive fallback).
      <!-- bkit:tracker false end -->
-10. **Branch-derive fallback (D9) — only reached when step 9's marker was missing or malformed.** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty and `FID` != `BRANCH`. **Else** → **Failure Path**. (`ISSUE_ID` stays whatever step 9 resolved — Gate 1's "Issue ID non-empty, if tracker wired" catches an unresolved tracker-wired case.)
+10. **Branch-derive fallback (D9) — only reached when step 9's marker was missing or malformed.** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]` (safe-slug allowlist — rejects path traversal and shell metacharacters before `{FID}` reaches any filesystem path or downstream dispatch). **Else** → **Failure Path**. (`ISSUE_ID` stays whatever step 9 resolved — Gate 1's "Issue ID non-empty, if tracker wired" catches an unresolved tracker-wired case.)
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
