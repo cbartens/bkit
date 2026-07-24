@@ -551,3 +551,50 @@ bkit_close_transport_row() {
     "$_bct_shape" "$_bct_sha" "$_bct_scan_result" "$_bct_at"
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# bkit_worktree_helper_guard REPO_ROOT [LABEL]
+#
+# #341 / WS-15, Flow 7 — the `bkit-worktree-{prune,sync}` disposition. Both
+# helpers are human-triggered utility commands that operate exclusively on
+# `.worktrees/{FID}` — meaningless in adopt mode (`CAN_WORKTREE=false`),
+# where there is no worktree tree to prune or sync (mode-3 phases work
+# in-place on the session's own branch). Silent omission here would be an
+# obscure mode-3 failure in a workflow "the six workflows" framing leaves
+# unowned — so this guard is LOUD, never a silent no-op.
+#
+# Args: REPO_ROOT (required). LABEL (optional, defaults to "worktree-util")
+# — passed to `bkit_runtime_detect` as its FID arg; neither helper needs a
+# real FID to answer "can this runtime worktree at all", so any non-empty
+# placeholder is fine (WORKTREE_PATH is not consumed by the caller).
+#
+# Prints a LOUD, distinguishable self-skip message on stdout when
+# CAN_WORKTREE=false — callers MUST print this (or route it through their
+# own narration) and STOP; this function does not exit the caller's shell.
+#
+# Returns 0 (proceed) when CAN_WORKTREE=true. Returns 1 (self-skip; message
+# already printed) when CAN_WORKTREE=false. Returns 2 (loud, distinct) on a
+# detect/assert failure (missing REPO_ROOT, shim source failure, unresolved
+# flags) — callers MUST NOT treat a 2 the same as a legitimate 1 self-skip.
+# ---------------------------------------------------------------------------
+bkit_worktree_helper_guard() {
+  _bwh_repo_root="$1"
+  _bwh_label="${2:-worktree-util}"
+
+  if [ -z "$_bwh_repo_root" ]; then
+    echo "[bkit-runtime] bkit_worktree_helper_guard: REPO_ROOT must be non-empty" >&2
+    return 2
+  fi
+
+  bkit_runtime_detect "$_bwh_repo_root" "$_bwh_label" || {
+    echo "[bkit-runtime] bkit_worktree_helper_guard: runtime detect failed" >&2
+    return 2
+  }
+  bkit_runtime_assert_resolved || return 2
+
+  if [ "$CAN_WORKTREE" != "true" ]; then
+    echo "[bkit-runtime] worktree helper self-skip: CAN_WORKTREE=false in this runtime (RUNTIME=$RUNTIME) — .worktrees/ is not this runtime's model (adopt-mode phases work in-place on the session's own branch, no local worktree tree exists to prune/sync). No-op, not an error."
+    return 1
+  fi
+  return 0
+}

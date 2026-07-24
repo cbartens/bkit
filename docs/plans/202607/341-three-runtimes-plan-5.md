@@ -78,10 +78,10 @@ bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (
 
 ## 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Human confirmations `[x]`** in parent — notably **OQ-B** (job-logs-only fallback acceptable). _(Unchecked → `REVISE`.)_
-- [ ] **Prerequisite:** Sub-Plan 1 (T4 `actions` toolset) landed — the §6c tool names resolve only once `actions` is added; Sub-Plan 3 (T9 D25 cross-check) landed — reads T14's `transport-fallback` row.
-- [ ] **Project Context:** `docs/observability.md` (debug-fetch loudness, `.agents/config.md`); `docs/failures.jsonl` (`github-mcp-search-issues-silently-returns-zero-private-repo`).
-- [ ] **Gate 1 - Verified.**
+- [x] **Human confirmations `[x]`** in parent — notably **OQ-B** (job-logs-only fallback acceptable). _(Unchecked → `REVISE`.)_
+- [x] **Prerequisite:** Sub-Plan 1 (T4 `actions` toolset) landed — the §6c tool names resolve only once `actions` is added; Sub-Plan 3 (T9 D25 cross-check) landed — reads T14's `transport-fallback` row.
+- [x] **Project Context:** `docs/observability.md` (debug-fetch loudness, `.agents/config.md`); `docs/failures.jsonl` (`github-mcp-search-issues-silently-returns-zero-private-repo`).
+- [x] **Gate 1 - Verified.**
 
 ## Derived Test Matrix (this sub-plan)
 
@@ -101,36 +101,36 @@ _(T14's fallback map + D13 bound + D12 corroboration are prose (D4) — tool-nam
 
 ## Agent Execution Runbook
 
-- [ ] **T14 — WS-14: gh→MCP fallback lane (Flow 6, D4/D12/D13, §6c under C1 names). Requires T4's `actions` toolset** (the §6c `actions_*`/`get_job_logs` names resolve only once T4 adds `actions`). Prose (D4 — bash detects `GH_OK=false`, cannot invoke the tool): the §6c map under the C1-verified names; bounded (max-1 gh→MCP/run) + recorded (`transport-fallback`) + success-asserted (independent re-read); empty MCP read INCONCLUSIVE → corroborate via a `list_*` call or report unavailable, logging the attempt as its own state (D12). Adopt the explicit budget reading: `push_files`/shape-A transport is a fallback for _git_, not _gh_ — does NOT consume the max-1 budget. Record OQ2/OQ3/shell-CLI deferrals. **Done when:** the fallback map + D13 bound + D12 corroboration prose are present; the `transport-fallback` row is written and cross-checked by T9's D25 (row 8); tool-name resolution + the credential-coupling posture (C2) verified in the live run (T16). _(Gated conceptually on WS-2/D26 — CLOSED as C1/C2; provisional tool names finalised live in T16. Residual tracked, NOT assumed closed: if T16 finds the built-in mode-3 server exposes different tool names, the §6c map is re-pointed there — a bounded post-T16 rework, not a silent surprise.)_
-- [ ] **T15 — WS-15: Peripheral gating + localized fixes (Flow 7).** `bkit-worktree-{prune,sync}.md`: loud self-skip when `CAN_WORKTREE=false`. Debug egress blindness: Custom allowlist + loudness so a self-skip `exit 0` never reads as "no runtime errors" (`.agents/config.md`, `bkit-debug.md:551-565`). Playwright seam (OQ-B, **requires T4's `actions` toolset**): `get_job_logs` is the **standing default** (job-logs-only failure signal, never lost); verify `download_workflow_run_artifact` output shape against a real run — reachable only in T16 — and adopt it ONLY if it carries the rich report, else stay on the `get_job_logs` default. **Done when:** the two worktree helpers self-skip loudly on `CAN_WORKTREE=false` — asserted by a **behaviour** test in `tests/bkit-runtime.bats` (matrix row 16; the `CAN_WORKTREE=false` self-skip is bash-expressible and cheap to discriminate), NOT presence-only; debug egress emits a loud signal instead of a silent `exit 0`, verified by **Manual-Verification Step 5** (run `/bkit-debug` in a `CAN_WORKTREE=false` runtime and confirm the loud egress signal, not a silent `exit 0`) — this half of T15 has no automated assertion and rests on the live manual step + row-15 prose-audit per the honest limit (D3), an intentional asymmetry with the bats-tested self-skip half, NOT an oversight; the artifact seam is resolved per OQ-B with `get_job_logs` as the default until T16 confirms; consumption verified live in T16.
+- [x] **T14 — WS-14: gh→MCP fallback lane (Flow 6, D4/D12/D13, §6c under C1 names). Requires T4's `actions` toolset** (the §6c `actions_*`/`get_job_logs` names resolve only once T4 adds `actions`). Prose (D4 — bash detects `GH_OK=false`, cannot invoke the tool): the §6c map under the C1-verified names; bounded (max-1 gh→MCP/run) + recorded (`transport-fallback`) + success-asserted (independent re-read); empty MCP read INCONCLUSIVE → corroborate via a `list_*` call or report unavailable, logging the attempt as its own state (D12). Adopt the explicit budget reading: `push_files`/shape-A transport is a fallback for _git_, not _gh_ — does NOT consume the max-1 budget. Record OQ2/OQ3/shell-CLI deferrals. **Done when:** the fallback map + D13 bound + D12 corroboration prose are present; the `transport-fallback` row is written and cross-checked by T9's D25 (row 8); tool-name resolution + the credential-coupling posture (C2) verified in the live run (T16). _(Gated conceptually on WS-2/D26 — CLOSED as C1/C2; provisional tool names finalised live in T16. Residual tracked, NOT assumed closed: if T16 finds the built-in mode-3 server exposes different tool names, the §6c map is re-pointed there — a bounded post-T16 rework, not a silent surprise.)_
+- [x] **T15 — WS-15: Peripheral gating + localized fixes (Flow 7).** `bkit-worktree-{prune,sync}.md`: loud self-skip when `CAN_WORKTREE=false`. Debug egress blindness: Custom allowlist + loudness so a self-skip `exit 0` never reads as "no runtime errors" (`.agents/config.md`, `bkit-debug.md:551-565`). Playwright seam (OQ-B, **requires T4's `actions` toolset**): `get_job_logs` is the **standing default** (job-logs-only failure signal, never lost); verify `download_workflow_run_artifact` output shape against a real run — reachable only in T16 — and adopt it ONLY if it carries the rich report, else stay on the `get_job_logs` default. **Done when:** the two worktree helpers self-skip loudly on `CAN_WORKTREE=false` — asserted by a **behaviour** test in `tests/bkit-runtime.bats` (matrix row 16; the `CAN_WORKTREE=false` self-skip is bash-expressible and cheap to discriminate), NOT presence-only; debug egress emits a loud signal instead of a silent `exit 0`, verified by **Manual-Verification Step 5** (run `/bkit-debug` in a `CAN_WORKTREE=false` runtime and confirm the loud egress signal, not a silent `exit 0`) — this half of T15 has no automated assertion and rests on the live manual step + row-15 prose-audit per the honest limit (D3), an intentional asymmetry with the bats-tested self-skip half, NOT an oversight; the artifact seam is resolved per OQ-B with `get_job_logs` as the default until T16 confirms; consumption verified live in T16.
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** row 16's self-skip assertion is a real behaviour test (not presence-only); no `.skip`/`@ts-ignore`/error-swallowing introduced; the debug-egress loudness makes a self-skip loud, never a silent `exit 0`.
-- [ ] **Gate 2 - Verified:** Every task checkbox independently verified.
+- [x] **No bolt-on / no gate-weakening:** row 16's self-skip assertion is a real behaviour test (not presence-only); no `.skip`/`@ts-ignore`/error-swallowing introduced; the debug-egress loudness makes a self-skip loud, never a silent `exit 0`.
+- [x] **Gate 2 - Verified:** Every task checkbox independently verified.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage:** row 16→T15 maps to a checked task; T14 held by Sub-Plan 3 row 8 (D25) + live run.
-- [ ] **Write new tests:** row 16 self-skip behaviour test added to `tests/bkit-runtime.bats`.
-- [ ] **Verify observability:** debug egress loudness (T15) per `docs/observability.md`.
-- [ ] **Update documentation:** record OQ2/OQ3/shell-CLI deferrals in `docs/deferrals.jsonl` (OQ3 → `docs/failures.jsonl`) per T14; `docs/observability.md` debug-egress loudness note.
+- [x] **Verify test coverage:** row 16→T15 maps to a checked task; T14 held by Sub-Plan 3 row 8 (D25) + live run.
+- [x] **Write new tests:** row 16 self-skip behaviour test added to `tests/bkit-runtime.bats`.
+- [x] **Verify observability:** debug egress loudness (T15) per `docs/observability.md`.
+- [x] **Update documentation:** record OQ2/OQ3/shell-CLI deferrals in `docs/deferrals.jsonl` (OQ3 → `docs/failures.jsonl`) per T14; `docs/observability.md` debug-egress loudness note.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
-- [ ] **Gate 3 - Verified.**
+- [x] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
+- [x] **Gate 3 - Verified.**
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · vale · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate.
-- [ ] **New bats:** `tests/bkit-runtime.bats` row 16 (worktree-helper self-skip behaviour) passes.
+- [x] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · vale · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate.
+- [x] **New bats:** `tests/bkit-runtime.bats` row 16 (worktree-helper self-skip behaviour) passes.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof.
+- [x] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof.
 
 ## Merge Method
 
