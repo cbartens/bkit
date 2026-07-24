@@ -105,3 +105,5 @@ See `docs/deployments.md` for the full presence matrix and `docs/security.md` fo
 ## Runtime capability row (#341)
 
 Each phase workflow's Step 1 resolves `.bkit/scripts/bkit-runtime.sh`'s capability table (`RUNTIME`/`CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`) and records it once as a `runtime-resolved` `status.jsonl` row — the durable, cross-block record later steps read `GH_OK` back from instead of re-probing `gh` (D21). Row shape → `.bkit/workflows.md` § Status. `gh`-preflight loudness (never silent, non-blocking dual-lane signal) lives in `.claude/hooks/cloud-bootstrap.sh`.
+
+The Close Workflow's close-guard kernel (`bkit-runtime.sh`'s `bkit_close_guard_*` helpers, #341 D23/D24/D25) adds two more rows, both transport-agnostic: `transport-fallback` (one per gh->MCP transition, bounded max 1/run) and `close-transport` (the shape that ran, the landed SHA, and the D24 post-close skip-token-scan result). Row shapes → `.bkit/workflows.md` § Status.

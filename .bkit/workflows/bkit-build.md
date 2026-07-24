@@ -21,14 +21,14 @@ description: "Build Feature — Autonomous implementation"
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`CAN_WORKTREE=true`): `.worktrees/{FID}`; adopt mode (`CAN_WORKTREE=false`): `$REPO_ROOT`; required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** build status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `CAN_WORKTREE=true`) or adopts the current branch in place (`CAN_WORKTREE=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
 
 <!-- bkit:tracker github start -->
@@ -265,51 +265,64 @@ description: "Build Feature — Autonomous implementation"
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
-2. Create/resume the worktree:
+2. Create/resume the worktree (adopt-or-mint, D7/Flow 2 — `CAN_WORKTREE` is env-only, free to re-derive per block, D21):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   git worktree prune
-   WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-   if [ -d "$WORKTREE_PATH" ]; then
-     cd "$WORKTREE_PATH"
-     rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
-     git fetch origin dev
-     if ! git rebase --rebase-merges origin/dev; then
-       CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
-       if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
-         git checkout --theirs pnpm-lock.yaml
-         pnpm install --lockfile-only
-         git add pnpm-lock.yaml
-         if ! git rebase --continue; then
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
+   bkit_runtime_assert_resolved || exit 2
+   if [ "$CAN_WORKTREE" = "true" ]; then
+     git worktree prune
+     WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
+     if [ -d "$WORKTREE_PATH" ]; then
+       cd "$WORKTREE_PATH"
+       rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+       git fetch origin dev
+       if ! git rebase --rebase-merges origin/dev; then
+         CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+         if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
+           git checkout --theirs pnpm-lock.yaml
+           pnpm install --lockfile-only
+           git add pnpm-lock.yaml
+           if ! git rebase --continue; then
+             git rebase --abort 2>/dev/null || true
+             mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
+             touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+           fi
+         else
            git rebase --abort 2>/dev/null || true
+           echo "Rebase conflict" >&2
            mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
            touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
          fi
-       else
-         git rebase --abort 2>/dev/null || true
-         echo "Rebase conflict" >&2
-         mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
-         touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
        fi
-     fi
-   else
-     if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
-       git worktree add "$WORKTREE_PATH" "feat/{FID}"
-     elif git fetch origin "feat/{FID}" 2>/dev/null \
-          && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
-       git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
      else
-       git fetch origin dev
-       git worktree add "$WORKTREE_PATH" -b "feat/{FID}" origin/dev
+       if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
+         git worktree add "$WORKTREE_PATH" "feat/{FID}"
+       elif git fetch origin "feat/{FID}" 2>/dev/null \
+            && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
+         git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
+       else
+         git fetch origin dev
+         git worktree add "$WORKTREE_PATH" -b "feat/{FID}" origin/dev
+       fi
+       cd "$WORKTREE_PATH"
      fi
+     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
+     for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
+       [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
+     done
+     [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
+     pnpm install --frozen-lockfile
+   else
+     # Adopt mode (CAN_WORKTREE=false, e.g. claude.ai cloud sessions): no
+     # `git worktree add` — mode 3's proxy-restricted push only allows the
+     # CURRENT working branch, so work in place on it instead of minting.
+     WORKTREE_PATH="$REPO_ROOT"
      cd "$WORKTREE_PATH"
+     [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
+     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
-   mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
-   for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
-     [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
-   done
-   [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
-   pnpm install --frozen-lockfile
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
@@ -365,7 +378,7 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
+- [ ] Worktree created/resumed (mint: `.worktrees/{FID}`; adopt: `WORKTREE_PATH=$REPO_ROOT`), `pwd` == `{WORKTREE_PATH}`
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Plan files in `docs/plans/{YYYYMM}/` (canonical bucket)
 - [ ] Sub-plan count set (`SUB_COUNT`); counters derived per-block

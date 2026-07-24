@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
-# bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3/T7 / WS-6/WS-8).
+# bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3/T7/T9 / WS-6/WS-8/WS-10).
 #
-# Covers Derived Test Matrix rows 1-5:
+# Covers Derived Test Matrix rows 1-5, 7-9:
 #   1. bkit_runtime_detect maps env inputs -> RUNTIME + 4 CAN_* per the
 #      4-row table; unknown (no primitive) -> least-capable, never mode-1.
 #   2. Sourced shim state does NOT survive a Bash-call boundary; env-only
@@ -13,6 +13,14 @@
 #      $REPO_ROOT/.worktrees/{FID}) vs adopt (false -> $REPO_ROOT).
 #   5. bkit_wait_ci's `timeout`-wrapped cap fires on a blocked/never-returning
 #      `sleep` (never hangs); attempt/elapsed bounds enforced (D22).
+#   7. D24 post-close scan flags [skip ci] in the LANDED commit body (any
+#      transport) -> Failure Path.
+#   8. D25 cross-check: runtime-resolved.GH_OK=false + a mapped-tool close
+#      with NO transport-fallback row -> Failure Path (reads real
+#      status.jsonl).
+#   9. D23 double-guard: the local-checkout branch requires
+#      CAN_WORKTREE=true AND CAN_PUSH_DEV=true; trap restores the original
+#      branch on exit.
 #
 # Run: bats tests/bkit-runtime.bats
 # Requires: bats >= 1.0
@@ -236,4 +244,127 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"RESULT=err"* ]]
   [[ "$output" == *"ATTEMPTS=0"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 7. D24 — post-close skip-token scan of the LANDED commit body (row 7)
+# ---------------------------------------------------------------------------
+
+@test "close-guard: D24 flags [skip ci] in the LANDED commit body -> Failure Path" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [skip ci]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 passes (exit 0) on a skip-token-free commit body" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close DONE"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 0 ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 fails closed (exit 2) when SHA is empty" {
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_scan_body ''"
+  [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# 8. D25 — transport-fallback recording cross-check, over real status.jsonl (row 8)
+# ---------------------------------------------------------------------------
+
+@test "close-guard: D25 flags a missing transport-fallback row when GH_OK=false and a mapped transport closed -> Failure Path" {
+  DIR="$(mktemp -d)"
+  STATUS="$DIR/status.jsonl"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D25"* ]]
+  rm -rf "$DIR"
+}
+
+@test "close-guard: D25 passes when GH_OK=false and a transport-fallback row IS present" {
+  DIR="$(mktemp -d)"
+  STATUS="$DIR/status.jsonl"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
+  printf '{"type":"transport-fallback","from":"gh pr merge","to":"merge_pull_request","reason":"GH_OK=false","assertedBy":"pull_request_read","at":"2026-07-24T00:01:00Z"}\n' >> "$STATUS"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
+  [ "$status" -eq 0 ]
+  rm -rf "$DIR"
+}
+
+@test "close-guard: D25 exempts TRANSPORT=gh regardless of GH_OK" {
+  DIR="$(mktemp -d)"
+  STATUS="$DIR/status.jsonl"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' gh"
+  [ "$status" -eq 0 ]
+  rm -rf "$DIR"
+}
+
+@test "close-guard: D25 passes when GH_OK=true even without a transport-fallback row" {
+  DIR="$(mktemp -d)"
+  STATUS="$DIR/status.jsonl"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":true}\n' > "$STATUS"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
+  [ "$status" -eq 0 ]
+  rm -rf "$DIR"
+}
+
+@test "close-guard: D25 fails closed (exit 2) when STATUS_PATH is missing" {
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '/tmp/does-not-exist-$$.jsonl' mcp"
+  [ "$status" -eq 2 ]
+}
+
+# ---------------------------------------------------------------------------
+# 9. D23 — double-guard + reversible checkout (row 9)
+# ---------------------------------------------------------------------------
+
+@test "close-guard: D23 double-guard refuses local checkout when CAN_WORKTREE/CAN_PUSH_DEV are NOT both true" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$REPO" branch dev
+  run env -i PATH="$PATH" CAN_WORKTREE=false CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"double-guard"* ]]
+  [ "$(git -C "$REPO" branch --show-current)" = "main" ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D23 double-guard requires BOTH flags — CAN_PUSH_DEV=false alone also refuses" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$REPO" branch dev
+  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=false bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
+  [ "$status" -eq 2 ]
+  [ "$(git -C "$REPO" branch --show-current)" = "main" ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D23 reversible checkout — trap restores the original branch once the process exits" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  git -C "$REPO" branch dev
+  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev && git branch --show-current"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"dev"* ]]
+  # The bash -c process from `run` has already exited by the time `run`
+  # returns — its EXIT trap must have already restored the original branch.
+  [ "$(git -C "$REPO" branch --show-current)" = "main" ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D23 fails closed (exit 2) on an empty TARGET_BRANCH" {
+  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c ". '$RUNTIME_SH' && bkit_close_guard_checkout ''"
+  [ "$status" -eq 2 ]
 }

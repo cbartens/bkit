@@ -321,3 +321,233 @@ bkit_wait_ci() {
   CI_WAIT_RESULT="none"
   return 0
 }
+
+# ---------------------------------------------------------------------------
+# Close-guard + close-audit kernel (#341 / WS-10, D23/D24/D25/Risk 4)
+#
+# Transport-agnostic: every helper below is expressed over plain git/jq and
+# holds on WHICHEVER close shape/transport ran (local checkout-and-push, or
+# a mapped gh->MCP fallback tool) — see issue #341 Flow 4. Emits/consumes
+# `transport-fallback` and `close-transport` status.jsonl rows (additive,
+# #234 artifact — .bkit/workflows.md documents both shapes).
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# bkit_close_guard_checkout TARGET_BRANCH
+#
+# D23 — double-guard + reversible checkout. The ONLY sanctioned way to
+# locally `git checkout` a shared branch (e.g. `dev`) during a phase close.
+#
+# Double-guard (both, not either — deliberate redundancy at the one site
+# where being wrong is worst): refuses UNLESS `CAN_WORKTREE=true` AND
+# `CAN_PUSH_DEV=true` are both already resolved in the CURRENT shell (call
+# `bkit_runtime_detect` first, same block — D21 state model). `CAN_PUSH_DEV`
+# is a default, not a probed truth (see file header) — this guard does NOT
+# replace the real push/merge as the actual permission certifier; it only
+# gates whether a LOCAL checkout is attempted at all.
+#
+# Reversible: captures the current branch before checkout and installs an
+# `EXIT` trap that restores it — this closes the D6 hazard (a stray local
+# `dev` checkout stranding a mode-3 session) even if BOTH capability flags
+# were wrong, which no probe can do (D23). The trap fires on the CURRENT
+# process's exit; callers that need the restore to survive past their own
+# block should keep this call and the operations that depend on the
+# checkout inside the SAME Bash block/process.
+#
+# Sets (current shell only): BKIT_CLOSE_GUARD_ORIG_BRANCH (branch restored on exit).
+#
+# Returns 0 once TARGET_BRANCH is checked out. Returns 2 (loud) if
+# TARGET_BRANCH is empty, either capability flag is not `true`, or the
+# current branch cannot be resolved (detached HEAD). Returns 1 if the
+# checkout itself fails (target does not exist, dirty tree conflict, etc).
+# ---------------------------------------------------------------------------
+bkit_close_guard_checkout() {
+  _bcg_target="$1"
+
+  if [ -z "$_bcg_target" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_checkout: TARGET_BRANCH must be non-empty" >&2
+    return 2
+  fi
+  if [ "$CAN_WORKTREE" != "true" ] || [ "$CAN_PUSH_DEV" != "true" ]; then
+    echo "[bkit-close-guard] D23 double-guard: CAN_WORKTREE='${CAN_WORKTREE:-unset}' CAN_PUSH_DEV='${CAN_PUSH_DEV:-unset}' — both must be 'true' to checkout '$_bcg_target' locally; refusing" >&2
+    return 2
+  fi
+
+  BKIT_CLOSE_GUARD_ORIG_BRANCH=$(git branch --show-current)
+  if [ -z "$BKIT_CLOSE_GUARD_ORIG_BRANCH" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_checkout: could not resolve current branch (detached HEAD?) — refusing to checkout '$_bcg_target'" >&2
+    return 2
+  fi
+
+  # shellcheck disable=SC2064 # BKIT_CLOSE_GUARD_ORIG_BRANCH is intentionally expanded now
+  trap "git checkout '$BKIT_CLOSE_GUARD_ORIG_BRANCH' >/dev/null 2>&1 || true" EXIT
+
+  if ! git checkout "$_bcg_target"; then
+    echo "[bkit-close-guard] bkit_close_guard_checkout: 'git checkout $_bcg_target' failed" >&2
+    return 1
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# bkit_close_guard_scan_body SHA [REMOTE_REF]
+#
+# D24 — post-close skip-token scan of the LANDED commit, transport-agnostic.
+# D1's aetiology was a pre-merge PR-TITLE grep that never re-checked the
+# actual squash-merge BODY that landed — this scans the commit that is
+# actually on the branch, after the fact, on either transport.
+#
+# Args: SHA (the landed commit, required). REMOTE_REF (optional) — when the
+# close ran server-side (a mapped MCP tool, not a local push), pass e.g.
+# "dev" to `git fetch origin REMOTE_REF` first so SHA is resolvable locally.
+#
+# Returns 0 if the commit body carries NO CI-suppression token. Returns 1
+# (loud) if it does — route the caller to Failure Path. Returns 2 if SHA is
+# empty or the commit cannot be read at all (distinct from "found a token").
+# ---------------------------------------------------------------------------
+bkit_close_guard_scan_body() {
+  _bcs_sha="$1"
+  _bcs_remote="${2:-}"
+
+  if [ -z "$_bcs_sha" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_scan_body: SHA must be non-empty" >&2
+    return 2
+  fi
+  if [ -n "$_bcs_remote" ]; then
+    git fetch origin "$_bcs_remote" >/dev/null 2>&1 || true
+  fi
+
+  _bcs_body=$(git log -1 --format=%B "$_bcs_sha" 2>/dev/null)
+  _bcs_rc=$?
+  if [ "$_bcs_rc" -ne 0 ] || [ -z "$_bcs_body" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_scan_body: could not read commit body for '$_bcs_sha'" >&2
+    return 2
+  fi
+
+  if printf '%s' "$_bcs_body" | grep -qE '\[skip ci\]|\[skip actions\]'; then
+    echo "[bkit-close-guard] D24: landed commit '$_bcs_sha' body carries a CI-suppression token" >&2
+    return 1
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# bkit_close_guard_cross_check STATUS_PATH TRANSPORT
+#
+# D25 — mechanical cross-check of the `transport-fallback` recording itself.
+# The audit trail is only as trustworthy as the compliance layer that could
+# have produced D1/D2 in the first place — do not trust prose to have
+# written the row; assert it mechanically, over the real status.jsonl.
+#
+# Rule: if the run's LATEST `runtime-resolved` row logged `ghOk:false` at
+# Step 1 AND this close used a mapped (non-gh) TRANSPORT, at least one
+# `transport-fallback` row MUST already exist in STATUS_PATH — else Failure
+# Path. `TRANSPORT="gh"` is exempt (no fallback was needed).
+#
+# Args: STATUS_PATH (path to this run's status.jsonl, required). TRANSPORT
+# (the transport this close actually used, e.g. "gh" | "mcp", required).
+#
+# Returns 0 when the invariant holds (either GH_OK was true, TRANSPORT was
+# "gh", or a transport-fallback row is present). Returns 1 (loud) when
+# GH_OK=false + a mapped TRANSPORT closed WITHOUT a recorded fallback row —
+# route to Failure Path. Returns 2 if args are empty or STATUS_PATH is
+# missing/unreadable.
+# ---------------------------------------------------------------------------
+bkit_close_guard_cross_check() {
+  _bcx_status="$1"
+  _bcx_transport="$2"
+
+  if [ -z "$_bcx_status" ] || [ -z "$_bcx_transport" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_cross_check: STATUS_PATH and TRANSPORT must both be non-empty" >&2
+    return 2
+  fi
+  if [ ! -f "$_bcx_status" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_cross_check: status file '$_bcx_status' not found" >&2
+    return 2
+  fi
+
+  # NOTE: deliberately NOT `.ghOk // "unknown"` — jq's `//` alternative
+  # operator treats a JSON `false` value as falsy too, so that idiom would
+  # silently rewrite a real `ghOk:false` into the string "unknown" and this
+  # cross-check would never fire. Explicit null-check instead.
+  _bcx_gh_ok=$(jq -s -r '[.[] | select(.type=="runtime-resolved")] | last | .ghOk | if . == null then "unknown" else tostring end' "$_bcx_status" 2>/dev/null)
+  if [ -z "$_bcx_gh_ok" ]; then
+    echo "[bkit-close-guard] bkit_close_guard_cross_check: could not read status file '$_bcx_status'" >&2
+    return 2
+  fi
+
+  if [ "$_bcx_gh_ok" = "false" ] && [ "$_bcx_transport" != "gh" ]; then
+    _bcx_fallback_count=$(jq -s '[.[] | select(.type=="transport-fallback")] | length' "$_bcx_status" 2>/dev/null)
+    if [ -z "$_bcx_fallback_count" ] || [ "$_bcx_fallback_count" -eq 0 ]; then
+      echo "[bkit-close-guard] D25: runtime-resolved logged ghOk=false and this close used transport '$_bcx_transport', but no transport-fallback row exists in '$_bcx_status'" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT
+#
+# Prints one `transport-fallback` status.jsonl row (pure — does NOT write to
+# any file; caller redirects, same convention as `bkit_runtime_row`). Emit
+# ONE row per gh->MCP transition (bounded max 1/run, D13); read back by
+# `bkit_close_guard_cross_check` (D25).
+#
+# Args, all required: FROM (the gh command that was unavailable/unauthed),
+# TO (the mapped MCP tool used instead), REASON (why — e.g. "GH_OK=false"),
+# ASSERTED_BY (how the fallback's success was independently confirmed),
+# AT (ISO-8601 timestamp, caller's responsibility).
+#
+# Returns 2 (nothing on stdout) if any arg is empty.
+# ---------------------------------------------------------------------------
+bkit_transport_fallback_row() {
+  _btf_from="$1"
+  _btf_to="$2"
+  _btf_reason="$3"
+  _btf_asserted_by="$4"
+  _btf_at="$5"
+
+  if [ -z "$_btf_from" ] || [ -z "$_btf_to" ] || [ -z "$_btf_reason" ] || [ -z "$_btf_asserted_by" ] || [ -z "$_btf_at" ]; then
+    echo "[bkit-close-guard] bkit_transport_fallback_row: FROM, TO, REASON, ASSERTED_BY and AT must all be non-empty" >&2
+    return 2
+  fi
+
+  printf '{"type":"transport-fallback","from":"%s","to":"%s","reason":"%s","assertedBy":"%s","at":"%s"}\n' \
+    "$(printf '%s' "$_btf_from" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$_btf_to" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$_btf_reason" | sed 's/"/\\"/g')" \
+    "$(printf '%s' "$_btf_asserted_by" | sed 's/"/\\"/g')" \
+    "$_btf_at"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# bkit_close_transport_row SHAPE SHA SCAN_RESULT AT
+#
+# Prints one `close-transport` status.jsonl row (pure, same convention).
+# Records which of the 3 close shapes (A/B/C, design docs) ran, the SHA that
+# landed on `dev`, and the D24 post-close scan's outcome — the Close
+# Workflow's own audit trail entry, transport-agnostic.
+#
+# Args, all required: SHAPE ("A" | "B" | "C"), SHA (the landed commit),
+# SCAN_RESULT ("clean" | "skip-token-found" — the `bkit_close_guard_scan_body`
+# outcome), AT (ISO-8601 timestamp, caller's responsibility).
+#
+# Returns 2 (nothing on stdout) if any arg is empty.
+# ---------------------------------------------------------------------------
+bkit_close_transport_row() {
+  _bct_shape="$1"
+  _bct_sha="$2"
+  _bct_scan_result="$3"
+  _bct_at="$4"
+
+  if [ -z "$_bct_shape" ] || [ -z "$_bct_sha" ] || [ -z "$_bct_scan_result" ] || [ -z "$_bct_at" ]; then
+    echo "[bkit-close-guard] bkit_close_transport_row: SHAPE, SHA, SCAN_RESULT and AT must all be non-empty" >&2
+    return 2
+  fi
+
+  printf '{"type":"close-transport","shape":"%s","sha":"%s","scanResult":"%s","at":"%s"}\n' \
+    "$_bct_shape" "$_bct_sha" "$_bct_scan_result" "$_bct_at"
+  return 0
+}
