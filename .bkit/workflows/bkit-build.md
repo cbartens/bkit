@@ -359,7 +359,7 @@ description: "Build Feature — Autonomous implementation"
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"build", step:"build-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-input.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup bkit [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 8. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -1383,6 +1383,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
        ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+   # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+   CLOSE_TRANSPORT="gh"
+   bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
+   case "$SCAN_RC" in
+     0) SCAN_RESULT="clean" ;;
+     1) SCAN_RESULT="skip-token-found" ;;
+     *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+   esac
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
+   bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
    ```
 9. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.

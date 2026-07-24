@@ -1177,10 +1177,34 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
          (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
      case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+     # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+     CLOSE_TRANSPORT="gh"
+     bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
+     case "$SCAN_RC" in
+       0) SCAN_RESULT="clean" ;;
+       1) SCAN_RESULT="skip-token-found" ;;
+       *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+     esac
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
+     bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
    else
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-close-guard] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
      jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
        '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
+     # --- Close shape B (LOCAL mode, direct push): D24 scan + D25 cross-check + close-transport row (#341 T10) ---
+     CLOSE_TRANSPORT="gh"
+     bkit_close_guard_scan_body "$PARENT_SHA"; SCAN_RC=$?
+     case "$SCAN_RC" in
+       0) SCAN_RESULT="clean" ;;
+       1) SCAN_RESULT="skip-token-found" ;;
+       *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PARENT_SHA" >&2; exit 1 ;;
+     esac
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
+     bkit_close_transport_row "B" "$PARENT_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PARENT_SHA carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
    fi
    ```
 3. Capture branch state:
@@ -1276,6 +1300,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+   # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+   CLOSE_TRANSPORT="gh"
+   bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
+   case "$SCAN_RC" in
+     0) SCAN_RESULT="clean" ;;
+     1) SCAN_RESULT="skip-token-found" ;;
+     *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+   esac
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
+   bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
    ```
 9. <!-- bkit:tracker github start -->
    No issue changes.

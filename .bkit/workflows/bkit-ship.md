@@ -25,7 +25,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
-> - **Status branch:** Steps 1-8 commit status.jsonl on `feat/{FID}` (`$(git rev-parse --show-toplevel)/.../status.jsonl`); Steps 9-13 append to the dev copy (`$REPO_ROOT/.../status.jsonl`). `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
+> - **Status branch:** Steps 1-8 commit status.jsonl on `feat/{FID}` (`$(git rev-parse --show-toplevel)/.../status.jsonl`); Steps 9-13 append to the dev copy (`$REPO_ROOT/.../status.jsonl`) when `CAN_PUSH_DEV=true` (D16/Risk 8 — otherwise the status/telemetry tail stays on the current branch; the code merge already landed server-side at Step 6). `dev` commit and push (mode 1/2) ONCE per run: Close → `docs({FID}): ship DONE` (no `[skip ci]` — §6d/OQ-D, a knowing CI-cost reversal: the PR's own CI already validated the merged content, so this fires an extra full CI run on `dev`); **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` (Failure Path aborts stay skip-ci — out of §6d's scope, no PR title ever carries them).
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `CAN_WORKTREE=true`) or adopts the current branch in place (`CAN_WORKTREE=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -587,10 +587,10 @@ description: "Ship Feature — Autonomous merge and archive"
        sleep 10
      done
      trap 'rm -f "$DEVLOCK"' EXIT
-     git -C "$WT" status --short
-     git -C "$WT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-     git -C "$WT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
-       || git -C "$WT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$REPO_ROOT" status --short
+     git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$REPO_ROOT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
 3. Run HEAD-Subject Assertion:
@@ -823,39 +823,55 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Run only if** `state` = MERGED.
 
-1. Switch to `dev` and fast-forward:
+1. Switch to `dev` and fast-forward — skipped when `CAN_PUSH_DEV=false` (D16/Risk 8: mode 3's proxy blocks a local `dev` push; local `dev` is never ahead there, so the sync is a no-op — the `core.bare` flip stays unconditional, no-op where already false):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
-   DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
-   DEADLINE=$(( $(date +%s) + 600 ))
-   until (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
-     DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
-     [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
-     [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
-     sleep 10
-   done
-   trap 'rm -f "$DEVLOCK"' EXIT
-   git checkout dev
-   [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
-   git fetch origin dev
-   AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
-   if [ "$AHEAD" -gt 0 ]; then
-     AHEAD_NON_SKIP=$(git log --format=%s origin/dev..dev | grep -cv '\[skip ci\]' || true)
-     [ "$AHEAD_NON_SKIP" -gt 0 ] && {
-       echo "Local dev is $AHEAD commits ahead of origin/dev, $AHEAD_NON_SKIP of them without [skip ci]:" >&2
-       git log --oneline origin/dev..dev | grep -v '\[skip ci\]' >&2
-       echo "Ship will not push these for you: a CI run on dev can cancel the in-flight run validating this merge." >&2
-       echo "Reconcile manually, then re-run ship: git -C \"$REPO_ROOT\" pull --rebase origin dev && git -C \"$REPO_ROOT\" push origin dev" >&2
-       exit 1
-     }
-     git pull --rebase origin dev
-     git push origin dev
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
+   bkit_runtime_assert_resolved || exit 2
+   if [ "$CAN_PUSH_DEV" != "true" ]; then
+     echo "[bkit-ship] CAN_PUSH_DEV=false (RUNTIME=$RUNTIME) — skipping local dev checkout/sync; the merge already landed server-side (Step 6)" >&2
    else
-     git pull --ff-only origin dev
+     DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
+     DEADLINE=$(( $(date +%s) + 600 ))
+     until (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
+       DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
+       [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
+       [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
+       sleep 10
+     done
+     trap 'rm -f "$DEVLOCK"' EXIT
+     # NOTE: intentionally NOT bkit_close_guard_checkout here — its EXIT trap
+     # reverts to the pre-checkout branch once THIS block's process exits,
+     # which would undo staying on dev for ship Steps 10-13 (they operate at
+     # REPO_ROOT assuming dev remains checked out) and would also clobber the
+     # DEVLOCK-removal trap above (bash `trap ... EXIT` replaces, not chains).
+     # The double-guard CONDITION still applies — this branch only runs when
+     # CAN_PUSH_DEV=true, and CAN_WORKTREE=true accompanies it on every
+     # runtime row (local/actions) — asserted explicitly for defence-in-depth.
+     [ "$CAN_WORKTREE" = "true" ] && [ "$CAN_PUSH_DEV" = "true" ] || { echo "[bkit-close-guard] D23 double-guard: CAN_WORKTREE='$CAN_WORKTREE' CAN_PUSH_DEV='$CAN_PUSH_DEV' — refusing local dev checkout" >&2; exit 1; }
+     git checkout dev
+     [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
+     git fetch origin dev
+     AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
+     if [ "$AHEAD" -gt 0 ]; then
+       AHEAD_NON_SKIP=$(git log --format=%s origin/dev..dev | grep -cv '\[skip ci\]' || true)
+       [ "$AHEAD_NON_SKIP" -gt 0 ] && {
+         echo "Local dev is $AHEAD commits ahead of origin/dev, $AHEAD_NON_SKIP of them without [skip ci]:" >&2
+         git log --oneline origin/dev..dev | grep -v '\[skip ci\]' >&2
+         echo "Ship will not push these for you: a CI run on dev can cancel the in-flight run validating this merge." >&2
+         echo "Reconcile manually, then re-run ship: git -C \"$REPO_ROOT\" pull --rebase origin dev && git -C \"$REPO_ROOT\" push origin dev" >&2
+         exit 1
+       }
+       git pull --rebase origin dev
+       git push origin dev
+     else
+       git pull --ff-only origin dev
+     fi
+     pnpm install --frozen-lockfile
    fi
-   pnpm install --frozen-lockfile
    ```
    **If** exit non-zero → **Failure Path**.
 2. Update status:
@@ -1112,14 +1128,17 @@ description: "Ship Feature — Autonomous merge and archive"
      sleep 10
    done
    trap 'rm -f "$DEVLOCK"' EXIT
-   git -C "$REPO_ROOT" checkout dev
-   [ "$(git -C "$REPO_ROOT" branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git -C "$REPO_ROOT" branch --show-current)') — aborting dev ops" >&2; exit 1; }
-   WT="$REPO_ROOT"
-   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   STATS="$WT/.bkit/stats.jsonl"
-   FRICTION="$WT/.bkit/friction.jsonl"
-   (cd "$WT" && pnpm bkit comply --phase=ship) || echo "[bkit-comply] grader unavailable, skipping"
-   PARENT_SHA=$(git -C "$WT" rev-parse HEAD)
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
+   bkit_runtime_assert_resolved || exit 2
+   if [ "$CAN_PUSH_DEV" = "true" ]; then
+     git -C "$REPO_ROOT" checkout dev
+     [ "$(git -C "$REPO_ROOT" branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git -C "$REPO_ROOT" branch --show-current)') — aborting dev ops" >&2; exit 1; }
+   else
+     echo "[bkit-ship] CAN_PUSH_DEV=false (RUNTIME=$RUNTIME) — skipping local dev checkout/push for the close-workflow status/telemetry tail; recorded on the current branch instead" >&2
+   fi
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"ship", step:"ship-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
@@ -1187,12 +1206,16 @@ description: "Ship Feature — Autonomous merge and archive"
      --argjson coverage "$COVERAGE" \
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   git -C "$WT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   git -C "$WT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   LOCK="$WT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
+   git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   git -C "$WT" push origin dev || { echo "dev push failed" >&2; exit 1; }
+   if [ "$CAN_PUSH_DEV" = "true" ]; then
+     git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
+   else
+     echo "[bkit-ship] CAN_PUSH_DEV=false — close-workflow status/telemetry commit stays local to the current branch (D16/Risk 8); the code merge already landed server-side at Step 6" >&2
+   fi
    ```
 3. <!-- bkit:tracker github start -->
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
@@ -1245,8 +1268,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Squash-merge CI run completed and not failed (`RUN_STATUS`, `RUN_CONCLUSION`)
 - [ ] Test tiers green (`TESTS_NOT_OK` empty)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
-- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
-- [ ] Changes pushed to `dev` with `bkit [skip ci]`
+- [ ] Changes pushed to `dev` (no `[skip ci]` — §6d/OQ-D) when `CAN_PUSH_DEV=true`; else close-workflow commit stays on the current branch (D16/Risk 8)
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
 
 <!-- bkit:tracker true start -->

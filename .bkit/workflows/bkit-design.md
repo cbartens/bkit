@@ -24,7 +24,7 @@ description: "Design Feature — Autonomous design phase"
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
-> - **Status branch:** design status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle `dev` push. State reaches `dev` once via the Close Workflow squash-merge → `docs({FID}): design DONE bkit [skip ci]`. Failure Path appends `workflow-failed` to the retained worktree copy (NO `dev` push); the tracker comment carries the failure signal.
+> - **Status branch:** design status.jsonl is committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle `dev` push. State reaches `dev` once via the Close Workflow's PR merge (D5(a) — gh-primary / `merge_pull_request`-fallback) → `docs({FID}): design DONE` (no `[skip ci]` — §6d/OQ-D: the token would otherwise land as the PR title and fail the PR-title assertion; this is a knowing CI-cost reversal — the docs-only close now fires full CI on `dev`). Failure Path appends `workflow-failed` to the retained worktree copy (NO `dev` push); the tracker comment carries the failure signal.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `CAN_WORKTREE=true`) or adopts the current branch in place (`CAN_WORKTREE=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -577,7 +577,7 @@ description: "Design Feature — Autonomous design phase"
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
 6. Assert `{BRANCH}` non-empty and push (force-with-lease on personal branch, plain on `dev` / `main`):
    ```bash
@@ -766,55 +766,58 @@ description: "Design Feature — Autonomous design phase"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
-3. Squash-merge to dev, write close telemetry, commit, push, and clean up:
+3. Close shape A — land docs on `dev` via a skip-token-free PR merge (D5(a), #341 Flow 4/T13; supersedes the local `merge --squash -X ours` + direct `dev` push, which cannot run in `CAN_PUSH_DEV=false` runtimes and — per §6d — is why phase-close subjects no longer carry `[skip ci]`, since the token would otherwise land as the PR title and fail the PR-title assertion below):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
-   DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
-   DEADLINE=$(( $(date +%s) + 600 ))
-   until (set -C; printf '%s design {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
-     DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
-     [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
-     [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
-     sleep 10
-   done
-   trap 'rm -f "$DEVLOCK"' EXIT
-   git checkout dev
-   [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
+   bkit_runtime_assert_resolved || exit 2
    STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
    [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
-   git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git merge --squash -X ours "feat/{FID}"
-   STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$' || true)
-   [ -n "$STRAY" ] && { echo "design close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
-   WT=$(git rev-parse --show-toplevel)
-   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   STATS="$WT/.bkit/stats.jsonl"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-   PARENT_SHA=$(git rev-parse HEAD)
-   COUNTER_VALUE=$(jq -s --arg wf "design" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
-   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
-   jq -nc \
-     --arg repo "$REPO_SLUG" \
-     --arg bkitVersion "$BKIT_VER" \
-     --arg step "design-close-workflow" \
-     --arg counterName "DESIGN_ATTEMPT" \
-     --argjson counterValue "$COUNTER_VALUE" \
-     --arg counterSource "shell-bus" \
-     --arg parentSha "$PARENT_SHA" \
-     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
-     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID} >/dev/null
-   git add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   git commit --allow-empty -m "docs({FID}): design DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   git push origin dev || { echo "dev push failed" >&2; exit 1; }
-   git show "dev:docs/plans/$(date +%Y%m)/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
-   git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
-   git branch -D "feat/{FID}" 2>/dev/null || true
-   git push origin --delete "feat/{FID}" 2>/dev/null || true
-   git worktree prune
+   git fetch origin dev "{BRANCH}"
+   # Transport-independent prologue (Flow 4): STRAY guard FIRST, over the UNFILTERED diff — NOT
+   # the allowlist-computed push set (that construction is a tautology that can never fail).
+   STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/friction\.jsonl$' || true)
+   [ -n "$STRAY" ] && { echo "design close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+   EXISTING_PR=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   if [ -n "$EXISTING_PR" ]; then
+     PR_NUMBER="$EXISTING_PR"
+   else
+     gh pr create --base dev --head "{BRANCH}" --title "docs({FID}): design DONE" --body "" || { echo "gh pr create failed" >&2; exit 1; }
+     PR_NUMBER=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   fi
+   [ -n "$PR_NUMBER" ] || { echo "Could not resolve PR number for {BRANCH} -> dev" >&2; exit 1; }
+   PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title)
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2; exit 1
+   fi
+   gh pr merge "$PR_NUMBER" --squash --delete-branch --subject "$PR_TITLE" --body "" || { echo "gh pr merge failed" >&2; exit 1; }
+   MERGE_STATE=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+   [ "$MERGE_STATE" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED (state=$MERGE_STATE)" >&2; exit 1; }
+   LANDED_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq .mergeCommit.oid)
+   [ -n "$LANDED_SHA" ] || { echo "Could not resolve landed SHA for PR $PR_NUMBER" >&2; exit 1; }
+   git fetch origin dev
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   CLOSE_TRANSPORT="gh"
+   bkit_close_guard_scan_body "$LANDED_SHA" dev; SCAN_RC=$?
+   case "$SCAN_RC" in
+     0) SCAN_RESULT="clean" ;;
+     1) SCAN_RESULT="skip-token-found" ;;
+     *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $LANDED_SHA" >&2; exit 1 ;;
+   esac
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
+   bkit_close_transport_row "A" "$LANDED_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $LANDED_SHA carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
+   git show "origin/dev:docs/plans/$(date +%Y%m)/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
+   if [ "$CAN_WORKTREE" = "true" ]; then
+     git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
+     git branch -D "{BRANCH}" 2>/dev/null || true
+     git worktree prune
+   else
+     echo "[bkit-design] adopt mode — no local worktree/branch to clean up ({BRANCH} already deleted server-side by --delete-branch)" >&2
+   fi
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
@@ -870,6 +873,8 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
+- [ ] Changes merged to `dev` via PR (D5(a); no `[skip ci]` in the PR title/merge subject — §6d/OQ-D)
+- [ ] D24 post-close scan clean + D25 cross-check passed + `close-transport` row recorded (shape A)
 - [ ] Worktree removed and feature branch deleted (mint mode only — adopt mode has no worktree/branch to remove)
 - [ ] Final return displayed (`design-summary.md` content verbatim)
 
