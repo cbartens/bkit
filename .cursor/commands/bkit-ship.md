@@ -959,7 +959,7 @@
    LINES_CHANGED=$((LINES_ADDED + LINES_DELETED))
    DEFERRALS_COUNT=$(jq -rs '[.[] | select(.kind=="deferral") | .key] | unique | length' "$REPO_ROOT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_COUNT=$((DEFERRALS_COUNT + 0))
    FAILURES_COUNT=$(jq -rs '[.[] | select(.kind=="failure") | .key] | unique | length' "$REPO_ROOT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_COUNT=$((FAILURES_COUNT + 0))
-   TASK_COUNT=$(grep -c '^\- \[' "$REPO_ROOT/docs/plans/{YYYYMM}/{FID}-plan"*.md 2>/dev/null || echo "0"); TASK_COUNT=$((TASK_COUNT + 0))
+   TASK_COUNT=$(grep -h '^\- \[' "$REPO_ROOT/docs/plans/{YYYYMM}/{FID}-plan"*.md 2>/dev/null | wc -l | tr -dc '0-9'); TASK_COUNT=${TASK_COUNT:-0}
    SHIP_START=$(jq -rs '[.[] | select(.type=="workflow-started" and .workflow=="ship")] | last | .at // ""' "$STATUS" 2>/dev/null || echo "")
    if [ -n "$SHIP_START" ]; then
      START_S=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$SHIP_START" +%s 2>/dev/null || date -d "$SHIP_START" +%s 2>/dev/null || echo "0")
