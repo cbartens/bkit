@@ -45,3 +45,5 @@
 {"type":"step-done","workflow":"build","step":"build-challenge-reconcile","status":"DONE","verdict":"CONCERNS","attempt":0,"failures":0,"at":"2026-07-24T02:27:43Z","parentSha":"1e30f61dcd96e96ee3b055fe22b1fb91cc901e66","artifacts":["docs/plans/202607/logs/341-three-runtimes/build-challenge.md"]}
 {"type":"step-done","workflow":"build","step":"build-challenge-remediate","status":"DONE","verdict":"FAIL","attempt":1,"at":"2026-07-24T02:33:11Z","parentSha":"2a9953921ae47b6d699e3de5a88048646c07c63d","artifacts":["docs/plans/202607/logs/341-three-runtimes/build-challenge-remediate-log.md"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-07-24T02:33:51Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-07-24T04:07:23Z","parentSha":"c6d499c2957e1210d231ee4aad4547d080a3873c","note":"resume after manual F4 remediation (challenge FAIL cleared)"}
+{"type":"step-done","workflow":"build","step":"build-challenge-tests","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-24T04:16:40Z","parentSha":"c6d499c2957e1210d231ee4aad4547d080a3873c","artifacts":["docs/plans/202607/logs/341-three-runtimes/build-challenge-tests.md"]}

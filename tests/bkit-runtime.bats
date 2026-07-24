@@ -251,6 +251,71 @@ EOF
   [[ "$output" == *"ATTEMPTS=0"* ]]
 }
 
+@test "wait_ci: neither 'timeout' nor 'gtimeout' on PATH -- falls back to a plain sleep, RESULT=none (regression, F2 -- stock macOS lacks GNU timeout)" {
+  # Fake `gh`/`sleep` use an ABSOLUTE `#!/bin/sh` shebang (not `#!/usr/bin/env
+  # sh`) — PATH inside the child is deliberately FAKE_BIN-only (no
+  # `timeout`/`gtimeout`, and no `sh` either), so `env sh` lookup itself
+  # would fail here.
+  cat >"$FAKE_BIN/gh" <<'EOF'
+#!/bin/sh
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  echo "0"
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$FAKE_BIN/gh"
+  cat >"$FAKE_BIN/sleep" <<'EOF'
+#!/bin/sh
+exec /bin/sleep "$@"
+EOF
+  chmod +x "$FAKE_BIN/sleep"
+  # `bash` itself is resolved via its ABSOLUTE path (captured before PATH is
+  # restricted below) — PATH inside the child is deliberately FAKE_BIN-only
+  # so no real 'timeout'/'gtimeout' on this machine can mask the fallback.
+  BASH_BIN="$(command -v bash)"
+  run env -i PATH="$FAKE_BIN" "$BASH_BIN" -c ". '$RUNTIME_SH' && bkit_wait_ci 1 2 1; printf 'RESULT=%s ATTEMPTS=%s ELAPSED=%s\n' \"\$CI_WAIT_RESULT\" \"\$CI_WAIT_ATTEMPTS\" \"\$CI_WAIT_ELAPSED\""
+  [ "$status" -eq 0 ]
+  # Must NOT be misdiagnosed as a D22 blocked-sleep abort (RESULT=err) just
+  # because no timeout wrapper exists — it must complete the poll budget.
+  [[ "$output" == *"RESULT=none"* ]]
+  [[ "$output" == *"ATTEMPTS=2"* ]]
+  [[ "$output" == *"ELAPSED=2"* ]]
+}
+
+@test "wait_ci: resolves 'gtimeout' when 'timeout' is absent from PATH (regression, F2 -- homebrew coreutils naming)" {
+  MARKER="$FAKE_BIN/GTIMEOUT_CALLED"
+  cat >"$FAKE_BIN/gh" <<'EOF'
+#!/bin/sh
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  echo "0"
+  exit 0
+fi
+exit 1
+EOF
+  chmod +x "$FAKE_BIN/gh"
+  cat >"$FAKE_BIN/sleep" <<'EOF'
+#!/bin/sh
+exec /bin/sleep "$@"
+EOF
+  chmod +x "$FAKE_BIN/sleep"
+  cat >"$FAKE_BIN/gtimeout" <<EOF
+#!/bin/sh
+/usr/bin/touch "$MARKER"
+shift
+exec "\$@"
+EOF
+  chmod +x "$FAKE_BIN/gtimeout"
+  # PATH carries FAKE_BIN only (no real 'timeout') -- gtimeout must be
+  # resolved and invoked as the wrapper. `bash` is resolved via absolute
+  # path (see fallback test above) since PATH excludes the real bash dir.
+  BASH_BIN="$(command -v bash)"
+  run env -i PATH="$FAKE_BIN" "$BASH_BIN" -c ". '$RUNTIME_SH' && bkit_wait_ci 1 2 1; printf 'RESULT=%s\n' \"\$CI_WAIT_RESULT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RESULT=none"* ]]
+  [ -e "$MARKER" ]
+}
+
 # ---------------------------------------------------------------------------
 # 7. D24 — post-close skip-token scan of the LANDED commit body (row 7)
 # ---------------------------------------------------------------------------
@@ -259,6 +324,61 @@ EOF
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [skip ci]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 flags [ci skip] (regression, F1 -- previously missed 3 of 5 GitHub tokens)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [ci skip]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 flags [no ci] (regression, F1)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [no ci]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 flags [skip actions] (regression, F1)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [skip actions]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 flags [actions skip] (regression, F1)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [actions skip]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"D24"* ]]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: D24 flags a suppression token case-insensitively (regression, F1 -- call site widened to -qiE)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [SKIP CI]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
@@ -366,6 +486,27 @@ EOF
   # The bash -c process from `run` has already exited by the time `run`
   # returns — its EXIT trap must have already restored the original branch.
   [ "$(git -C "$REPO" branch --show-current)" = "main" ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: F3 regression -- a branch name with embedded \$(...) cannot execute code when the EXIT trap fires" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+  MARKER="$REPO/INJECTED"
+  # `git check-ref-format` permits ' $ ( ) in branch names (only space,
+  # ~^:?*[\ and control chars are barred — no literal space, so `$IFS` is
+  # used in place of one) — this name is crafted to break out of a
+  # DOUBLE-quoted trap string (the pre-fix shape) via its embedded
+  # single-quotes, landing a `$(...)` command substitution that would
+  # re-execute at EXIT-trap-fire-time re-parse. Under the fix (single-quoted
+  # trap body — value expands as a literal argument, never re-parsed), the
+  # payload never runs.
+  BRANCH="x'\$(touch\$IFS$MARKER)'y"
+  git -C "$REPO" checkout -q -b "$BRANCH"
+  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout main"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MARKER" ]
   rm -rf "$REPO"
 }
 
