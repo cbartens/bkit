@@ -2,7 +2,7 @@
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
 effort: xhigh
-model: claude-opus-4-8
+model: claude-opus-5
 tools:
   - Read
   - Grep

@@ -2,7 +2,7 @@
 name: bkit-utility-audit-codebase
 description: Senior architect reviewing a codebase against best practices and project goals.
 effort: high
-model: claude-opus-4-8
+model: claude-opus-5
 tools:
   - Read
   - Grep

@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
-model: claude-opus-4-8-thinking-high
+model: claude-opus-5-thinking-high
 tools:
   - Read
   - Grep

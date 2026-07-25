@@ -123,14 +123,16 @@ Cursor model assignment: § Models below — per-agent lookup, NOT effort-tier d
 
 - **`composer-2.5`** ($) — fast/cheap: build executors, summarizers, ship-summary, utilities, orchestrator plumbing. First-party pool.
 - **`cursor-grok-4.5-high`** ($$) — cross-family diversity (plan generation, parallel-pair slot-2). First-party pool (Cursor + SpaceXAI); Coding Agent Index parity with GPT-5.5 at lower per-task cost. `-fast` variant exists. GPT-5.x (`gpt-5.6-sol-high`, …) on API pool as diversity hedge — not currently pinned.
-- **`claude-opus-*-thinking-high`** ($$$) — deep review, audit, design synthesis, debug diagnosis, ship docs. Current `claude-opus-4-8-thinking-high`; `-fast` + prior-gen (`claude-opus-4-7-thinking-high`, legacy `claude-4.6-opus-high-thinking`) = availability hedges. API pool.
+- **`claude-opus-*-thinking-high`** ($$$) — deep review, audit, design synthesis, debug diagnosis, ship docs. Current `claude-opus-5-thinking-high`; `-fast` + prior-gen (`claude-opus-4-8-thinking-high`, `claude-opus-4-7-thinking-high`, legacy `claude-4.6-opus-high-thinking`) = availability hedges. API pool.
 - **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — Fable 5, tier above Opus. **Available, not adopted** (see `prompts.md` § Effort → Claude model mapping).
 - **No Sonnet** on Cursor — never pin `claude-*-sonnet-*` ID.
 
 Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (agent-specific API key — general keys can HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor models churn.** API currently **no Sonnet** — former `claude-4.6-sonnet-thinking` pin gone; build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) offered but not adopted.
 
 > [!NOTE]
-> **Subagent model IDs — corrected to live API format.** Prior pin `claude-4.7-opus-high-thinking` used word-order API never listed (`claude-opus-4-N-thinking-high`; legacy 4.6 kept old order) — likely root of "may not be in subagent-allowed set". `prompts.md` `Cursor model` column now pins `claude-opus-4-8-thinking-high` / `cursor-grok-4.5-high` / `composer-2.5`, confirmed in live `/v0/models` (2026-07-21). Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
+> **Subagent model IDs — corrected to live API format.** Prior pin `claude-4.7-opus-high-thinking` used word-order API never listed (`claude-opus-4-N-thinking-high`; legacy 4.6 kept old order) — likely root of "may not be in subagent-allowed set". `prompts.md` `Cursor model` column pinned `claude-opus-4-8-thinking-high` / `cursor-grok-4.5-high` / `composer-2.5`, confirmed in live `/v0/models` (2026-07-21). Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
+>
+> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day; `claude-opus-4-8-thinking-high` stays available as a hedge (see catalog bullets above). All `claude-opus-4-8` → `claude-opus-5` pins bumped across `prompts.md`, the 24 Opus-tier `.bkit/prompts/*.md` frontmatter files, and the hand-authored `utility-pre-release-check` agent. (#205)
 
 ### Per-subagent model assignment
 

@@ -2,7 +2,7 @@
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
 effort: xhigh
-model: claude-opus-4-8
+model: claude-opus-5
 tools:
   - Read
   - Grep
