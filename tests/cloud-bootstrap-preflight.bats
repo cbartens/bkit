@@ -3,7 +3,7 @@
 # cloud-bootstrap.sh (#341 T5 / C2, Derived Test Matrix row 13).
 #
 # Covers: prefers the sanctioned GH_TOKEN env var over `--with-token`;
-# records GH_OK loudly (always, not just on failure); emits a loud
+# records RUNTIME_GITHUBCLI loudly (always, not just on failure); emits a loud
 # NON-BLOCKING dual-lane signal when neither gh nor the GitHub MCP server
 # (both keyed off GH_BKIT_TOKEN) can authenticate — never a hook hard-stop
 # (SessionStart hooks cannot block the session).
@@ -69,23 +69,23 @@ run_bootstrap() {
   [[ "$output" == *"gh auth login --with-token"* ]]
 }
 
-@test "records GH_OK=true loudly when gh is authed" {
+@test "records RUNTIME_GITHUBCLI=true loudly when gh is authed" {
   run run_bootstrap env GH_TOKEN=sanctioned-token FAKE_GH_AUTH_OK=1
-  [[ "$output" == *"gh-preflight: GH_OK=true"* ]]
+  [[ "$output" == *"gh-preflight: RUNTIME_GITHUBCLI=true"* ]]
 }
 
-@test "records GH_OK=false loudly when gh is not authed" {
+@test "records RUNTIME_GITHUBCLI=false loudly when gh is not authed" {
   run run_bootstrap env FAKE_GH_AUTH_OK=0
-  [[ "$output" == *"gh-preflight: GH_OK=false"* ]]
+  [[ "$output" == *"gh-preflight: RUNTIME_GITHUBCLI=false"* ]]
 }
 
-@test "emits the dual-lane WARNING (non-blocking) when GH_OK=false and no credential env is set at all" {
+@test "emits the dual-lane WARNING (non-blocking) when RUNTIME_GITHUBCLI=false and no credential env is set at all" {
   run run_bootstrap env FAKE_GH_AUTH_OK=0
   [ "$status" -eq 0 ]
   [[ "$output" == *"DUAL-LANE WARNING"* ]]
 }
 
-@test "does NOT emit the dual-lane WARNING when GH_OK=false but GH_BKIT_TOKEN is set (MCP lane still viable)" {
+@test "does NOT emit the dual-lane WARNING when RUNTIME_GITHUBCLI=false but GH_BKIT_TOKEN is set (MCP lane still viable)" {
   run run_bootstrap env GH_BKIT_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
   [[ "$output" != *"DUAL-LANE WARNING"* ]]
 }

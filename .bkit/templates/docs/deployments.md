@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-{{BKIT_MANAGED_MARKER}}
+<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -113,7 +113,7 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 
 **Where to put the tag — read carefully:**
 
-- **Direct push to `dev` or `{{DEFAULT_BRANCH}}`** (no PR): tag in **commit message** (`github.event.head_commit.message`).
+- **Direct push to `dev` or `main`** (no PR): tag in **commit message** (`github.event.head_commit.message`).
 - **Feature branch with open PR** (open / synchronize / edit): tag in **PR title** (`github.event.pull_request.title`). Commit message NOT consulted — workflow fires on `pull_request`, not `push`.
 - **Both surfaces** checked by `contains()` in env block — marker in either wins for its event. Pick right one: `[verbose ci]` in feature-branch commit message has no effect — only PR title read.
 - **`workflow_dispatch`**: neither field populated; tags don't apply. Use workflow_dispatch input checkboxes if present.
@@ -135,14 +135,14 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 
 Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
 
-## Autonomous phase-close prerequisites (#341)
+## Autonomous phase-close prerequisites
 
-Every phase's Close Workflow lands work on `dev` autonomously — locally (`git push origin dev`) when the runtime can (`CAN_PUSH_DEV=true`), or via a mapped gh→MCP fallback tool when it cannot. Both paths assume two repo settings are already correct; neither is pre-flighted (no admin-scope token requirement at Step 1) — the dependency is asserted structurally by the close path's own real push/merge failing loudly, not probed in advance:
+Design/plan Close Workflow lands docs on `dev` two ways. When the runtime can push `dev` (`RUNTIME_DEVPUSHES=true` — laptop, GitHub-Actions runner) it runs the local squash-merge and direct push: **no repo setting is required, and no PR is created**. When it cannot (cloud agent session, or an unclassified runtime) it opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted — no admin-scope token is required; the dependency asserts itself by the close's own merge failing loudly.
 
-- **Branch protection on `dev` permits the autonomous merge** — status-checks-only, no required human review. A rule requiring human approval blocks every phase close, on every runtime.
-- **"Automatically delete head branches" is enabled** (repo Settings → General). The gh→MCP fallback has no tool-level branch-delete equivalent (`merge_pull_request` carries no `delete_branch` field) — head-branch cleanup relies entirely on this repo setting when a close ran via the fallback transport.
+- **Branch protection on `dev` permits the autonomous merge** — no required human review. The PR-path merge does **not** wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
+- **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch` — `gh` also deletes the local branch, which fails when that branch is checked out in a worktree and returns non-zero _after_ a successful merge. Head-branch cleanup relies on the repo setting instead.
 
-Confirm both before adopting mode-3 (claude.ai cloud) autonomous closes.
+Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 
@@ -153,7 +153,7 @@ Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; read
 | --- | --- | --- | --- |
 | `none` | HEAD has `[skip ci]` / `[skip actions]`; or `cache.outputs.skip == 'true'` (SHA passed in last 7 days). | Nothing (workflow skipped entirely or short-circuited after the cache check). | All gates |
 | `partial` | Push to `dev` from a merged PR; routine chore commits without `[force build]`. | Typecheck, unit tests, integration tests, format check, prose + slop lint, bkit check. | Deploy, smoke, E2E. |
-| `full` | Push to `{{DEFAULT_BRANCH}}`; PR runs; or any commit with `[force build]` / `[force full]`. | Partial + deploy gate + (optional) Vercel preview await + E2E. | Smoke (runs as `workflow_run` after CI). |
+| `full` | Push to `main`; PR runs; or any commit with `[force build]` / `[force full]`. | Partial + deploy gate + (optional) Vercel preview await + E2E. | Smoke (runs as `workflow_run` after CI). |
 
 Composition guidance:
 
@@ -275,7 +275,7 @@ The shipped config:
 - For the `dockerfile` manager: image `FROM <image>:<tag>@sha256:<digest>` pins are refreshed on upstream releases and CVE disclosures (the tag stays inline so Renovate can map digest→tag). Installer fetches pinned by a paired **version + `sha256sum`** (the Vale tarball in `ci.yml`) or by a **commit SHA in a raw URL** (the actionlint download-script) are **not** Renovate-managed — it cannot recompute a tarball checksum — so bump those version/sha pairs by hand when you upgrade the tool.
 - For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
 - Carries no private-registry token itself — the `hostRules` token anchor for `npm.pkg.github.com` is seeded into the consumer-owned `renovate-local.json5` instead, so it survives `bkit upgrade` (this file is canonical-overwrite and would clobber a token added here). You must provision a read token there to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
-- `extends` a consumer-owned local preset (`local>{{REPO_SLUG}}//.github/renovate-local.json5`) so you can add repo-specific rules that survive `bkit install`/`bkit upgrade` (see § Customizing Renovate below). `renovate.json5` itself is bkit-managed and rewritten on every `bkit install` — hand-edits there are clobbered.
+- `extends` a consumer-owned local preset (`local>cbartens/bkit//.github/renovate-local.json5`) so you can add repo-specific rules that survive `bkit install`/`bkit upgrade` (see § Customizing Renovate below). `renovate.json5` itself is bkit-managed and rewritten on every `bkit install` — hand-edits there are clobbered.
 
 **Exemption — `bkit-cloud.yml`:** The bkit-canonical `bkit-cloud.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The `ignorePaths` entry above keeps consumer-side Renovate out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-cloud.yml`.
 
@@ -381,7 +381,7 @@ Leave the `token:` line in `.github/renovate-local.json5` **commented** — an u
 
 ### Customizing Renovate (renovate-local.json5)
 
-`.github/renovate.json5` is bkit-managed: `bkit install` rewrites the whole file, so any hand-edit there is clobbered on the next install. For repo-specific Renovate rules, edit **`.github/renovate-local.json5`** instead — a consumer-owned file bkit seeds once and never touches again (it is not a managed template, so neither `install` nor `upgrade` overwrites it). The bkit config pulls it in via `extends: ["local>{{REPO_SLUG}}//.github/renovate-local.json5"]` (the `{{REPO_SLUG}}` token resolves to your `owner/repo` from the `origin` remote at install time; the explicit `.json5` extension is required — an extensionless local preset resolves to `.json` and 404s, disabling the whole config).
+`.github/renovate.json5` is bkit-managed: `bkit install` rewrites the whole file, so any hand-edit there is clobbered on the next install. For repo-specific Renovate rules, edit **`.github/renovate-local.json5`** instead — a consumer-owned file bkit seeds once and never touches again (it is not a managed template, so neither `install` nor `upgrade` overwrites it). The bkit config pulls it in via `extends: ["local>cbartens/bkit//.github/renovate-local.json5"]` (the `cbartens/bkit` token resolves to your `owner/repo` from the `origin` remote at install time; the explicit `.json5` extension is required — an extensionless local preset resolves to `.json` and 404s, disabling the whole config).
 
 **Precedence — read this before relying on it.** Renovate evaluates `extends`-preset packageRules **before** the host config's own inline rules, and for any given setting the later (bkit's inline) rule wins. This means `renovate-local.json5` can:
 
@@ -434,3 +434,172 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 5. If a CVE has no impact on your usage pattern (e.g. dev-server-only vuln in a build tool that you never run as a server), dismiss in the GitHub UI with the **"Vulnerable code is not actually used"** reason and a one-line justification. Don't dismiss without documenting why.
 
 <!-- bkit:end -->
+
+## Project
+
+### `GH_BKIT_TOKEN_INSTALL` — presence matrix
+
+`GH_BKIT_TOKEN_INSTALL` (classic `read:packages`) required at four surfaces; missing any breaks install/CI. Phase 3 detectors mirror those four. Fifth surface only with Renovate — undetectable (Mend dashboard, off-repo). Do not confuse with **`GH_BKIT_TOKEN`** — broader fine-grained write PAT (GitHub MCP + self-hosted Renovate platform auth). `GH_BKIT_TOKEN` cannot auth GitHub Packages (fine-grained 403) — registry/lockfile stays on `GH_BKIT_TOKEN_INSTALL`. Self-hosted Renovate surface (repo Actions secret) also undetectable.
+
+<!-- prettier-ignore -->
+| Surface | Where to set | Symptom if missing | bkit detector |
+| --- | --- | --- | --- |
+| Local shell | `.bkit/.env` (gitignored, scaffolded by `bkit install`) → `GH_BKIT_TOKEN_INSTALL=<classic PAT>`; auto-loaded via direnv (`brew install direnv` and shell hook and `direnv allow`) | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1) | `detectShellToken` and `detectMissingDotenv` and `detectBlankDotenvKeys` (Phase 3) |
+| `.npmrc` (registry mapping only) | `@cbartens:registry=https://npm.pkg.github.com` — the auth token is **NOT** stored here; write it once to pnpm's user-level config: `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` (pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — see KN-CORE-7) | Missing registry mapping → 401; a leftover `_authToken` line → 401 and shadows the user-level token | `detectNpmrcAuth` and `detectNpmrcLegacyAuthToken` (Phase 3) |
+| GitHub Actions secret | `gh secret set GH_BKIT_TOKEN_INSTALL --body=$GH_BKIT_TOKEN_INSTALL` AND an install step that runs `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` before `pnpm install`, with `env: { GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }} }` | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` and `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` authenticates to GH Packages but the step is unwired) |
+| Vercel env (preview and production) | `vercel env add GH_BKIT_TOKEN_INSTALL preview` and `vercel env add GH_BKIT_TOKEN_INSTALL production`, **plus** a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install` (Vercel cannot run a pre-install shell step) | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance; without the installCommand the token never reaches pnpm's auth config | `detectVercelEnv("preview" \| "production")` (Phase 3) |
+| Renovate (Mend hosted, **only if `--renovate`**) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `renovate-local.json5`'s `hostRules` (consumer-owned, survives `bkit upgrade`). Self-hosted: `RENOVATE_HOST_RULES` env | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE` — Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard); surfaced in the `--renovate` Phase B checklist and § Renovate read-auth above |
+| Renovate self-hosted platform auth (**only if `--renovate=self`**) — the **general** `GH_BKIT_TOKEN` (same one that drives the MCP server), set here as a repo Actions secret; a **different** token from `GH_BKIT_TOKEN_INSTALL` | Repo Actions secret `GH_BKIT_TOKEN` — fine-grained PAT (Contents/PRs/Workflows/Issues **RW** and Metadata **R**), or a GitHub App token via `actions/create-github-app-token`; keep separate from `GH_BKIT_TOKEN_INSTALL` (least privilege) | No Renovate PRs open / the scheduled Actions run 401s. (With `GITHUB_TOKEN` instead, PRs open but never trigger CI, so `platformAutomerge` never fires.) | None — repo Actions secret bkit does not read; surfaced in the self-hosted activation checklist and § Self-hosted Renovate above |
+
+Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
+
+### Pre-push checklist
+
+Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically — `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1, 3–8) + `bkit-tests-unit` (gate 2):
+
+<!-- prettier-ignore -->
+| # | Gate | Command | Hook block | Failure mode |
+| --- | --- | --- | --- | --- |
+| 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
+| 2 | Unit and integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
+| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
+| 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
+| 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `.bkit/scripts/bkit-slop-delta.sh` materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
+| 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 7 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 8 | Workflow lint | `pnpm lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
+
+**CI-suppressor HEAD guard (pre-push, before gates):** non-`dev`/`main` branch + HEAD carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]` → probe `gh pr list --head <branch> --state open`. Open PR → **BLOCKED** (vacuously green checks); add clean trigger commit + re-push. No open PR → allowed (sanctioned `[skip ci]` for mid-loop status, abort handover). `gh` unavailable → warn + allow (manual-push backstop; workflow CI-Dispatch Gate covers close push).
+
+**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → skip `pnpm test` (Gate 2), run `pnpm typecheck && pnpm format:check` only. Gates 4–8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
+
+Pre-commit: `pnpm lint-staged && pnpm lint:prose` (staged files, not push). Enforcing slop gate: pre-push `pnpm slop:delta` (Gate 5); `pnpm lint:slop` report-only. CI re-runs prose + slop:delta in `bkit-tests-static`.
+
+Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed hook (skip-ci must not be HEAD when PR created). Genuinely broken gate (flaky external) → STOP, document blocker — do not push.
+
+### `dist/` commit policy
+
+Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
+
+- Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
+- CI `bkit-tests-static` "Verify Dist Freshness" (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
+- Consumer template `.bkit/templates/.github/workflows/ci.yml` omits freshness (tarball install, no recompile). Do not add there.
+- KN-7 for failure history.
+
+### `.husky/pre-push` bkit check gate
+
+**Tier 3 (seed-or-print)** — written once, never overwritten; no `# bkit:start`/`# bkit:end`. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm check:dist`, `pnpm lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
+
+- Repo-only lines at bottom; not in consumer template.
+- On failure: `pnpm bkit install` (drift), `pnpm build && git add dist/` (dist), fix workflow (actionlint); commit; push. `--no-verify` PROHIBITED.
+
+### Renovate — fencing bkit's own footprint
+
+The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that lands inside any repo using bkit. This repo dogfoods the **same** config (no divergence — `bkit check --renovate` enforces it). The fence has two parts:
+
+- `ignorePaths` includes `.bkit/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install` / `upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
+- A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade --latest` (or `--to=<version>`), which bumps the package AND re-syncs templates and pin in one atomic step (#296), never a bare `pnpm add`/Renovate version bump (which would leave the rendered mirrors stale), and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-cloud.yml` exemption.
+
+**Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.bkit/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.bkit/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
+
+See § Renovate activation above for consumer-reported dashboard noise.
+
+### CI trigger on final workflow push
+
+GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `[skip actions]`. PR branch → empty `statusCheckRollup` → vacuously green PR.
+
+**Rule:** last push to CI-validated ref → HEAD without CI-suppressor + confirmed CI run for pushed HEAD. **CI-Dispatch Gate** (`.bkit/workflows.md` § "CI-Dispatch Gate"): (1) pre-push HEAD-subject deny-list; (2) post-push `poll_dispatch` → run in `statusCheckRollup`, self-heal once via clean `re-trigger`, verdict `dispatched`/`self-healed`/`no-ci`/`unresolved`. KN-11: `[skip ci]` HEAD → empty rollup.
+
+**Poll anchors `bkit-tests` NAMESPACE, not lane name** — `test("bkit-tests|decide"; "i")`. Single-job anchor PROHIBITED. Alignment: `bkit-ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
+
+**Gate sites (2, not 3):** build Gate 17; debug Gate 10 PR-mode (sub-step 3) + LOCAL-mode (sub-step 9). Ship OUT — `SQUASH_SHA`-poll Step 13; CI-Dispatch there masks "essential tests skipped".
+
+**EC-1 (build Step 17):** before `gh pr create`, probe `gh pr list --head … --base dev`. Open PR → Failure Path (`EC-1: feat/{FID} already has open PR #N`). Probe fail → blind create.
+
+**EC-2 (build Failure Path + § Failure Path step 5):** before `[skip ci]` abort push, probe open PR. Open PR or probe fail → do NOT push; preserve remote HEAD. No PR → push. Probe fail inverts safe default.
+
+**Commit-tag taxonomy:**
+
+<!-- prettier-ignore -->
+| Tag | Suppressor? | Effect |
+| --- | --- | --- |
+| `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
+| `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — `worktree-setup`, `create-pr`, `summary` (design/plan), status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI and Vercel build even on docs-only paths. Escape hatch for migrations/etc. The former `bkit [skip build]` build-cancel tag was removed (#291) — docs-only commits self-cancel via the host's affected-detection build-cancel; the HEAD-Subject Assertion no longer references it (stack-agnostic — it enforces only platform-native CI suppressors). |
+| `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow and debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; treated as legitimate by the HEAD-Subject Assertion. |
+| `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
+
+<!-- prettier-ignore -->
+| Surface | Mechanic |
+| --- | --- |
+| build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Push fires `pull_request` synchronize. |
+| build / debug `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
+| build `create-pr` commit | `chore({FID}): create-pr bkit [skip ci]` — bookkeeping; no CI trigger. Fires after PR creation but before the close-workflow push. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID`. |
+
+All other docs-only intermediates (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) keep `bkit [skip ci]`. Only trailing `close-workflow` (build/debug) + squash-merge subject (ship) are loud.
+
+**Full tag table:** `.bkit/workflows.md` § "CI / Vercel commit tags".
+
+### Manual CI trigger on feat branches (`workflow_dispatch`)
+
+`ci.yml` has `workflow_dispatch:` (no inputs). Auto-fire only on push to `main`/`dev` or PR targeting them — feat branch without open PR → no run.
+
+```bash
+gh workflow run ci.yml --ref feat/{FID}
+gh run list --branch feat/{FID} --limit 3
+```
+
+Or Actions tab → CI → Run workflow → select branch. Same pattern as consumer repos.
+
+### `bkit install` three-phase contract
+
+1. **Phase 1 — Preflight (read-only).** Blockers + advisories; blockers exit 1 before writes. No hooks-config-overwrite gate — deep-containment preserves consumer keys (KN-8, DE-8).
+2. **Phase 2 — Install (staged writes).** `.bkit-staging/<module>/` (v0.9.0+). Error before commit → `discardAllStaging` — consumer byte-identical (KN-12, DE-9).
+3. **Phase 3 — Post-install.** Re-detect token/ci/vale/devDeps. Cross-phase dedupe: Phase 3 wins. `bkit check`: Phase 3 read-only (KN-4). **Phase 3 blockers exit 1** (v0.7.0+) + recovery line; `--auto-revert` → `runUninstall` in-process.
+
+`pnpm bkit install` — all three phases. `pnpm bkit check` — Phase 1 + 3 read-only; exit 1 on Tier-1/Tier-2 drift. `pnpm bkit doctor` — Phase 1 + 3, no writes. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` (#296) bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents/commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
+
+### `bkit-cloud.yml` — dual-job cloud-agent lane
+
+`bkit install --auto=…` ships a single `.github/workflows/bkit-cloud.yml` carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
+
+<!-- prettier-ignore -->
+| Job | Dispatch | Gated on | LLM secret |
+| --- | --- | --- | --- |
+| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
+| `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
+
+**Rules:**
+
+- **Secret-gated, never branch-gated.** Missing key → no-op (not fail). Both keys → both jobs; serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`).
+- **`--auto=opencode` requires `tracker=github` + remote provider.** Hard-error on `ollama-local`/local — runner has no Ollama. Use remote (nvidia) for cloud lane.
+- **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened — `PHASE`/`ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$` (KN-37).
+- **Renovate exemption** + **`bkit [auto route]` gate** unchanged — § GitHub Actions pinning, commit-tag taxonomy.
+
+### Consumer CI auth — user-level `pnpm config set` (canonical)
+
+Before install: `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` + `pnpm install`, step `env: GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}`. `.npmrc` = registry mapping only; pnpm >=10.34.3 401s on project `.npmrc` substitution (KN-CORE-7). No composite action, no cross-org `uses:`. Template: `.bkit/templates/.github/workflows/ci.yml`; consumer detail: README §"Adding a new consumer — checklist" / §"Consumer CI auth".
+
+### Sliding major-version tag
+
+`.github/workflows/release.yml` re-points the `v{N}` tag (e.g. `v1`) at the freshly-published `v{N}.x.y` immutable tag on every successful release. Matches the GitHub Actions community convention used by `actions/checkout@v4`, `actions/setup-node@v4`, etc. Reference: [actions/toolkit § action-versioning](https://github.com/actions/toolkit/blob/main/docs/action-versioning.md).
+
+**Consumer contract:**
+
+<!-- prettier-ignore -->
+| Pin form | Behaviour | Use when |
+| --- | --- | --- |
+| `@v1` (sliding) | Auto-receives non-breaking `v1.x.y` patches | DEFAULT — every consumer should use this |
+| `@v1.0.2` (immutable) | Frozen on a specific patch | Reproducibility-critical pipelines, or temporary unblock if `v1` is broken |
+| `@<sha>` | Frozen on a specific commit | High-security supply-chain contexts only |
+
+Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` sliding tag — `v1` consumers stay on `v1.x.y` until they explicitly opt in.
+
+**Mechanics:**
+
+- Workflow step "Update sliding major-version tag" runs after `npm publish` succeeds, so a failed publish never advances `v{N}`.
+- Major number extracted from `github.ref_name` via `sed -E 's/^v([0-9]+)\..*/\1/'`, so `v1.0.3` → `v1`, `v2.4.0` → `v2`. No hard-coded major.
+- Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
+- Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
+- Bootstrap: the first `v{N}.x.y` release after this workflow ships creates `v{N}` automatically. No manual `git tag -a v1` step required.

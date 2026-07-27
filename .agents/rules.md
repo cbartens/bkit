@@ -73,7 +73,7 @@
 - **Docs-only commits:** Append `bkit [skip ci]` but ONLY on commits carrying no code; NEVER on commits carrying code.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Branches:** `feat/{FID}` preferred when minting a new branch. FID is resolved from the tracker marker, not the branch name — an adopted branch (e.g. `claude/…`) that cannot be renamed satisfies this rule without containing `{FID}`.
-- **Merge/commit bodies:** ANY merge or commit that lands work on a shared branch MUST carry a skip-token-free body (no `[skip ci]`/CI-suppression token anywhere in subject OR body) on every transport (`gh`, MCP, or any other write path) — this invariant is shared, not owned by one transport.
+- **Merge bodies:** ANY squash-merge landing code on a shared branch MUST pass an EXPLICIT body and MUST NOT accept the default — the default concatenates the head branch's commit subjects and silently inherits a `[skip ci]` from an intermediate commit, suppressing CI nobody meant to skip. Holds on every transport (`gh`, MCP, or any other write path). Deliberate `bkit [skip ci]` in a docs-only commit SUBJECT is unaffected.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease`.
 - **CI:** Pushes auto-trigger; NEVER manually. ANY push carrying code MUST have HEAD without `[skip ci]` so CI runs; batch doc commits into pushes OR add bare trigger commits. NEVER leave `[skip ci]` at HEAD of any PR pushes that require CI runs. See `docs/deployments.md` for enforcement contract and full tag taxonomy.

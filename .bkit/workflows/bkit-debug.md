@@ -21,16 +21,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`CAN_WORKTREE=true`): `.worktrees/{FID}`; adopt mode (`CAN_WORKTREE=false`): `$REPO_ROOT`; required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`; **if** none exists default to the current UTC month `date -u +%Y%m`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`RUNTIME_WORKTREES=true`): `.worktrees/{FID}`; adopt mode (`RUNTIME_WORKTREES=false`): `$REPO_ROOT`; required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`; **if** none exists default to the current UTC month `date -u +%Y%m`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|FAIL|CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`); `debugAttempt` is carried by a `workflow-meta` event. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** debug status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `CAN_WORKTREE=true`) or adopts the current branch in place (`CAN_WORKTREE=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `RUNTIME_WORKTREES=true`) or adopts the current branch in place (`RUNTIME_WORKTREES=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
-> - **gh→MCP fallback (#341 Flow 6, D4/D12/D13 — centrepiece change):** `gh` stays primary for the PR/CI/merge surface. **If** a gh command in that surface fails/errors while `GH_OK=false` (read from this run's `runtime-resolved` `status.jsonl` row, D21 — re-probing `gh` per block is prohibited) → use the mapped MCP tool: `gh repo view --json nameWithOwner`->`get_me` + parse `git remote` (identity); `gh pr create`->`create_pull_request`; `gh pr view {N} --json …`->`pull_request_read` (method `get`, minimal fields); `gh pr list --head X`->`list_pull_requests`; `gh pr merge {N} --squash`->`merge_pull_request` (**MUST** pass an explicit skip-token-free `commit_message`, D1); `gh pr edit {N} --title`->`update_pull_request`; `gh pr update-branch {N}`->`update_pull_request_branch`; `gh run list --branch X`->`actions_list`; `gh run view {id} --json jobs`->`actions_get`; `gh run view --log-failed`->`get_job_logs` (`failed_only=true`; standing default for the Playwright seam, OQ-B); `gh run download -n playwright-report`->`actions_get`'s `download_workflow_run_artifact` method (output shape verified live, T16 — fall back to `get_job_logs` until confirmed). The `actions_*`/`get_job_logs`/`download_workflow_run_artifact` names require the `actions` MCP toolset (C1, `.mcp.json`). Bounded to **max 1 gh->MCP transition per workflow run** — a DIFFERENT budget from a shape-A `push_files`/PR-close docs transport (that is a fallback for _git_, not _gh_, and does not count here). Record every transition via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; success-assert with an **independent re-read** (MCP has no exit code — "the tool returned something" != "it worked"); retry with a mechanical backoff between attempts; request minimal output. **An empty/zero MCP read is INCONCLUSIVE, never authoritative absence** — corroborate with a second MCP signal (a `list_*` call) or report unavailable, logging the corroboration attempt as its OWN distinguishable state, never folded into "corroborated"/"unavailable" (D12). Trackers (issue/comment/label/projects) stay on MCP always (§6i) — this rule covers ONLY the gh-covered PR/CI/merge surface; never invent a `gh` read-path for trackers.
+> - **gh→MCP fallback:** `gh` is primary for the PR / CI / merge surface. **If** a `gh` command in that surface fails while `RUNTIME_GITHUBCLI` = false (read from this run's `runtime-resolved` row in `status.jsonl`; NEVER re-probe `gh` per block) → use the mapped tool: `gh repo view --json nameWithOwner` → `get_me` + parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (method `get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` with an explicit skip-token-free `commit_message`; `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`); `gh run download -n playwright-report` → `actions_get` method `download_workflow_run_artifact`, else `get_job_logs`. These names require the `actions` toolset in `.mcp.json`. Max ONE gh→MCP transition per workflow run. Record each via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; confirm success with an independent re-read; retry with backoff between attempts; request minimal output. An empty MCP read is INCONCLUSIVE, NEVER authoritative absence — corroborate with a second `list_*` call or report unavailable, logging the corroboration attempt as its own distinguishable state. Tracker calls (issue / comment / label / projects) stay on MCP always; this rule covers ONLY the gh-covered PR / CI / merge surface — NEVER invent a `gh` read-path for trackers.
 
 <!-- bkit:tracker github start -->
 
@@ -283,13 +283,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Create/resume the worktree (adopt-or-mint, D7/Flow 2 — `CAN_WORKTREE` is env-only, free to re-derive per block, D21):
+1. Create/resume the worktree — mint a worktree, or adopt the current branch in place:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
    bkit_runtime_assert_resolved || exit 2
-   if [ "$CAN_WORKTREE" = "true" ]; then
+   if [ "$RUNTIME_WORKTREES" = "true" ]; then
      git worktree prune
      WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
      if [ -d "$WORKTREE_PATH" ]; then
@@ -333,17 +333,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
      pnpm install --frozen-lockfile
    else
-     # Adopt mode (CAN_WORKTREE=false, e.g. claude.ai cloud sessions): no
-     # `git worktree add` — mode 3's proxy-restricted push only allows the
-     # CURRENT working branch, so work in place on it instead of minting.
      WORKTREE_PATH="$REPO_ROOT"
      cd "$WORKTREE_PATH"
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
-   # Emit the durable `runtime-resolved` row NOW (same block as `bkit_runtime_detect`,
-   # D21 — later blocks read this row back instead of re-probing gh; #341 T16 fix for
-   # the never-emitted gap in docs/failures.jsonl key runtime-resolved-row-never-emitted-step1).
    bkit_runtime_row debug "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
@@ -613,7 +607,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
    [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
    ```
-5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`. **Playwright artifact seam (#341 OQ-B/§4):** the `gh run download -n playwright-report` below is the gh-primary path; per the gh→MCP fallback rule above, `get_job_logs` (`failed_only=true`) is the **standing default** MCP fallback when `GH_OK=false` — it carries the failure signal even though the rich HTML report is lost. `actions_get`'s `download_workflow_run_artifact` method may cover the full artifact instead (verify its output shape live, Sub-Plan 6/T16) — adopt it in place of `get_job_logs` ONLY once that shape is confirmed to carry the report; until then `get_job_logs`-only is the accepted, non-blocking limitation (the failure signal is never lost, only the rich report):
+5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`. `gh run download -n playwright-report` below is the primary path. **If** `RUNTIME_GITHUBCLI` = false → fall back to `get_job_logs` (`failed_only=true`); use `actions_get` method `download_workflow_run_artifact` instead ONLY once its output is confirmed to carry the report:
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
@@ -652,7 +646,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
-7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`. **Loudness (#341 Flow 7 — a self-skip `exit 0` must NEVER read as "no runtime errors"):** narrate every block's outcome distinctly — `CHECKED` (data returned) vs `SELF-SKIPPED` (missing CLI/token/credential — egress-blocked or unconfigured, NOT evidence of a clean run) vs `NO BLOCKS CONFIGURED` (empty `FETCH_NAMES` — the runtime source was never checked at all this run). A downstream Failure Diagnose read of `debug-context-runtime-*.md` MUST treat `SELF-SKIPPED`/`NO BLOCKS CONFIGURED` as "unavailable", never as "confirmed no runtime errors":
+7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`. **Loudness:** narrate every block's outcome distinctly — `CHECKED` (data returned) vs `SELF-SKIPPED` (missing CLI/token/credential — egress-blocked or unconfigured, NOT evidence of a clean run) vs `NO BLOCKS CONFIGURED` (empty `FETCH_NAMES` — the runtime source was never checked at all this run). A downstream Failure Diagnose read of `debug-context-runtime-*.md` MUST treat `SELF-SKIPPED`/`NO BLOCKS CONFIGURED` as "unavailable", never as "confirmed no runtime errors":
    ````bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
@@ -1150,10 +1144,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      POLL_BUDGET_S=60; POLL_INTERVAL_S=10
      PUSHED_HEAD=$(git rev-parse HEAD)
      CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
-     echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-     bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
-     CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
-     [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+     if [ -n "${BKIT_CI_OUTCOME:-}" ]; then
+       CI_OUTCOME="$BKIT_CI_OUTCOME"; CI_ATTEMPTS="${BKIT_CI_ATTEMPTS:-0}"; GH_ALL_ERRORED="${BKIT_CI_ALL_ERRORED:-false}"
+       echo "[bkit-ci-gate] outcome supplied by agent turn-loop: $CI_OUTCOME (attempts $CI_ATTEMPTS)"
+     else
+       echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+       bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+       CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+       [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+       [ "$CI_WAIT_BLOCKED" = "true" ] && { echo "[bkit-ci-gate] sleep blocked — resolve the poll in an agent turn-loop, then re-run this block with BKIT_CI_OUTCOME set" >&2; exit 3; }
+     fi
      # --- end CI-Dispatch Gate shared kernel ---
      if [ -z "$CI_OUTCOME" ]; then
        if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -1193,36 +1193,37 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
          (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
      case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
-     # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+     # --- Post-close body scan + transport cross-check + close-transport row ---
      CLOSE_TRANSPORT="gh"
      bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
      case "$SCAN_RC" in
        0) SCAN_RESULT="clean" ;;
        1) SCAN_RESULT="skip-token-found" ;;
-       *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+       *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
      esac
-     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
-     bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
-     [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+     bkit_close_transport_row "push" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PUSHED_HEAD inherited a CI-suppression token in its body" >&2; exit 1; }
    else
      REPO_ROOT=$(git rev-parse --show-toplevel)
      . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-close-guard] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
      jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
        '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
-     # --- Close shape B (LOCAL mode, direct push): D24 scan + D25 cross-check + close-transport row (#341 T10) ---
+     # --- Post-close body scan + transport cross-check + close-transport row ---
      CLOSE_TRANSPORT="gh"
      bkit_close_guard_scan_body "$PARENT_SHA"; SCAN_RC=$?
      case "$SCAN_RC" in
        0) SCAN_RESULT="clean" ;;
        1) SCAN_RESULT="skip-token-found" ;;
-       *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PARENT_SHA" >&2; exit 1 ;;
+       *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PARENT_SHA" >&2; exit 1 ;;
      esac
-     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
-     bkit_close_transport_row "B" "$PARENT_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
-     [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PARENT_SHA carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+     bkit_close_transport_row "push" "$PARENT_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PARENT_SHA inherited a CI-suppression token in its body" >&2; exit 1; }
    fi
    ```
+   **If** the block exits 3 (`sleep blocked`) → this runtime cannot poll in bash; resolve the same poll in an agent turn-loop: each orchestrator turn run once `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 → outcome `dispatched`; 6th unresolved turn → outcome `unresolved`, reason `gh-error`; **Else** end the turn and repeat. Then re-run the block with `BKIT_CI_OUTCOME` = the resolved outcome, `BKIT_CI_ATTEMPTS` = the turn count, and `BKIT_CI_ALL_ERRORED` = true only when every turn errored.
 3. Capture branch state:
    ```bash
    CURRENT=$(git branch --show-current)
@@ -1249,7 +1250,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 6. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 7. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-8. **If** `TRIGGER_PR` = 1 → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell). **If** `CAN_SLEEP` = `false` → run the CI-Dispatch Gate portion as an agent turn-loop instead of bash: each orchestrator turn, run once: `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 sets `CI_OUTCOME=dispatched`; the 6th unresolved turn sets `CI_OUTCOME=unresolved`/`CI_REASON=gh-error`; otherwise end the turn and repeat next turn — set `CI_ATTEMPTS` to the turn count and `GH_ALL_ERRORED=false` unless every turn errored, then continue at the status-write below:
+8. **If** `TRIGGER_PR` = 1 → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell).
    ```bash
    PARENT_SHA=$(git rev-parse HEAD)
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
@@ -1275,10 +1276,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    POLL_BUDGET_S=60; POLL_INTERVAL_S=10
    PUSHED_HEAD=$(git rev-parse HEAD)
    CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
-   echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-   bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
-   CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
-   [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+   if [ -n "${BKIT_CI_OUTCOME:-}" ]; then
+     CI_OUTCOME="$BKIT_CI_OUTCOME"; CI_ATTEMPTS="${BKIT_CI_ATTEMPTS:-0}"; GH_ALL_ERRORED="${BKIT_CI_ALL_ERRORED:-false}"
+     echo "[bkit-ci-gate] outcome supplied by agent turn-loop: $CI_OUTCOME (attempts $CI_ATTEMPTS)"
+   else
+     echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+     bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+     CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+     [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+     [ "$CI_WAIT_BLOCKED" = "true" ] && { echo "[bkit-ci-gate] sleep blocked — resolve the poll in an agent turn-loop, then re-run this block with BKIT_CI_OUTCOME set" >&2; exit 3; }
+   fi
    # --- end CI-Dispatch Gate shared kernel ---
    if [ -z "$CI_OUTCOME" ]; then
      if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -1316,18 +1323,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
-   # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+   # --- Post-close body scan + transport cross-check + close-transport row ---
    CLOSE_TRANSPORT="gh"
    bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
    case "$SCAN_RC" in
      0) SCAN_RESULT="clean" ;;
      1) SCAN_RESULT="skip-token-found" ;;
-     *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+     *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
    esac
-   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
-   bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
-   [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+   bkit_close_transport_row "push" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PUSHED_HEAD inherited a CI-suppression token in its body" >&2; exit 1; }
    ```
+   **If** the block exits 3 (`sleep blocked`) → this runtime cannot poll in bash; resolve the same poll in an agent turn-loop: each orchestrator turn run once `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 → outcome `dispatched`; 6th unresolved turn → outcome `unresolved`, reason `gh-error`; **Else** end the turn and repeat. Then re-run the block with `BKIT_CI_OUTCOME` = the resolved outcome, `BKIT_CI_ATTEMPTS` = the turn count, and `BKIT_CI_ALL_ERRORED` = true only when every turn errored.
 9. <!-- bkit:tracker github start -->
    No issue changes.
     <!-- bkit:tracker github end -->

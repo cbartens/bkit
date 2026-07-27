@@ -135,14 +135,14 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 
 Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
 
-## Autonomous phase-close prerequisites (#341)
+## Autonomous phase-close prerequisites
 
-Every phase's Close Workflow lands work on `dev` autonomously — locally (`git push origin dev`) when the runtime can (`CAN_PUSH_DEV=true`), or via a mapped gh→MCP fallback tool when it cannot. Both paths assume two repo settings are already correct; neither is pre-flighted (no admin-scope token requirement at Step 1) — the dependency is asserted structurally by the close path's own real push/merge failing loudly, not probed in advance:
+Design/plan Close Workflow lands docs on `dev` two ways. When the runtime can push `dev` (`RUNTIME_DEVPUSHES=true` — laptop, GitHub-Actions runner) it runs the local squash-merge and direct push: **no repo setting is required, and no PR is created**. When it cannot (cloud agent session, or an unclassified runtime) it opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted — no admin-scope token is required; the dependency asserts itself by the close's own merge failing loudly.
 
-- **Branch protection on `dev` permits the autonomous merge** — status-checks-only, no required human review. A rule requiring human approval blocks every phase close, on every runtime.
-- **"Automatically delete head branches" is enabled** (repo Settings → General). The gh→MCP fallback has no tool-level branch-delete equivalent (`merge_pull_request` carries no `delete_branch` field) — head-branch cleanup relies entirely on this repo setting when a close ran via the fallback transport.
+- **Branch protection on `dev` permits the autonomous merge** — no required human review. The PR-path merge does **not** wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
+- **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch` — `gh` also deletes the local branch, which fails when that branch is checked out in a worktree and returns non-zero _after_ a successful merge. Head-branch cleanup relies on the repo setting instead.
 
-Confirm both before adopting mode-3 (claude.ai cloud) autonomous closes.
+Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 

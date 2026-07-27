@@ -21,16 +21,16 @@ description: "Build Feature — Autonomous implementation"
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`CAN_WORKTREE=true`): `.worktrees/{FID}`; adopt mode (`CAN_WORKTREE=false`): `$REPO_ROOT`; required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`RUNTIME_WORKTREES=true`): `.worktrees/{FID}`; adopt mode (`RUNTIME_WORKTREES=false`): `$REPO_ROOT`; required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `subPlan`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
 > - **Status branch:** build status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `CAN_WORKTREE=true`) or adopts the current branch in place (`CAN_WORKTREE=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `RUNTIME_WORKTREES=true`) or adopts the current branch in place (`RUNTIME_WORKTREES=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
-> - **gh→MCP fallback (#341 Flow 6, D4/D12/D13 — centrepiece change):** `gh` stays primary for the PR/CI/merge surface. **If** a gh command in that surface fails/errors while `GH_OK=false` (read from this run's `runtime-resolved` `status.jsonl` row, D21 — re-probing `gh` per block is prohibited) → use the mapped MCP tool: `gh repo view --json nameWithOwner`->`get_me` + parse `git remote` (identity); `gh pr create`->`create_pull_request`; `gh pr view {N} --json …`->`pull_request_read` (method `get`, minimal fields); `gh pr list --head X`->`list_pull_requests`; `gh pr merge {N} --squash`->`merge_pull_request` (**MUST** pass an explicit skip-token-free `commit_message`, D1); `gh pr edit {N} --title`->`update_pull_request`; `gh pr update-branch {N}`->`update_pull_request_branch`; `gh run list --branch X`->`actions_list`; `gh run view {id} --json jobs`->`actions_get`; `gh run view --log-failed`->`get_job_logs` (`failed_only=true`; standing default for the Playwright seam, OQ-B); `gh run download -n playwright-report`->`actions_get`'s `download_workflow_run_artifact` method (output shape verified live, T16 — fall back to `get_job_logs` until confirmed). The `actions_*`/`get_job_logs`/`download_workflow_run_artifact` names require the `actions` MCP toolset (C1, `.mcp.json`). Bounded to **max 1 gh->MCP transition per workflow run** — a DIFFERENT budget from a shape-A `push_files`/PR-close docs transport (that is a fallback for _git_, not _gh_, and does not count here). Record every transition via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; success-assert with an **independent re-read** (MCP has no exit code — "the tool returned something" != "it worked"); retry with a mechanical backoff between attempts; request minimal output. **An empty/zero MCP read is INCONCLUSIVE, never authoritative absence** — corroborate with a second MCP signal (a `list_*` call) or report unavailable, logging the corroboration attempt as its OWN distinguishable state, never folded into "corroborated"/"unavailable" (D12). Trackers (issue/comment/label/projects) stay on MCP always (§6i) — this rule covers ONLY the gh-covered PR/CI/merge surface; never invent a `gh` read-path for trackers.
+> - **gh→MCP fallback:** `gh` is primary for the PR / CI / merge surface. **If** a `gh` command in that surface fails while `RUNTIME_GITHUBCLI` = false (read from this run's `runtime-resolved` row in `status.jsonl`; NEVER re-probe `gh` per block) → use the mapped tool: `gh repo view --json nameWithOwner` → `get_me` + parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (method `get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` with an explicit skip-token-free `commit_message`; `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`); `gh run download -n playwright-report` → `actions_get` method `download_workflow_run_artifact`, else `get_job_logs`. These names require the `actions` toolset in `.mcp.json`. Max ONE gh→MCP transition per workflow run. Record each via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; confirm success with an independent re-read; retry with backoff between attempts; request minimal output. An empty MCP read is INCONCLUSIVE, NEVER authoritative absence — corroborate with a second `list_*` call or report unavailable, logging the corroboration attempt as its own distinguishable state. Tracker calls (issue / comment / label / projects) stay on MCP always; this rule covers ONLY the gh-covered PR / CI / merge surface — NEVER invent a `gh` read-path for trackers.
 
 <!-- bkit:tracker github start -->
 
@@ -266,13 +266,13 @@ description: "Build Feature — Autonomous implementation"
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
-2. Create/resume the worktree (adopt-or-mint, D7/Flow 2 — `CAN_WORKTREE` is env-only, free to re-derive per block, D21):
+2. Create/resume the worktree — mint a worktree, or adopt the current branch in place:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
    bkit_runtime_assert_resolved || exit 2
-   if [ "$CAN_WORKTREE" = "true" ]; then
+   if [ "$RUNTIME_WORKTREES" = "true" ]; then
      git worktree prune
      WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
      if [ -d "$WORKTREE_PATH" ]; then
@@ -316,17 +316,11 @@ description: "Build Feature — Autonomous implementation"
      [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
      pnpm install --frozen-lockfile
    else
-     # Adopt mode (CAN_WORKTREE=false, e.g. claude.ai cloud sessions): no
-     # `git worktree add` — mode 3's proxy-restricted push only allows the
-     # CURRENT working branch, so work in place on it instead of minting.
      WORKTREE_PATH="$REPO_ROOT"
      cd "$WORKTREE_PATH"
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
-   # Emit the durable `runtime-resolved` row NOW (same block as `bkit_runtime_detect`,
-   # D21 — later blocks read this row back instead of re-probing gh; #341 T16 fix for
-   # the never-emitted gap in docs/failures.jsonl key runtime-resolved-row-never-emitted-step1).
    bkit_runtime_row build "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
@@ -364,7 +358,7 @@ description: "Build Feature — Autonomous implementation"
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"build", step:"build-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-input.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup bkit [skip ci]"
    ```
 8. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -1318,7 +1312,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 6. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
 7. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
-8. **If** `CAN_SLEEP` = `false` → run the CI-Dispatch Gate as an agent turn-loop instead of bash: each orchestrator turn, run once: `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 sets `CI_OUTCOME=dispatched`; the 6th unresolved turn sets `CI_OUTCOME=unresolved`/`CI_REASON=gh-error`; otherwise end the turn and repeat next turn — set `CI_ATTEMPTS` to the turn count and `GH_ALL_ERRORED=false` unless every turn errored, then continue at the status-write below. **Else** run PR-title Assertion, record `build-create-pr`, run the CI-Dispatch Gate, and record `build-close-workflow` in one block:
+8. Run PR-title Assertion, record `build-create-pr`, run the CI-Dispatch Gate, and record `build-close-workflow` in one block:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -1347,10 +1341,16 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    POLL_BUDGET_S=60; POLL_INTERVAL_S=10
    PUSHED_HEAD=$(git rev-parse HEAD)
    CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
-   echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-   bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
-   CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
-   [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+   if [ -n "${BKIT_CI_OUTCOME:-}" ]; then
+     CI_OUTCOME="$BKIT_CI_OUTCOME"; CI_ATTEMPTS="${BKIT_CI_ATTEMPTS:-0}"; GH_ALL_ERRORED="${BKIT_CI_ALL_ERRORED:-false}"
+     echo "[bkit-ci-gate] outcome supplied by agent turn-loop: $CI_OUTCOME (attempts $CI_ATTEMPTS)"
+   else
+     echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+     bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+     CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+     [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+     [ "$CI_WAIT_BLOCKED" = "true" ] && { echo "[bkit-ci-gate] sleep blocked — resolve the poll in an agent turn-loop, then re-run this block with BKIT_CI_OUTCOME set" >&2; exit 3; }
+   fi
    # --- end CI-Dispatch Gate shared kernel ---
    if [ -z "$CI_OUTCOME" ]; then
      if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -1388,18 +1388,19 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
        ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
-   # --- Close shape B: D24 post-close scan + D25 cross-check + close-transport row (#341 T10) ---
+   # --- Post-close body scan + transport cross-check + close-transport row ---
    CLOSE_TRANSPORT="gh"
    bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
    case "$SCAN_RC" in
      0) SCAN_RESULT="clean" ;;
      1) SCAN_RESULT="skip-token-found" ;;
-     *) echo "[bkit-close-guard] D24 scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+     *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
    esac
-   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "[bkit-close-guard] D25 cross-check FAILED" >&2; exit 1; }
-   bkit_close_transport_row "B" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
-   [ "$SCAN_RESULT" = "clean" ] || { echo "[bkit-close-guard] D24 FATAL: landed commit $PUSHED_HEAD carries a CI-suppression token — routing to Failure Path" >&2; exit 1; }
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+   bkit_close_transport_row "push" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PUSHED_HEAD inherited a CI-suppression token in its body" >&2; exit 1; }
    ```
+   **If** the block exits 3 (`sleep blocked`) → this runtime cannot poll in bash; resolve the same poll in an agent turn-loop: each orchestrator turn run once `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 → outcome `dispatched`; 6th unresolved turn → outcome `unresolved`, reason `gh-error`; **Else** end the turn and repeat. Then re-run the block with `BKIT_CI_OUTCOME` = the resolved outcome, `BKIT_CI_ATTEMPTS` = the turn count, and `BKIT_CI_ALL_ERRORED` = true only when every turn errored.
 9. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->

@@ -1,26 +1,25 @@
-// bkit-skip-ci-subject-audit.test.ts — §6d skip-ci subject-convention audit
-// (#341 T12, Derived Test Matrix row 12).
+// bkit-skip-ci-subject-audit.test.ts — CI-suppression token convention audit.
 //
-// D5(a) (the chosen shape-A mode-3 transport) closes design/plan via a PR
-// merge. A phase-close (or intermediate status-commit) subject that still
-// carried `[skip ci]` would surface as the PR title/merge subject and be
-// rejected by the pre-existing PR-title CI-suppression assertion (the same
-// assertion build/ship already enforce) — so §6d drops the token from every
-// phase-close AND intermediate status-commit subject across all five phase
-// workflows, not just design/plan (a docs-only close now fires full CI on
-// `dev` — a knowing, human-gated cost reversal, OQ-D).
+// Two DIFFERENT things get conflated, and conflating them breaks things in
+// both directions:
 //
-// This test asserts the convention landed coherently:
-//   (i)   no phase-close or intermediate status-commit subject in
-//         `.bkit/workflows/*.md` carries `[skip ci]` (Failure Path ABORT
-//         commits are explicitly exempt — out of §6d's scope, their subject
-//         never becomes a PR title).
-//   (ii)  no `.bkit/workflows/*.md` prose still claims a docs-close is
-//         "pushed with 'bkit [skip ci]'" (the stale pre-D5(a) description).
-//   (iii) the `bkit-ship.md` HEAD-skip-ci gate + `AHEAD_NON_SKIP`
-//         promotion-lag counter are re-audited to hold their intended
-//         meaning under the new subject convention — present, and their
-//         surrounding prose does not contradict the new convention.
+//   1. A deliberate `bkit [skip ci]` in a docs-only commit SUBJECT. This is
+//      the CI-minutes convention (`.agents/rules.md` § Docs-only commits) and
+//      it must STAY. Stripping it makes every phase close fire a full CI run
+//      on `dev` for a docs-only change — and breaks `bkit-ship.md`'s
+//      `AHEAD_NON_SKIP` promotion-lag guard, which hard-exits the ship when a
+//      commit ahead of `origin/dev` lacks the token. Ship's own Step 2
+//      pre-flight creates exactly such a commit.
+//
+//   2. A token INHERITED into a squash-merge BODY. `gh pr merge` and the MCP
+//      merge tool default the body to the head branch's concatenated commit
+//      subjects, so one intermediate `[skip ci]` silently suppresses CI on a
+//      shared branch. That is the real defect; the guards are an explicit
+//      `--body ""` at every merge call site plus a post-close scan of the
+//      landed commit's BODY (subject excluded).
+//
+// Both halves are asserted here, and the ship interaction is pinned in (iv)
+// so the convention cannot be swept away again without a red test.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -41,125 +40,142 @@ function readWorkflow(name: string): string {
   return fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8");
 }
 
-// Named, non-Failure-Path commit subjects that §6d requires to be skip-token
-// free (T12 body: phase-close subjects + the six named intermediate
-// status-commit subjects). Each entry is [file, description, forbidden
-// literal that MUST NOT appear anymore].
-const RECONCILED_SUBJECTS: Array<{
+// Docs-only / intermediate commit subjects that MUST carry the token. Each
+// entry is the exact `-m "..."` literal the workflow issues.
+const SKIP_CI_SUBJECTS: Array<{
   file: (typeof WORKFLOW_FILES)[number];
   description: string;
-  stale: string;
+  literal: string;
 }> = [
   {
     file: "bkit-design.md",
-    description: "design phase-close subject",
-    stale: "design DONE bkit [skip ci]",
+    description: "design phase-close",
+    literal: "docs({FID}): design DONE bkit [skip ci]",
   },
   {
     file: "bkit-design.md",
-    description: "design summary intermediate commit",
-    stale: "summary bkit [skip ci]",
+    description: "design summary",
+    literal: "chore({FID}): summary bkit [skip ci]",
   },
   {
     file: "bkit-plan.md",
-    description: "plan phase-close subject",
-    stale: "plan DONE bkit [skip ci]",
+    description: "plan phase-close",
+    literal: "docs({FID}): plan DONE bkit [skip ci]",
   },
   {
     file: "bkit-plan.md",
-    description: "plan summary intermediate commit",
-    stale: "summary bkit [skip ci]",
+    description: "plan summary",
+    literal: "chore({FID}): summary bkit [skip ci]",
   },
   {
     file: "bkit-build.md",
-    description: "build worktree-setup intermediate commit",
-    stale: "worktree-setup bkit [skip ci]",
+    description: "build worktree-setup",
+    literal: "chore({FID}): worktree-setup bkit [skip ci]",
   },
   {
     file: "bkit-ship.md",
-    description: "ship phase-close subject",
-    stale: "ship DONE bkit [skip ci]",
+    description: "ship phase-close",
+    literal: "docs({FID}): ship DONE bkit [skip ci]",
   },
   {
     file: "bkit-ship.md",
-    description: "ship pre-worktree intermediate commit",
-    stale: "pre-worktree uncommitted changes bkit [skip ci]",
+    description: "ship pre-worktree dirty-tree commit",
+    literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
   },
   {
     file: "bkit-ship.md",
-    description: "ship pre-merge intermediate commit",
-    stale: "pre-merge uncommitted dev changes bkit [skip ci]",
+    description: "ship pre-merge dirty-dev commit",
+    literal: "chore: pre-merge uncommitted dev changes bkit [skip ci]",
+  },
+  // Failure Path aborts.
+  {
+    file: "bkit-build.md",
+    description: "build abort",
+    literal: "docs({FID}): build aborted bkit [skip ci]",
+  },
+  {
+    file: "bkit-debug.md",
+    description: "debug abort",
+    literal: "docs({FID}): debug aborted bkit [skip ci]",
+  },
+  {
+    file: "bkit-ship.md",
+    description: "ship abort",
+    literal: "docs({FID}): ship aborted bkit [skip ci]",
+  },
+  {
+    file: "bkit-ship.md",
+    description: "ship FAILED",
+    literal: "chore({FID}): ship FAILED bkit [skip ci]",
   },
 ];
 
-// Failure Path ABORT commit subjects are explicitly OUT of §6d's scope (a
-// terminated run's abort commit never becomes a PR title) — asserted here
-// as a living exemption list, not silently ignored.
-const FAILURE_PATH_EXEMPT_SUBJECTS: Array<{
-  file: (typeof WORKFLOW_FILES)[number];
-  literal: string;
-}> = [
-  { file: "bkit-build.md", literal: "build aborted bkit [skip ci]" },
-  { file: "bkit-debug.md", literal: "debug aborted bkit [skip ci]" },
-  { file: "bkit-ship.md", literal: "ship aborted bkit [skip ci]" },
-  { file: "bkit-ship.md", literal: "ship FAILED bkit [skip ci]" },
-];
+const SKIP_TOKEN_RE = /\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]/i;
 
-describe("bkit-skip-ci-subject-audit (#341 T12, row 12)", () => {
-  describe("(i) no phase-close / intermediate status-commit subject carries [skip ci]", () => {
-    for (const { file, description, stale } of RECONCILED_SUBJECTS) {
-      it(`${file}: ${description} no longer carries [skip ci]`, () => {
-        const content = readWorkflow(file);
-        expect(content.includes(stale)).toBe(false);
+describe("skip-ci subject convention", () => {
+  describe("(i) docs-only and intermediate commit subjects keep the token", () => {
+    for (const { file, description, literal } of SKIP_CI_SUBJECTS) {
+      it(`${file}: ${description} carries bkit [skip ci]`, () => {
+        expect(readWorkflow(file)).toContain(`-m "${literal}"`);
       });
     }
   });
 
-  it("Failure Path ABORT commits are still explicitly skip-ci (out of §6d's scope) — exemption list stays accurate", () => {
-    for (const { file, literal } of FAILURE_PATH_EXEMPT_SUBJECTS) {
-      const content = readWorkflow(file);
-      expect(content.includes(literal)).toBe(true);
-    }
-  });
-
-  describe("(ii) no prose still claims a docs-close is \"pushed with 'bkit [skip ci]'\"", () => {
-    const STALE_CLAIM_RE = /pushed with `?bkit \[skip ci\]`?/i;
+  describe("(ii) no PR title ever carries a suppression token", () => {
     for (const file of WORKFLOW_FILES) {
-      it(`${file}: no stale "pushed with bkit [skip ci]" claim`, () => {
-        const content = readWorkflow(file);
-        expect(STALE_CLAIM_RE.test(content)).toBe(false);
+      it(`${file}: every gh pr create --title is token-free`, () => {
+        const titles = [...readWorkflow(file).matchAll(/--title\s+"([^"]*)"/g)].map((m) => m[1]);
+        for (const t of titles) {
+          expect(SKIP_TOKEN_RE.test(t), `PR title must not suppress CI: ${t}`).toBe(false);
+        }
       });
     }
   });
 
-  describe("(iii) bkit-ship.md HEAD-skip-ci gate + AHEAD_NON_SKIP counter re-audited coherent", () => {
+  describe("(iii) every squash merge passes an explicit empty body", () => {
+    // Only real invocations inside ```bash fences — the gh→MCP header prose
+    // names `gh pr merge` as a mapping key, which is not a call site.
+    function bashMergeInvocations(content: string): string[] {
+      const fences = [...content.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]);
+      return fences
+        .map((f) => f.replace(/\\\n\s*/g, " "))
+        .flatMap((f) => [...f.matchAll(/^\s*gh pr merge[^\n]*/gm)].map((m) => m[0]));
+    }
+
+    for (const file of WORKFLOW_FILES) {
+      it(`${file}: no gh pr merge relies on the default concatenated body`, () => {
+        for (const m of bashMergeInvocations(readWorkflow(file))) {
+          expect(m, `gh pr merge must pass an explicit --body: ${m}`).toMatch(/--body\s+""/);
+        }
+      });
+    }
+  });
+
+  describe("(iv) ship's AHEAD_NON_SKIP guard stays satisfiable", () => {
     const shipMd = readWorkflow("bkit-ship.md");
 
-    it("the PR-title CI-suppression assertion (Merge PR gate) is still present", () => {
-      expect(shipMd).toContain("HEAD on remote does NOT contain");
-      expect(shipMd).toMatch(/PR-title assertion FAILED/);
-    });
-
-    it("the AHEAD_NON_SKIP promotion-lag counter is still present and documented", () => {
+    it("the promotion-lag guard is present", () => {
       expect(shipMd).toContain("AHEAD_NON_SKIP");
-      // Documents (not silently drops) that under the new convention every
-      // ahead commit now counts as non-skip — the warning simplifies to
-      // "any ahead commits trigger it", which is coherent, not broken: the
-      // counter's job (flag unreconciled local-ahead-of-origin drift before
-      // the phase-close push) still holds under the new subject convention.
-      expect(shipMd).toContain("no `[skip ci]`");
     });
 
-    it("the ship close-workflow Gate 13 checklist item reflects the new convention (no bare 'pushed with bkit [skip ci]')", () => {
-      expect(shipMd).toMatch(/Changes pushed to `dev` \(no `\[skip ci\]`/);
+    // Regression pin: Step 2 commits on local `dev` without pushing, and
+    // Step 9 hard-exits when a commit ahead of origin/dev lacks the token.
+    // Drop the token from that subject and every ship with a dirty `dev`
+    // aborts. These two sites must agree.
+    it("the pre-merge dirty-dev commit it must tolerate carries the token", () => {
+      expect(shipMd).toContain('-m "chore: pre-merge uncommitted dev changes bkit [skip ci]"');
+    });
+
+    it("the guard greps for the same token the commit carries", () => {
+      expect(shipMd).toContain("git log --format=%s origin/dev..dev | grep -cv '\\[skip ci\\]'");
     });
   });
 
-  it("design + plan phase-close subject prose documents the CI-cost reversal (OQ-D) at the status-branch declaration", () => {
-    for (const file of ["bkit-design.md", "bkit-plan.md"] as const) {
-      const content = readWorkflow(file);
-      expect(content).toMatch(/knowing CI-cost reversal/);
-      expect(content).toMatch(/§6d\/OQ-D/);
-    }
+  describe("(v) the post-close scan reads the body, not the subject", () => {
+    const sh = fs.readFileSync(path.resolve(REPO_ROOT, ".bkit/scripts/bkit-runtime.sh"), "utf-8");
+
+    it("bkit_close_guard_scan_body strips the subject line before scanning", () => {
+      expect(sh).toContain("tail -n +2");
+    });
   });
 });

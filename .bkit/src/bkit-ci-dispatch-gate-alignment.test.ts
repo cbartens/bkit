@@ -261,20 +261,30 @@ describe("CI-Dispatch kernel is extracted into bkit_wait_ci (#341 WS-8)", () => 
     }
   });
 
-  it("no bare `sleep` call remains inside any CI-Dispatch kernel block (moved into the timeout-wrapped bkit_wait_ci)", () => {
+  it("no bare `sleep` command remains inside any CI-Dispatch kernel block (moved into the timeout-wrapped bkit_wait_ci)", () => {
     const buildBlocks = extractAllSharedKernelBlocks(buildMd)!;
     const debugBlocks = extractAllSharedKernelBlocks(debugMd)!;
+    // Match a real shell `sleep N` command, not prose that mentions "sleep blocked".
+    const bareSleepCmd = /^\s*sleep\s+\S+/m;
     for (const block of [...buildBlocks, ...debugBlocks]) {
       const text = block.join("\n");
-      expect(text).not.toContain("sleep ");
+      expect(text).not.toMatch(bareSleepCmd);
+      // Kernel must call the extracted helper (not re-inline the poll).
+      expect(text).toContain("bkit_wait_ci");
     }
   });
 
-  it("build.md/bkit-debug.md carry the CAN_SLEEP=false agent turn-loop prose branch (the non-bash half of D22)", () => {
-    expect(buildMd).toContain("CAN_SLEEP` = `false`");
-    const canSleepMatches = [...debugMd.matchAll(/CAN_SLEEP` = `false`/g)];
-    // Two sites: PR-mode (step 2) + LOCAL-mode (step 8).
-    expect(canSleepMatches.length).toBeGreaterThanOrEqual(2);
+  it("build.md/bkit-debug.md carry the measured-signal agent turn-loop handoff (D22 — no CAN_SLEEP flag)", () => {
+    // Sleep is probed inside bkit_wait_ci; a blocked sleep exits 3 and the
+    // orchestrator resolves the same poll via BKIT_CI_OUTCOME turn-loop.
+    expect(buildMd).toContain("CI_WAIT_BLOCKED");
+    expect(buildMd).toContain("BKIT_CI_OUTCOME");
+    expect(buildMd).toContain("agent turn-loop");
+    expect(buildMd).not.toContain("CAN_SLEEP");
+    const debugHandoffs = [...debugMd.matchAll(/BKIT_CI_OUTCOME/g)];
+    // Two sites: PR-mode close-workflow + LOCAL-mode create-pr (kernel + prose each).
+    expect(debugHandoffs.length).toBeGreaterThanOrEqual(2);
+    expect(debugMd).not.toContain("CAN_SLEEP");
   });
 
   it("the retrigger re-poll (self-healed path) also calls bkit_wait_ci, not a duplicated inline loop", () => {

@@ -43,8 +43,10 @@ function readAllWorkflows(): string {
   return WORKFLOW_FILES.map(readWorkflow).join("\n");
 }
 
-// (i) every CAN_* flag must have >=1 reader across the workflow corpus.
-const CAN_FLAGS = ["CAN_WORKTREE", "CAN_PUSH_DEV", "CAN_SLEEP", "GH_OK"] as const;
+// (i) every RUNTIME_* capability flag must have >=1 reader across the workflow corpus.
+// CAN_SLEEP was deleted (#341 follow-up): sleep is measured inside bkit_wait_ci
+// (CI_WAIT_BLOCKED), not predicted by a capability row.
+const RUNTIME_FLAGS = ["RUNTIME_WORKTREES", "RUNTIME_DEVPUSHES", "RUNTIME_GITHUBCLI"] as const;
 
 // (ii) the CI-Dispatch Gate shared kernel — the ONLY sanctioned place a
 // CI-wait sleep may live (inside `bkit_wait_ci`, never a raw `sleep` at the
@@ -57,7 +59,8 @@ const KERNEL_END = "# --- end CI-Dispatch Gate shared kernel ---";
 // Every raw `sleep N` literal in `.bkit/workflows/*.md` OUTSIDE the kernel
 // blocks MUST be one of these explicitly-catalogued retry/backoff sleeps —
 // the `dev`-lock acquisition poll (never a CI-wait; #341 D16/Risk 8's
-// serialise-concurrent-ship-runs mechanism, unrelated to D22/CAN_SLEEP).
+// serialise-concurrent-ship-runs mechanism, unrelated to D22's measured-signal
+// sleep probe inside bkit_wait_ci).
 // A new, un-catalogued raw sleep must be added HERE deliberately, or the
 // audit fails — never silently passed.
 const EXEMPT_RAW_SLEEPS: Array<{
@@ -67,13 +70,17 @@ const EXEMPT_RAW_SLEEPS: Array<{
 }> = [
   { file: "bkit-ship.md", literal: "sleep 5", context: "DEVLOCK" },
   { file: "bkit-ship.md", literal: "sleep 10", context: "DEVLOCK" },
+  // Design/plan close hold the dev lock on the RUNTIME_DEVPUSHES=true branch only,
+  // which is exactly the branch where a foreground sleep is honoured.
+  { file: "bkit-design.md", literal: "sleep 10", context: "DEVLOCK" },
+  { file: "bkit-plan.md", literal: "sleep 10", context: "DEVLOCK" },
 ];
 
-describe("bkit-runtime-prose-audit (#341 T16, row 15 — presence, NOT behaviour)", () => {
-  describe("(i) every CAN_* flag has >=1 reader in .bkit/workflows/", () => {
+describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
+  describe("(i) every RUNTIME_* flag has >=1 reader in .bkit/workflows/", () => {
     const corpus = readAllWorkflows();
 
-    for (const flag of CAN_FLAGS) {
+    for (const flag of RUNTIME_FLAGS) {
       it(`${flag} is read at least once`, () => {
         // A "reader" = any reference to the flag name outside its own
         // definition site (the shim source lives in
@@ -86,9 +93,15 @@ describe("bkit-runtime-prose-audit (#341 T16, row 15 — presence, NOT behaviour
       });
     }
 
-    it("GH_OK's reader chain includes the runtime-resolved row it is durably read back from (D21)", () => {
+    it("CAN_SLEEP is absent (deleted — measured via CI_WAIT_BLOCKED, not a capability row)", () => {
+      expect(corpus).not.toContain("CAN_SLEEP");
+      expect(corpus).toContain("CI_WAIT_BLOCKED");
+      expect(corpus).toContain("BKIT_CI_OUTCOME");
+    });
+
+    it("RUNTIME_GITHUBCLI's reader chain includes the runtime-resolved row it is durably read back from", () => {
       // The row-15 audit's own reason to exist: #341 T14/T15 discovered
-      // GH_OK had readers (the gh->MCP fallback rule, D25 close-guard) but
+      // RUNTIME_GITHUBCLI had readers (the gh->MCP fallback rule, D25 close-guard) but
       // no writer ever durably emitted the row those readers depend on
       // (docs/failures.jsonl key runtime-resolved-row-never-emitted-step1,
       // fixed in this same sub-plan). Assert BOTH halves are present now:

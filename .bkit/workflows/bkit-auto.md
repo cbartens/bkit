@@ -89,7 +89,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
-9. Extract `ISSUE_ID` and `FID` from PR body metadata (marker-primary — D9; works regardless of `BRANCH` naming, e.g. a `claude/…` mode-3 session branch):
+9. Extract `ISSUE_ID` and `FID` from PR body metadata — marker first, branch name only as fallback:
      <!-- bkit:tracker github start -->
    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` and `FID`:
    ```html
@@ -114,7 +114,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    Assert `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]` (safe-slug allowlist — rejects path traversal and shell metacharacters in the untrusted PR-body marker before `{FID}` reaches any filesystem path or downstream dispatch).
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10 (branch-derive fallback).
      <!-- bkit:tracker false end -->
-10. **Branch-derive fallback (D9) — only reached when step 9's marker was missing or malformed.** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]` (safe-slug allowlist — rejects path traversal and shell metacharacters before `{FID}` reaches any filesystem path or downstream dispatch). **Else** → **Failure Path**. (`ISSUE_ID` stays whatever step 9 resolved — Gate 1's "Issue ID non-empty, if tracker wired" catches an unresolved tracker-wired case.)
+10. **Branch-derive fallback — only reached when step 9's marker was missing or malformed.** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]` (safe-slug allowlist — rejects path traversal and shell metacharacters before `{FID}` reaches any filesystem path or downstream dispatch). **Else** → **Failure Path**. (`ISSUE_ID` stays whatever step 9 resolved — Gate 1's "Issue ID non-empty, if tracker wired" catches an unresolved tracker-wired case.)
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->

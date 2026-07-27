@@ -76,25 +76,25 @@ elif command -v gh >/dev/null 2>&1 && [ -n "${GH_BKIT_TOKEN:-}" ] && ! gh auth s
   printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
 fi
 
-# gh-preflight (#341 C2): loud, NEVER-silent GH_OK record. SessionStart hooks
+# gh-preflight (#341 C2): loud, NEVER-silent RUNTIME_GITHUBCLI record. SessionStart hooks
 # cannot hard-stop the session (see header note) — this line is a loud,
 # NON-BLOCKING signal only. The ENFORCING dual-lane abort lives in each
-# workflow's Step-1 preflight (the shim reading GH_OK — see
+# workflow's Step-1 preflight (the shim reading RUNTIME_GITHUBCLI — see
 # bkit-runtime.sh's bkit_runtime_detect / bkit_runtime_assert_resolved), NOT
 # here.
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  GH_OK=true
+  RUNTIME_GITHUBCLI=true
 else
-  GH_OK=false
+  RUNTIME_GITHUBCLI=false
 fi
-log "gh-preflight: GH_OK=${GH_OK}"
+log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
 
 # Dual-lane signal: gh and the GitHub MCP server are BOTH keyed off the same
 # GH_BKIT_TOKEN (this hook + .mcp.json's Authorization header) — if none of
 # GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
 # Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
 # actually fails the run closed.
-if [ "$GH_OK" = "false" ] && [ -z "${GH_BKIT_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${GH_BKIT_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
   log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
 fi
 

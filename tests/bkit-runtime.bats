@@ -5,25 +5,25 @@
 #   1. bkit_runtime_detect maps env inputs -> RUNTIME + 4 CAN_* per the
 #      4-row table; unknown (no primitive) -> least-capable, never mode-1.
 #   2. Sourced shim state does NOT survive a Bash-call boundary; env-only
-#      flags re-derive per block; GH_OK round-trips through the
+#      flags re-derive per block; RUNTIME_GITHUBCLI round-trips through the
 #      runtime-resolved row (D21).
 #   3. Shim-source failure / an unset CAN_* is loud + distinguishable from
 #      an explicit false (Flow 1 emptiness checks; distinct reason).
-#   4. WORKTREE_PATH resolves mint (CAN_WORKTREE=true ->
+#   4. WORKTREE_PATH resolves mint (RUNTIME_WORKTREES=true ->
 #      $REPO_ROOT/.worktrees/{FID}) vs adopt (false -> $REPO_ROOT).
 #   5. bkit_wait_ci's `timeout`-wrapped cap fires on a blocked/never-returning
 #      `sleep` (never hangs); attempt/elapsed bounds enforced (D22).
 #   7. D24 post-close scan flags [skip ci] in the LANDED commit body (any
 #      transport) -> Failure Path.
-#   8. D25 cross-check: runtime-resolved.GH_OK=false + a mapped-tool close
+#   8. D25 cross-check: runtime-resolved.RUNTIME_GITHUBCLI=false + a mapped-tool close
 #      with NO transport-fallback row -> Failure Path (reads real
 #      status.jsonl).
 #   9. D23 double-guard: the local-checkout branch requires
-#      CAN_WORKTREE=true AND CAN_PUSH_DEV=true; trap restores the original
+#      RUNTIME_WORKTREES=true AND RUNTIME_DEVPUSHES=true; trap restores the original
 #      branch on exit.
 #   16. bkit_worktree_helper_guard (bkit-worktree-{prune,sync} disposition)
 #       self-skips LOUDLY (rc=1, distinguishable message) when
-#       CAN_WORKTREE=false, proceeds silently (rc=0) when true, and fails
+#       RUNTIME_WORKTREES=false, proceeds silently (rc=0) when true, and fails
 #       loud+distinct (rc=2) on a detect/assert error — a real behaviour
 #       assertion, not presence-only.
 #
@@ -38,7 +38,7 @@ REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
 # would make this suite unrunnable until then.
 RUNTIME_SH="${BKIT_RUNTIME_SH:-$REPO_ROOT/.bkit/templates/.bkit/scripts/bkit-runtime.sh}"
 
-# A fake `gh` on PATH so GH_OK is deterministic across test environments
+# A fake `gh` on PATH so RUNTIME_GITHUBCLI is deterministic across test environments
 # (real gh auth may or may not be logged in on the machine running bats).
 setup() {
   FAKE_BIN="$(mktemp -d)"
@@ -66,65 +66,86 @@ teardown() {
 # 1. RUNTIME + CAN_* table mapping
 # ---------------------------------------------------------------------------
 
-@test "detect: local (no primitives) -> RUNTIME=local, CAN_WORKTREE/CAN_PUSH_DEV/CAN_SLEEP=true" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+@test "detect: local (no primitives) -> RUNTIME=LOCAL, RUNTIME_WORKTREES/RUNTIME_DEVPUSHES=true" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s RUNTIME_DEVPUSHES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\" \"\$RUNTIME_DEVPUSHES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RUNTIME=local"* ]]
-  [[ "$output" == *"CAN_WORKTREE=true"* ]]
-  [[ "$output" == *"CAN_PUSH_DEV=true"* ]]
-  [[ "$output" == *"CAN_SLEEP=true"* ]]
+  [[ "$output" == *"RUNTIME=LOCAL"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=true"* ]]
+  [[ "$output" == *"RUNTIME_DEVPUSHES=true"* ]]
 }
 
-@test "detect: GITHUB_ACTIONS=true -> RUNTIME=actions, CAN_*=true" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+@test "detect: GITHUB_ACTIONS=true -> RUNTIME=GITHUB_ACTION, CAN_*=true" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s RUNTIME_DEVPUSHES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\" \"\$RUNTIME_DEVPUSHES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RUNTIME=actions"* ]]
-  [[ "$output" == *"CAN_WORKTREE=true"* ]]
-  [[ "$output" == *"CAN_PUSH_DEV=true"* ]]
-  [[ "$output" == *"CAN_SLEEP=true"* ]]
+  [[ "$output" == *"RUNTIME=GITHUB_ACTION"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=true"* ]]
+  [[ "$output" == *"RUNTIME_DEVPUSHES=true"* ]]
 }
 
-@test "detect: CI=true -> RUNTIME=actions (CI is also a mode-2 primitive)" {
+@test "detect: CI=true -> RUNTIME=GITHUB_ACTION (CI is also a mode-2 primitive)" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 CI=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s\n' \"\$RUNTIME\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RUNTIME=actions"* ]]
+  [[ "$output" == *"RUNTIME=GITHUB_ACTION"* ]]
 }
 
-@test "detect: CLAUDE_CODE_REMOTE=true -> RUNTIME=cloud, CAN_*=false" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+@test "detect: CLAUDE_CODE_REMOTE=true -> RUNTIME=CLOUD_CLAUDE, CAN_*=false" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s RUNTIME_DEVPUSHES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\" \"\$RUNTIME_DEVPUSHES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RUNTIME=cloud"* ]]
-  [[ "$output" == *"CAN_WORKTREE=false"* ]]
-  [[ "$output" == *"CAN_PUSH_DEV=false"* ]]
-  [[ "$output" == *"CAN_SLEEP=false"* ]]
+  [[ "$output" == *"RUNTIME=CLOUD_CLAUDE"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=false"* ]]
+  [[ "$output" == *"RUNTIME_DEVPUSHES=false"* ]]
 }
 
-@test "detect: ambiguous primitives (e.g. GITHUB_ACTIONS=false, no CI/CLAUDE_CODE_REMOTE) -> RUNTIME=unknown, least-capable, never mode-1" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=false REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s CAN_WORKTREE=%s CAN_PUSH_DEV=%s CAN_SLEEP=%s\n' \"\$RUNTIME\" \"\$CAN_WORKTREE\" \"\$CAN_PUSH_DEV\" \"\$CAN_SLEEP\""
+@test "detect: explicit falsy primitives (GITHUB_ACTIONS=false / CI=false) mean ABSENCE -> RUNTIME=LOCAL, full capability" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=false CI=false REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s RUNTIME_DEVPUSHES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\" \"\$RUNTIME_DEVPUSHES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"RUNTIME=unknown"* ]]
-  [[ "$output" == *"CAN_WORKTREE=false"* ]]
-  [[ "$output" == *"CAN_PUSH_DEV=false"* ]]
-  [[ "$output" == *"CAN_SLEEP=false"* ]]
+  [[ "$output" == *"RUNTIME=LOCAL"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=true"* ]]
+  [[ "$output" == *"RUNTIME_DEVPUSHES=true"* ]]
 }
 
-@test "detect: GH_OK=true when gh auth status succeeds" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'GH_OK=%s GH_PROBE_EXIT=%s\n' \"\$GH_OK\" \"\$GH_PROBE_EXIT\""
+@test "detect: a non-truthy non-falsy primitive (CI=banana) -> RUNTIME=UNKNOWN, least-capable" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 CI=banana REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"GH_OK=true"* ]]
-  [[ "$output" == *"GH_PROBE_EXIT=0"* ]]
+  [[ "$output" == *"RUNTIME=UNKNOWN"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=false"* ]]
 }
 
-@test "detect: GH_OK=false (loud, non-zero probe exit) when gh auth status fails" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'GH_OK=%s GH_PROBE_EXIT=%s\n' \"\$GH_OK\" \"\$GH_PROBE_EXIT\""
+@test "detect: the .bkit/.runtime-cursor marker resolves CLOUD_CURSOR with GITHUB_ACTION-equivalent capability" {
+  REPO="$(mktemp -d)"; mkdir -p "$REPO/.bkit"; : > "$REPO/.bkit/.runtime-cursor"
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT="$REPO" FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s RUNTIME_WORKTREES=%s RUNTIME_DEVPUSHES=%s\n' \"\$RUNTIME\" \"\$RUNTIME_WORKTREES\" \"\$RUNTIME_DEVPUSHES\""
   [ "$status" -eq 0 ]
-  [[ "$output" == *"GH_OK=false"* ]]
-  [[ "$output" == *"GH_PROBE_EXIT=1"* ]]
-  [[ "$stderr" == *"gh-preflight: GH_OK=false"* ]] || [[ "$output" == *"gh-preflight: GH_OK=false"* ]]
+  [[ "$output" == *"RUNTIME=CLOUD_CURSOR"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=true"* ]]
+  [[ "$output" == *"RUNTIME_DEVPUSHES=true"* ]]
+  rm -rf "$REPO"
+}
+
+@test "detect: BKIT_RUNTIME overrides every primitive; an invalid value falls to UNKNOWN, loudly" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 BKIT_RUNTIME=CLOUD_CLAUDE REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s\n' \"\$RUNTIME\""
+  [[ "$output" == *"RUNTIME=CLOUD_CLAUDE"* ]]
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 BKIT_RUNTIME=nonsense REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME=%s\n' \"\$RUNTIME\""
+  [[ "$output" == *"RUNTIME=UNKNOWN"* ]]
+  [[ "$output" == *"is not a valid runtime"* ]]
+}
+
+@test "detect: RUNTIME_GITHUBCLI=true when gh auth status succeeds" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME_GITHUBCLI=%s RUNTIME_GITHUBCLI_EXIT=%s\n' \"\$RUNTIME_GITHUBCLI\" \"\$RUNTIME_GITHUBCLI_EXIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME_GITHUBCLI=true"* ]]
+  [[ "$output" == *"RUNTIME_GITHUBCLI_EXIT=0"* ]]
+}
+
+@test "detect: RUNTIME_GITHUBCLI=false (loud, non-zero probe exit) when gh auth status fails" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf 'RUNTIME_GITHUBCLI=%s RUNTIME_GITHUBCLI_EXIT=%s\n' \"\$RUNTIME_GITHUBCLI\" \"\$RUNTIME_GITHUBCLI_EXIT\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME_GITHUBCLI=false"* ]]
+  [[ "$output" == *"RUNTIME_GITHUBCLI_EXIT=1"* ]]
+  [[ "$stderr" == *"gh-preflight: RUNTIME_GITHUBCLI=false"* ]] || [[ "$output" == *"gh-preflight: RUNTIME_GITHUBCLI=false"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# 2. State does NOT survive a Bash-call boundary; GH_OK round-trips via the row
+# 2. State does NOT survive a Bash-call boundary; RUNTIME_GITHUBCLI round-trips via the row
 # ---------------------------------------------------------------------------
 
 @test "state: RUNTIME/CAN_* are unset in a fresh process that has not sourced+called this block" {
@@ -139,19 +160,19 @@ teardown() {
   run env -i PATH="$FAKE_BIN:$PATH" bash -c 'printf "RUNTIME=[%s]\n" "${RUNTIME:-}"'
   [ "$status" -eq 0 ]
   [[ "$output" == "RUNTIME=[]" ]]
-  [ "$first" = "local" ]
+  [ "$first" = "LOCAL" ]
 }
 
-@test "row: GH_OK round-trips through the runtime-resolved row (D21 — durable cross-block record)" {
+@test "row: RUNTIME_GITHUBCLI round-trips through the runtime-resolved row" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row build '2026-07-24T00:00:00Z'"
   [ "$status" -eq 0 ]
   [[ "$output" == *'"type":"runtime-resolved"'* ]]
   [[ "$output" == *'"workflow":"build"'* ]]
-  [[ "$output" == *'"runtime":"cloud"'* ]]
-  [[ "$output" == *'"ghOk":false'* ]]
-  # Reading the emitted row back (simulating a later block) recovers GH_OK
+  [[ "$output" == *'"runtime":"CLOUD_CLAUDE"'* ]]
+  [[ "$output" == *'"runtimeGithubCli":false'* ]]
+  # Reading the emitted row back (simulating a later block) recovers RUNTIME_GITHUBCLI
   # without re-probing gh.
-  gh_ok=$(printf '%s' "$output" | jq -r '.ghOk')
+  gh_ok=$(printf '%s' "$output" | jq -r '.runtimeGithubCli')
   [ "$gh_ok" = "false" ]
 }
 
@@ -186,13 +207,13 @@ teardown() {
 # 4. WORKTREE_PATH mint vs adopt
 # ---------------------------------------------------------------------------
 
-@test "worktree: CAN_WORKTREE=true (local) -> WORKTREE_PATH mints REPO_ROOT/.worktrees/FID" {
+@test "worktree: RUNTIME_WORKTREES=true (local) -> WORKTREE_PATH mints REPO_ROOT/.worktrees/FID" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect && printf '%s\n' \"\$WORKTREE_PATH\""
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/repo/.worktrees/42-x" ]
 }
 
-@test "worktree: CAN_WORKTREE=false (cloud) -> WORKTREE_PATH adopts REPO_ROOT (no mint)" {
+@test "worktree: RUNTIME_WORKTREES=false (cloud) -> WORKTREE_PATH adopts REPO_ROOT (no mint)" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 CLAUDE_CODE_REMOTE=true REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect 2>/dev/null && printf '%s\n' \"\$WORKTREE_PATH\""
   [ "$status" -eq 0 ]
   [ "$output" = "/tmp/repo" ]
@@ -320,73 +341,73 @@ EOF
 # 7. D24 — post-close skip-token scan of the LANDED commit body (row 7)
 # ---------------------------------------------------------------------------
 
-@test "close-guard: D24 flags [skip ci] in the LANDED commit body -> Failure Path" {
+@test "close-guard: flags [skip ci] in the LANDED commit body -> Failure Path" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [skip ci]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [skip ci]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 flags [ci skip] (regression, F1 -- previously missed 3 of 5 GitHub tokens)" {
+@test "close-guard: flags [ci skip] (all 5 GitHub tokens)" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [ci skip]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [ci skip]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 flags [no ci] (regression, F1)" {
+@test "close-guard: flags [no ci]" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [no ci]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [no ci]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 flags [skip actions] (regression, F1)" {
+@test "close-guard: flags [skip actions]" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [skip actions]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [skip actions]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 flags [actions skip] (regression, F1)" {
+@test "close-guard: flags [actions skip]" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [actions skip]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [actions skip]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 flags a suppression token case-insensitively (regression, F1 -- call site widened to -qiE)" {
+@test "close-guard: flags a suppression token case-insensitively" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
-  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close bkit [SKIP CI]"
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close" -m "* chore(y): worktree-setup bkit [SKIP CI]"
   SHA="$(git -C "$REPO" rev-parse HEAD)"
   run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D24"* ]]
+  [[ "$output" == *"inherited a CI-suppression token"* ]]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 passes (exit 0) on a skip-token-free commit body" {
+@test "close-guard: passes (exit 0) on a skip-token-free commit body" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): close DONE"
@@ -396,7 +417,17 @@ EOF
   rm -rf "$REPO"
 }
 
-@test "close-guard: D24 fails closed (exit 2) when SHA is empty" {
+@test "close-guard: a deliberate skip token in the SUBJECT with a clean body passes (docs-only close)" {
+  REPO="$(mktemp -d)"
+  git -C "$REPO" init -q -b main
+  git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "docs(x): design DONE bkit [skip ci]"
+  SHA="$(git -C "$REPO" rev-parse HEAD)"
+  run env -i PATH="$PATH" bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_scan_body '$SHA'"
+  [ "$status" -eq 0 ]
+  rm -rf "$REPO"
+}
+
+@test "close-guard: fails closed (exit 2) when SHA is empty" {
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_scan_body ''"
   [ "$status" -eq 2 ]
 }
@@ -405,45 +436,54 @@ EOF
 # 8. D25 — transport-fallback recording cross-check, over real status.jsonl (row 8)
 # ---------------------------------------------------------------------------
 
-@test "close-guard: D25 flags a missing transport-fallback row when GH_OK=false and a mapped transport closed -> Failure Path" {
+@test "close-guard: flags a missing transport-fallback row when RUNTIME_GITHUBCLI=false and a mapped transport closed -> Failure Path" {
   DIR="$(mktemp -d)"
   STATUS="$DIR/status.jsonl"
-  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","runtimeGithubCli":false}\n' > "$STATUS"
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
   [ "$status" -eq 1 ]
-  [[ "$output" == *"D25"* ]]
+  [[ "$output" == *"no transport-fallback row exists"* ]]
   rm -rf "$DIR"
 }
 
-@test "close-guard: D25 passes when GH_OK=false and a transport-fallback row IS present" {
+@test "close-guard: passes when RUNTIME_GITHUBCLI=false and a transport-fallback row IS present" {
   DIR="$(mktemp -d)"
   STATUS="$DIR/status.jsonl"
-  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
-  printf '{"type":"transport-fallback","from":"gh pr merge","to":"merge_pull_request","reason":"GH_OK=false","assertedBy":"pull_request_read","at":"2026-07-24T00:01:00Z"}\n' >> "$STATUS"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","runtimeGithubCli":false}\n' > "$STATUS"
+  printf '{"type":"transport-fallback","from":"gh pr merge","to":"merge_pull_request","reason":"RUNTIME_GITHUBCLI=false","assertedBy":"pull_request_read","at":"2026-07-24T00:01:00Z"}\n' >> "$STATUS"
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
   [ "$status" -eq 0 ]
   rm -rf "$DIR"
 }
 
-@test "close-guard: D25 exempts TRANSPORT=gh regardless of GH_OK" {
+@test "close-guard: exempts TRANSPORT=gh regardless of RUNTIME_GITHUBCLI" {
   DIR="$(mktemp -d)"
   STATUS="$DIR/status.jsonl"
-  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":false}\n' > "$STATUS"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","runtimeGithubCli":false}\n' > "$STATUS"
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' gh"
   [ "$status" -eq 0 ]
   rm -rf "$DIR"
 }
 
-@test "close-guard: D25 passes when GH_OK=true even without a transport-fallback row" {
+@test "close-guard: exempts TRANSPORT=git (local close needs no gh) even when RUNTIME_GITHUBCLI=false" {
   DIR="$(mktemp -d)"
   STATUS="$DIR/status.jsonl"
-  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","ghOk":true}\n' > "$STATUS"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","runtimeGithubCli":false}\n' > "$STATUS"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' git"
+  [ "$status" -eq 0 ]
+  rm -rf "$DIR"
+}
+
+@test "close-guard: passes when RUNTIME_GITHUBCLI=true even without a transport-fallback row" {
+  DIR="$(mktemp -d)"
+  STATUS="$DIR/status.jsonl"
+  printf '{"type":"runtime-resolved","workflow":"design","at":"2026-07-24T00:00:00Z","runtimeGithubCli":true}\n' > "$STATUS"
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$STATUS' mcp"
   [ "$status" -eq 0 ]
   rm -rf "$DIR"
 }
 
-@test "close-guard: D25 fails closed (exit 2) when STATUS_PATH is missing" {
+@test "close-guard: fails closed (exit 2) when STATUS_PATH is missing" {
   run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '/tmp/does-not-exist-$$.jsonl' mcp"
   [ "$status" -eq 2 ]
 }
@@ -452,35 +492,35 @@ EOF
 # 9. D23 — double-guard + reversible checkout (row 9)
 # ---------------------------------------------------------------------------
 
-@test "close-guard: D23 double-guard refuses local checkout when CAN_WORKTREE/CAN_PUSH_DEV are NOT both true" {
+@test "close-guard: double-guard refuses local checkout when RUNTIME_WORKTREES/RUNTIME_DEVPUSHES are NOT both true" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
   git -C "$REPO" branch dev
-  run env -i PATH="$PATH" CAN_WORKTREE=false CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
+  run env -i PATH="$PATH" RUNTIME_WORKTREES=false RUNTIME_DEVPUSHES=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"double-guard"* ]]
+  [[ "$output" == *"refusing local checkout"* ]]
   [ "$(git -C "$REPO" branch --show-current)" = "main" ]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D23 double-guard requires BOTH flags — CAN_PUSH_DEV=false alone also refuses" {
+@test "close-guard: double-guard requires BOTH flags — RUNTIME_DEVPUSHES=false alone also refuses" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
   git -C "$REPO" branch dev
-  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=false bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
+  run env -i PATH="$PATH" RUNTIME_WORKTREES=true RUNTIME_DEVPUSHES=false bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev"
   [ "$status" -eq 2 ]
   [ "$(git -C "$REPO" branch --show-current)" = "main" ]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D23 reversible checkout — trap restores the original branch once the process exits" {
+@test "close-guard: reversible checkout — trap restores the original branch once the process exits" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
   git -C "$REPO" branch dev
-  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev && git branch --show-current"
+  run env -i PATH="$PATH" RUNTIME_WORKTREES=true RUNTIME_DEVPUSHES=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout dev && git branch --show-current"
   [ "$status" -eq 0 ]
   [[ "$output" == *"dev"* ]]
   # The bash -c process from `run` has already exited by the time `run`
@@ -489,7 +529,7 @@ EOF
   rm -rf "$REPO"
 }
 
-@test "close-guard: F3 regression -- a branch name with embedded \$(...) cannot execute code when the EXIT trap fires" {
+@test "close-guard: a branch name with embedded \$(...) cannot execute code when the EXIT trap fires" {
   REPO="$(mktemp -d)"
   git -C "$REPO" init -q -b main
   git -C "$REPO" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
@@ -504,14 +544,14 @@ EOF
   # payload never runs.
   BRANCH="x'\$(touch\$IFS$MARKER)'y"
   git -C "$REPO" checkout -q -b "$BRANCH"
-  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout main"
+  run env -i PATH="$PATH" RUNTIME_WORKTREES=true RUNTIME_DEVPUSHES=true bash -c "cd '$REPO' && . '$RUNTIME_SH' && bkit_close_guard_checkout main"
   [ "$status" -eq 0 ]
   [ ! -e "$MARKER" ]
   rm -rf "$REPO"
 }
 
-@test "close-guard: D23 fails closed (exit 2) on an empty TARGET_BRANCH" {
-  run env -i PATH="$PATH" CAN_WORKTREE=true CAN_PUSH_DEV=true bash -c ". '$RUNTIME_SH' && bkit_close_guard_checkout ''"
+@test "close-guard: fails closed (exit 2) on an empty TARGET_BRANCH" {
+  run env -i PATH="$PATH" RUNTIME_WORKTREES=true RUNTIME_DEVPUSHES=true bash -c ". '$RUNTIME_SH' && bkit_close_guard_checkout ''"
   [ "$status" -eq 2 ]
 }
 
@@ -522,20 +562,20 @@ EOF
 #     WORKTREE_PATH mint/adopt resolution).
 # ---------------------------------------------------------------------------
 
-@test "worktree-helper guard: CAN_WORKTREE=false -> loud self-skip (rc=1), distinguishable message, never silent" {
+@test "worktree-helper guard: RUNTIME_WORKTREES=false -> loud self-skip (rc=1), distinguishable message, never silent" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 CLAUDE_CODE_REMOTE=true bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-prune"
   [ "$status" -eq 1 ]
   [[ "$output" == *"self-skip"* ]]
-  [[ "$output" == *"CAN_WORKTREE=false"* ]]
+  [[ "$output" == *"RUNTIME_WORKTREES=false"* ]]
 }
 
-@test "worktree-helper guard: CAN_WORKTREE=true (local) -> proceeds (rc=0), no self-skip message printed" {
+@test "worktree-helper guard: RUNTIME_WORKTREES=true (local) -> proceeds (rc=0), no self-skip message printed" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-prune"
   [ "$status" -eq 0 ]
   [[ "$output" != *"self-skip"* ]]
 }
 
-@test "worktree-helper guard: CAN_WORKTREE=true (actions runner) -> also proceeds (rc=0)" {
+@test "worktree-helper guard: RUNTIME_WORKTREES=true (actions runner) -> also proceeds (rc=0)" {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=true bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-sync"
   [ "$status" -eq 0 ]
 }
