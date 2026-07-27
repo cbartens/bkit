@@ -137,7 +137,7 @@ Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardles
 
 ## Run-level decision matrix
 
-Bkit ships **flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` capstone joins them (asserts every expected tier ran and passed). No lane waits on any lane but planner → **wall-clock = slowest single lane**. Adopt only lanes your repo has. `bkit-tests-migration` (DB repos): replays every migration from empty DB + seed on fresh instance; always runs, self-skips heavy steps when no migration/seed changed (`bkit-stub:bkit-tests-migration`); `needs:` planner for graph ordering only — replay never gated on `run_level`. **Do not gate `bkit-tests-live` behind test lanes**: ~35% wall-clock on real consumer, buys ~nothing (`@live` push-only, tree PR-validated; non-compiling tree reds lane via own build). Before CI speed spend: **measure job graph, find pole** — same consumer: setup levers (browser cache, `node_modules` cache, composite setup, fetch-depth) ~3%; one `needs:` edge 35%; lever on non-pole lane = zero gain. Starter `ci.yml` ships primitives; **FULL CI SCAFFOLD REFERENCE** at end of `.github/workflows/ci.yml` reproduces every step for tier adoption. Table below: `none` / `partial` / `full` shape primitives + plan plug into.
+Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level` / optional `run_migration`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` capstone joins them (asserts every expected tier ran and passed). Static/unit/build/integration wait only on the planner. **One exception (#385):** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane with `result != 'failure'` so they cannot race a schema the push has not applied (and a from-empty failure cannot reach remote). Do **not** gate live behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing). `bkit-tests-migration` (DB repos): always-on (no job-level `if:`); replay plan-/path-gated per-step; remote push on every `dev`/`main` push, un-gated by `run_migration` (self-heal); capstone asserts success whenever scope succeeded (`bkit-stub:bkit-tests-migration`). Before CI speed spend: **measure job graph, find pole** — same consumer: setup levers (browser cache, `node_modules` cache, composite setup, fetch-depth) ~3%; one `needs:` edge 35%; lever on non-pole lane = zero gain. Starter `ci.yml` ships primitives; **FULL CI SCAFFOLD REFERENCE** at end of `.github/workflows/ci.yml` reproduces every step for tier adoption. Table below: `none` / `partial` / `full` shape primitives + plan plug into.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -189,15 +189,15 @@ Smoke runs **after** deploy, in its own workflow, off the merge gate (what it ac
 
 ## Applying migrations at deploy time
 
-The deploy-time **apply** and the test-time **replay** gate are different jobs with different guarantees — keep both:
+The deploy-time **apply** and the test-time **replay** gate are different guarantees — keep both, preferably in the **same always-on lane** (`bkit-tests-migration`, #385):
 
-- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed.
+- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed. Home: `bkit-tests-migration` on every push to `dev`/`main` (`db push --linked --include-all`), **not** inside `bkit-tests-e2e` (leaving it in e2e while live runs parallel is the schema-cache race). Un-gated by `run_migration` so it self-heals a remote left behind. AFTER the replay steps so a from-empty failure never reaches shared remote.
 - **Replay (test path):** the fresh-DB gate proves from-empty replay + seed load (`testing.md` § Migration-replay + seed). Passing one is not passing the other.
 - **Immutability:** once a migration is merged, never edit it — ship a new corrective migration. Flag any modification to an already-merged migration file in review.
 - **Multiple chains:** apply **every** migration system (e.g. a SQL chain + an ORM / CMS chain), each idempotent and retried independently.
 - **Transient-pooler hardening:** remote applies over a connection pooler can blip (e.g. an IPv4 session pooler's `i/o timeout`); wrap link + apply in a bounded retry — idempotency makes a re-attempt after a mid-apply drop safe.
 - Ordering of apply vs the deploy's build is a **separate** hazard — § Build-vs-migration race.
-- **Not:** assuming the deploy-time apply also validates a clean from-scratch install or the seed — it does neither.
+- **Not:** assuming the deploy-time apply also validates a clean from-scratch install or the seed — it does neither; **not** putting remote push inside e2e while live is ungated from e2e.
 
 ## Build-vs-migration race
 
@@ -210,7 +210,7 @@ If your host auto-deploys on push (Vercel / Netlify Git integration) while CI ap
 1. **Serialise migrate → deploy.** Disable host auto-deploy for the production branch (keep preview auto-deploys); have CI trigger the prod deploy **after** the migration step succeeds. Schema-before-build by construction.
 2. **Belt-and-braces.** Narrowly catch those PG codes in build-time queries (return empty + `dynamicParams` / ISR so the route self-heals on first request) while keeping request-time reads strict (a missing object at request time is a real incident, not a race).
 
-Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migration` proves migrations _replay_ from empty; it does nothing for build-vs-deploy _ordering_ — this race is orthogonal to that gate.
+Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migration` proves migrations _replay_ from empty **and** (on push) owns the remote apply; it still does nothing for build-vs-deploy _host_ ordering — this race is orthogonal to that gate (serialise migrate → deploy at the host).
 
 ## Vercel Deployment Checks — hold production promotion until CI passes
 

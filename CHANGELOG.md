@@ -10,6 +10,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Changed
 
+- **CI scaffold: always-on migration lane owns remote `db push` (#385).** Mirrors the consumer (gether #451) contract: `bkit-tests-migration` stays always-on (no job-level `if:`); replay stays plan-/path-gated per-step; remote `db push --linked --include-all` moves out of e2e / the legacy `supabase-migrate` stub into the migration lane (push to `dev`/`main` only, un-gated by `run_migration` for self-heal); `bkit-tests-e2e` / `-live` `needs:` migration with `result != 'failure'`; capstone asserts migration `success` whenever scope succeeded. Docs (`testing.md` / `deployments.md`), FULL CI SCAFFOLD REFERENCE, and postinstall advisories updated. Local integration: prefer reset-by-default `test:integration:local` over bare turbo (documented pattern; consumer supplies the script).
 - **Cursor defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) (#205).** Shipped Cursor pins no longer use the API pool (Claude / GPT / Fable), so workflows keep running when API credits are exhausted. Depth + synthesizer + `/design`/`/plan`/`/debug` orchestrators → Grok; volume + `/build`/`/ship` → Composer. API-pool restore: `prompts.md` § Model Overrides carries a ready-to-paste Opus block (Claude-opus-tier → `claude-opus-5-thinking-high`; no Cursor Sonnet — leave sonnet/haiku on Composer/Grok or optionally `gpt-5.6-sol-high`). Docs: `providers.md` catalog, README model labels.
 
 ---

@@ -383,7 +383,13 @@ jobs:
           GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
       # bkit:end ts-ci-steps
 
-      # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
+      # bkit-stub:supabase-migrate — REMOTE \`db push\` belongs in \`bkit-tests-migration\`, NOT here
+      # and NOT in \`bkit-tests-e2e\` (#385 / consumer #451). Prefer the migration-lane stub below
+      # (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live \`needs:\` it).
+      # Leaving the push inside e2e while live runs parallel to e2e is the PGRST202 race: @live can
+      # hit a shared remote whose new RPCs/schema the push has not applied yet. To enable the
+      # legacy single-job shape only (no migration lane yet): uncomment below, set SUPABASE_*
+      # secrets, delete this stub header — then migrate the step into bkit-tests-migration ASAP.
       # - name: Apply Supabase Migrations to Dev
       #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache.outputs.skip != 'true'
       #   env:
@@ -645,29 +651,37 @@ jobs:
 # shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
 #
-# The graph is FLAT AND WIDE: scope fans out to every lane at once, and the capstone joins them.
-# Nothing waits on anything but the planner, so total wall-clock == the SLOWEST SINGLE LANE.
+# The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.
+# ONE deliberate exception (#385 / consumer #451): when the migration lane owns the shared-remote
+# \`db push\`, \`bkit-tests-e2e\` and \`bkit-tests-live\` \`needs:\` that lane so they cannot hit a schema
+# the push has not applied yet (and a from-empty replay failure cannot reach remote). Do NOT add
+# edges from live/e2e back onto static/unit/build — those remain the expensive wall-clock trap.
 #
-#   bkit-tests-scope ─┬─ bkit-tests-static      ─┬─ bkit-tests-check
-#     always-on,       ├─ bkit-tests-unit        │    needs: [scope + ALL lanes]
-#     never skips      ├─ bkit-tests-build       │    if: \${{ !cancelled() }}
-#     (~15s)           ├─ bkit-tests-integration │    asserts each lane succeeded
-#                      ├─ bkit-tests-e2e         │    AND each tier's *_ran > 0
-#                      ├─ bkit-tests-live        │
-#                      └─ bkit-tests-migration  ─┘
+#   bkit-tests-scope ─┬─ bkit-tests-static       ─┬─ bkit-tests-check
+#     always-on,       ├─ bkit-tests-unit         │    needs: [scope + ALL lanes]
+#     never skips      ├─ bkit-tests-build        │    if: \${{ !cancelled() }}
+#     (~15s)           ├─ bkit-tests-integration  │    asserts each lane succeeded
+#                      ├─ bkit-tests-migration ───┼─→ bkit-tests-e2e
+#                      │   always-on              └─→ bkit-tests-live
+#                      │   (replay plan-/path-gated;
+#                      │    remote push on every
+#                      │    push to dev/main)
 #
-#   every lane:              needs:[bkit-tests-scope]; if: run_level != 'none'
-#   bkit-tests-live:         needs:[bkit-tests-scope]; if: run_live          <- NOT gated on the lanes
-#   bkit-tests-migration:    needs:[bkit-tests-scope] for ORDERING only; the replay itself is
-#                            unconditional (self-skips its heavy steps when no migration/seed changed)
+#   static/unit/build/integration: needs:[bkit-tests-scope]; if: run_level != 'none'
+#   bkit-tests-migration:          needs:[bkit-tests-scope]; NO job-level if: (always-on)
+#   bkit-tests-e2e / -live:        needs:[scope, migration]; if: !cancelled() && scope==success
+#                                  && <own gate> && migration != 'failure'
+#                                  (!= 'failure' — not == 'success' — so a cancelled/skipped
+#                                  migration does not cascade-skip e2e/live; own gate still rules)
 #
-# DO NOT gate @live behind the test lanes. It reads as free safety and is the most expensive edge
-# in the graph — a consumer measured that one \`needs:\` edge at ~10 min, ~35% of total wall-clock.
+# DO NOT gate @live behind static/unit/build/e2e. That reads as free safety and is the most expensive
+# edge in the graph — a consumer measured one such \`needs:\` edge at ~10 min, ~35% of total wall-clock.
 # It buys ~nothing: @live is PUSH-ONLY, and a push is post-merge and already PR-validated, so
 # "don't spend live quota on a broken tree" has a near-zero hit rate; a tree that doesn't compile
-# still can't false-green, because @live's own build fails and reds the lane. The only cost of
-# ungating is wasted external-API spend on the rare broken push. Re-gate only if your @live spend
-# is expensive enough to flip that trade — and measure before you do.
+# still can't false-green, because @live's own build fails and reds the lane. The ONLY permitted
+# extra \`needs:\` on live/e2e is \`bkit-tests-migration\` when that lane owns the remote push.
+# Re-gate behind other lanes only if your @live spend is expensive enough to flip that trade —
+# and measure before you do.
 #
 # MEASURE THE GRAPH BEFORE OPTIMISING IT. The lesson from the consumer that cut CI 26.7 -> 11.0 min
 # (-59%): every setup-cost lever they tried (browser cache, node_modules cache, composite setup
@@ -719,6 +733,7 @@ jobs:
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
 #       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (#291; emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
+#       #     run_migration (#385): true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
 #       - name: Generate Test Plan           # [U] id: scope. jq bkit-test-plan; validate with has()/!=null
 #       #     (NOT \`// empty\` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
@@ -811,48 +826,73 @@ jobs:
 # browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
 # READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
 # bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
-#   bkit-tests-e2e:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 30
+# Do NOT put remote \`db push\` in this lane — that lives in bkit-tests-migration (#385).
+#   bkit-tests-e2e:
+#     needs: [bkit-tests-scope, bkit-tests-migration]
+#     if: >-
+#       \${{ !cancelled()
+#       && needs.bkit-tests-scope.result == 'success'
+#       && fromJSON(needs.bkit-tests-scope.outputs.plan).run_level != 'none'
+#       && needs.bkit-tests-migration.result != 'failure' }}
+#     timeout-minutes: 30
 #   #   own job-level permissions block (same three) for the coverage comment.
 #     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
 #       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
 #       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
 #
-# === JOB 2b — migration replay gate (parallel sibling of the test lanes) ===
-# bkit-stub:bkit-tests-migration — [DB] prove every migration replays from an EMPTY database
-# (+ the seed loads) on a fresh ephemeral instance each run. WHEN: you have a migrations dir.
-# Catches what \`migrate deploy\` / \`db push --linked\` cannot: a stale-volume migration a warm
-# \`start\` silently never re-applies, or a seed that aborts on an empty store — invisible until the
-# DB is rebuilt from scratch (see docs/testing.md, fresh-provision rule). bkit owns the always-runs,
-# self-detecting, branch-protection-safe SCAFFOLD; you supply your stack's reset+seed (Supabase:
-# \`supabase db reset --local\`; Prisma: \`prisma migrate reset\`; Drizzle/raw: replay every migration
-# onto a throwaway DB, then seed). MULTIPLE MIGRATION SYSTEMS (e.g. Supabase public schema AND an
-# ORM/CMS chain like Payload/Prisma): replay EVERY chain + trigger on EVERY migration dir, or the
-# un-replayed chain is an unverified hole — see docs/testing.md § Provision backing services fresh.
-# NOT in series before bkit-tests — they share no state (each
-# provisions its own DB), so it runs in parallel and JOB 4 folds it into the capstone.
+# === JOB 2b — migration lane (always-on ordering + provisioning) ===
+# bkit-stub:bkit-tests-migration — [DB] ALWAYS-ON lane that owns BOTH halves of migration handling:
+# (1) prove every migration replays from an EMPTY database (+ seed loads) on a fresh ephemeral
+# instance; (2) on every push to \`dev\`/\`main\`, \`db push --linked --include-all\` to the shared remote
+# (moved here out of e2e / the legacy supabase-migrate stub — #385 / consumer #451). WHEN: you have
+# a migrations dir. Catches what a warm \`start\` / remote-only push cannot: a stale-volume migration,
+# a seed that aborts on empty, OR a from-empty failure that would still have been pushed to shared
+# remote when replay and push lived in different jobs. bkit owns the always-on scaffold; you supply
+# reset+seed (Supabase: \`supabase db reset --local\`; Prisma: \`prisma migrate reset\`; Drizzle/raw:
+# replay onto a throwaway DB, then seed) + link/push credentials. MULTIPLE MIGRATION SYSTEMS: replay
+# EVERY chain + trigger on EVERY migration dir — see docs/testing.md § Provision backing services fresh.
+#
+# Why always-on (no job-level \`if:\`): e2e/live \`needs:\` this lane for remote-push ordering. A
+# job-level skip cascades and skips them too (skipped-dependency trap). Gate the HEAVY replay
+# steps instead — via \`plan.run_migration\` (preferred when the planner already exists) OR an
+# in-job Detect step. On a PR with no migration changes the lane is a cheap checkout-only
+# ordering anchor; on every \`dev\`/\`main\` push it always pays checkout + remote push (self-heal);
+# full Docker replay only when migrations/seed changed.
+#
+# Capstone asserts \`result == success\` whenever scope succeeded (not only when run_migration=true) —
+# the push path must report success even when this commit touched no migration files.
 #   bkit-tests-migration:  needs:[bkit-tests-scope]; timeout-minutes: 15
-#   # The scope edge is for GRAPH ORDERING ONLY — it keeps every lane fanning out from one
-#   # planner instead of leaving a stray root. The replay stays UNCONDITIONAL: do NOT add an
-#   # \`if:\` on run_level. It always runs and always reports; only its heavy steps self-skip
-#   # (via the Detect step below) when no migration/seed source changed.
-#   # ALWAYS runs + reports a status (never a perpetually-pending required check); the heavy steps
-#   # short-circuit when no migration/seed source changed, so a no-DB-change PR is a fast green.
+#   # NO job-level if:. Optional env: RUN_MIGRATION: \${{ fromJSON(...plan).run_migration }}
 #     steps:
-#       - name: Checkout Repository           # fetch-depth: 0 — diff vs base to detect migration/seed changes
-#       - name: Detect Migration/Seed Changes # id: detect; relevant=true/false. dispatch + no-usable-base (new branch / zero-SHA)
-#       #     => run-to-be-safe; PR => diff vs origin/<base>; push => diff vs before-SHA, over migrations/ + seed + seed-generator paths.
-#       - name: Provision Ephemeral DB        # [DB] if: relevant — fresh instance in Docker, NO shared infra / remote secrets (e.g. supabase start --exclude logflare,vector,supavisor,studio)
-#       - name: Replay Migrations From Empty  # [DB] if: relevant — drop+recreate, replay ALL migrations in order, load the seed (e.g. supabase db reset --local). Non-zero on a bad migration OR a bad seed literal.
-#       - name: Assert Seed Fixture Loaded    # [DB] if: relevant — a reset can exit 0 while a conditional INSERT no-ops; assert a known seed row exists (e.g. psql -tAc "select 1 from <table> where id='<known-id>'") so a silently-broken seed can't pass green.
-#       - name: Tear Down                     # if: always() && relevant — stop the ephemeral instance.
+#       - name: Checkout Repository           # fetch-depth: 0 when using in-job Detect
+#       - name: Detect Migration/Seed Changes # OPTIONAL if planner emits run_migration; else id: detect
+#       #     relevant=true/false. dispatch + no-usable-base => run-to-be-safe; PR => vs origin/<base>;
+#       #     push => vs before-SHA, over migrations/ + seed + seed-generator paths.
+#       - name: Install Supabase CLI          # [DB] if: RUN_MIGRATION || push-to-dev/main — needed by BOTH paths
+#       - name: Provision Ephemeral DB        # [DB] if: RUN_MIGRATION / relevant — e.g. supabase start --exclude …
+#       - name: Replay Migrations From Empty  # [DB] if: RUN_MIGRATION / relevant — e.g. supabase db reset --local
+#       - name: Assert Seed Fixture Loaded    # [DB] if: RUN_MIGRATION / relevant — known seed row must exist
+#       - name: Apply Remote Migrations       # [DB] if: push to dev/main — UN-gated by run_migration on purpose
+#       #     (self-heals a remote left behind by an earlier failed run). AFTER replay steps so a
+#       #     from-empty failure never reaches shared remote. e.g. link + db push --linked --include-all
+#       #     (resolve project ref via vercel env pull or SUPABASE_* secrets — same pattern as drift checks).
+#       - name: Tear Down                     # if: always() && (RUN_MIGRATION / relevant) — push-only runs never started Docker
 #
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
-# want post-deploy @live smoke. Runs PARALLEL to the test lanes, gated only on the planner.
-# DROP if no deploy (bkit does).
-#   bkit-tests-live:  needs:[bkit-tests-scope]; if: run_live; timeout-minutes: 15
-#   # NOT needs:[the test lanes]. That edge is the most expensive one in the graph (~35% of
-#   # wall-clock when measured) and buys ~nothing — see "DO NOT gate @live" in the header above.
+# want post-deploy @live smoke. Parallel to static/unit/build; waits on migration when that lane
+# owns the remote push (#385). DROP if no deploy (bkit does).
+#   bkit-tests-live:
+#     needs: [bkit-tests-scope, bkit-tests-migration]
+#     if: >-
+#       \${{ !cancelled()
+#       && needs.bkit-tests-scope.result == 'success'
+#       && fromJSON(needs.bkit-tests-scope.outputs.plan).run_live
+#       && needs.bkit-tests-migration.result != 'failure' }}
+#     timeout-minutes: 15
+#   # NOT needs:[static/unit/build/e2e]. Those edges are the expensive wall-clock trap —
+#   # see "DO NOT gate @live" in the header above. The migration edge is the ONE exception
+#   # when this lane hits a shared remote the migration job just pushed.
 #   # The scope edge stays: it is load-bearing (outputs.plan feeds run_live) and costs ~15s.
 #     steps:
 #       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
@@ -901,7 +941,8 @@ jobs:
 #       #   exempt scope BY NAME and point the exemption at this assertion site.
 #       #   bkit-tests-scope==success; run_level!=none => static+unit+build==success (build is a lane result, no *_ran count); web_affected => bkit-tests-integration==success (its LANE result);
 #       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
-#       #   bkit-tests-migration==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
+#       #   bkit-tests-migration==success whenever SCOPE succeeded (always-on ordering + push/replay lane #385 —
+#       #   independent of run_level / run_migration; a failed replay OR remote push reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),
 #       #   live_ran (run_live). A declared tier that exits 0 having run ZERO tests is green-by-construction, NOT validated. A tier with NO
