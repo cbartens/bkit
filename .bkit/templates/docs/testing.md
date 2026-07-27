@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+{{BKIT_MANAGED_MARKER}}
 
 # Testing
 
@@ -91,8 +91,8 @@ A declared tier therefore emits an **executed count** (a runner's machine summar
 
 Two PR-time E2E concerns, both gated on **real preconditions** (event, head ref), never a kill-switch flag:
 
-- **Parity — PR and push run the full suite.** `pull_request` runs the **same** E2E spec set as the `dev`/`main` push. Scale a slow suite by sharding (parallel lanes / more workers). PR↔push differ only by **DB target** (below) and **push-only tiers** (e.g. `@live`).
-- **Correctness — migration-coupled PRs.** A preview deploy runs against the **shared** `dev` database, which does not yet carry a PR's unmerged migration (it applies only on the post-merge push). A PR that adds/renames a column **and** uses it in the same PR therefore deterministically 500s pre-merge; a force-all-E2E marker does **not** help (same migration-less DB). Fix: on **feature→`dev` PRs** run E2E against a **local** DB that has applied this PR's migrations (reset local → prod build → run vs `localhost`); keep preview-backed E2E for `dev`/`main` **pushes** (deploy fidelity). The `dev`→`main` release PR (head ref `dev`) already targets the migrated `dev` DB, so it stays on remote. Repos with more than one migration system must apply **all** of them locally.
+- **Parity — PR and push run the full suite.** `pull_request` runs the **same** E2E spec set as the `dev`/`{{DEFAULT_BRANCH}}` push. Scale a slow suite by sharding (parallel lanes / more workers). PR↔push differ only by **DB target** (below) and **push-only tiers** (e.g. `@live`).
+- **Correctness — migration-coupled PRs.** A preview deploy runs against the **shared** `dev` database, which does not yet carry a PR's unmerged migration (it applies only on the post-merge push). A PR that adds/renames a column **and** uses it in the same PR therefore deterministically 500s pre-merge; a force-all-E2E marker does **not** help (same migration-less DB). Fix: on **feature→`dev` PRs** run E2E against a **local** DB that has applied this PR's migrations (reset local → prod build → run vs `localhost`); keep preview-backed E2E for `dev`/`{{DEFAULT_BRANCH}}` **pushes** (deploy fidelity). The `dev`→`{{DEFAULT_BRANCH}}` release PR (head ref `dev`) already targets the migrated `dev` DB, so it stays on remote. Repos with more than one migration system must apply **all** of them locally.
 
 ## Which tier does a behaviour need?
 
@@ -233,7 +233,7 @@ The **E2E tier** (`bkit-stub:e2e-coverage`) reports Playwright coverage the same
 
 ## CI verbosity (`[verbose ci]`)
 
-See `deployments.md` § Commit-message force tags for the marker mechanics (where to put it: PR title for feature-branch pushes, commit message for direct push to `dev` / `main`). This section covers the testing-specific knobs.
+See `deployments.md` § Commit-message force tags for the marker mechanics (where to put it: PR title for feature-branch pushes, commit message for direct push to `dev` / `{{DEFAULT_BRANCH}}`). This section covers the testing-specific knobs.
 
 **Knobs flipped under the marker:**
 
@@ -249,246 +249,3 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 **Artifact paths** (already in `.gitignore` via bkit template): `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.auth/`. Never commit these — traces alone run 1-50MB each.
 
 <!-- bkit:end -->
-
-## Stack
-
-- **Runner:** Vitest 4 (`pnpm test` → `vitest run`). Shell: bats (`pnpm test:bats`).
-- **Test files** colocated under `.bkit/src/`. `tests/` = bats (`tests/*.bats`) + fixtures (`tests/fixtures/`).
-- **No mocking framework.** Real filesystem (`os.tmpdir()`) over mocked `fs`. `vi.spyOn(process, "exit", ...)` only for `process.exit(1)` paths. Narrow exception: `bkit-postinstall.test.ts` mocks `node:child_process` via `vi.hoisted` — extend mock when boundary grows.
-
-## Tiers
-
-<!-- prettier-ignore -->
-| Tier | Suffix | Scope | Where it runs |
-| --- | --- | --- | --- |
-| Unit | `*.test.ts` | Pure functions, single module. In-process; may `chdir` into an `os.tmpdir()`. No real subprocess (`spawn`/`exec` a real `git`/`npm`/`node`/`bash`) — that is Integration. | Pre-push + CI |
-| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | Pre-push (in-process, via `pnpm test`) + CI `bkit-tests-integration` lane; service/DB-backed integration is CI-only |
-| E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
-| @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
-
-## Live-test gates in the agent workflows
-
-`/bkit-debug` gates on declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when consumer declares one — appended to Run-Tests (`[live=off]` opt-out); recorded in `TEST_SCOPE`. **`/bkit-build` does not run live tier** — @live needs deployed URL; validated post-merge by push-only `bkit-tests-live` + reproduced via `/bkit-debug` (never purely local).
-
-- **Build** — local tiers only (`test`); never `test:live`; @live = push-only canary.
-- **Debug** — live boundary iteration 1 (reproduce); diagnose live-tier failure; require fail→pass before close.
-- **Soak** (`DEBUG_MODE = SOAK` at start when `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]`, mid-run `Mode: SOAK`, or NORMAL loop exhausted) — one instrument-or-fix step/iteration on live boundary, bounded by `MAX_SOAK_ATTEMPT`.
-
-No live tier (or `[live=off]`) → Debug degrades to CONCERNS + `testsLiveSkipped` in status.jsonl/close comment — green ≠ "works." bkit has no deploy → CONCERNS by design. Build records no `testsLiveSkipped` — @live out of scope, not skipped.
-
-## Consumer-runtime parity rule
-
-CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` code in repo + consumers — release must not ship untested install paths.
-
-**Required coverage per consumer-runtime hard-fail** (`process.exit(1)` from `bkit install` / `bkit check`):
-
-1. **Unit test** — failure branch (bad input → exit).
-2. **Smoke spawn** — `bkit install --claude --cursor --tooling` on scratch consumer (`os.tmpdir()`, exit 0). `bkit-install.integration.test.ts` § Scenario 5.
-3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
-4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`). v0.7.0+.
-5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer (KN-12). v0.9.0+.
-
-## Heavy-customised consumer fixture
-
-`tests/fixtures/heavy-customised-consumer/` is committed and consumed by:
-
-- `bkit-uninstall-surgical.integration.test.ts` — round-trip uninstall preserves consumer content byte-identically.
-- `bkit-modules-upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook and `failClosed` and `loop_limit` keys survive deep-containment merge.
-- `bkit-upgrade.integration.test.ts` — drift detection against `canonicalHashes`; `--non-interactive` exits non-zero on conflicts.
-
-When adding bkit-managed file types or scope keys, extend fixture — single source of truth for real consumer surface; do not mock.
-
-## Counter derivation test coverage (#58)
-
-`*_ATTEMPT` counters **derived** from `status.jsonl` at use — never carried across Bash calls (§ Attempt counters, `.bkit/workflows.md`). Shell state does not persist between fenced blocks → value crosses only via `status.jsonl`.
-
-`tests/counter-bus.bats` sources helpers once in a single `bash -c` (not the live shape). `tests/counter-derive.bats` / `tests/counter-failclosed.bats` use a fresh subprocess per block against a real `status.jsonl`: row counting, fold dedup (retries survive / replays collapse), active-run scoping, sub-plan isolation, fail-closed (empty/non-integer → exit 2).
-
-`BKIT_COUNTER_BUS` / `BKIT_COUNTER_CONFIG` override the template scripts (default `.bkit/templates/.bkit/scripts/…`) — enables RED-vs-`dev` without a second worktree (`BKIT_COUNTER_BUS=/tmp/dev-bus.sh npx bats tests/counter-failclosed.bats`).
-
-<!-- prettier-ignore -->
-| File | Tier | Scope |
-| --- | --- | --- |
-| `tests/counter-derive.bats` | Shell (cross-process, real `status.jsonl`) | Row counting; fold dedup; active-run vs `PRIOR_STRATEGY` all-runs; sub-plan isolation |
-| `tests/counter-failclosed.bats` | Shell (cross-process, exit codes, `sh`/`bash`/`dash`/`zsh`) | `decide_next`/`check_max` refuse empty/non-integer (exit 2); legal `0` kept |
-| `tests/route-state.bats` | Shell (cross-process, real `status.jsonl`) | `debugMode`/`pushMode` meta; `route_last_verdict`/`failures`; `ladder_next`; all-runs strategy |
-
-## Runtime shim + gh-preflight test coverage (#341)
-
-`.bkit/scripts/bkit-runtime.sh` is a stateless, re-source-per-block shim (same idiom as the counter bus, D21) that maps detection primitives (`BKIT_RUNTIME` override, `.bkit/.runtime-cursor` marker, `CLAUDE_CODE_REMOTE`, `GITHUB_ACTIONS`/`CI`) to `RUNTIME` ∈ {`LOCAL`,`GITHUB_ACTION`,`CLOUD_CLAUDE`,`CLOUD_CURSOR`,`UNKNOWN`} and a capability table (`RUNTIME_WORKTREES` / `RUNTIME_DEVPUSHES` / `RUNTIME_GITHUBCLI`) — workflow headers branch on the `RUNTIME_*` flags instead of re-deriving runtime logic per call site. `RUNTIME_GITHUBCLI` is the shim's ONE live probe (`gh auth status`, once, loud); `RUNTIME_DEVPUSHES` is deliberately never probed (D23 — a `--dry-run` push probe fails dangerously). There is no `CAN_SLEEP` / `RUNTIME_SLEEPS` row — sleeping is measured inside `bkit_wait_ci` (`CI_WAIT_BLOCKED`). `tests/bkit-runtime.bats` runs each scenario in a fresh subprocess with a fake `gh` on `PATH` for deterministic `RUNTIME_GITHUBCLI` — covers the table mapping (incl. `UNKNOWN` → least-capable, never LOCAL), Bash-call-boundary statelessness + `RUNTIME_GITHUBCLI` round-tripping through the `runtime-resolved` row, Flow-1 loud unset-vs-explicit-`false` distinction, `WORKTREE_PATH` mint-vs-adopt, `bkit_wait_ci`'s `timeout`-wrapped bound on a blocked/never-returning `sleep` (D22 — the shim never hangs the run), the D23/D24/D25 close-guard kernel (double-guard + reversible checkout, post-close skip-token scan, `transport-fallback` cross-check), and `bkit_worktree_helper_guard` — the `bkit-worktree-{prune,sync}` disposition (#341 WS-15/Flow 7): a real behaviour assertion that both helpers self-skip LOUDLY (distinguishable message, never a silent no-op) when `RUNTIME_WORKTREES=false`, and proceed silently when `true`.
-
-Each of the five phase workflows' Step 2 (Worktree Setup) now also emits the durable `runtime-resolved` row via `bkit_runtime_row {workflow} "$(date -u +%FT%TZ)"` — called in the SAME block as `bkit_runtime_detect`/`bkit_runtime_assert_resolved` (D21 state-model requirement), immediately after the adopt-or-mint `if`/`else` closes. This closes a T14/T15-discovered gap (`docs/failures.jsonl` key `runtime-resolved-row-never-emitted-step1`, CLOSED in T16): without it, `bkit_close_guard_cross_check` (D25) could never see a real `RUNTIME_GITHUBCLI` value and its `RUNTIME_GITHUBCLI=false` branch was vacuous in every live run despite passing bats (synthetic `status.jsonl`). `.bkit/src/bkit-runtime-prose-audit.test.ts` (row 15) asserts BOTH halves of the reader/writer chain are present — presence, not behaviour, per the design's own honest limit (D3); the behaviour guarantee rests on the Manual Verification live run below.
-
-`bkit_wait_ci` is the shared CI-Dispatch Gate poll extracted out of `bkit-build.md`/`bkit-debug.md`'s inline `poll_dispatch()`+`while`+`sleep` kernel (#261 "WS-6 contract"). All 3 call sites (build close-workflow; debug PR-mode close-workflow; debug LOCAL-mode create-pr) source the shim and call `bkit_wait_ci` — `.bkit/src/bkit-ci-dispatch-gate-alignment.test.ts` still asserts the 3 kernel blocks stay byte-identical (trimmed) post-extraction, plus that no site re-inlines `poll_dispatch`/a bare `sleep` command. When `bkit_wait_ci` reports `CI_WAIT_BLOCKED=true` the calling workflow exits 3 and the orchestrator resolves the same poll in an agent turn-loop, then re-enters with `BKIT_CI_OUTCOME` set — measured-signal handoff, not a predicted capability flag.
-
-`tests/cloud-bootstrap-preflight.bats` isolates the gh-preflight block inside `.claude/hooks/cloud-bootstrap.sh` (a tmp `CLAUDE_PROJECT_DIR` with no `pnpm-lock.yaml`/`.vale.ini`/`.agents/config.md` self-skips the rest of the hook) — covers: sanctioned `GH_TOKEN`/`GITHUB_TOKEN` env preferred over `gh auth login --with-token`; `RUNTIME_GITHUBCLI` recorded loudly every run; the dual-lane WARNING (non-blocking — SessionStart hooks cannot hard-stop a session) firing only when `GH_BKIT_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` are ALL unset.
-
-`BKIT_RUNTIME_SH` / `BKIT_CLOUD_BOOTSTRAP_SH` override the template-relative default script path (same convention as `BKIT_COUNTER_BUS`).
-
-<!-- prettier-ignore -->
-| File | Tier | Scope |
-| --- | --- | --- |
-| `tests/bkit-runtime.bats` | Shell (cross-process, fake `gh`) | `RUNTIME`/`RUNTIME_*` table mapping incl. `UNKNOWN` + `CLOUD_CURSOR`; state dies across Bash calls; `RUNTIME_GITHUBCLI` round-trip via `runtime-resolved` row; Flow-1 loud unset-vs-`false`; `WORKTREE_PATH` mint-vs-adopt; D23/D24/D25 close-guard kernel; `bkit_worktree_helper_guard` loud self-skip (`RUNTIME_WORKTREES=false`) vs silent proceed (`true`) |
-| `tests/cloud-bootstrap-preflight.bats` | Shell (cross-process, fake `gh`) | `GH_TOKEN`/`GITHUB_TOKEN` precedence over `--with-token`; loud `RUNTIME_GITHUBCLI` record; non-blocking dual-lane WARNING gating |
-| `.bkit/src/bkit-mcp-toolsets.test.ts` | Unit | `.mcp.json`/template `X-MCP-Toolsets` include `actions`; live == real `buildMcpJson("github")` render of the template |
-| `.bkit/src/bkit-template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan template or its repo copy (D20) |
-| `.bkit/src/bkit-runtime-prose-audit.test.ts` | Unit | Every `RUNTIME_*` flag has >=1 reader in `.bkit/workflows/`; `CAN_SLEEP` absent; every foreground CI-wait `sleep` sits inside `bkit_wait_ci` (never a raw call-site `sleep`); every OTHER raw `sleep` is an explicitly-catalogued `dev`-lock retry/backoff — presence, not behaviour (#341 T16, row 15) |
-
-## Key test files
-
-<!-- prettier-ignore -->
-| File | Tier | Scope |
-| --- | --- | --- |
-| `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 and Phase 1 and Phase 3 advisory replay. |
-| `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
-| `bkit-uninstall-surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
-| `bkit-bkitignore.test.ts` and `bkit-bkitignore.integration.test.ts` | Unit and Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
-| `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
-| `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
-| `bkit-modules-upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge and seeded `bkit-mode.sh` deletion advisory. |
-| `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
-| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
-
-## Compliance grader test coverage (#234 WS-2)
-
-**Boundary: git diff** — `bkit-comply.integration.test.ts` uses temp git repo + real `git diff parentSha..HEAD`; no mocks at boundary. Canonical pattern for git-diff validation.
-
-**Pattern:**
-
-```typescript
-gitInit(tmpDir);
-// Parent commit
-const parentSha = commit(tmpDir, "init");
-// Introduce the change to flag
-fs.writeFileSync(path.join(tmpDir, ".claude/agents/x.md"), "# edited\n");
-commit(tmpDir, "feat: mirror edit");
-// Run with realGitAdapter (the production git adapter — no mocks)
-const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdapter, cwd: tmpDir });
-```
-
-**Fail-open shell gate** — `tests/telemetry-failopen.bats` SC #4: `false || echo "[bkit-comply] grader unavailable, skipping"` exits 0.
-
-**Gate-wiring audit** — `bkit-comply-gate-wiring.test.ts`: every `pnpm bkit comply` has same-line `|| echo`; none bare under `set -e`.
-
-<!-- prettier-ignore -->
-| File | Tier | Scope |
-| --- | --- | --- |
-| `bkit-paths-policy.test.ts` | Unit | Drift test: committed `.cjs` === `generateGatePathsCjs()` output; `isMirrorPath` / `isGateConfig` correctness. |
-| `bkit-comply.test.ts` | Unit | `ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`, `formatComplianceSummary` — determinism, pass/fail, row shape (`bkitVersion` on every row). |
-| `bkit-comply.integration.test.ts` | Integration (boundary: git diff) | Temp git repo and `realGitAdapter`; asserts `no-mirror-edit` flagged on actual diff output. |
-| `bkit-comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: every wired close gate has `|| echo`, no bare invocation under `set -e`. |
-| `tests/telemetry-failopen.bats` SC #4 | Shell (boundary: exit codes) | `|| echo "[bkit-comply] grader unavailable, skipping"` exits 0 when command fails. |
-
-## opencode host test coverage (sub-plan 4)
-
-<!-- prettier-ignore -->
-| Matrix row | Test location | Signal |
-| --- | --- | --- |
-| install-flag CLI selection | `bkit-cli.test.ts` (plan-v4-2 Task 2.3) | `--opencode=<provider>` sets provider correctly |
-| install-flag selection and `bkit doctor` / `bkit status` | `bkit-cli.test.ts` (plan-v4-3 Task 4.1) | additive install; doctor/status verbs |
-| `bkit-mode.sh` removal and deletion advisory | `bkit-modules-upgrade.integration.test.ts` | seeded copy → `bkit-mode-sh-deletion-required` advisory, NOT silent preservation |
-| opencode manifest round-trip | `bkit-uninstall-surgical.integration.test.ts` | install → zero drift → uninstall → zero `.opencode/` footprint |
-| opencode reconverge on upgrade | `bkit-modules-upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
-| GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagent-exempt, dedup |
-| end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | deferred — provider offline during session |
-
-## Manual recipe — opencode E2E (Task 5.1)
-
-Run once a live provider (Ollama or NVIDIA) is available:
-
-1. `bkit install --opencode=ollama-local` (or `--opencode=nvidia`) in a clean consumer repo. (Provider key is `ollama-local`, not bare `ollama` — npm custom-provider format.)
-2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`. Seeded agents share a single local model pin (`qwen3-coder:30b`); consumer tunes per-agent.
-3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host and provider. For `ollama-local`, `bkit doctor` surfaces the server-side memory-safety check (`OLLAMA_MAX_LOADED_MODELS=1` / `OLLAMA_NUM_PARALLEL=1` / `OLLAMA_KEEP_ALIVE=2m`).
-4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch and verdicts collected (on `ollama-local` with `OLLAMA_NUM_PARALLEL=1` the fan-out serializes — one model, no parallel speedup).
-5. Confirm provider served the subagents (opencode logs/provider dashboard — not model identity self-report).
-6. Edit a `tsconfig.json` in the opencode session; confirm GateGuard plugin injects advisory.
-7. Run `bkit upgrade` over a consumer dir seeded with `.bkit/scripts/bkit-mode.sh`; confirm deletion advisory fires (NOT silent preservation).
-8. Record outcome in `docs/plans/202606/logs/245-opencode-provider-host/e2e-verdict.md`.
-
-Smoke test is load-bearing — catches `Missing model lookup for {agent}` before publish. Add Scenario per new consumer input shape. **If consumer can hit it, CI must hit it first.**
-
-## Spawning `bkit` from tests
-
-Use project-local `tsx` binary. Do NOT `node --import tsx/register` — `ERR_MODULE_NOT_FOUND` exit 1 passes vacuous exit-code checks. Pattern:
-
-```ts
-const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
-if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
-const result = spawnSync(
-  tsxBin,
-  [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
-  {
-    cwd: tmpDir,
-    encoding: "utf-8",
-    timeout: 60_000,
-  },
-);
-expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-```
-
-`install` requires ≥1 module flag (v4.0.0+) — bare/dropped flags exit 1. Spawn explicit module set under test.
-
-Assert ≥1 positive signal (`[bkit-install]` prefix, exit 0 with reason, or file exists) — else binary-not-found exit 1 passes vacuously.
-
-## Filesystem consumer-repo boundary pattern (#234 WS-4, amended #343)
-
-Harvest boundary tests: real `os.tmpdir()`, `fs.stat`/`fs.readFileSync` ground truth — NO mocks.
-
-1. `fs.mkdtempSync` → temp consumer tree.
-2. Write fixture to `consumerPath/.bkit/stats.jsonl`.
-3. `snapshotFile` BEFORE harvest.
-4. `runHarvest(bkitRoot)`.
-5. `snapshotFile` AFTER harvest.
-6. `fileUnchanged(before, after)` — content + size byte-identical.
-7. `harvest/stats.jsonl` gained expected rows.
-
-**Per-file invariant (#343).** `stats.jsonl` copy-only → step 6 MUST pass. `friction.jsonl` MOVE → prune after store; `fileUnchanged` false by design.
-
-Pruning makes store sole copy until commit — property-test destructive half: store accumulates, malformed never pruned, absent rows left. See `bkit-harvest.integration.test.ts`.
-
-Any read-only filesystem invariant: step 6 = `fileUnchanged` (not mtime). `afterEach(() => fs.rmSync(tmpDir, { recursive: true }))`.
-
-## What not to test
-
-- `.claude/` / `.cursor/` mirror contents — generated at install; test transforms (`applyT1`/`applyT2`/`applyT3`) + `dispatchModules`, not snapshot regen.
-- Real `gh`/`vercel` CLIs — stub via `process.env`.
-- Network — isolate `bkit-tokens.ts` behind injectable resolvers.
-
-## CI execution
-
-`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev` / `main` and PRs into them — a **flat DAG**: `bkit-tests-scope` fans out to every lane, the capstone joins them, so wall-clock == the slowest single lane. bkit has no browser/DB/deploy, so there is no `bkit-tests-build` / `-e2e` / `-migration` / `-live`:
-
-1. **`bkit-tests-scope`** (always-on planner; no `if:`, never skips) — reads markers, computes `run_level` (`[skip ci]` → none, a hard veto over any force marker; `[force build]` / `[force full]` / PR / `workflow_dispatch` / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light; `commits/{sha}/pulls` API error → full, run-to-be-safe), emits the `bkit-test-plan` JSON via `steps.scope.outputs.plan` and a `$GITHUB_STEP_SUMMARY` table. It is the PLANNER, not a test lane, but it lives in the `bkit-tests-*` namespace — any guard treating every `bkit-tests-*` job as a lane must exempt it BY NAME.
-2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane, run on a CLEAN tree (no test artifacts): `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). Checks out at `fetch-depth: 0` so slop delta can materialise the PR base as a worktree. Vale is installed in-lane (pinned tarball, sha256-verified before extract, then `vale sync`) — the runner has none and `.vale/styles/` is gitignored, so without it `pnpm lint:prose` guard-skips and the prose gate is silently dead. Also carries the non-blocking promotion-lag warning on `dev` pushes (see `docs/deployments.md` § Promotion-lag warning). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
-3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane: runs `pnpm test:coverage:unit`, then the bats shell tier (`npx --yes bats tests/*.bats` — the counter-bus retry-gating helpers and the telemetry fail-open contract, logic vitest cannot reach because it sources `.bkit/scripts/*.sh`). The gate command itself lives in the `test:coverage:unit` **package.json script** — unit suite (`--exclude '**/*.integration.test.ts'`), `--coverage.include` scoped to the logic surface (all `.bkit/src` except the `bkit-modules` data registry and `bkit-telemetry-migrate`, which has no unit-lane test — only `bkit-telemetry-migrate.integration.test.ts`), and the branch-coverage floor `--coverage.thresholds.branches` (currently `70`, set just below current and ratcheted up; it lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). **SINGLE SOURCE:** `/bkit-build`'s pre-PR gate runs the SAME script, so a coverage drop fails in the worktree before this lane sees it — bump the threshold in `package.json` and both callers move together. The CI step only appends the JSON reporter emitting `tests_ran`. On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action` (skipped on fork PRs — read-only token). Needs the job-level `permissions:` block (`actions: read` and `contents: read` and `pull-requests: write`) — job-level permissions REPLACE the workflow-level block, so `actions: read` must be re-declared for the SHA-cache `gh run list`. Same SHA-cache short-circuit as static. **`bkit-install.ts` reads low on this gate on purpose** — `bkit-install.integration.test.ts` spawns `tsx` dozens of times against its ~1200-line un-exported `main()` dispatch (real CLI process per scenario), which in-process v8 coverage cannot see; only the handful of pure decision functions pulled out of `main()` for direct unit testing (e.g. `validateModuleFlagsForVerb`, `validateCloudTrackerMatch`) register here. A low install.ts % on this lane is a spawn-tested blind spot, not evidence of missing coverage — the integration lane's executed-count + the Consumer-runtime parity rule (below) are install.ts's real gate.
-4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules` / `install` / `upgrade` / `uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold — a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumers (gether/fraser) run it and dogfoods the shipped scaffold. Own job-level `permissions:` and SHA-cache.
-5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-tests-scope` succeeded and, when `run_level != none`, `bkit-tests-static` and `bkit-tests-unit` and `bkit-tests-integration` all succeeded **and unit and integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
-
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static and test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.
-
-## Packed-tarball migration validation pattern (#234 WS-5)
-
-Validating `bkit telemetry migrate` via a packed tarball in a clean consumer dir (the "dogfood via packed tarball" pattern from MEMORY):
-
-```bash
-# In the bkit repo:
-pnpm pack
-# → @cbartens-bkit-X.Y.Z.tgz
-
-# In a fresh empty dir:
-mkdir /tmp/migrate-test && cd /tmp/migrate-test
-mkdir docs
-cp /path/to/knowledge.md docs/
-cp /path/to/decisions.md docs/
-echo '{}' > package.json
-echo '{}' > docs/knowledge.jsonl
-echo '{}' > docs/decisions.jsonl
-npm install --save-dev /path/to/@cbartens-bkit-X.Y.Z.tgz
-node node_modules/@cbartens/bkit/dist/bkit-install.js telemetry migrate --dry-run
-# verify expected row count; then run without --dry-run
-node node_modules/@cbartens/bkit/dist/bkit-install.js telemetry migrate
-# verify docs/knowledge.jsonl + docs/decisions.jsonl populated, .md deleted, lookup table written
-```
-
-**Why:** `pnpm pack` → fresh install catches runtime-dep mis-classification. `bkit check` does NOT — only real pack/install. Mirrors `docs/knowledge.jsonl:120` dogfood discipline.

@@ -1,11 +1,9 @@
----
-description: "Worktree Sync — Sync agent worktrees"
----
-
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
----
-description: "Worktree Sync — Pull agent worktree changes into the IDE's current branch"
+**Session prompt:**
+
+$ARGUMENTS
+
 ---
 
 # Worktree Sync (Utility Command)

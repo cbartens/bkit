@@ -1,12 +1,4 @@
----
-description: "Plan Feature — Autonomous plan phase"
----
-
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
----
-description: "Plan Feature — Autonomous plan generation"
----
 
 # Plan Feature (Workflow 2/6)
 
@@ -31,26 +23,17 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
 > - **Status branch:** plan status.jsonl is committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle `dev` push. State reaches `dev` once at Close Workflow → `docs({FID}): plan DONE bkit [skip ci]` — by local squash-merge when `RUNTIME_DEVPUSHES` = true, else by PR squash-merge carrying that same subject. Failure Path appends `workflow-failed` to the retained worktree copy (NO `dev` push); the tracker comment carries the failure signal.
-> - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}` (mint mode, `RUNTIME_WORKTREES=true`) or adopts the current branch in place (`RUNTIME_WORKTREES=false` → `WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`); cwd persists across subsequent Bash calls. **If** step ever finds `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
 > - **gh→MCP fallback:** `gh` is primary for the PR / CI / merge surface. **If** a `gh` command in that surface fails while `RUNTIME_GITHUBCLI` = false (read from this run's `runtime-resolved` row in `status.jsonl`; NEVER re-probe `gh` per block) → use the mapped tool: `gh repo view --json nameWithOwner` → `get_me` + parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (method `get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` with an explicit skip-token-free `commit_message`; `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`); `gh run download -n playwright-report` → `actions_get` method `download_workflow_run_artifact`, else `get_job_logs`. These names require the `actions` toolset in `.mcp.json`. Max ONE gh→MCP transition per workflow run. Record each via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; confirm success with an independent re-read; retry with backoff between attempts; request minimal output. An empty MCP read is INCONCLUSIVE, NEVER authoritative absence — corroborate with a second `list_*` call or report unavailable, logging the corroboration attempt as its own distinguishable state. Tracker calls (issue / comment / label / projects) stay on MCP always; this rule covers ONLY the gh-covered PR / CI / merge surface — NEVER invent a `gh` read-path for trackers.
 
-<!-- bkit:tracker github start -->
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
-<!-- bkit:tracker github end -->
-<!-- bkit:tracker linear start -->
-
-> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
-> - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. No edit-in-place.
-
-<!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
@@ -69,19 +52,8 @@ description: "Plan Feature — Autonomous plan generation"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    ```
-2. <!-- bkit:tracker github start -->
-   Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-   <!-- bkit:tracker linear end -->
-3. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+2. Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -89,7 +61,6 @@ description: "Plan Feature — Autonomous plan generation"
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-   <!-- bkit:tracker true end -->
 4. **STOP**, no further downstream steps.
 
 ---
@@ -133,56 +104,16 @@ description: "Plan Feature — Autonomous plan generation"
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker github start -->
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:plan"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__linear__save_issue({ title: "{task}", description: "{input}", team: "{LINEAR_TEAM}", assignee: "me", state: "In Progress", labels: ["bkit:plan"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**. `LINEAR_TEAM` = `bkit.linearTeam` from manifest.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
-   <!-- bkit:tracker false end -->
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker github start -->
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
-   <!-- bkit:tracker false end -->
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
-   <!-- bkit:tracker github start -->
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Lowercase `{ISSUE_ID}`. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   `ISSUE_ID` unset → `{branch-suffix}-{slug}`. No strict regex assert.
-   <!-- bkit:tracker false end -->
 8. Extract parent design `FID` from issue `DESCRIPTION` as `PARENT_FID`.
-9. <!-- bkit:tracker github start -->
-   Add `bkit:plan` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Add `bkit:plan` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker github start -->
+9. Add `bkit:plan` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   No-op (log `Board status carried by issue state — no separate update.`).
-   <!-- bkit:tracker linear end -->
-10. <!-- bkit:tracker github start -->
-    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker github end -->
-    <!-- bkit:tracker linear start -->
-    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker linear end -->
-    <!-- bkit:tracker true start -->
+10. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
     ## Plan Workflow
@@ -190,7 +121,6 @@ description: "Plan Feature — Autonomous plan generation"
     [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
     Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md)}
     ```
-    <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -199,12 +129,10 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue update attempted (phase label `bkit:plan`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -290,20 +218,13 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-6. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -313,17 +234,15 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Parent design appended (if present)
 - [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `plan-start-workflow` and `plan-worktree-setup` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 2` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 3 — Generate Plan
 
-1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
+1. **Subagent:** Invoke `/bkit-plan-generate` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
@@ -337,19 +256,12 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
-4. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Generate Plan
    [plan-v1-draft.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 3 — Generate Plan
 
@@ -358,23 +270,16 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-v1-draft.md`)
 - [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 3` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🤖 Step 4 — Fetch Context
 
 1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces + feature nouns, no stopwords), space-separated. Derived here — tracker-independent — so the local-ledger scans below still have a query when no tracker is connected.
-2. <!-- bkit:tracker github start -->
-   `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## {identifier} — {title} ({state.name})` heading, the `description` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-   <!-- bkit:tracker linear end -->
+2. `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md` (matching lines verbatim; a line matches when it contains >=2 distinct query terms, or the sole term when only one — reduces single-common-word noise; case-insensitive substring; 0 matches / file absent → `None.`):
    ```bash
    TERMS='{QUERY}'
@@ -408,13 +313,7 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context"
    ```
-6. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Fetch Context
@@ -422,7 +321,6 @@ description: "Plan Feature — Autonomous plan generation"
    [related-deferrals.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md)
    [related-failures.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-failures.md)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 4 — Fetch Context
 
@@ -430,26 +328,24 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifacts written (`related-deferrals.md`, `related-failures.md`; `related-issues.md` when a tracker is connected)
 - [ ] Workflow status updated (step `plan-fetch-context` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 4` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 5 — Review Plan
 
-1. Launch all three subagents in parallel using `Agent` tool:
-   - **Subagent:** Invoke `@bkit-plan-review-1`
+1. Launch all three subagents in parallel using `Task` tool:
+   - **Subagent:** Invoke `/bkit-plan-review-1`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
-   - **Subagent:** Invoke `@bkit-plan-review-2`
+   - **Subagent:** Invoke `/bkit-plan-review-2`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
-   - **Subagent:** Invoke `@bkit-plan-review-3`
+   - **Subagent:** Invoke `/bkit-plan-review-3`
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
@@ -464,18 +360,11 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): review-plan"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Review Plan - Verdict: {REVIEW_VERDICT} - Failures: {REVIEW_FAILURES}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 5 — Review Plan
 
@@ -485,17 +374,15 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`)
 - [ ] Workflow status updated (step `plan-review` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 5` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 6 — Apply Review
 
-1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
+1. **Subagent:** Invoke `/bkit-plan-update` using `Task` tool:
    Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
@@ -510,19 +397,12 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [plan-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 6 — Apply Review
 
@@ -532,22 +412,20 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-v2-reviewed.md`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 6` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 7 — Scope Check
 
-1. Launch both subagents in parallel using `Agent` tool:
-   - **Subagent:** Invoke `@bkit-plan-scope-check-1`
+1. Launch both subagents in parallel using `Task` tool:
+   - **Subagent:** Invoke `/bkit-plan-scope-check-1`
      Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`.
-   - **Subagent:** Invoke `@bkit-plan-scope-check-2`
+   - **Subagent:** Invoke `/bkit-plan-scope-check-2`
      Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
@@ -562,18 +440,11 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): scope-check"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Scope Check - Verdict: {SCOPE_VERDICT} - Failures: {SCOPE_FAILURES}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 7 — Scope Check
 
@@ -583,17 +454,15 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
 - [ ] Workflow status updated (step `plan-scope-check` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 7` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 8 — Apply Scope
 
-1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
+1. **Subagent:** Invoke `/bkit-plan-update` using `Task` tool:
    Context: You are a subagent in the Plan phase applying scope-check critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
    Update: `docs/deferrals.jsonl` (APPEND scope expansions if any).
@@ -609,19 +478,12 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-scope"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Apply Scope - Verdict: {APPLY_SCOPE_VERDICT}
    [plan-v3-checked.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 8 — Apply Scope
 
@@ -632,17 +494,15 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-v3-checked.md`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 8` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 9 — Complexity Check
 
-1. **Subagent:** Invoke `@bkit-plan-complexity-check` using `Agent` tool:
+1. **Subagent:** Invoke `/bkit-plan-complexity-check` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md`.
@@ -657,18 +517,11 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): complexity-check"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Complexity Check - Verdict: {COMPLEXITY_VERDICT}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 9 — Complexity Check
 
@@ -677,11 +530,9 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid (`COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
 - [ ] Workflow status updated (step `plan-complexity-check` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 9` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -689,7 +540,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 **Run only if** Step 9 `COMPLEXITY_VERDICT` = SPLIT.
 
-1. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Agent` tool:
+1. **Subagent:** Invoke `/bkit-plan-complexity-split` using `Task` tool:
    Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-1.md` ... `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-N.md` (children).
@@ -704,19 +555,12 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): complexity-split"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Complexity Split - Verdict: {SPLIT_VERDICT}
    [plan-v4-split.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md)
    ```
-   <!-- bkit:tracker true end -->
 6. Route:
    - **If** `SPLIT_VERDICT` = PASS → Step 11.
    - **If** `SPLIT_VERDICT` = FAIL → **Failure Path**.
@@ -731,18 +575,16 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-v4-split.md`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 10` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
 ## 🧠 Step 11 — Summary
 
 1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
-2. **Subagent:** Invoke `@bkit-plan-summary` using `Agent` tool:
+2. **Subagent:** Invoke `/bkit-plan-summary` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.
@@ -761,20 +603,13 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
-7. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Summary - Verdict: {SUMMARY_VERDICT}
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
    ```
-   <!-- bkit:tracker true end -->
 8. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
    - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
@@ -790,11 +625,9 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 11` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -925,20 +758,9 @@ description: "Plan Feature — Autonomous plan generation"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    ```
-4. <!-- bkit:tracker github start -->
-   No issue changes.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review" })`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker github start -->
+4. No issue changes.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   No-op (log `Board status carried by issue state — no separate update.`).
-   <!-- bkit:tracker linear end -->
-5. <!-- bkit:tracker true start -->
-   Build `{ARTIFACTS}` link list:
+5. Build `{ARTIFACTS}` link list:
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/plan-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
@@ -946,14 +768,7 @@ description: "Plan Feature — Autonomous plan generation"
    TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=plan) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
    printf '\n%s\n' "$TELEMETRY"
    ```
-   <!-- bkit:tracker true end -->
-6. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 12 — Close Workflow
@@ -962,11 +777,8 @@ description: "Plan Feature — Autonomous plan generation"
    #### Telemetry
    {TELEMETRY}
    ```
-   <!-- bkit:tracker true end -->
 7. Final return: Display `plan-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP** — do NOT invoke `/build`.
-   <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 12 — Close Workflow
 
@@ -983,11 +795,9 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Worktree removed and feature branch deleted (mint mode only)
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 12` comment
 - [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 12` section)
 
-<!-- bkit:tracker true end -->

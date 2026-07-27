@@ -1,12 +1,7 @@
 ---
-description: "Ship Feature — Autonomous ship phase"
----
-
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
-
----
 description: "Ship Feature — Autonomous merge and archive"
 ---
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
@@ -38,20 +33,11 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
 > - **gh→MCP fallback:** `gh` is primary for the PR / CI / merge surface. **If** a `gh` command in that surface fails while `RUNTIME_GITHUBCLI` = false (read from this run's `runtime-resolved` row in `status.jsonl`; NEVER re-probe `gh` per block) → use the mapped tool: `gh repo view --json nameWithOwner` → `get_me` + parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (method `get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` with an explicit skip-token-free `commit_message`; `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`); `gh run download -n playwright-report` → `actions_get` method `download_workflow_run_artifact`, else `get_job_logs`. These names require the `actions` toolset in `.mcp.json`. Max ONE gh→MCP transition per workflow run. Record each via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT` appended to `status.jsonl`; confirm success with an independent re-read; retry with backoff between attempts; request minimal output. An empty MCP read is INCONCLUSIVE, NEVER authoritative absence — corroborate with a second `list_*` call or report unavailable, logging the corroboration attempt as its own distinguishable state. Tracker calls (issue / comment / label / projects) stay on MCP always; this rule covers ONLY the gh-covered PR / CI / merge surface — NEVER invent a `gh` read-path for trackers.
 
-<!-- bkit:tracker github start -->
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
-<!-- bkit:tracker github end -->
-<!-- bkit:tracker linear start -->
-
-> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
-> - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. No edit-in-place.
-
-<!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** `MAX_MERGE_ATTEMPT` sourced via fenced shell routing block below.
@@ -91,25 +77,12 @@ description: "Ship Feature — Autonomous merge and archive"
      echo "dev lock busy — ship FAILED status left uncommitted on dev; it rides along on the next dev push" >&2
    fi
    ```
-2. <!-- bkit:tracker true start -->
-   Resolve merge state — `gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null` → `FAILED_STATE` (empty when `{PR_NUMBER}` unset).
+2. Resolve merge state — `gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null` → `FAILED_STATE` (empty when `{PR_NUMBER}` unset).
    **Decide `{LABELS}`:**
    - **If** `FAILED_STATE` = MERGED → drop all `bkit:*` phase labels, add `bkit:merged` **and** `bkit:failed`.
    - **Else** → add `bkit:failed`; prior phase label persists, additive.
-   <!-- bkit:tracker true end -->
-   <!-- bkit:tracker github start -->
    `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-   <!-- bkit:tracker linear end -->
-3. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -117,7 +90,6 @@ description: "Ship Feature — Autonomous merge and archive"
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-   <!-- bkit:tracker true end -->
 4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards, counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed **or** deferred-sweep block sentinel (`docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked`) previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -128,20 +100,13 @@ description: "Ship Feature — Autonomous merge and archive"
 8. `git add -A`.
 9. `git commit -m "docs({FID}): ship aborted bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty and push (force-with-lease on personal branch, plain on `dev` / `main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — **If** push fails → do NOT claim success on tracker.
-11. <!-- bkit:tracker github start -->
-    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker github end -->
-    <!-- bkit:tracker linear start -->
-    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker linear end -->
-    <!-- bkit:tracker true start -->
+11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
     ### Workflow Handover
     [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md)
     {FID-ship-handover.md content verbatim}
     ```
-    <!-- bkit:tracker true end -->
 12. **STOP**, no further downstream steps.
 
 ---
@@ -185,62 +150,21 @@ description: "Ship Feature — Autonomous merge and archive"
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker github start -->
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:ship"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__linear__save_issue({ title: "{task}", description: "{input}", team: "{LINEAR_TEAM}", assignee: "me", state: "In Progress", labels: ["bkit:ship"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**. `LINEAR_TEAM` = `bkit.linearTeam` from manifest.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
-   <!-- bkit:tracker false end -->
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker github start -->
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
-   <!-- bkit:tracker false end -->
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
-   <!-- bkit:tracker github start -->
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Lowercase `{ISSUE_ID}`. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   `ISSUE_ID` unset → `{branch-suffix}-{slug}`. No strict regex assert.
-   <!-- bkit:tracker false end -->
-8. <!-- bkit:tracker github start -->
-   Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker github start -->
+8. Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   No-op (log `Board status carried by issue state — no separate update.`).
-   <!-- bkit:tracker linear end -->
-9. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ## Ship Workflow
    ### Step 1 — Start Workflow
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -248,12 +172,10 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue update attempted (phase label `bkit:ship`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -362,16 +284,9 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-10. <!-- bkit:tracker github start -->
-
+10. 
 `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-
-`mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
-
+   
 `{BODY}` = fenced block below:
 
 ```comment
@@ -380,7 +295,6 @@ description: "Ship Feature — Autonomous merge and archive"
 [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
 ```
 
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -393,11 +307,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `ship-start-workflow` and `ship-worktree-setup` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 2` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -437,18 +349,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): regression-guard"
    ```
-3. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Regression Guard - Verdict: {REGRESSION_VERDICT}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 3 — Regression Guard
 
@@ -459,11 +364,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Verdict extracted and valid (`REGRESSION_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-regression-guard` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 3` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -490,18 +393,11 @@ description: "Ship Feature — Autonomous merge and archive"
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve${AUTO_ROUTE_SUFFIX}"
    ```
-6. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Conflict Resolve - Verdict: {RESOLVE_VERDICT}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 4 — Conflict Resolve
 
@@ -511,11 +407,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Sentinel cleared on PASS
 - [ ] Workflow status updated (step `ship-conflict-resolve` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 4` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -536,18 +430,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): deferred-sweep"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Deferred Sweep - Verdict: {SWEEP_VERDICT}
    ```
-   <!-- bkit:tracker true end -->
 6. Route:
    - **If** `SWEEP_VERDICT` = PASS → Step 6.
    - **If** `SWEEP_VERDICT` = FAIL → **Failure Path**.
@@ -560,11 +447,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Verdict extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-deferred-sweep` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 5` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -660,18 +545,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
-9. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-   <!-- bkit:tracker true end -->
 10. Route:
 
 - **If** `state` = MERGED → Step 9.
@@ -701,11 +579,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 6` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -732,18 +608,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT}"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 7 — Failure Diagnose
 
@@ -753,11 +622,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 7` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -794,18 +661,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT}"
    ```
-6. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-   <!-- bkit:tracker true end -->
 7. Re-run merge → Step 6.
 
 ### 🔒 Gate 8 — Failure Remediate
@@ -816,11 +676,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 8` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -879,19 +737,12 @@ description: "Ship Feature — Autonomous merge and archive"
      '{type:"step-done", workflow:"ship", step:"ship-switch-to-dev", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    ```
-3. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Switch to Dev
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 9 — Switch to Dev
 
@@ -899,11 +750,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Dev branch up to date with origin (`dev`)
 - [ ] Workflow status updated (step `ship-switch-to-dev` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 9` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -942,20 +791,13 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -- docs/ && git commit --allow-empty -m "docs({FID}): update-docs-summary" -- docs/
    ```
-7. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-   <!-- bkit:tracker true end -->
 8. Route:
    - **If** `UPDATE_DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
    - **If** `UPDATE_DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
@@ -972,11 +814,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 10` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -1002,18 +842,11 @@ description: "Ship Feature — Autonomous merge and archive"
      >> "$STATUS"
    git add -- docs/plans/{YYYYMM}/logs/{FID}/ .agents/skills skills-lock.json && git commit --allow-empty -m "chore({FID}): prune-skills" -- docs/plans/{YYYYMM}/logs/{FID}/ .agents/skills skills-lock.json
    ```
-3. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Prune Skills
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 11 — Prune Skills
 
@@ -1021,11 +854,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
 - [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 11` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -1059,18 +890,11 @@ description: "Ship Feature — Autonomous merge and archive"
      '{type:"step-done", workflow:"ship", step:"ship-worktree-cleanup", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    ```
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 12 — Worktree Cleanup
    ```
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 12 — Worktree Cleanup
 
@@ -1080,11 +904,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 12` section)
 
-<!-- bkit:tracker true end -->
 
 ---
 
@@ -1219,20 +1041,9 @@ description: "Ship Feature — Autonomous merge and archive"
      echo "[bkit-ship] RUNTIME_DEVPUSHES=false — close-workflow status/telemetry commit stays on the current branch; the code merge already landed server-side at Step 6" >&2
    fi
    ```
-3. <!-- bkit:tracker github start -->
-   Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`. Do NOT set Done.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker github start -->
+3. Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   No-op (log `Board status carried by issue state — no separate update.`).
-   <!-- bkit:tracker linear end -->
-4. <!-- bkit:tracker true start -->
-   Build `{ARTIFACTS}` link list:
+4. Build `{ARTIFACTS}` link list:
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/ship-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
@@ -1240,14 +1051,7 @@ description: "Ship Feature — Autonomous merge and archive"
    TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=ship) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
    printf '\n%s\n' "$TELEMETRY"
    ```
-   <!-- bkit:tracker true end -->
-5. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker true start -->
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 13 — Close Workflow
@@ -1256,11 +1060,8 @@ description: "Ship Feature — Autonomous merge and archive"
    #### Telemetry
    {TELEMETRY}
    ```
-   <!-- bkit:tracker true end -->
 6. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
-   <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 13 — Close Workflow
 
@@ -1274,11 +1075,9 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Changes pushed to `dev` with `bkit [skip ci]` when `RUNTIME_DEVPUSHES` = true; else close-workflow commit stays on the current branch
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
 
-<!-- bkit:tracker true start -->
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
 - [ ] Artifact link list embedded in `Step 13` comment
 - [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 13` section)
 
-<!-- bkit:tracker true end -->
