@@ -915,7 +915,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same for each `{FID}-plan-N.md` if SPLIT — `{YYYYMM}` = creation month)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
-- [ ] Close pathspec committed (`docs/plans/{YYYYMM}/logs/{FID}/` + `.bkit/friction.jsonl` + `.bkit/stats.jsonl` staged before push — no stranded dirty ledger)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
@@ -924,7 +924,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 12` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
+- [ ] Telemetry report embedded via summary-only read
 - [ ] Issue comment attempted (`Step 12` section)
 
 <!-- bkit:tracker true end -->

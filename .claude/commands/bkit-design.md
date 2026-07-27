@@ -665,7 +665,7 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical design copied (`docs/plans/{YYYYMM}/{FID}-design.md`, verified on `dev` post-merge — `{YYYYMM}` = creation month)
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
-- [ ] Close pathspec committed (`docs/plans/{YYYYMM}/logs/{FID}/` + `.bkit/friction.jsonl` + `.bkit/stats.jsonl` staged before push — no stranded dirty ledger)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`design-summary.md` content verbatim)
@@ -673,6 +673,6 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:design` unchanged)
 - [ ] Artifact link list embedded in `Step 10` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
+- [ ] Telemetry report embedded via summary-only read
 - [ ] Issue comment attempted (`Step 10` section)
 

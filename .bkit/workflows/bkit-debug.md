@@ -1359,7 +1359,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
 - [ ] HEAD-Subject Assertion passed
-- [ ] Close pathspec ledgers included in close-workflow commit (`.bkit/friction.jsonl` + `.bkit/stats.jsonl` under `$WT` — no stranded dirty ledger on main)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 
 <!-- bkit:tracker true start -->
 
@@ -1381,7 +1381,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
+- [ ] Telemetry report embedded via summary-only read
 - [ ] Issue comment attempted (`Step 10` section)
 
 <!-- bkit:tracker true end -->

@@ -1203,7 +1203,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 
 - [ ] HEAD-Subject Assertion passed (close-workflow commit is the CI-triggering HEAD)
-- [ ] Close pathspec ledgers included in close-workflow commit (`.bkit/friction.jsonl` + `.bkit/stats.jsonl` under `$WT` — no stranded dirty ledger on main)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Lock removed
 - [ ] Close-workflow commit pushed to `feat/{FID}` (no PR yet → no CI)
 - [ ] Open-PR probe ran (no pre-existing open PR, or probe fell through)
@@ -1224,6 +1224,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Artifact link list embedded in `Step 17` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
+- [ ] Telemetry report embedded via summary-only read
 - [ ] Issue comment attempted (`Step 17` sections)
 
