@@ -256,11 +256,13 @@ Mirror regen must run once, after every edited workflow/agent/utility surface ex
 
 ### A. `docs/roadmap.md` is the CANONICAL home for issue state; the tracker is a downstream mirror
 
+> **Superseded by Addendum 3 § N/O:** the CANONICAL home is now `docs/roadmap.jsonl` (the feature ledger); `docs/roadmap.md` is its regenerable human view. The tracker remains a downstream mirror.
+
 Supersedes the body's "tracker labels = live-phase authority" and "mechanical status = a projection of tracker labels" framing (Success Criterion #1, the build/debug edge case, the two Decisions rows on live-phase authority, and the Trade-off on build/debug lag). The authority chain is now **workflow execution -> on-disk artifacts + `docs/roadmap.md` (canonical) -> tracker labels (synced FROM roadmap, see D)**. Every item being worked on MUST appear in `docs/roadmap.md` under exactly one phase section; the tracker, when connected, is a nice-to-have enrichment, not the source of truth.
 
 ### B. Phase-sectioned board + consumer backlog
 
-The `roadmap-status` machine region is organised into phase sections — **Backlog -> Design -> Plan -> Build -> Debug -> Ship** — each listing the FIDs currently in that phase. On ship an item moves to the completed ledger (see G) and drops off the board. The **Backlog** is the free-form, consumer-managed region at the bottom of the file — this is the body's "Ideas / New Work" region, renamed and promoted to a first-class phase: open things to work on, never regenerated, read by the analysis tier and promotable into design.
+The `roadmap-status` machine region is organised into phase sections — **Backlog -> Design -> Plan -> Build -> Debug -> Ship** — each listing the FIDs currently in that phase. On ship an item moves to the completed ledger (see G) and drops off the board. _(Refined by **Addendum 2 § K**: `## Ship` = in flight only, plus a separate regenerated `## Shipped` section capped at the last 10.)_ The **Backlog** is the free-form, consumer-managed region at the bottom of the file — this is the body's "Ideas / New Work" region, renamed and promoted to a first-class phase: open things to work on, never regenerated, read by the analysis tier and promotable into design.
 
 ### C. build/debug now write roadmap status to `dev` — resolves OPEN #1
 
@@ -280,6 +282,8 @@ Rows key on **FID** always. When a tracker is connected the tracker id is embedd
 
 ### G. Convert `docs/completed.md` -> `docs/completed.jsonl` (finding #4) — IN SCOPE for #380 (owner-confirmed 2026-07-23)
 
+> **Superseded in part by Addendum 2 (§ H/I/J):** `completed.md` is DELETED rather than kept-or-generated; the row format is fixed in § I; the migration extends `bkit telemetry migrate` instead of a new backfill script.
+
 Add a structured `docs/completed.jsonl` shipped-FID ledger (peer of `deferrals.jsonl`/`failures.jsonl`, `.bkit/jsonl.md` format) as the machine-readable "is this FID shipped?" source, replacing free-form markdown parsing. `@bkit-ship-update-docs` appends a row at ship close; the human-readable `docs/completed.md` is kept or generated from the ledger. **In-scope surface:** the ship workflow (`@bkit-ship-update-docs` writer) and any existing `completed.md` readers migrate together in the same change; the exclude-completed scan (E) reads the new ledger. This adds `@bkit-ship-update-docs` (and the ship Close step) to the edited shipped surface, so it joins WS-6's mirror-regen + install/upgrade dogfood.
 
 ### Reconciliation of the conflict-safety model
@@ -298,8 +302,121 @@ Making roadmap.md canonical does NOT abandon regenerate-on-conflict. The `roadma
 
 Both post-revision review lenses returned **CONCERNS** (buildable + operable, no FAIL); every finding is plan-resolvable and is captured here as a directive so the plan phase addresses it explicitly. Reports: `design-rereview-1.md` (buildability) + `design-rereview-2.md` (operability) in the logs dir.
 
-1. **Phase sections are a per-FID UPSERT/MERGE, not a blind full-regenerate.** build/debug rows are authored on `dev` at their close and are NOT re-derivable from `dev` (their `status.jsonl` lives on `feat/{FID}`). So a later design/plan/ship close must MERGE its own FID's row into the existing board, never rebuild the whole board from dev-visible sources (which would silently revert build/debug rows). This resolves the body's open "per-FID upsert-vs-full-regenerate" question: the status region is an idempotent per-FID upsert keyed on FID, and the `-X ours` non-event property holds for the writer's own row, not a blind full rebuild.
-2. **Canonical reconciliation / recovery check.** Because roadmap.md is canonical and not fully re-derivable, add a reconcile pass (at ship or on the cadence) that diffs live `feat/*` branches (+ open tracker issues when wired) against the board and re-adds or flags any missing in-flight row, with a `[bkit-roadmap]` log line — the recovery path for a lost/corrupted phase row.
-3. **`completed.md` -> `completed.jsonl` migrates atomically across ALL touchpoints, with backfill.** In one change: (a) the `@bkit-ship-update-docs` writer; (b) the ship Step 10 verdict reader `grep -c "...{FID}" docs/completed.md` at `bkit-ship.md:902` (else `UPDATE_DOCS_VERDICT` = FAIL blocks every ship); (c) the `.bkit/version` manifest hash-gate entry for `docs/completed.md` (it IS drift-gated, unlike `deferrals.jsonl`); (d) a one-time BACKFILL of existing `completed.md` entries into `completed.jsonl` — else finding E's exclude-completed reads an empty ledger on rollout day and every historically-shipped FID reappears as active.
+1. **~~Phase sections are a per-FID UPSERT/MERGE, not a blind full-regenerate.~~ VOID — superseded by Addendum 3 § O** (the board is a pure projection of `docs/roadmap.jsonl`, fully regenerated every run; the asymmetry this directive existed for is gone). Retained for provenance: build/debug rows are authored on `dev` at their close and are NOT re-derivable from `dev` (their `status.jsonl` lives on `feat/{FID}`). So a later design/plan/ship close must MERGE its own FID's row into the existing board, never rebuild the whole board from dev-visible sources (which would silently revert build/debug rows). This resolves the body's open "per-FID upsert-vs-full-regenerate" question: the status region is an idempotent per-FID upsert keyed on FID, and the `-X ours` non-event property holds for the writer's own row, not a blind full rebuild.
+2. **~~Canonical reconciliation / recovery check.~~ VOID as a recovery path — superseded by Addendum 3 § O** (a lost board is rebuilt by re-running the fold); what survives is a smaller drift CHECK for a live `feat/*` with no ledger row. Retained for provenance: Because roadmap.md is canonical and not fully re-derivable, add a reconcile pass (at ship or on the cadence) that diffs live `feat/*` branches (+ open tracker issues when wired) against the board and re-adds or flags any missing in-flight row, with a `[bkit-roadmap]` log line — the recovery path for a lost/corrupted phase row.
+3. **`completed.md` -> `completed.jsonl` migrates atomically across ALL touchpoints, with backfill.** _(Mechanism superseded by Addendum 2 § J — the migration extends `bkit telemetry migrate`, which by DE-39 is never callable from `bkit upgrade`; (c) becomes REMOVAL of the manifest entry, and (d) becomes explicit-invocation + a transitional fold fallback.)_ In one change: (a) the `@bkit-ship-update-docs` writer; (b) the ship Step 10 verdict reader `grep -c "...{FID}" docs/completed.md` at `bkit-ship.md:902` (else `UPDATE_DOCS_VERDICT` = FAIL blocks every ship); (c) the `.bkit/version` manifest hash-gate entry for `docs/completed.md` (it IS drift-gated, unlike `deferrals.jsonl`); (d) a one-time BACKFILL of existing `completed.md` entries into `completed.jsonl` — else finding E's exclude-completed reads an empty ledger on rollout day and every historically-shipped FID reappears as active.
 4. **Reverse tracker-label sync is ORCHESTRATOR-mediated, best-effort, with a settled-drift guard.** No leaf prompt has tracker MCP tools (verified), so the sync lives in the workflow/orchestrator (the cadence step), never in `@bkit-roadmap-refresh`. It reconciles only SETTLED drift — skip any issue whose phase is actively transitioning (a workflow holding its lock / an in-flight `feat/{FID}`) — is idempotent, never gates, and emits a `[bkit-roadmap]` line on fire / skip / conflict.
 5. **build/debug dev-write is fail-open + a 4th staging shape.** The build/debug dev-located roadmap write never gates the close (fail-open, `[bkit-roadmap]` on every fail branch) and is a FOURTH distinct staging shape beyond the body's three — the per-shape CI/bats assertion must cover it (design/plan allowlist-widen; build/debug `git add -A` on feat PLUS the new dev-lock write; ship scoped `git add`).
+
+## Addendum 2 — Completed ledger, board cap, telemetry scope (owner, 2026-07-25)
+
+> Owner direction taken during plan review. Where this conflicts with Addendum 1 or the body, **Addendum 2 wins**. It supersedes Addendum 1 § G's "`completed.md` is kept or generated from the ledger" and re-review directive #3's backfill mechanism, and refines § B's section list.
+
+### H. `docs/completed.md` is DELETED, not retained
+
+> **Amended by Addendum 3 § N:** the replacement ledger is `docs/roadmap.jsonl` (`kind: "feature"`), not `docs/completed.jsonl`. The deletion decision stands.
+
+`docs/completed.jsonl` becomes the ONLY shipped-feature record — no dual-write, no generated markdown view. Rationale: nobody reads `completed.md` (humans read `docs/roadmap.md`; the one machine reader is the ship verdict grep), and two records of the same thing drift. Supersedes Addendum 1 § G's retention clause and every "retain / dual-write / retain-with-reason" statement in the plan.
+
+### I. `kind: "completed"` row format — a `deferral`/`failure` row minus `severity` and `status`
+
+> **Amended by Addendum 3 § N:** the kind is `feature` in `docs/roadmap.jsonl`, and `status` is REINSTATED as a six-state ladder (the kind is no longer terminal). Everything else below — `key` = FID, the domain `category` set, `summary`/`description`/`references`, no `severity`, no template, no hash-gate — stands.
+
+Structurally identical to the triage ledgers so one envelope + one `fold()` covers all of `docs/*.jsonl`:
+
+<!-- prettier-ignore -->
+```jsonl
+{ "ts": 1753400000000, "kind": "completed", "repo": "cbartens/bkit", "bkitVersion": "4.8.0", "workflow": "ship", "step": "ship-update-docs", "subagent": "bkit-ship-update-docs", "model": "claude-opus-5", "key": "380-roadmap-analysis-refresh", "category": "agentic", "summary": "constant roadmap analysis refresh", "description": "Automated docs/roadmap.md with a deterministic status tier refreshed at every workflow close and an analysis tier refreshed at ship.", "references": ["380", "docs/plans/202607/380-roadmap-analysis-refresh-plan.md", "PR-401", "a1b2c3d"] }
+```
+
+- `key` = `{FID}`, identity tuple `(kind, repo, key)` — the existing key-based `identity()` default, no new branch. A re-ship or hotfix of the same FID is a same-`key` append; `fold()` returns the latest and prior lines remain as history.
+- `category` = the DOMAIN set already used by `deferral`/`failure` (`agentic`/`infra`/`correctness`/…), NOT `completed.md`'s legacy product-shaped set (`backend`/`frontend`/`data`/`integrations`/`ai`) — one enum across ledgers.
+- `summary` = title; `description` = the dense prose that was `completed.md`'s `**Summary:**`; `references[]` absorbs both `**Artifacts:**` and `**Related:**` (plan paths, PR, SHAs, tracker id, sibling row `ts`).
+- **No `severity`** (`.bkit/jsonl.md` § Severity forbids it outside the triage trio) and **no `status`** — the kind is terminal.
+- **No template and no hash-gate:** no `.jsonl` in the tree is seeded by `bkit install` or listed in `.bkit/version` (`deferrals`/`failures`/`knowledge`/`decisions` are all born on first append) — `completed.jsonl` follows. The manifest entry for `docs/completed.md` is REMOVED, not regenerated.
+
+### J. Migration extends `bkit telemetry migrate` — it is NOT a new backfill script
+
+> **Amended by Addendum 3 § N/S:** the fifth pair targets `docs/roadmap.jsonl` and back-filled rows land at `status: "SHIPPED"`; the same run performs the § S bootstrap seed for in-flight FIDs.
+
+The `.md` -> `.jsonl` migrator already exists (`.bkit/src/bkit-telemetry-migrate.ts`, verb `bkit telemetry migrate`) and already ports four legacy ledgers (`knowledge.md`, `decisions.md`, `pending.md`, `.bkit/friction.md`), each under a `.md.bak` -> write rows -> **row-count parity gate** -> delete the `.md` ONLY after parity contract, idempotent on re-run. `docs/completed.md` -> `docs/completed.jsonl` is added as the FIFTH pair, reusing that contract verbatim. This supersedes the planned standalone `bkit-completed-backfill.sh`.
+
+**Inherited invariant (DE-39):** the migrator is **NEVER callable from `bkit upgrade`** — explicit invocation only, enforced mechanically by `bkit-telemetry-migrate.integration.test.ts`. This voids re-review directive #3(d)'s "wire the backfill to `bkit upgrade`" rollout trigger. The rollout path becomes:
+
+1. An advisory (existing `PreflightFinding` channel) fires while `docs/completed.md` still exists, naming `bkit telemetry migrate`.
+2. The fold's exclude-completed step is transitional-tolerant: read `docs/completed.jsonl`; if it is absent/empty AND `docs/completed.md` still exists, fall back to the legacy `completed.md` grep for this one purpose and emit a `[bkit-roadmap]` line pointing at the migrate command. Deleting the `.md` at migration ends the fallback permanently.
+
+### K. Board: `## Ship` (in flight) and `## Shipped` (last 10) are SEPARATE sections
+
+> **Amended by Addendum 3 § N/O:** there is no upsert/regenerate split between sections — the WHOLE board is regenerated from `docs/roadmap.jsonl`. `## Ship` holds FIDs whose latest status is mid-ship, `## Shipped` holds `SHIPPED` FIDs capped at 10, and `ABANDONED` FIDs are hidden entirely.
+
+Refines § B's section list to **Backlog -> Design -> Plan -> Build -> Debug -> Ship -> Shipped**:
+
+- **`## Ship`** — items whose ship workflow is in flight (PR open, not yet merged). Per-FID upsert, same mechanics as the other phase sections, uncapped.
+- **`## Shipped`** — the last **10** shipped FIDs by `ts` desc, **fully regenerated from `docs/completed.jsonl`** on every fold. Holds no state, prunes itself, needs no delete step; older entries stay in the ledger and simply fall off the board.
+
+They MUST be separate sections because their write mechanics differ: a regenerate-from-ledger pass over a combined section would wipe the in-flight ship row the ship workflow upserted at its own start. This resolves the plan's open "board scope / drop-off policy" question: shipped items leave the active phases immediately and remain visible in `## Shipped` for exactly 10 cycles.
+
+### L. `.bkit/stats.jsonl` is UNCHANGED — the `activity.jsonl` proposal is closed
+
+A mid-review proposal to rename/split `.bkit/stats.jsonl` into an `activity.jsonl` (enriching `outcome` rows with FID + prose) is **rejected and closed**, for the record so it is not re-raised:
+
+- `outcome` rows are load-bearing for the `med·5` telemetry report (`bkit-telemetry.ts`) and are copied wholesale into bkit's harvest store (`HARVEST_COPY_FILES`) — adding consumer feature prose there changes what leaves a consumer repo, which `.bkit/jsonl.md` deliberately restricts.
+- `.bkit/stats.jsonl` is the hot file drained by `writeRollupShard` into archive shards; durable shipped-history must not live in a compaction path.
+- The `docs/` (project history, prose) vs `.bkit/` (machine telemetry) split already exists; `completed.jsonl` is its natural fifth `docs/` ledger.
+
+~~Optional, NOT in #380: adding `references: ["{FID}"]` to the close-step `outcome` row.~~ **REJECTED outright by Addendum 3 § R** — `stats.jsonl` is harvested cross-repo and must carry no consumer task detail.
+
+### M. `bkit harvest` does NOT consume the feature ledger (owner, 2026-07-25)
+
+Neither copied nor counted: `HARVEST_COPY_FILES` (`stats.jsonl`, `friction.jsonl`) and the count-only set (`docs/deferrals.jsonl`, `docs/failures.jsonl`) are unchanged. Feature titles and prose stay in the consumer repo. Codec acceptance (the new kind passes `validate`) is all the ledger needs; no harvest reader is added now or planned.
+
+## Addendum 3 — Feature ledger as canonical state; roadmap.md as pure projection (owner, 2026-07-27)
+
+> Owner direction during plan review. Where this conflicts with Addendum 1, Addendum 2, or the body, **Addendum 3 wins**. Net effect: the ledger named in Addendum 2 § H/I is renamed, widened from ship-only to ALL FIVE phase closes, and becomes the canonical state; `docs/roadmap.md` demotes to a regenerable human view. This supersedes Addendum 1 § A's "roadmap.md is the canonical home" in favour of "the ledger is canonical, roadmap.md is its window", and voids the machinery that existed only because roadmap.md was not re-derivable.
+
+### N. `docs/roadmap.jsonl` — the ledger, written at EVERY phase close
+
+Renames and widens Addendum 2's `docs/completed.jsonl`:
+
+- **File:** `docs/roadmap.jsonl` (peer of `deferrals`/`failures.jsonl`; `merge=union`; no template, no `.bkit/version` hash-gate, born on first append). `docs/roadmap.md` is its human-readable view — same stem, one machine, one human.
+- **Kind:** `feature`. Row = envelope + `{ key: "{FID}", status, category, summary, description, references[] }` — a `deferral`/`failure` row minus `severity`, with its own status ladder.
+- **Status ladder:** `DESIGNED` | `PLANNED` | `BUILT` | `DEBUGGED` | `SHIPPED` | `ABANDONED`. Each phase close appends one same-`key` row; `fold()` last-wins gives current phase, the row sequence is the history. Re-runs (a second build, a debug loop, a re-ship) are same-`key` appends, never edits.
+- **Writers:** design close -> `DESIGNED`; plan close -> `PLANNED`; build close -> `BUILT`; debug close -> `DEBUGGED`; ship close -> `SHIPPED` (via `@bkit-ship-update-docs`, at Step 10 so the verdict reader still sees it). `ABANDONED` is appended by a human, or by an agent on explicit human instruction — never inferred by a workflow.
+- **Reaching `dev`:** design/plan/ship closes already run on `dev`. build/debug closes run on `feat/{FID}`, so they keep Addendum 1 § C's dev-lock write — but it now appends ONE `merge=union` JSONL line instead of upserting markdown, so it is conflict-free by construction rather than by invariant.
+
+<!-- prettier-ignore -->
+```jsonl
+{ "ts": 1753600000000, "kind": "feature", "repo": "cbartens/bkit", "bkitVersion": "4.8.0", "workflow": "build", "step": "build-close-workflow", "key": "380-roadmap-analysis-refresh", "status": "BUILT", "category": "agentic", "summary": "constant roadmap analysis refresh", "description": "Feature ledger + regenerated roadmap board.", "references": ["380", "docs/plans/202607/380-roadmap-analysis-refresh-plan.md", "PR-401"] }
+```
+
+### O. `docs/roadmap.md` is a PURE PROJECTION — no upsert, no reconcile
+
+Because every phase close appends to an append-only, union-merged ledger that reaches `dev`, the board is fully re-derivable at any moment. The fold **regenerates the whole `roadmap-status` block from the ledger** on every run. Consequences — these are removals, not additions:
+
+- **Addendum 1 re-review directive #1 (per-FID UPSERT) is VOID.** It existed because build/debug rows were authored on `dev` and not re-derivable from it. The ledger removes that asymmetry.
+- **The KN-42 duplicate-row dedupe invariant is VOID** for `roadmap-status` — a full regenerate cannot leave duplicate rows, so `merge=union`/`-X ours` on `roadmap.md` needs no idempotent-collapse guarantee. (`merge=union` on `docs/roadmap.jsonl` is correct and sufficient: append-only.)
+- **Addendum 1 re-review directive #4 (reconcile/recovery pass) is VOID as a recovery mechanism.** A lost, corrupted, or deleted `roadmap.md` is rebuilt exactly by re-running the fold. What remains worth keeping is a much smaller drift CHECK: warn when a live `feat/*` branch has no ledger row at all (a close that never wrote), which is a missing-write signal, not a board-recovery path.
+- Board sections project from each FID's folded latest status: `SHIPPED` leaves the active sections and shows in `## Shipped` (last 10 by `ts` desc, then falls off); `ABANDONED` is hidden from the board entirely and lives only in the ledger.
+
+### P. Marker-pair invariant — bkit only rewrites BETWEEN markers
+
+Supersedes the body's "the consumer region below the last machine marker": **bkit rewrites only the bytes strictly between a `start`/`end` marker pair. Everything outside any pair is consumer territory, wherever it sits in the file** — above the board, between the `roadmap-status` and `roadmap-analysis` blocks, or at the bottom. Humans use `roadmap.md` as a scratchpad for ideas that are not yet designs or plans; all of it survives every regenerate.
+
+The one path that can still destroy consumer bytes is the self-heal for missing/mangled markers: it MUST insert or repair markers without swallowing surrounding text, and carries its own test row rather than riding on the bootstrap row.
+
+### Q. Cadence — count `BUILT` FIDs from the ledger, evaluate at ship close
+
+- **Count:** distinct FIDs whose ledger status reached `BUILT` **since the last cadence FIRE** — NOT since the last analysis refresh. The analysis block is refreshed at every ship close, so anchoring on its header `ts` would reset the counter on every ship and the threshold would never be reached.
+- **Fire timestamp:** persisted as a `counter` row in `.bkit/stats.jsonl`, `counterName: "ROADMAP_CADENCE_FIRE"` — no FID, no task detail (§ R). Read through the existing generic `counter`-reader.
+- **Thresholds:** `N` = **10** build-cycles OR **90** days since the last fire. Both consumer-adjustable via the `package.json` manifest — `bkit.roadmap.buildCycles` (default 10) and `bkit.roadmap.stalenessDays` (default 90) — read with the existing `bkit.*` jq idiom, NOT a new config surface. `.agents/config.md` gets a one-line pointer.
+- **Evaluation point:** ship close and `/bkit-roadmap` only. A skipped ship delays a fire; it never loses one, because the count accrues on build closes. Known edge, accepted: in a repo that NEVER ships, neither threshold is ever evaluated — `/bkit-roadmap` is the manual entry point.
+- **On fire:** rebaseline to now (a long gap produces ONE fire, not a backlog of them), inject the #80 audit candidate + open `deferrals`/`failures` items, run the reverse tracker sync.
+
+### R. No task detail in harvested ledgers — `references: ["{FID}"]` on `outcome` rows is REJECTED
+
+Reverses Addendum 2 § L's "optional follow-up". `.bkit/stats.jsonl` and `.bkit/friction.jsonl` are `HARVEST_COPY_FILES` — copied wholesale into bkit's cross-repo store — so they carry how bkit PERFORMS, never what a consumer is working on. A FID identifies the consumer's task. The cadence therefore counts FIDs out of `docs/roadmap.jsonl`, which harvest never touches (§ M). The only new row in `stats.jsonl` is the FID-free `ROADMAP_CADENCE_FIRE` counter.
+
+### S. Bootstrap seed — the on-disk scan runs ONCE, not per close
+
+With the board projecting purely from the ledger, a repo adopting this feature has in-flight work that has no ledger rows yet, and it would stay invisible until each FID next closes a phase. So the on-disk scan (`docs/plans/**` artifacts + folded per-FID `status.jsonl`) is retained but repurposed: it **seeds** the ledger once, at migration/first bootstrap, writing one row per in-flight FID at its detected status. After that the board never re-derives from disk — every subsequent row comes from a phase close.
