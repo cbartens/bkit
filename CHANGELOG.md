@@ -6,6 +6,32 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+---
+
+## [4.9.0] — 2026-07-27
+
+Closes the pre-release audit gaps that would have shipped a CI drift blind spot and a Cursor host without the destructive-op / secret-exposure gates Claude and OpenCode already enforce. Also lands the always-on migration-lane CI scaffold and first-party-only Cursor model defaults that accumulated on `dev`.
+
+### Added
+
+- **Cursor destructive-op / secret-exposure guardrails.** `.cursor/hooks/guardrails.cjs` + `beforeShellExecution` / `preToolUse` (`Read|TabRead`) wiring in `.cursor/hooks.json` deny force-push and recursive root deletes, ask on privileged git/publish/sudo, deny private-key reads, and ask on `.env` — parity with Claude `permissions` and OpenCode `permission` maps. (surfaced by the 4.9.0 pre-release audit)
+
+### Changed
+
+- **CI scaffold: always-on migration lane owns remote `db push` (#385).** Mirrors the consumer (gether #451) contract: `bkit-tests-migration` stays always-on (no job-level `if:`); replay stays plan-/path-gated per-step; remote `db push --linked --include-all` moves out of e2e / the legacy `supabase-migrate` stub into the migration lane (push to `dev`/`main` only, un-gated by `run_migration` for self-heal); `bkit-tests-e2e` / `-live` `needs:` migration with `result != 'failure'`; capstone asserts migration `success` whenever scope succeeded. Docs (`testing.md` / `deployments.md`), FULL CI SCAFFOLD REFERENCE, and postinstall advisories updated. Local integration: prefer reset-by-default `test:integration:local` over bare turbo (documented pattern; consumer supplies the script).
+- **Cursor defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) (#205).** Shipped Cursor pins no longer use the API pool (Claude / GPT / Fable), so workflows keep running when API credits are exhausted. Depth + synthesizer + `/design`/`/plan`/`/debug` orchestrators → Grok; volume + `/build`/`/ship` → Composer. API-pool restore: `prompts.md` § Model Overrides carries a ready-to-paste Opus block (Claude-opus-tier → `claude-opus-5-thinking-high`; no Cursor Sonnet — leave sonnet/haiku on Composer/Grok or optionally `gpt-5.6-sol-high`). Docs: `providers.md` catalog, README model labels.
+- **`bkit check` fails on host agent/command mirror content drift.** Mirror would-writes (and orphan deletes) now enter `ws.writes`, so a hand-edited agent/command with an intact managed-version marker exits 1 — not only the marker-stale path. README / KN-33-era comments updated. (surfaced by the 4.9.0 pre-release audit)
+- **Full/core uninstall strips `package.json` `bkit` install-state.** Tracker / provider / dep-updater / cloud / runners preferences no longer linger after teardown (scripts/devDeps still need `--package`). (surfaced by the 4.9.0 pre-release audit)
+- **CLI help and README name `opencode-zen` / `opencode-go`.** Bare `opencode` remains a legacy alias only; help Supported list and the `opencode-setup` advisory copy match the allowlist. (surfaced by the 4.9.0 pre-release audit)
+
+### Fixed
+
+- **Planned `/bkit-audit` catalog note clarifies stub names.** `@bkit-audit-*` planned prompts are distinct from shipped `@bkit-utility-audit-*` utilities. (surfaced by the 4.9.0 pre-release audit)
+
+---
+
 ## [4.8.0] — 2026-07-22
 
 Makes workflow retry-counting deterministic — attempt counters now derive from `status.jsonl` instead of model-tracked prose — and expands the OpenCode host with first-class Zen and Go built-in providers alongside the install-drift fixes that surfaced beside them. Consumers can now redirect managed CI to their own runners, ledger slugs are collision-checked on install, and the OpenCode host gains the same secret-file read guardrails the Claude host already enforced.

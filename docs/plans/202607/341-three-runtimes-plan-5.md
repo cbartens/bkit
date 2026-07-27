@@ -14,7 +14,7 @@
 
 ## Context & Goals (inherited from parent)
 
-bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`). This sub-plan adds the **gh→MCP fallback lane** (bounded, recorded, corroborated) and the **peripheral gating** (worktree helpers self-skip, debug-egress loudness, Playwright artifact seam). Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — fold findings.
+bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`), Cursor cloud agent (mode 4). This sub-plan adds the **gh→MCP fallback lane** (bounded, recorded, corroborated) and the **peripheral gating** (worktree helpers self-skip, debug-egress loudness, Playwright artifact seam). Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — fold findings.
 
 **This sub-plan (5 of 6) — Fallback lane + peripherals (T14–T15).**
 
@@ -23,7 +23,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 
 ### Inherited Success Criteria (this sub-plan owns SC4/SC5 fallback behaviour)
 
-1. All five phases + `bkit-auto` complete in each of the three runtimes; mode-1 non-regressed by a real run.
+1. All five phases + `bkit-auto` complete in each of the four runtimes (mode 4 = Cursor, gated on detection-var confirmation); mode-1 non-regressed by a real run.
 2. No run mutates the checked-out branch in a runtime that cannot restore it (D6/D23).
 3. Every phase-close body free of CI-suppression tokens (D24); `dev` CI-dispatch asserted (D1).
 4. **Any gh→MCP transition is bounded (max 1/run), recorded in `status.jsonl`, confirmed by an independent re-read, cross-checked mechanically (D25).** ← fallback lane in T14.

@@ -14,7 +14,7 @@
 
 ## Context & Goals (inherited from parent)
 
-bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`). This sub-plan wires the **phase-close transports** for all three shapes onto the close-guard kernel (D23/D24/D25) built in Sub-Plan 3, and reconciles the **§6d `[skip ci]`-subject convention** that the recommended shape-A transport (D5(a) PR-close) requires as a prerequisite. Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — fold findings.
+bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`), Cursor cloud agent (mode 4). This sub-plan wires the **phase-close transports** for all three shapes onto the close-guard kernel (D23/D24/D25) built in Sub-Plan 3, and reconciles the **§6d `[skip ci]`-subject convention** that the recommended shape-A transport (D5(a) PR-close) requires as a prerequisite. Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — fold findings.
 
 **This sub-plan (4 of 6) — Close shapes B/C + §6d + shape A (T10–T13).**
 
@@ -23,7 +23,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 
 ### Inherited Success Criteria (this sub-plan lands the close transports behind SC3)
 
-1. All five phases + `bkit-auto` complete in each of the three runtimes; mode-1 non-regressed by a real run.
+1. All five phases + `bkit-auto` complete in each of the four runtimes (mode 4 = Cursor, gated on detection-var confirmation); mode-1 non-regressed by a real run.
 2. No run mutates the checked-out branch in a runtime that cannot restore it (D6/D23).
 3. **Every phase-close lands on `dev` with a body free of CI-suppression tokens (D24); `dev` CI-dispatch asserted (D1).** ← close transports here.
 4. Any gh→MCP transition is bounded, recorded, cross-checked (D25).

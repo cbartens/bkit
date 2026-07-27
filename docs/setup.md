@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -16,7 +16,7 @@
 
 <!-- bkit:end -->
 
-> Consumer install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root `README.md`. Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → `.bkit/cloud.md`.
+> Consumer install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root `README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/cloud.md` / `.cursor/cloud.md`.
 
 ## Required tools
 

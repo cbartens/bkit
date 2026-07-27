@@ -465,6 +465,44 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
       expect(fileExists(".bkit/version")).toBe(true);
     });
   });
+
+  it("strips package.json bkit install-state block on full/core uninstall", async () => {
+    const pkgPath = path.join(tmpDir, "package.json");
+    fs.writeFileSync(
+      pkgPath,
+      JSON.stringify(
+        {
+          name: "consumer",
+          bkit: {
+            issueTracker: "github",
+            opencodeProvider: "opencode-zen",
+            opencodeProviders: ["opencode-zen"],
+            depUpdater: "renovate",
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    await runUninstall(["core"], makeCtx());
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    expect(pkg.bkit).toBeUndefined();
+  });
+
+  it("keeps package.json bkit block on targeted (non-core) uninstall", async () => {
+    const pkgPath = path.join(tmpDir, "package.json");
+    fs.writeFileSync(
+      pkgPath,
+      JSON.stringify({ name: "consumer", bkit: { issueTracker: "github" } }, null, 2) + "\n",
+      "utf-8",
+    );
+    await runUninstall(["claude"], makeCtx());
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit?: { issueTracker?: string };
+    };
+    expect(pkg.bkit?.issueTracker).toBe("github");
+  });
 });
 
 // ---------------------------------------------------------------------------

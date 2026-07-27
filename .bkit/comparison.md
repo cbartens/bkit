@@ -29,7 +29,7 @@ Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for h
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-design-brainstorm-ideate-1` | Pragmatic | Independent design exploration. Opus, high effort. Forbidden from reading siblings (circular-reasoning guard). |
-| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. Cross-tier / cross-family model (Sonnet on Claude, Grok on Cursor) for diversity. |
+| `bkit-design-brainstorm-ideate-2` | Optimal-tradeoff | Same task, different lens. Cross-tier / native-pool diversity (Sonnet on Claude, Composer on Cursor vs Grok siblings). |
 | `bkit-design-brainstorm-ideate-3` | Risk / pre-mortem | Same task, failure-mode lens. Opus, high effort. |
 | `bkit-design-generate` | Synthesiser | Merges three brainstorms into one design. xhigh effort. Merges across lenses rather than collapsing to consensus. |
 | `bkit-design-review-1` | Feasibility (web) | Adversarial review with live web search; checks ecosystem feasibility per capability. Opus, high. |
@@ -161,7 +161,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 - **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider- and host-portable execution.** Per-agent pins → `bkit install --opencode=<provider>` adds opencode host alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on seven providers (local Ollama, NVIDIA NIM, Groq, Cerebras, OpenRouter, cloud Ollama, opencode Zen gateway (`opencode`)). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Provider- and host-portable execution.** Per-agent pins → `bkit install --opencode=<provider>` adds opencode host alongside Claude/Cursor — harness unchanged; inference backend moves. Same five-phase gated parallel pipeline on ten providers (local Ollama, NVIDIA NIM, Groq, Cerebras, OpenRouter, cloud Ollama, Z.AI GLM, Moonshot Kimi, opencode Zen + Go gateways). Curated per-agent pins; models mirror Claude tier by default, CoT reasoners swapped for convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
 - **Cross-host/provider continuity.** State in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — not vendor session. Every host renders from same `.bkit/` source → phase or resumed run moves across IDE/provider mid-feature with identical gates, hooks, per-agent pins: exhaust Claude weekly limit or free-tier quota → continue on another host, no re-setup. Single-vendor frameworks tie run to starting session.
 
 ### Known gaps, scoped as opportunities

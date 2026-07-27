@@ -54,7 +54,7 @@ import {
 } from "./bkit-manifest.js";
 import type { CloudVariant } from "./bkit-cli.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 
 // ---------------------------------------------------------------------------
@@ -490,6 +490,12 @@ export function readInstallingVersion(): string {
   }
 }
 
+/** Record a host mirror would-write so `bkit check` exits 1 on content drift. */
+function trackMirrorWrite(ctx: ModuleContext, relPath: string, written: string[]): void {
+  written.push(relPath);
+  ctx.ws.writes.push({ path: relPath, action: "write" });
+}
+
 export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
   const { dryRun, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
@@ -517,13 +523,16 @@ export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
           version,
         );
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-        written.push(path.join(dest, f));
+        const rel = path.join(dest, f);
+        console.log(`${logPrefix} ${tag}write: ${rel}`);
+        trackMirrorWrite(ctx, rel, written);
       }
     }
 
     for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-      console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
   return written;
@@ -548,13 +557,16 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
       const transform = (c: string) =>
         stampManagedVersion(applyT2(applyT1(substituteWorkflow(c, issueTracker).output)), version);
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-        written.push(path.join(dest, f));
+        const rel = path.join(dest, f);
+        console.log(`${logPrefix} ${tag}write: ${rel}`);
+        trackMirrorWrite(ctx, rel, written);
       }
     }
 
     for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-      console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
 
@@ -569,13 +581,16 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
     for (const f of files) {
       const transform = (c: string) => stampManagedVersion(applyT3(c, modelLookup), version);
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-        written.push(path.join(dest, f));
+        const rel = path.join(dest, f);
+        console.log(`${logPrefix} ${tag}write: ${rel}`);
+        trackMirrorWrite(ctx, rel, written);
       }
     }
 
     for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-      console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+      const rel = path.join(dest, f);
+      console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+      trackMirrorWrite(ctx, rel, written);
     }
   }
   return written;
@@ -602,20 +617,24 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
       const transform = (c: string) =>
         stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup), version);
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-        written.push(path.join(dest, f));
+        const rel = path.join(dest, f);
+        console.log(`${logPrefix} ${tag}write: ${rel}`);
+        trackMirrorWrite(ctx, rel, written);
       }
     }
 
     // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-    // is a dynamic mirror dir like .claude/agents and .cursor/agents)
-    if (!dryRun && fs.existsSync(dest)) {
+    // is a dynamic mirror dir like .claude/agents and .cursor/agents). dryRun still reports
+    // would-deletes into ws.writes so `bkit check` fails on stale mirrors.
+    if (fs.existsSync(dest)) {
       for (const f of fs.readdirSync(dest)) {
         if (!f.endsWith(".md")) continue;
         if (!f.startsWith(BKIT_PREFIX)) continue;
         if (!sourceSet.has(f)) {
-          fs.rmSync(path.join(dest, f));
-          console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+          const rel = path.join(dest, f);
+          if (!dryRun) fs.rmSync(path.join(dest, f));
+          console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+          trackMirrorWrite(ctx, rel, written);
         }
       }
     }
@@ -637,18 +656,21 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
           version,
         );
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-        written.push(path.join(dest, f));
+        const rel = path.join(dest, f);
+        console.log(`${logPrefix} ${tag}write: ${rel}`);
+        trackMirrorWrite(ctx, rel, written);
       }
     }
 
-    if (!dryRun && fs.existsSync(dest)) {
+    if (fs.existsSync(dest)) {
       for (const f of fs.readdirSync(dest)) {
         if (!f.endsWith(".md")) continue;
         if (!f.startsWith(BKIT_PREFIX)) continue;
         if (!sourceSet.has(f)) {
-          fs.rmSync(path.join(dest, f));
-          console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+          const rel = path.join(dest, f);
+          if (!dryRun) fs.rmSync(path.join(dest, f));
+          console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+          trackMirrorWrite(ctx, rel, written);
         }
       }
     }
@@ -668,8 +690,9 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
 // getBkitDocsRoot() — they are NEVER relocated into .bkit/templates/.
 //
 // Doc writes land in ctx.ws (runBkitDocs uses the tier writers) so the caller can
-// refresh their canonicalHashes; agent/command writes are intentionally NOT
-// ws-tracked (installFile), matching install — they never enter canonicalHashes.
+// refresh their canonicalHashes. Agent/command mirrors also push to ws.writes on
+// would-write so `bkit check` exits 1 on content drift (not only managed-version
+// marker stale). They are still re-rendered from source (not the template walk).
 // `modules` should contain only hosts the consumer actually has installed.
 // Returns every consumer-relative path written (for the upgrade summary).
 // ---------------------------------------------------------------------------
@@ -1222,6 +1245,21 @@ export function runCursorModule(ctx: ModuleContext): void {
     }
   }
 
+  // byte-equal-text — Cursor destructive-op / secret-exposure guardrails (parity with
+  // Claude permissions deny/ask and OpenCode permission map). Force-overwrite; consumers
+  // do not customise via deep-merge.
+  {
+    const src = path.join(cursorTemplates, "hooks", "guardrails.cjs");
+    const dst = ".cursor/hooks/guardrails.cjs";
+    if (fs.existsSync(src)) {
+      const prevLen = ws.writes.length;
+      writeTier1(src, dst, tokens, dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+      }
+    }
+  }
+
   // Byte-equal-text — manifest format: "byte-equal-text" — seed-or-print for consumer infra.
   // Uses writeTier3 semantics: seed if absent, emit AI-actionable advisory if present and
   // differing. These files are consumer-configurable; bkit does not force-overwrite them.
@@ -1289,6 +1327,19 @@ export function runCursorModule(ctx: ModuleContext): void {
       'Alternative: `launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"` (session-scoped; must re-run after reboot) ' +
       "then relaunch from Dock.",
   });
+
+  // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/cloud.md`.
+  // Twin of `.claude/cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
+  // secret values resolved from `.envrc` under the Cursor env-var policy (Linear tracker
+  // adds LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
+  // `bkit check` drift — values are machine-local and expected to differ. Skipped on
+  // dry-run (`bkit check`) so a read-only check never writes secrets. Upgrade regenerates
+  // it via the same helper (see runUpgrade caller).
+  if (!dryRun && writeCursorCloudDoc(process.cwd(), tokens, issueTracker)) {
+    console.log(
+      `${logPrefix} ${tag}cursor: .cursor/cloud.md (generated — gitignored, holds resolved secrets)`,
+    );
+  }
 }
 
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
@@ -1378,6 +1429,23 @@ const OPENCODE_PROVIDER_DEFAULTS: Record<
     npmPackage: "@ai-sdk/openai-compatible",
     displayName: "Ollama (Cloud)",
   },
+  // Coding-subscription gateways — same OpenAI-compatible npm driver as nvidia, one GLM/Kimi
+  // family each. Endpoints are the coding-plan hosts (cheapest for heavy agent use), NOT the
+  // pay-as-you-go platform APIs. See providers.md § Models.
+  zai: {
+    envVar: "ZAI_API_KEY",
+    baseURL: "https://api.z.ai/api/coding/paas/v4",
+    apiPlaceholder: "{env:ZAI_API_KEY}",
+    npmPackage: "@ai-sdk/openai-compatible",
+    displayName: "Z.AI (GLM)",
+  },
+  moonshot: {
+    envVar: "MOONSHOT_API_KEY",
+    baseURL: "https://api.moonshot.ai/v1",
+    apiPlaceholder: "{env:MOONSHOT_API_KEY}",
+    npmPackage: "@ai-sdk/openai-compatible",
+    displayName: "Moonshot (Kimi)",
+  },
   // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
   // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
   // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
@@ -1407,6 +1475,111 @@ const OPENCODE_PROVIDER_DEFAULTS: Record<
  */
 export function opencodeProviderId(providerKey: string): string {
   return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
+}
+
+/**
+ * The provider secret env var name for a bkit provider key (`NVIDIA_API_KEY`, `OPENCODE_API_KEY`,
+ * `OLLAMA_HOST` for the keyless local host, ...). Empty string for an unknown key. Mirrors
+ * {@link opencodeProviderId}; used to compare a self-installed opencode.yml handler's `env:`
+ * secret against the installed provider.
+ */
+export function opencodeProviderEnvVar(providerKey: string): string {
+  return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.envVar ?? "";
+}
+
+/**
+ * Detect drift between the self-installed `.github/workflows/opencode.yml` reactive `/oc` handler
+ * and the installed opencode provider.
+ *
+ * opencode.yml is NOT bkit-managed: it is self-installed via `opencode github install` (the `/oc`
+ * | `/opencode` comment handler — the opencode analogue of the App-generated claude.yml). It
+ * HARDCODES two provider-specific values: a `model: <providerId>/<model>` line and a provider
+ * secret `env:` var. `bkit install --opencode=<provider>` rewrites neither, so switching providers
+ * silently leaves the handler calling the wrong provider's model and authenticating with the wrong
+ * (likely-unset) secret.
+ *
+ * bkit-cloud.yml (the bkit-MANAGED cloud lane) has NO such problem: it runs `opencode run` against
+ * the committed `.opencode/` config and fans one `OPENCODE_PROVIDER_KEY` secret out to every
+ * provider env var, so it self-syncs on a provider switch. Only the unmanaged reactive handler
+ * drifts — hence a manual-fix advisory rather than an auto-rewrite.
+ *
+ * File-existence guarded (no-op when opencode.yml is absent) so it is safe to ship: it fires only
+ * for repos that self-installed the /oc handler. No equivalent check for claude.yml — the @claude
+ * handler is provider-fixed to Claude and has nothing to compare. Non-fatal (severity "advisory"):
+ * bkit does not own the file, so this never gates `bkit check`; it surfaces on both check and
+ * postinstall as a nudge to hand-edit.
+ */
+export function detectOpencodeYmlProviderDrift(cwd: string): PreflightFinding | null {
+  const ymlPath = path.join(cwd, ".github", "workflows", "opencode.yml");
+  if (!fs.existsSync(ymlPath)) return null;
+
+  // The installed provider — package.json `bkit.opencodeProvider` is the authoritative record
+  // written on install. Absent/broken → we cannot know the intended provider; the null-guard
+  // below skips silently (no false alarm).
+  let provider: string | null = null;
+  const pkgPath = path.join(cwd, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        bkit?: { opencodeProvider?: unknown };
+      };
+      if (typeof pkg.bkit?.opencodeProvider === "string") provider = pkg.bkit.opencodeProvider;
+    } catch {
+      // Malformed package.json — leave provider null; a JSON-drift advisory covers that separately.
+    }
+  }
+  if (!provider) return null;
+
+  const expectedPrefix = opencodeProviderId(provider); // model id form is `<providerId>/<model>`
+  const expectedEnvVar = opencodeProviderEnvVar(provider);
+  if (!expectedEnvVar) return null; // unknown provider key — no registry entry to compare against.
+
+  const content = fs.readFileSync(ymlPath, "utf-8");
+
+  // The handler's hardcoded `model: <providerId>/<model>` line (opencode `run --model`).
+  const ymlModel = content.match(/^\s*model:\s*(\S+)/m)?.[1] ?? null;
+  const ymlPrefix = ymlModel ? ymlModel.split("/")[0] : null;
+  // The handler's hardcoded provider secret — an `env:` key like NVIDIA_API_KEY / OPENCODE_API_KEY.
+  const ymlEnvVar = content.match(/^\s*([A-Z][A-Z0-9_]*(?:_API_KEY|_HOST)):/m)?.[1] ?? null;
+
+  // Two independent drift signals. The model prefix is the precise one (it distinguishes the two
+  // opencode gateways that share OPENCODE_API_KEY); the env var catches a wrong/absent secret.
+  const modelDrift = ymlPrefix !== null && ymlPrefix !== expectedPrefix;
+  const envDrift = !new RegExp(`\\b${expectedEnvVar}\\b`).test(content);
+  if (!modelDrift && !envDrift) return null;
+
+  const foundModel = ymlModel ?? "(none)";
+  const foundEnvVar = ymlEnvVar ?? "(none)";
+
+  return {
+    id: "opencode-yml-provider-drift",
+    severity: "advisory",
+    detect:
+      ".github/workflows/opencode.yml (the self-installed /oc handler, NOT bkit-managed) is pinned to model `" +
+      foundModel +
+      "` with secret `" +
+      foundEnvVar +
+      "`, but the installed opencode provider is `" +
+      provider +
+      "` (model ids `" +
+      expectedPrefix +
+      "/<model>`, secret `" +
+      expectedEnvVar +
+      "`). The reactive handler will call the wrong provider's model and/or authenticate with the wrong (likely-unset) secret. bkit install does not rewrite this file.",
+    action:
+      "opencode.yml is self-installed via `opencode github install` and is NOT bkit-managed, so `bkit install --opencode=<provider>` will not fix it. Hand-edit the two hardcoded lines to match the installed provider:\n\n" +
+      "      env:\n" +
+      "        " +
+      expectedEnvVar +
+      ": ${{ secrets." +
+      expectedEnvVar +
+      " }}\n" +
+      "      with:\n" +
+      "        model: " +
+      expectedPrefix +
+      "/<model>   # a model your provider serves (see .opencode/opencode.json)\n\n" +
+      "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and fans OPENCODE_PROVIDER_KEY out to every provider env var.)",
+  };
 }
 
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
@@ -1743,7 +1916,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
       `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
       `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
       `     running app first (a running instance ignores the new env).\n` +
-      `  4. Model IDs: all eight providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
+      `  4. Model IDs: all ten providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
       `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
       `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
   });
@@ -3194,7 +3367,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
         "  - Prompt (paste literally, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`.\n" +
         "  - Allowed concurrency: latest-supersedes.\n" +
-        "  - Set `LINEAR_API_KEY` in Cursor → Settings → Background Agents → Environment Variables.\n" +
+        "  - Set `LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
         "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
         "IN REPO (Tier 2 markered; consumer customises outside `# <!-- bkit:start -->` markers):\n" +
         "  - `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below the bkit block.\n" +
@@ -3206,13 +3379,14 @@ export function runCloudModule(ctx: ModuleContext): void {
       id: "cloud-env-customize",
       severity: "advisory",
       detect:
-        "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor app dashboard (env vars + auth tokens, manual).",
+        "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor Cloud Agents dashboard (secrets, manual).",
       action:
-        "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
+        "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/cloud.md` (gitignored) on every install.\n\n" +
+        "IN THE CLOUD AGENTS DASHBOARD (https://cursor.com/dashboard/cloud-agents → your environment → Secrets tab) — add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript):\n" +
         "  - `GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`.\n" +
-        "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
+        "  - Tracker secret (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
         "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
-        "Full recipe in bkit's `cloud.md`.",
+        "Full recipe in bkit's `cloud.md`; the paste-ready block is in `.cursor/cloud.md`.",
     });
   }
 }

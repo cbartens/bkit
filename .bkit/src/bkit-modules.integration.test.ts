@@ -2531,8 +2531,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   }
 
   it("clean install writes .opencode/agents/*.md (one per catalog agent)", () => {
-    // Note: agent files are written via installFile (not tier-writers), so they do NOT
-    // appear in ws.writes — same pattern as claude/cursor modules. Assert disk presence instead.
+    // Agent files are written via installFile and tracked in ws.writes so check exits 1 on drift.
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
@@ -2543,6 +2542,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(agentDir)).toBe(true);
     const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
     expect(agentFiles.length).toBe(EXPECTED_AGENT_COUNT);
+    expect(ws.writes.filter((w) => w.path.includes(path.join(".opencode", "agents"))).length).toBe(
+      EXPECTED_AGENT_COUNT,
+    );
 
     // Verify agent files have opencode frontmatter
     for (const f of agentFiles) {
@@ -2554,7 +2556,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   });
 
   it("clean install writes .opencode/commands/*.md (one per bkit workflow)", () => {
-    // Note: command files are written via installFile (not tier-writers) — not in ws.writes.
+    // Command files are written via installFile and tracked in ws.writes so check exits 1 on drift.
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
@@ -2562,6 +2564,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     const commandDir = path.join(tmpDir, ".opencode", "commands");
     expect(fs.existsSync(commandDir)).toBe(true);
     const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+    expect(
+      ws.writes.filter((w) => w.path.includes(path.join(".opencode", "commands"))).length,
+    ).toBe(commandFiles.length);
     expect(commandFiles.length).toBeGreaterThan(0);
 
     // Command files exist on disk
@@ -2819,7 +2824,16 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 // ---------------------------------------------------------------------------
 describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
   it("passes through custom providers (key === opencode id)", () => {
-    for (const key of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+    for (const key of [
+      "ollama-local",
+      "nvidia",
+      "groq",
+      "cerebras",
+      "openrouter",
+      "ollama",
+      "zai",
+      "moonshot",
+    ]) {
       expect(opencodeProviderId(key)).toBe(key);
     }
   });
@@ -2852,6 +2866,28 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.baseURL).toBe("https://integrate.api.nvidia.com/v1");
     expect(block.options.apiKey).toBe("{env:NVIDIA_API_KEY}");
     // No shell-style interpolation in the provider block (opencode reads {env:VAR}).
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("zai (remote): npm driver, GLM coding-plan baseURL, apiKey via {env:ZAI_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zai"));
+    const block = parsed.provider?.zai;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://api.z.ai/api/coding/paas/v4");
+    expect(block.options.apiKey).toBe("{env:ZAI_API_KEY}");
+    expect(block.api).toBeUndefined(); // an "api" field makes opencode reject the whole config
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("moonshot (remote): npm driver, Kimi coding baseURL, apiKey via {env:MOONSHOT_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "moonshot"));
+    const block = parsed.provider?.moonshot;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://api.moonshot.ai/v1");
+    expect(block.options.apiKey).toBe("{env:MOONSHOT_API_KEY}");
+    expect(block.api).toBeUndefined();
     expect(JSON.stringify(block)).not.toContain("${");
   });
 

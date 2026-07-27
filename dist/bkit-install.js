@@ -9,7 +9,7 @@ import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
-import { CLAUDE_CLOUD_RELPATH, writeClaudeCloudDoc } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
@@ -242,6 +242,9 @@ const OPENCODE_PROVIDER_COLUMN = {
     cerebras: "Cerebras",
     openrouter: "OpenRouter",
     ollama: "Ollama (Cloud)",
+    // Coding-subscription gateways (single-family): GLM (zai/<model>) and Kimi (moonshot/<model>).
+    zai: "Z.AI",
+    moonshot: "Moonshot",
     // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
     // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
     "opencode-zen": "OpenCode Zen",
@@ -258,8 +261,8 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
     if (curated)
         return curated;
-    // Sentinel fallback. All eight allowlisted providers (ollama-local, nvidia, groq, cerebras,
-    // openrouter, ollama, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
+    // Sentinel fallback. All ten allowlisted providers (ollama-local, nvidia, groq, cerebras,
+    // openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
     // This path is the safety net for a FUTURE allowlisted provider added before its column
     // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
     // model id (see providers.md § Models for the live-probe recipe). The prefix is the
@@ -1779,6 +1782,8 @@ async function main() {
                 cerebras: ["CEREBRAS_API_KEY"],
                 openrouter: ["OPENROUTER_API_KEY"],
                 ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
+                zai: ["ZAI_API_KEY"], // Z.AI GLM coding-subscription gateway
+                moonshot: ["MOONSHOT_API_KEY"], // Moonshot/Kimi coding-subscription gateway
                 "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
                 "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
                 // ollama-local: local server, no API key required
@@ -1970,12 +1975,13 @@ async function main() {
                     else if (ent.isFile()) {
                         // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
                         const relPath = remapTemplateDest(entRel);
-                        // `.claude/cloud.md` is a GENERATED output file (writeClaudeCloudDoc),
-                        // not a template to reconcile: install/upgrade regenerate it with
-                        // resolved secret values, so the raw template is never a byte-match and
-                        // the walk must never drift-flag or overwrite it. Regenerated explicitly
-                        // in the runUpgrade block below (claude-host-gated, non-dry-run).
-                        if (relPath === CLAUDE_CLOUD_RELPATH)
+                        // `.claude/cloud.md` + `.cursor/cloud.md` are GENERATED output files
+                        // (writeClaudeCloudDoc / writeCursorCloudDoc), not templates to reconcile:
+                        // install/upgrade regenerate them with resolved secret values, so the raw
+                        // template is never a byte-match and the walk must never drift-flag or
+                        // overwrite them. Regenerated explicitly in the runUpgrade block below
+                        // (host-gated, non-dry-run).
+                        if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH)
                             continue;
                         // Skip opt-in-module files the consumer hasn't opted into (dest absent).
                         if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
@@ -2137,14 +2143,22 @@ async function main() {
                 console.log(`${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`);
             }
         }
+        // Same for `.cursor/cloud.md` — cursor-host-gated twin (see writeCursorCloudDoc).
+        // Uses upgradeTracker so the Linear/GitHub env-var policy matches the installed
+        // tracker; excluded from the template walk above for the same reason as the Claude doc.
+        if (!upgradeFlags.dryRun && renderModules.has("cursor") && tokens) {
+            if (writeCursorCloudDoc(process.cwd(), tokens, upgradeTracker)) {
+                console.log(`${LOG_PREFIX} upgrade: .cursor/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            }
+        }
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
         // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
         // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
-        // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs ARE
-        // in canonicalHashes (install records them via runBkitDocs → ws), so feed their writes
-        // in too — keeping install/upgrade `.bkit/version` parity. Agent/command writes are
-        // intentionally untracked (installFile), matching install — they never enter canonicalHashes.
+        // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs AND
+        // host agent/command mirrors land in renderWs.writes (mirrors now count toward check
+        // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
+        // parity.
         if (!upgradeFlags.dryRun) {
             const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")).version;
             const renderedDocPaths = renderWs.writes.map((w) => path.relative(process.cwd(), path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path)));
@@ -2463,9 +2477,9 @@ async function main() {
         logPrefix: LOG_PREFIX,
     });
     // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
-    // Host agent/command mirrors are untracked force-overwrites, so a stale
-    // managed-version marker never shows up in ws.writes — it surfaces as the
-    // bkit-rendered-prompts-stale Phase-3 blocker instead. The same is true for the
+    // Host agent/command mirrors push would-writes into ws.writes (content drift OR
+    // orphan delete). A stale managed-version marker ALSO surfaces as the
+    // bkit-rendered-prompts-stale Phase-3 blocker. The same is true for the
     // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
     // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
     // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated

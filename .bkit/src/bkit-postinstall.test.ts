@@ -55,6 +55,7 @@ import {
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
 import { stampManagedVersion, managedVersionMarker } from "./bkit-version";
+import { detectOpencodeYmlProviderDrift } from "./bkit-modules";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -1725,7 +1726,8 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-secrets-three-locations");
     expect(result!.action).toContain("GitHub Actions");
-    expect(result!.action).toContain("Cursor Background Agents");
+    expect(result!.action).toContain("Cursor Cloud Agents");
+    expect(result!.action).toContain("Runtime Secret");
     expect(result!.action).toContain("Claude Code (web)");
   });
 
@@ -2820,5 +2822,90 @@ describe("detectLedgerAliasCollisions", () => {
 
   it("null when no ledgers exist", () => {
     expect(detectLedgerAliasCollisions(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectOpencodeYmlProviderDrift — self-installed /oc handler vs installed provider
+// ---------------------------------------------------------------------------
+
+describe("detectOpencodeYmlProviderDrift", () => {
+  function writeOpencodeYml(model: string | null, envVar: string | null): void {
+    const wfDir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(wfDir, { recursive: true });
+    const lines = [
+      "name: opencode",
+      "jobs:",
+      "  opencode:",
+      "    steps:",
+      "      - name: Run opencode",
+      "        uses: anomalyco/opencode/github@x",
+    ];
+    if (envVar) {
+      lines.push("        env:");
+      // Concatenate the ${{ }} ref — a template literal would parse ${{ as an expression.
+      lines.push("          " + envVar + ": ${{ secrets." + envVar + " }}");
+    }
+    if (model) {
+      lines.push("        with:");
+      lines.push("          model: " + model);
+    }
+    fs.writeFileSync(path.join(wfDir, "opencode.yml"), lines.join("\n") + "\n");
+  }
+
+  function writePkg(provider: string | null): void {
+    const bkit = provider ? { bkit: { opencodeProvider: provider } } : {};
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", version: "0.0.0", ...bkit }, null, 2),
+    );
+  }
+
+  it("null when opencode.yml is absent (ship-safe existence guard)", () => {
+    writePkg("nvidia");
+    expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
+  });
+
+  it("null when in sync (handler model prefix + secret match the installed provider)", () => {
+    writePkg("nvidia");
+    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
+  });
+
+  it("flags drift when the handler is pinned to a different provider than installed", () => {
+    // Installed = opencode-go (OPENCODE_API_KEY), handler = nvidia — the real repo state.
+    writePkg("opencode-go");
+    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    const f = detectOpencodeYmlProviderDrift(tmpDir);
+    expect(f?.id).toBe("opencode-yml-provider-drift");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("opencode-go");
+    expect(f?.detect).toContain("NVIDIA_API_KEY");
+    expect(f?.action).toContain("OPENCODE_API_KEY");
+    expect(f?.action).toContain("opencode-go/<model>");
+  });
+
+  it("flags env-var drift even when the model prefix matches", () => {
+    // model prefix opencode-go matches, but the secret env var is wrong (NVIDIA vs OPENCODE).
+    writePkg("opencode-go");
+    writeOpencodeYml("opencode-go/some-model", "NVIDIA_API_KEY");
+    const f = detectOpencodeYmlProviderDrift(tmpDir);
+    expect(f?.id).toBe("opencode-yml-provider-drift");
+  });
+
+  it("distinguishes the two OPENCODE_API_KEY gateways by model prefix", () => {
+    // Both opencode-zen and opencode-go use OPENCODE_API_KEY, so only the model prefix
+    // (opencode vs opencode-go) tells them apart. Installed = go, handler pinned to zen.
+    writePkg("opencode-go");
+    writeOpencodeYml("opencode/zen-model", "OPENCODE_API_KEY");
+    const f = detectOpencodeYmlProviderDrift(tmpDir);
+    expect(f?.id).toBe("opencode-yml-provider-drift");
+    expect(f?.detect).toContain("opencode-go/<model>");
+  });
+
+  it("null when bkit.opencodeProvider is not recorded (cannot determine intended provider)", () => {
+    writePkg(null);
+    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 });

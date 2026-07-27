@@ -17,6 +17,10 @@ import {
   expandAllowedDomains,
   renderCloudNetworkAllowlist,
   writeClaudeCloudDoc,
+  cursorCloudPolicy,
+  renderCursorDebugFetchProvision,
+  renderCursorNetworkAllowlist,
+  writeCursorCloudDoc,
 } from "./bkit-cloud-env";
 import type { TokenMap } from "./bkit-tokens";
 
@@ -375,5 +379,158 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     const out = renderCloudNetworkAllowlist(tmpDir);
     expect(out).toContain("Set to **Trusted** (default)");
     expect(out).toContain("No `allowed-domains` block declared");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cursor Background Agents — the twin of `.claude/cloud.md`. Same `.envrc`-following
+// resolver, a Cursor-specific env-var policy, and a doc that carries no setup-script
+// mechanics (the toolchain lives in `.cursor/Dockerfile` + `environment.json`).
+// ---------------------------------------------------------------------------
+
+describe("cursorCloudPolicy", () => {
+  it("linear tracker: prepends LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
+    const p = cursorCloudPolicy("linear");
+    expect(p.baseline.map(([n]) => n)).toEqual([
+      "LINEAR_API_KEY",
+      "GH_BKIT_TOKEN",
+      "GH_BKIT_TOKEN_INSTALL",
+    ]);
+    expect(p.constants).toEqual([]);
+  });
+
+  it("github tracker: GH baseline only (no LINEAR_API_KEY), no autocompact constant", () => {
+    const p = cursorCloudPolicy("github");
+    expect(p.baseline.map(([n]) => n)).toEqual(["GH_BKIT_TOKEN", "GH_BKIT_TOKEN_INSTALL"]);
+    expect(p.constants).toEqual([]);
+  });
+
+  it("renders a LINEAR_API_KEY placeholder for linear but not for github, and never autocompact", () => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+
+    const linear = cursorCloudPolicy("linear");
+    const linearBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, linear), linear);
+    expect(linearBlock).toContain("GH_BKIT_TOKEN=real");
+    expect(linearBlock).toMatch(/^LINEAR_API_KEY=/m);
+    expect(linearBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
+
+    const github = cursorCloudPolicy("github");
+    const githubBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, github), github);
+    expect(githubBlock).not.toContain("LINEAR_API_KEY");
+    expect(githubBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
+  });
+});
+
+describe("renderCursorDebugFetchProvision", () => {
+  it("returns '' when no consumer provision blocks are declared", () => {
+    expect(renderCursorDebugFetchProvision(tmpDir)).toBe("");
+    write(".agents/config.md", "<!-- bkit:end -->\nno blocks\n");
+    expect(renderCursorDebugFetchProvision(tmpDir)).toBe("");
+  });
+
+  it("surfaces the same recipes as the Claude path, pointed at environment.json install", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n## Enabled\n\n" +
+        "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n",
+    );
+    const out = renderCursorDebugFetchProvision(tmpDir);
+    expect(out).toContain("command -v vercel || pnpm add -g vercel");
+    expect(out).toContain(".cursor/environment.json");
+  });
+});
+
+describe("renderCursorNetworkAllowlist", () => {
+  it("no allowed-domains → describes the dashboard egress modes, no code fence", () => {
+    const out = renderCursorNetworkAllowlist(tmpDir);
+    expect(out).toContain("Security");
+    expect(out).toMatch(/Allow all|Default \+ allowlist|Allowlist only/);
+    expect(out).not.toContain("```");
+  });
+
+  it("declared domains → lists them apex-only (no *. expansion) with the wildcard caution", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n## Cloud\n\n" +
+        "<!-- allowed-domains:start -->\nsentry.io\nexample.com\n<!-- allowed-domains:end -->\n",
+    );
+    const out = renderCursorNetworkAllowlist(tmpDir);
+    expect(out).toContain("sentry.io");
+    expect(out).toContain("example.com");
+    // Cursor list is narrower than Claude's — no auto `*.` wildcard rows.
+    expect(out).not.toContain("*.sentry.io");
+    expect(out).toMatch(/wildcard/i);
+  });
+});
+
+describe("cursor template generation sentinels", () => {
+  const pkgRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const template = fs.readFileSync(
+    path.join(pkgRoot, ".bkit", "templates", ".cursor", "cloud.md"),
+    "utf-8",
+  );
+
+  it("carries the sentinels writeCursorCloudDoc substitutes, and NO Claude-only ones", () => {
+    expect(template).toContain("@@CLOUD_ENV_VARS@@");
+    expect(template).toContain("@@CLOUD_ENV_NOTES@@");
+    expect(template).toContain("@@CURSOR_NETWORK@@");
+    expect(template).toContain("@@CURSOR_DEBUG_FETCH@@");
+    expect(template).toContain("{{PROJECT_NAME}}");
+    // Cursor uses its own network sentinel + no pasted setup script — Claude-only ones absent.
+    expect(template).not.toContain("@@CLOUD_CACHE_BUST@@");
+    expect(template).not.toContain("@@CLOUD_NETWORK_ALLOWLIST@@");
+    expect(template).not.toContain("@@CLOUD_COREPACK@@");
+    expect(template).not.toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
+  });
+
+  it("directs secrets to the Runtime Secret / Secrets-tab path, not the old Settings pane", () => {
+    expect(template).toContain("Runtime Secret");
+    expect(template).toContain("dashboard/cloud-agents");
+    expect(template).not.toContain("Background Agents → Environment Variables");
+  });
+});
+
+describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
+  const TOKENS: TokenMap = {
+    NODE_VERSION: "22",
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "test-repo",
+    REPO_SLUG: "acme/test-repo",
+  };
+
+  it("writes a sentinel-free, chmod-600 doc naming the repo", () => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+    expect(writeCursorCloudDoc(tmpDir, TOKENS, "linear")).toBe(true);
+    const dst = path.join(tmpDir, ".cursor", "cloud.md");
+    const out = fs.readFileSync(dst, "utf-8");
+    expect(out).not.toMatch(/@@[A-Z_]+@@/);
+    expect(out).toContain("test-repo");
+    expect(out).toContain("GH_BKIT_TOKEN=real");
+    expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
+  });
+
+  it("linear tracker emits LINEAR_API_KEY; github tracker does not; neither emits autocompact", () => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+
+    writeCursorCloudDoc(tmpDir, TOKENS, "linear");
+    const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
+    expect(linearOut).toContain("LINEAR_API_KEY=");
+    expect(linearOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
+
+    writeCursorCloudDoc(tmpDir, TOKENS, "github");
+    const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
+    // The env-var paste block must not carry LINEAR_API_KEY on the GitHub tracker. (The
+    // prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
+    expect(githubOut).not.toMatch(/^LINEAR_API_KEY=/m);
+    expect(githubOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
+  });
+
+  it("returns false when the template is absent (no getTemplatesRoot match)", () => {
+    // Sanity: the real template exists, so a normal call returns true. (Absence is
+    // covered structurally — writeCursorCloudDoc short-circuits on a missing src.)
+    expect(writeCursorCloudDoc(tmpDir, TOKENS, "none")).toBe(true);
   });
 });

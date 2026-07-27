@@ -397,10 +397,18 @@ describe("printUsage — help output", () => {
     expect(output).not.toMatch(/^\s*--git-hooks\b/m);
   });
 
-  it("includes compose + core examples", () => {
+  it("documents compose + core examples", () => {
     const output = usage();
     expect(output).toContain("--claude --cursor --tooling");
     expect(output).toMatch(/[Cc]ore \(implicit/);
+  });
+
+  it("lists opencode-zen and opencode-go (not bare opencode) as supported providers", () => {
+    const output = usage();
+    expect(output).toContain("opencode-zen");
+    expect(output).toContain("opencode-go");
+    // Old single-gateway help phrase must be gone.
+    expect(output).not.toContain("opencode (opencode-native gateway");
   });
 
   it("documents install requires ≥1 module flag", () => {
@@ -611,6 +619,20 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
       expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
     });
   }
+
+  // #376 — GLM (zai) + Kimi (moonshot) coding-subscription gateways.
+  const codingGateways = ["zai", "moonshot"] as const;
+  for (const value of codingGateways) {
+    it(`--opencode=${value} is accepted (#376)`, () => {
+      expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
+    });
+  }
+  it("--opencode=glm normalises to zai (family alias, #376)", () => {
+    expect(parseArgs(["install", "--opencode=glm"]).opencodeProvider).toBe("zai");
+  });
+  it("--opencode=kimi normalises to moonshot (family alias, #376)", () => {
+    expect(parseArgs(["install", "--opencode=kimi"]).opencodeProvider).toBe("moonshot");
+  });
 
   // opencode-native gateways — two providers `opencode-zen` + `opencode-go`, both auth via
   // OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).

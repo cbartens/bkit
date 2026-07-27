@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -52,7 +52,7 @@ bkit renders agent payload for three IDE/agent-host runtimes. Hosts additive —
 | --- | --- | --- |
 | Claude Code (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
-| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; seven allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode` |
+| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; ten allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zai`, `moonshot`, `opencode-zen`, `opencode-go` |
 
 `ollama-local` = localhost/keyless; `ollama` = cloud (ollama.com) — distinct keys. OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` (`bkit-cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts`), `OPENCODE_PROVIDER_COLUMN` (`bkit-install.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
 

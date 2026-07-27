@@ -256,9 +256,9 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
 2. Create/resume the worktree:
@@ -563,7 +563,8 @@ description: "Ship Feature — Autonomous merge and archive"
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
+   WT="$REPO_ROOT"
+   if [ -n "$(git -C "$WT" status --porcelain | grep -v '^??')" ]; then
      DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
      DEADLINE=$(( $(date +%s) + 600 ))
      until (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
@@ -573,10 +574,10 @@ description: "Ship Feature — Autonomous merge and archive"
        sleep 10
      done
      trap 'rm -f "$DEVLOCK"' EXIT
-     git -C "$REPO_ROOT" status --short
-     git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-     git -C "$REPO_ROOT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
-       || git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$WT" status --short
+     git -C "$WT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$WT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git -C "$WT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
 3. Run HEAD-Subject Assertion:
@@ -1063,11 +1064,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 13 — Close Workflow
 
-1. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
-   ```bash
-   pnpm bkit comply --phase=ship || echo "[bkit-comply] grader unavailable, skipping"
-   ```
-2. Assert squash-merge CI run finished and its test tiers passed:
+1. Assert squash-merge CI run finished and its test tiers passed:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
@@ -1090,7 +1087,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -n "$LIVE_NOT_OK" ] && echo "Live tier not green on CI run $RUN_ID ($LIVE_NOT_OK) — post-merge canary, not a merge gate; reproduce with /bkit-debug" >&2
    ```
    **If** exit non-zero → **Failure Path**.
-3. Update status, batch-commit, and push:
+2. Update status, write close telemetry, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
@@ -1104,13 +1101,16 @@ description: "Ship Feature — Autonomous merge and archive"
    trap 'rm -f "$DEVLOCK"' EXIT
    git -C "$REPO_ROOT" checkout dev
    [ "$(git -C "$REPO_ROOT" branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git -C "$REPO_ROOT" branch --show-current)') — aborting dev ops" >&2; exit 1; }
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
+   WT="$REPO_ROOT"
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
+   FRICTION="$WT/.bkit/friction.jsonl"
+   (cd "$WT" && pnpm bkit comply --phase=ship) || echo "[bkit-comply] grader unavailable, skipping"
+   PARENT_SHA=$(git -C "$WT" rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"ship", step:"ship-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"ship", at:$t}' >> "$STATUS"
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    COUNTER_VALUE=$(jq -s --arg wf "ship" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
@@ -1126,15 +1126,15 @@ description: "Ship Feature — Autonomous merge and archive"
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid 2>/dev/null || echo "")
-   PR_DIFF_STAT=$(git -C "$REPO_ROOT" diff --shortstat "${SQUASH_SHA}^..${SQUASH_SHA}" 2>/dev/null || echo "")
+   PR_DIFF_STAT=$(git -C "$WT" diff --shortstat "${SQUASH_SHA}^..${SQUASH_SHA}" 2>/dev/null || echo "")
    LINES_ADDED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
    LINES_DELETED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ deletion' | grep -oE '[0-9]+' || echo "0")
    FILES_CHANGED=$(echo "$PR_DIFF_STAT" | grep -oE '[0-9]+ file' | grep -oE '[0-9]+' || echo "0")
    LINES_ADDED=${LINES_ADDED:-0}; LINES_DELETED=${LINES_DELETED:-0}; FILES_CHANGED=${FILES_CHANGED:-0}
    LINES_CHANGED=$((LINES_ADDED + LINES_DELETED))
-   DEFERRALS_COUNT=$(jq -rs '[.[] | select(.kind=="deferral") | .key] | unique | length' "$REPO_ROOT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_COUNT=$((DEFERRALS_COUNT + 0))
-   FAILURES_COUNT=$(jq -rs '[.[] | select(.kind=="failure") | .key] | unique | length' "$REPO_ROOT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_COUNT=$((FAILURES_COUNT + 0))
-   TASK_COUNT=$(grep -c '^\- \[' "$REPO_ROOT/docs/plans/{YYYYMM}/{FID}-plan"*.md 2>/dev/null || echo "0"); TASK_COUNT=$((TASK_COUNT + 0))
+   DEFERRALS_COUNT=$(jq -rs '[.[] | select(.kind=="deferral") | .key] | unique | length' "$WT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_COUNT=$((DEFERRALS_COUNT + 0))
+   FAILURES_COUNT=$(jq -rs '[.[] | select(.kind=="failure") | .key] | unique | length' "$WT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_COUNT=$((FAILURES_COUNT + 0))
+   TASK_COUNT=$(grep -h '^\- \[' "$WT/docs/plans/{YYYYMM}/{FID}-plan"*.md 2>/dev/null | wc -l | tr -dc '0-9'); TASK_COUNT=${TASK_COUNT:-0}
    SHIP_START=$(jq -rs '[.[] | select(.type=="workflow-started" and .workflow=="ship")] | last | .at // ""' "$STATUS" 2>/dev/null || echo "")
    if [ -n "$SHIP_START" ]; then
      START_S=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$SHIP_START" +%s 2>/dev/null || date -d "$SHIP_START" +%s 2>/dev/null || echo "0")
@@ -1143,12 +1143,12 @@ description: "Ship Feature — Autonomous merge and archive"
      DURATION_S=0
    fi
    SHIP_START_MS=$(( ${START_S:-0} * 1000 ))
-   FRICTION_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/.bkit/friction.jsonl" 2>/dev/null || echo "0"); FRICTION_ADDED=$((FRICTION_ADDED + 0))
-   DEFERRALS_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_ADDED=$((DEFERRALS_ADDED + 0))
-   FAILURES_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$REPO_ROOT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_ADDED=$((FAILURES_ADDED + 0))
+   FRICTION_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$FRICTION" 2>/dev/null || echo "0"); FRICTION_ADDED=$((FRICTION_ADDED + 0))
+   DEFERRALS_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$WT/docs/deferrals.jsonl" 2>/dev/null || echo "0"); DEFERRALS_ADDED=$((DEFERRALS_ADDED + 0))
+   FAILURES_ADDED=$(jq -rs --argjson since "$SHIP_START_MS" '[.[] | select((.workflow=="ship") and (.ts>=$since)) | .key] | unique | length' "$WT/docs/failures.jsonl" 2>/dev/null || echo "0"); FAILURES_ADDED=$((FAILURES_ADDED + 0))
    COVERAGE=null
    for COV_TIER in unit integration e2e; do
-     COV_SUMMARY="$REPO_ROOT/coverage/$COV_TIER/coverage-summary.json"
+     COV_SUMMARY="$WT/coverage/$COV_TIER/coverage-summary.json"
      [ -f "$COV_SUMMARY" ] || continue
      COV_STATS=$(jq -c 'if (.total.lines.pct|type)=="number" then {lines:.total.lines.pct,branches:.total.branches.pct,functions:.total.functions.pct,statements:.total.statements.pct} else empty end' "$COV_SUMMARY" 2>/dev/null) || continue
      [ -n "$COV_STATS" ] || continue
@@ -1174,14 +1174,14 @@ description: "Ship Feature — Autonomous merge and archive"
      --argjson coverage "$COVERAGE" \
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
+   git -C "$WT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   git -C "$WT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   LOCK="$WT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
+   git -C "$WT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-4. <!-- bkit:tracker github start -->
+3. <!-- bkit:tracker github start -->
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -1193,7 +1193,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-5. <!-- bkit:tracker true start -->
+4. <!-- bkit:tracker true start -->
    Build `{ARTIFACTS}` link list:
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
@@ -1203,7 +1203,7 @@ description: "Ship Feature — Autonomous merge and archive"
    printf '\n%s\n' "$TELEMETRY"
    ```
    <!-- bkit:tracker true end -->
-6. <!-- bkit:tracker github start -->
+5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -1219,7 +1219,7 @@ description: "Ship Feature — Autonomous merge and archive"
    {TELEMETRY}
    ```
    <!-- bkit:tracker true end -->
-7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
+6. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
    <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
    <!-- bkit:tracker true end -->
@@ -1232,6 +1232,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Squash-merge CI run completed and not failed (`RUN_STATUS`, `RUN_CONCLUSION`)
 - [ ] Test tiers green (`TESTS_NOT_OK` empty)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
 
@@ -1239,6 +1240,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
 - [ ] Artifact link list embedded in `Step 13` comment
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 13` section)
 
 <!-- bkit:tracker true end -->

@@ -31,6 +31,7 @@ import {
 } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
+import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 
 export type { PreflightFinding };
 
@@ -884,7 +885,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "supabase-migrate",
     file: ".github/workflows/ci.yml",
     description:
-      "Apply Supabase migrations to the dev project on push-to-dev. Requires SUPABASE_ACCESS_TOKEN, SUPABASE_DEV_DB_PASSWORD, SUPABASE_DEV_PROJECT_REF secrets.",
+      "REMOTE `db push` belongs in `bkit-tests-migration` (#385), not in the monolithic tests job and not in `bkit-tests-e2e`. Prefer the migration-lane stub (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live `needs:` it). Legacy single-job shape still documented under this stub for repos without a migration lane yet — migrate into bkit-tests-migration ASAP. Requires SUPABASE_ACCESS_TOKEN + project ref (or vercel env pull).",
   },
   {
     id: "test-db",
@@ -929,7 +930,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-scope",
     file: ".github/workflows/ci.yml",
     description:
-      "Promote run-level detection into a standalone always-on `bkit-tests-scope` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live), consumed by every tier via `fromJSON(needs.bkit-tests-scope.outputs.plan).<field>`. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo. NAME: this job was called `bkit-decide` before; keep the name inside the bkit-tests-* namespace so bkit's CI-Dispatch Gate (which polls for any bkit-tests-* check on the pushed HEAD) can see it. NAMESPACE TRAP: it is the PLANNER, not a test lane — any capstone/guard that treats every bkit-tests-* job as a lane must exempt it BY NAME and assert its result explicitly, or a scope failure goes unasserted and the capstone stays green.",
+      "Promote run-level detection into a standalone always-on `bkit-tests-scope` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live / run_migration), consumed by every tier via `fromJSON(needs.bkit-tests-scope.outputs.plan).<field>`. `run_migration` (#385) gates migration-lane HEAVY replay steps only — the migration job itself stays always-on so e2e/live can `needs:` it. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo. NAME: this job was called `bkit-decide` before; keep the name inside the bkit-tests-* namespace so bkit's CI-Dispatch Gate (which polls for any bkit-tests-* check on the pushed HEAD) can see it. NAMESPACE TRAP: it is the PLANNER, not a test lane — any capstone/guard that treats every bkit-tests-* job as a lane must exempt it BY NAME and assert its result explicitly, or a scope failure goes unasserted and the capstone stays green.",
   },
   {
     id: "affected-graph",
@@ -941,7 +942,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-live",
     file: ".github/workflows/ci.yml",
     description:
-      "Add a push-only @live canary job (`needs: [bkit-tests-scope]`; `if: ...run_live`) running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design). DO NOT gate this lane behind the other test lanes: that `needs:` edge is measured as the single most expensive edge in the whole graph (a consumer clocked it at ~10 min of pure wall-clock, ~35% of total CI). It buys almost nothing — @live is push-only, and a push is post-merge and already PR-validated, so the 'don't spend live quota on a broken tree' case has a near-zero hit rate; a tree that does not compile still cannot false-green, because @live's own build fails and reds the lane. The cost of ungating is wasted external-API spend on the rare broken push. If your @live spend is expensive enough that this trade flips, add the gate back deliberately — but measure it first.",
+      "Add a push-only @live canary job running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design). DO NOT gate this lane behind static/unit/build/e2e: that `needs:` edge is measured as the single most expensive edge in the whole graph (~10 min / ~35% wall-clock on a real consumer) and buys almost nothing (@live is push-only / post-merge / PR-validated). The ONE permitted extra edge is `bkit-tests-migration` when that lane owns the shared-remote `db push` (#385): `needs: [bkit-tests-scope, bkit-tests-migration]` with `migration.result != 'failure'` so @live cannot hit a schema the push has not applied. If your @live spend is expensive enough that gating behind other lanes flips the trade, add those gates deliberately — but measure first.",
   },
   {
     id: "bkit-tests-check",
@@ -953,7 +954,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-migration",
     file: ".github/workflows/ci.yml",
     description:
-      "Add a `bkit-tests-migration` job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Wire it `needs: [bkit-tests-scope]` for graph ordering ONLY — the replay itself stays unconditional, never gated on run_level. Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before the test lanes (they share no state).",
+      "Add always-on `bkit-tests-migration` (#385): (1) prove every migration replays from an EMPTY database (+ seed) on a fresh ephemeral instance; (2) on every push to `dev`/`main`, `db push --linked --include-all` to the shared remote (NOT inside e2e — that races @live). NO job-level `if:` — e2e/live `needs:` this lane; a skip cascades. Gate HEAVY replay steps via `plan.run_migration` (preferred) or an in-job Detect step. Remote push is un-gated by `run_migration` (self-heal) and runs AFTER replay so from-empty failure never reaches remote. Capstone asserts `result == success` whenever scope succeeded. Supply stack reset+seed (Supabase: `db reset --local`; Prisma: `migrate reset`; Drizzle/raw: replay + seed). Fold into bkit-tests-check `needs:` — NOT in series before static/unit (they share no state).",
   },
   {
     id: "bkit-tests-integration",
@@ -965,7 +966,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-e2e",
     file: ".github/workflows/ci.yml",
     description:
-      "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
+      "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: `needs: [bkit-tests-scope, bkit-tests-migration]` with `migration.result != 'failure'` (#385 — remote push lives in migration, not here); if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
   },
   {
     id: "bkit-tests-build",
@@ -1968,7 +1969,7 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
       "Set each secret in the required locations:\n\n" +
       "1. **GitHub Actions** (used by the bkit-auto workflow and consumer workflows):\n" +
       ghSetLines +
-      "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
+      "2. **Cursor Cloud Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab. Add each secret as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript). Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but secrets come from this dashboard only; the resolved paste-ready values are in `.cursor/cloud.md` (gitignored).\n\n" +
       "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
       "**Debug-fetch (`/bkit-debug` in the cloud):** if you run the debug workflow in these cloud agents, the observability creds your `.agents/config.md` debug-fetch blocks use (e.g. `VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) must ALSO be set in the same dashboards above — non-interactively, since headless agents cannot `vercel login`. These are operator/observability READ creds, not app-runtime secrets. Commit the non-secret selectors (team scope / project ref / `--environment`) in your copied block so they need no dashboard entry. The CLIs those blocks call install automatically in the cloud from each block's `debug-fetch:provision` sibling — no manual setup.\n\n" +
       "Same VALUE in all places. GH_BKIT_TOKEN_INSTALL must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
@@ -2836,6 +2837,12 @@ export function runPostInstallCheck(
   // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
   const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
   if (cloudGate) phase3.push(cloudGate);
+
+  // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
+  // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for
+  // claude.yml (its @claude handler is provider-fixed). bkit-cloud.yml self-syncs, so exempt.
+  const opencodeYmlDrift = detectOpencodeYmlProviderDrift(cwd);
+  if (opencodeYmlDrift) phase3.push(opencodeYmlDrift);
 
   // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
   const ciActionlint = detectCiYmlMissingActionlint(cwd);

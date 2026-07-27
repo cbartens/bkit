@@ -18,6 +18,12 @@
       "WebFetch(domain:*.opencode.ai)",
       "WebFetch(domain:*.ollama.com)",
       "WebFetch(domain:*.nvidia.com)",
+      "WebFetch(domain:z.ai)",
+      "WebFetch(domain:*.z.ai)",
+      "WebFetch(domain:moonshot.ai)",
+      "WebFetch(domain:*.moonshot.ai)",
+      "WebFetch(domain:kimi.com)",
+      "WebFetch(domain:*.kimi.com)",
       "WebFetch(domain:npmjs.com)",
       "WebFetch(domain:*.npmjs.com)"
     ],

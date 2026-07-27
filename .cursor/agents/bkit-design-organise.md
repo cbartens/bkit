@@ -1,7 +1,7 @@
 ---
 name: bkit-design-organise
 description: Senior architect decomposing a reviewed design into dependency-annotated workstreams.
-model: claude-opus-4-8-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep
@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 **Scope:** As specified by input and Read / Update / Create section.

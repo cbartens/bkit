@@ -1,7 +1,7 @@
 ---
 description: "Build Feature — Autonomous implementation"
 ---
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Build Feature (Workflow 3/6)
 
@@ -187,9 +187,9 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -1029,7 +1029,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
    **If** exit non-zero → **Failure Path**.
 2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push (force-with-lease on personal branch, plain on `dev` / `main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
-3. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
+3. Re-read labels → update status, write close telemetry, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
    AUTO_ROUTE_SUFFIX=""
@@ -1038,9 +1038,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
    echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    COUNTER_VALUE=$(jq -s --arg wf "build" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
@@ -1055,6 +1056,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      --arg parentSha "$(git rev-parse HEAD)" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
+   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" build {YYYYMM} {FID} >/dev/null
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    HEAD_MSG=$(git log -1 --pretty=%B)
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
@@ -1178,7 +1180,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=$(git branch --show-current)
     ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/build-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
     printf '%s\n' "$ARTIFACTS"
-    TELEMETRY=$(bash "$RR/.bkit/scripts/bkit-workflow-telemetry.sh" build {YYYYMM} {FID})
+    TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=build) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
     printf '\n%s\n' "$TELEMETRY"
     ```
 13. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -1201,6 +1203,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 
 - [ ] HEAD-Subject Assertion passed (close-workflow commit is the CI-triggering HEAD)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Lock removed
 - [ ] Close-workflow commit pushed to `feat/{FID}` (no PR yet → no CI)
 - [ ] Open-PR probe ran (no pre-existing open PR, or probe fell through)
@@ -1221,5 +1224,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Artifact link list embedded in `Step 17` comment
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 17` sections)
 

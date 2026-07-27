@@ -14,7 +14,7 @@
 
 ## Context & Goals (inherited from parent)
 
-bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`). This **terminal** sub-plan adds the prose audit, performs the batch mirror regen, runs all five phases + `bkit-auto` end-to-end in each of the three runtimes, and asserts SC1–7 against the landed system. Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — the only residuals are the live-mode-3 observations owned by this task.
+bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`), Cursor cloud agent (mode 4). This **terminal** sub-plan adds the prose audit, performs the batch mirror regen, runs all five phases + `bkit-auto` end-to-end in each of the four runtimes, and asserts SC1–7 against the landed system. Mechanism reference: `docs/plans/202607/341-three-runtimes-design.md`. Spikes A/B/C are CLOSED — the residuals owned by this task are the live-mode-3 observations plus the mode-4 Cursor detection-var + `sleep`-block confirmation.
 
 **This sub-plan (6 of 6) — Terminal verification (T16 alone).**
 
@@ -22,7 +22,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 
 ### Success Criteria — this sub-plan is the ONLY guarantee they are honoured (D3)
 
-1. **All five phases + `bkit-auto` complete end-to-end in each of the three runtimes; the mode-1 laptop path is verified non-regressed by a real end-to-end run (not a rule-text-presence test).** This run is also the only guarantee that prose rules _honour_ the capability flags — no static engine can assert that.
+1. **All five phases + `bkit-auto` complete end-to-end in each of the four runtimes (mode 4 = Cursor cloud agent, gated on live confirmation of its detection var + `sleep`-block behaviour); the mode-1 laptop path is verified non-regressed by a real end-to-end run (not a rule-text-presence test).** This run is also the only guarantee that prose rules _honour_ the capability flags — no static engine can assert that.
 2. No run ever mutates the session's checked-out branch in a runtime that cannot restore it — zero `git checkout dev` when dev-push capability is absent (D6/D23).
 3. Every phase-close lands on `dev` with a body free of CI-suppression tokens (D24) — and the resulting `dev` CI-dispatch outcome is asserted rather than assumed (D1 closed on both transports).
 4. Any gh→MCP transition is bounded (max 1/run), recorded, confirmed by an independent re-read, cross-checked mechanically (D25).
@@ -48,7 +48,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** resolve build/test errors via `docs/architecture.md` + `docs/knowledge.jsonl`, never hot fixes. The design's honest limit stands — bats/vitest prove **detection + presence**, NOT that prose rules _honour_ the flags. Halt if stuck.
 
-- **Three live residuals to settle here** (all named-and-mitigated, so behaviour is safe either way): sleep block-vs-error (`timeout` cap); which MCP server mode 3 loads + `GH_BKIT_TOKEN` in-sandbox (dual-lane abort); `push_files`/PR-close reject-vs-clobber on a moved `dev` head (dev-head-unmoved precondition).
+- **Four live residuals to settle here** (all named-and-mitigated, so behaviour is safe either way): sleep block-vs-error (`timeout` cap); which MCP server mode 3 loads + `GH_BKIT_TOKEN` in-sandbox (dual-lane abort); `push_files`/PR-close reject-vs-clobber on a moved `dev` head (dev-head-unmoved precondition); **the exact Cursor (mode 4) detection env var (`CURSOR_AGENT` vs `CURSOR_REMOTE_AGENT`) + whether foreground `sleep` is harness-blocked — confirmed against a real Cursor cloud agent before mode 4 is asserted in SC1 (safe default meanwhile: unmatched Cursor → `unknown` → least-capable + loud).**
 - **OQ-C (dev config):** confirm branch protection permits the autonomous close (status-checks-only, no required human review) and enable "Automatically delete head branches" (there is no MCP `delete_branch`) — Manual Step 4. Human/admin action.
 - **Risk window:** mirror regen (`.claude`/`.cursor`/`.opencode`) must follow any `.bkit/` source revert; batch `bkit install` at the end; after install run `git config core.bare false`.
 
@@ -76,12 +76,12 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 <!-- prettier-ignore -->
 | # | Test description | Type | Target file | Task |
 | --- | --- | --- | --- | --- |
-| 14 | End-to-end: all 5 phases + `bkit-auto` complete in each of the 3 runtimes; mode-1 non-regression by a real run; status trail shows `RUNTIME`/`CAN_*`/transport (SC1–7) | @live (manual, WS-16) | live claude.ai session + `docs/plans/.../status.jsonl` asserts | T16 |
+| 14 | End-to-end: all 5 phases + `bkit-auto` complete in each of the 4 runtimes (mode 4 Cursor gated on detection-var confirmation); mode-1 non-regression by a real run; status trail shows `RUNTIME`/`CAN_*`/transport (SC1–7) | @live (manual, WS-16) | live claude.ai session + a Cursor cloud-agent run + `docs/plans/.../status.jsonl` asserts | T16 |
 | 15 | Vitest prose audit: every `CAN_*` has >=1 reader in `.bkit/workflows/`; every foreground **CI-wait** `sleep` sits under the CI-wait rule (retry/backoff sleeps explicitly exempted, NOT flagged) (presence, NOT behaviour) | Unit (vitest) | `.bkit/src/bkit-runtime-prose-audit.test.ts` | T16 |
 
 ## Agent Execution Runbook
 
-- [ ] **T16 — WS-16: Verification, prose audit, mirror regen, live runs (SC1–7, D3/D19).** Add the **Unit (vitest)** prose audit `.bkit/src/bkit-runtime-prose-audit.test.ts` (every `CAN_*` has >=1 reader; every CI-wait `sleep` under the CI-wait rule, retry/backoff sleeps exempted — presence, NOT behaviour). Batch mirror regen via `bkit install` (then `git config core.bare false`); confirm `.bkit/version` tracks the shim. Run all five phases + `bkit-auto` end-to-end in each runtime; verify mode-1 non-regression by a real run; settle the three live residuals (sleep block-vs-error; which MCP server + `GH_BKIT_TOKEN` in-sandbox; `push_files`/PR-close reject-vs-clobber). Assert SC1–7 against the landed system. **Done when:** **Unit (vitest)** row 15 passes; **@live (manual)** row 14 — a real mode-3 session + real mode-1 run — completes all phases with a status trail showing `RUNTIME`/`CAN_*`/transport, mode-1 non-regressed, `dev` CI dispatched (SC3), and no hang (SC7).
+- [ ] **T16 — WS-16: Verification, prose audit, mirror regen, live runs (SC1–7, D3/D19).** Add the **Unit (vitest)** prose audit `.bkit/src/bkit-runtime-prose-audit.test.ts` (every `CAN_*` has >=1 reader; every CI-wait `sleep` under the CI-wait rule, retry/backoff sleeps exempted — presence, NOT behaviour). Batch mirror regen via `bkit install` (then `git config core.bare false`); confirm `.bkit/version` tracks the shim. Run all five phases + `bkit-auto` end-to-end in each runtime; verify mode-1 non-regression by a real run; settle the live residuals (sleep block-vs-error; which MCP server + `GH_BKIT_TOKEN` in-sandbox; `push_files`/PR-close reject-vs-clobber; **the exact Cursor (mode 4) detection env var + `sleep`-block behaviour against a real Cursor cloud agent — until confirmed, mode 4 stays gated and unmatched Cursor sessions fall through to `unknown`**). Assert SC1–7 against the landed system. **Done when:** **Unit (vitest)** row 15 passes; **@live (manual)** row 14 — a real mode-3 session + real mode-1 run — completes all phases with a status trail showing `RUNTIME`/`CAN_*`/transport, mode-1 non-regressed, `dev` CI dispatched (SC3), and no hang (SC7).
 
 ### 🔒 Gate 2: Code Implementation Check
 

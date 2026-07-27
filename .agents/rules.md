@@ -86,8 +86,8 @@
 > Tier rules / framework boundaries / file inventory: `docs/testing.md`. Logs / tracing: `docs/observability.md`. Debugging gotchas: `docs/knowledge.jsonl`.
 
 - **Local (pre-push / husky):** lint, typecheck, format:check, `pnpm test` (unit and in-process integration), prose, slop:delta, `bkit check`. NO tests requiring deployed boundary / backing service.
-- **CI on PR (to `dev` / `main`):** static, unit, integration (incl. service / DB-backed), E2E, migration replay — one affected-gated parallel lane per tier plus `bkit-tests-check` capstone. NO `@live` tests.
-- **CI on push (to `dev` / `main`):** PR lanes plus `@live` canary tests against deployed URL.
+- **CI on PR (to `dev` / `main`):** static, unit, integration (incl. service / DB-backed), E2E, always-on migration lane (replay when planned) — parallel lanes + `bkit-tests-check` capstone. E2E `needs:` migration when that lane owns remote push. NO `@live` tests.
+- **CI on push (to `dev` / `main`):** PR lanes plus remote `db push` inside migration lane + `@live` canary (both wait on migration ≠ failure).
 - **Debug (on demand):** Re-runs failing E2E / `@live` tier tests against deployed boundary. NEVER purely local runs.
 - **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
 - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.

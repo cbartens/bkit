@@ -14,7 +14,7 @@
 
 ## Context & Goals (inherited from parent)
 
-bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`). Mechanism (design `docs/plans/202607/341-three-runtimes-design.md`): a sourced runtime shim emits a 4-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`); **workflow headers branch on `CAN_*`** for the adopt-or-mint branch model; **the close path gains transport-agnostic guards (D23/D24/D25)**. Spikes A/B/C are CLOSED — fold findings.
+bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (mode 1), GH-Actions (mode 2), claude.ai cloud (mode 3, `CLAUDE_CODE_REMOTE=true`), Cursor cloud agent (mode 4). Mechanism (design `docs/plans/202607/341-three-runtimes-design.md`): a sourced runtime shim emits a 5-row capability table (`RUNTIME` → `CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`); **workflow headers branch on `CAN_*`** for the adopt-or-mint branch model; **the close path gains transport-agnostic guards (D23/D24/D25)**. Spikes A/B/C are CLOSED — fold findings.
 
 **This sub-plan (3 of 6) — Branch model + close-guard kernel (T8–T9).**
 
@@ -23,7 +23,7 @@ bkit's five phase workflows + `bkit-auto` now run in **three runtimes**: laptop 
 
 ### Inherited Success Criteria (this sub-plan owns SC2 + the kernel behind SC3/SC4)
 
-1. All five phases + `bkit-auto` complete in each of the three runtimes; mode-1 non-regressed by a real run.
+1. All five phases + `bkit-auto` complete in each of the four runtimes (mode 4 = Cursor, gated on detection-var confirmation); mode-1 non-regressed by a real run.
 2. **No run mutates the checked-out branch in a runtime that cannot restore it — zero `git checkout dev` when dev-push is absent (D6), held by a double-guard + reversible checkout (D23).** ← primary for T8/T9.
 3. **Every phase-close body free of CI-suppression tokens — asserted post-hoc against the landed commit (D24); `dev` CI-dispatch asserted (D1).** ← kernel in T9.
 4. **Any gh→MCP transition is bounded, recorded, cross-checked (D25).** ← cross-check kernel in T9.

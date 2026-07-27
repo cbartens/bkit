@@ -1,7 +1,7 @@
 ---
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
-model: claude-opus-4-8-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep
@@ -9,7 +9,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect merging design-review critiques into the design, no scope expansion.
 **Scope:** As specified by input and Read / Update / Create section.

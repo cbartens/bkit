@@ -2,7 +2,7 @@
 name: bkit-design-organise
 description: Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 effort: high
-model: claude-opus-4-8
+model: claude-opus-5
 tools:
   - Read
   - Grep

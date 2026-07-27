@@ -2,7 +2,7 @@
 name: bkit-plan-scope-check-1
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
 effort: medium
-model: claude-opus-4-8
+model: claude-opus-5
 tools:
   - Read
   - Grep
@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), `opencode` (opencode-native Zen gateway; auth via `OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
+**bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — ten providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), `zai` (GLM), `moonshot` (Kimi), `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
 
 README: what bkit does, install, env / tracker setup. Workflow internals: `.bkit/workflows.md`; subagent metadata (effort, model, tools, `maxTurns`): `.bkit/prompts.md`.
 
@@ -133,7 +133,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels set Cursor Cl
 | Parent | Example sub-labels in this workspace | What it controls |
 | --- | --- | --- |
 | `branch` | `dev` | git branch the agent works on |
-| `model` | `claude-opus-4-8-thinking-high`, `composer-2.5`, `gpt-5.5-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
+| `model` | `cursor-grok-4.5-high`, `composer-2.5` (defaults); API Opus etc. via `prompts.md` § Model Overrides paste block | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
 Per-agent model assignments: `.bkit/prompts.md` § Models; Cursor reads subagent frontmatter `model:` directly. Linear `model:*` sub-labels = **orchestrator-session** model only. Keep in sync with `.bkit/providers.md` § Cursor model catalog.

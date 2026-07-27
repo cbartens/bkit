@@ -38,7 +38,7 @@ import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
-import { CLAUDE_CLOUD_RELPATH } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH } from "./bkit-cloud-env.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -648,6 +648,24 @@ export async function runUninstall(
     }
   }
 
+  // Full/core uninstall: strip the `bkit` install-state object from package.json
+  // (issueTracker / opencodeProvider(s) / depUpdater / cloudAgents / runners). Scripts
+  // and devDeps still need `--package`; this clears the preference/manifest block so an
+  // "uninstalled" repo does not keep advertising prior bkit choices. No try/catch — malformed
+  // package.json is a hard failure on full teardown (same as a missing dest would be).
+  if (moduleList.includes("core") && !ctx.dryRun) {
+    const pkgPath = path.join(ctx.cwd, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+      if (pkg.bkit !== undefined) {
+        delete pkg.bkit;
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+        console.log(`${ctx.logPrefix} package.json: removed bkit install-state block`);
+        result.stripped.push("package.json#bkit");
+      }
+    }
+  }
+
   // Clean up .agents/ bkit-prefix mirror files
   // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
   if (!ctx.dryRun) {
@@ -689,6 +707,20 @@ export async function runUninstall(
       if (!ctx.dryRun) {
         fs.rmSync(cloudAbs, { force: true });
         console.log(`${ctx.logPrefix} delete: ${CLAUDE_CLOUD_RELPATH} (generated cloud setup doc)`);
+      }
+    }
+  }
+
+  // Same for the Cursor twin `.cursor/cloud.md` (writeCursorCloudDoc) — untracked,
+  // gitignored, holds resolved secrets; delete it explicitly when the cursor host is
+  // uninstalled so a live-secrets file is never left behind.
+  if (moduleList.includes("cursor")) {
+    const cloudAbs = path.join(ctx.cwd, CURSOR_CLOUD_RELPATH);
+    if (fs.existsSync(cloudAbs)) {
+      result.deleted.push(CURSOR_CLOUD_RELPATH);
+      if (!ctx.dryRun) {
+        fs.rmSync(cloudAbs, { force: true });
+        console.log(`${ctx.logPrefix} delete: ${CURSOR_CLOUD_RELPATH} (generated cloud setup doc)`);
       }
     }
   }

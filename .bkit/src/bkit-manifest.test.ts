@@ -300,6 +300,13 @@ describe("getInstallManifest", () => {
     expect(hooksEntry!.format).toBe("json");
   });
 
+  it("cursor manifest includes guardrails.cjs as byte-equal-text", () => {
+    const entries = getInstallManifest(["cursor"]);
+    const entry = entries.find((e) => e.path === ".cursor/hooks/guardrails.cjs");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+  });
+
   it("claude manifest includes settings.json as json", () => {
     const entries = getInstallManifest(["claude"]);
     const settingsEntry = entries.find((e) => e.path === ".claude/settings.json");
