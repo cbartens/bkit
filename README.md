@@ -35,43 +35,59 @@ For full pipeline and subagent reference, and mapping against Antonio Gulli's _A
 >
 > **Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403 even when `Packages: read` is granted (verified 2026-05). Until GitHub fixes this, classic with `read:packages` scope is the only working option.
 
-## Quick install — paste this into your AI
+## Quick install / upgrade — paste into your AI
+
+Two paste blocks below — **install** (first time) and **upgrade** (already on bkit). Both end the same way: apply advisories, reconcile templates, verify with `bkit check`.
+
+### Install — first time
 
 After creating a classic GitHub PAT with `read:packages` scope ([Tokens (classic)](https://github.com/settings/tokens)) and saving it as `GH_BKIT_TOKEN_INSTALL=<token>` in a local env file in this repo (e.g. `.env.local`, `apps/web/.env.preview`), copy the block below into Claude Code / Cursor / any coding agent. Replace `<ENV-FILE-PATH>` with your env file's path.
 
 ````text
-Please install the latest `@cbartens/bkit` in this repo.
-
-1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `GH_BKIT_TOKEN_INSTALL=<token>` in `<ENV-FILE-PATH>` (for example `.env.local` or `apps/web/.env.preview`). Confirmed.
-
-2. To access `GH_BKIT_TOKEN_INSTALL` without leaking it into your context: `source` is a shell builtin, not file I/O — the permission layer that gates `Read` / `grep` / `cat` does NOT see it, and the token text never enters your context. Use this pattern in a single Bash tool call:
-
+Install the latest `@cbartens/bkit` in this repo and finish setup.
+1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `GH_BKIT_TOKEN_INSTALL=<token>` in `<ENV-FILE-PATH>` (e.g. `.env.local` or `apps/web/.env.preview`). Confirmed.
+2. Access `GH_BKIT_TOKEN_INSTALL` without leaking it into context: `source` is a shell builtin (not file I/O) — permission gates on `Read`/`grep`/`cat` do NOT see it. Pattern (same Bash invocation — shell state does NOT persist between tool calls):
    ```bash
    set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; <command that needs the token>
    ```
-
-   Verify the token loaded without leaking the value: `echo "len=${#GH_BKIT_TOKEN_INSTALL}"`.
-
-   Caveat: shell state does NOT persist between separate Bash tool calls. The `source` and the consuming command MUST run in the SAME invocation — chain with `;` or `&&`.
-
-3. Ensure `.npmrc` at the repo root contains the registry mapping (create or update). The auth token is **NOT** stored here — pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` env-substitution:
-
+   Verify without leaking: `echo "len=${#GH_BKIT_TOKEN_INSTALL}"`.
+3. Ensure root `.npmrc` has registry mapping only (token NOT stored here — pnpm >=10.34.3 401s on project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` substitution):
    ```
    @cbartens:registry=https://npm.pkg.github.com
    ```
-
-   Then write the token into pnpm's user-level config, resolve and install the latest `@cbartens/bkit`, and seed both hosts + the tooling stack in a single Bash call (`bkit install` requires you to name the modules — core is implicit):
-
+   Then auth + install + seed hosts/tooling in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    set -a; source <ENV-FILE-PATH>; set +a; \
      pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
      pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor --tooling
    ```
+   Seeds `.agents/`, `.claude/`, `.cursor/`, CI, lint, git-hooks.
+4. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
+5. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
+````
 
-   `bkit install --claude --cursor --tooling` seeds `.agents/`, `.claude/`, `.cursor/`, CI workflows, lint, and git-hooks. Report the resolved version and any advisories printed by `bkit install`.
+### Upgrade — already installed
 
-4. After install, read bkit's canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.). You MUST reconcile them against this repo's existing config and adopt as much as possible without breaking existing functionality — bkit's seed-or-print files (e.g. `ci.yml`) do NOT overwrite an existing file, so adoption is your job. For any template you choose not to adopt, state which one and why.
+Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
+
+````text
+Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
+1. Ensure `GH_BKIT_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
+   ```bash
+   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
+     bkit upgrade --latest
+   ```
+   If token already exported (direnv / shell profile), skip `source`:
+   ```bash
+   bkit upgrade --latest
+   ```
+   If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
+2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
+3. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
 ## Install
