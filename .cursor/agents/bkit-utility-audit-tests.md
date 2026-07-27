@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
-model: claude-opus-5-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep

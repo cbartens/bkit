@@ -115,24 +115,29 @@ Cursor model assignment: § Models below — per-agent lookup, NOT effort-tier d
 
 ## Models
 
-> **Effort vs model — different mechanisms.** Claude: `effort: low|medium|high|xhigh` = thinking-budget on pinned model. Cursor: explicit `model:` per agent; cross-family diversity (`bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`) = real model selection, not single-family effort. **Per-agent model assignment canonical**; derive Cursor `model` from `prompts.md` § Models, NOT `effort` alone.
+> **Effort vs model — different mechanisms.** Claude: `effort: low|medium|high|xhigh` = thinking-budget on pinned model. Cursor: explicit `model:` per agent; native-pool diversity (`cursor-grok-4.5-high` / `composer-2.5` — no API-pool defaults). **Per-agent model assignment canonical**; derive Cursor `model` from `prompts.md` § Models, NOT `effort` alone.
 
 ### Cursor model catalog
 
-**Pinned selections canonical in `prompts.md`** (§ Models `Cursor` column + § Orchestrators) — not here. Cursor set churns; use pull recipe below. Tier guidance:
+**Pinned selections canonical in `prompts.md`** (§ Models `Cursor` column + § Orchestrators) — not here. Cursor set churns; use pull recipe below.
 
-- **`composer-2.5`** ($) — fast/cheap: build executors, summarizers, ship-summary, utilities, orchestrator plumbing. First-party pool.
-- **`cursor-grok-4.5-high`** ($$) — cross-family diversity (plan generation, parallel-pair slot-2). First-party pool (Cursor + SpaceXAI); Coding Agent Index parity with GPT-5.5 at lower per-task cost. `-fast` variant exists. GPT-5.x (`gpt-5.6-sol-high`, …) on API pool as diversity hedge — not currently pinned.
-- **`claude-opus-*-thinking-high`** ($$$) — deep review, audit, design synthesis, debug diagnosis, ship docs. Current `claude-opus-5-thinking-high`; `-fast` + prior-gen (`claude-opus-4-8-thinking-high`, `claude-opus-4-7-thinking-high`, legacy `claude-4.6-opus-high-thinking`) = availability hedges. API pool.
-- **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — Fable 5, tier above Opus. **Available, not adopted** (see `prompts.md` § Effort → Claude model mapping).
+> **Default install = first-party pool only.** Shipped Cursor pins are **`cursor-grok-4.5-high`** + **`composer-2.5`** so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are **opt-in** via `prompts.md` § Model Overrides — never default pins.
+
+Tier guidance:
+
+- **`composer-2.5`** ($) — **default.** Fast/cheap: build executors, summarizers, ship-summary, utilities, `/build` + `/ship` orchestrators. First-party pool.
+- **`cursor-grok-4.5-high`** ($$) — **default.** Depth slots, synthesizers, parallel diversity (design/plan/debug orchestrators + former Opus-tier agents). First-party pool (Cursor + SpaceXAI); Coding Agent Index parity with GPT-5.5 at lower per-task cost. `-fast` variant exists.
+- **`claude-opus-*-thinking-high`** ($$$) — **override only.** Deep review / audit / synthesis when API credits remain. Current live ID `claude-opus-5-thinking-high`; `-fast` + prior-gen = availability hedges. API pool — burns credits; pin via § Model Overrides, never as shipped default.
+- **`gpt-5.*`** ($$$) — **override only.** API-pool diversity hedge (`gpt-5.6-sol-high`, …). Not pinned.
+- **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — **override only.** Fable 5, tier above Opus. Available, not adopted as default (see `prompts.md` § Effort → Claude model mapping).
 - **No Sonnet** on Cursor — never pin `claude-*-sonnet-*` ID.
 
-Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (agent-specific API key — general keys can HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor models churn.** API currently **no Sonnet** — former `claude-4.6-sonnet-thinking` pin gone; build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) offered but not adopted.
+Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (agent-specific API key — general keys can HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor models churn.** API currently **no Sonnet** — former `claude-4.6-sonnet-thinking` pin gone; build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) offered but not adopted as default.
 
 > [!NOTE]
-> **Subagent model IDs — corrected to live API format.** Prior pin `claude-4.7-opus-high-thinking` used word-order API never listed (`claude-opus-4-N-thinking-high`; legacy 4.6 kept old order) — likely root of "may not be in subagent-allowed set". `prompts.md` `Cursor model` column pinned `claude-opus-4-8-thinking-high` / `cursor-grok-4.5-high` / `composer-2.5`, confirmed in live `/v0/models` (2026-07-21). Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
+> **Native-default Cursor pins (#205).** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
 >
-> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day; `claude-opus-4-8-thinking-high` stays available as a hedge (see catalog bullets above). All `claude-opus-4-8` → `claude-opus-5` pins bumped across `prompts.md`, the 24 Opus-tier `.bkit/prompts/*.md` frontmatter files, and the hand-authored `utility-pre-release-check` agent. (#205)
+> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day — **Claude host pins bumped; Cursor defaults moved off API pool** (native-only policy above). (#205)
 
 ### Per-subagent model assignment
 

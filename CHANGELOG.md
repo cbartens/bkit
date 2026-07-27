@@ -6,6 +6,15 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Cursor defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) (#205).** Shipped Cursor pins no longer use the API pool (Claude / GPT / Fable), so workflows keep running when API credits are exhausted. Depth + synthesizer + `/design`/`/plan`/`/debug` orchestrators → Grok; volume + `/build`/`/ship` → Composer. API-pool models remain available via `prompts.md` § Model Overrides. Docs: `providers.md` catalog, Model Overrides CAUTION, README model labels.
+- **CI scaffold: always-on migration lane owns remote `db push` (#385).** Mirrors the consumer (gether #451) contract: `bkit-tests-migration` stays always-on (no job-level `if:`); replay stays plan-/path-gated per-step; remote `db push --linked --include-all` moves out of e2e / the legacy `supabase-migrate` stub into the migration lane (push to `dev`/`main` only, un-gated by `run_migration` for self-heal); `bkit-tests-e2e` / `-live` `needs:` migration with `result != 'failure'`; capstone asserts migration `success` whenever scope succeeded. Docs (`testing.md` / `deployments.md`), FULL CI SCAFFOLD REFERENCE, and postinstall advisories updated. Local integration: prefer reset-by-default `test:integration:local` over bare turbo (documented pattern; consumer supplies the script).
+
+---
+
 ## [4.8.0] — 2026-07-22
 
 Makes workflow retry-counting deterministic — attempt counters now derive from `status.jsonl` instead of model-tracked prose — and expands the OpenCode host with first-class Zen and Go built-in providers alongside the install-drift fixes that surfaced beside them. Consumers can now redirect managed CI to their own runners, ledger slugs are collision-checked on install, and the OpenCode host gains the same secret-file read guardrails the Claude host already enforced.

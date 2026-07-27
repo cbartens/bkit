@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-audit-codebase
 description: Senior architect reviewing a codebase against best practices and project goals.
-model: claude-opus-5-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep

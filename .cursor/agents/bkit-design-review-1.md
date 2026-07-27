@@ -1,7 +1,7 @@
 ---
 name: bkit-design-review-1
 description: Senior engineer assessing whether a design is buildable with the approved stack.
-model: claude-opus-5-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep

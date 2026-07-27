@@ -133,7 +133,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels set Cursor Cl
 | Parent | Example sub-labels in this workspace | What it controls |
 | --- | --- | --- |
 | `branch` | `dev` | git branch the agent works on |
-| `model` | `claude-opus-5-thinking-high`, `composer-2.5`, `gpt-5.5-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
+| `model` | `cursor-grok-4.5-high`, `composer-2.5` (defaults); API-pool IDs via § Model Overrides | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
 Per-agent model assignments: `.bkit/prompts.md` § Models; Cursor reads subagent frontmatter `model:` directly. Linear `model:*` sub-labels = **orchestrator-session** model only. Keep in sync with `.bkit/providers.md` § Cursor model catalog.

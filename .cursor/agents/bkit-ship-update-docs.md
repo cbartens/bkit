@@ -1,7 +1,7 @@
 ---
 name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle and appending the cycle entry.
-model: claude-opus-5-thinking-high
+model: cursor-grok-4.5-high
 tools:
   - Read
   - Grep
