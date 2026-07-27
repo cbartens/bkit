@@ -2,6 +2,7 @@
 name: bkit-design-brainstorm-ideate-2
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

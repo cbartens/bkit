@@ -2,6 +2,7 @@
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep

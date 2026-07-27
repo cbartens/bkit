@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
@@ -10,7 +10,7 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

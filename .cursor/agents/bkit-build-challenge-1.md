@@ -2,6 +2,7 @@
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

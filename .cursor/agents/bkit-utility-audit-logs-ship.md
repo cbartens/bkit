@@ -2,6 +2,7 @@
 name: bkit-utility-audit-logs-ship
 description: Senior SRE running a post-deploy smoke check for new errors and regressions.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

@@ -2,6 +2,7 @@
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

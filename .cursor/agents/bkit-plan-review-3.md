@@ -2,6 +2,7 @@
 name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

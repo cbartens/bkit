@@ -2,6 +2,7 @@
 name: bkit-utility-audit-security
 description: Senior security engineer auditing auth, secrets, validation, and data exposure.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

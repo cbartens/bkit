@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

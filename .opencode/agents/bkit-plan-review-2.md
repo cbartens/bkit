@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

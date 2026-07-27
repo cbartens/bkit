@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   edit: true
   bash: true
-reasoningEffort: high
+reasoningEffort: max
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

@@ -85,10 +85,11 @@
     "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "opencode-go",
+    "opencodeProvider": "zai",
     "opencodeProviders": [
       "nvidia",
-      "opencode-go"
+      "opencode-go",
+      "zai"
     ],
     "renovateRunner": "self"
   }

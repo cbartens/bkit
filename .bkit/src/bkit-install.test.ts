@@ -7,6 +7,9 @@ import {
   applyT2,
   applyT3,
   applyOpencodeAgent,
+  parseEffortMap,
+  lookupEffort,
+  effortColumnForProvider,
   applyOpencodeCommand,
   OPENCODE_SESSION_PROMPT_ANCHOR,
   parseModelLookup,
@@ -166,25 +169,26 @@ describe("T3 — subagent frontmatter rewrite", () => {
     ["build-plan", "composer-2.5"],
     ["design-synthesize", "claude-opus-4-8-thinking-high"],
   ]);
+  const effortMap = parseEffortMap(path.join(import.meta.dirname ?? ".", "..", "prompts.md"));
 
-  it("emits name, description, model, tools (passthrough)", () => {
+  it("emits name, description, model, tools (passthrough) + effort from Cursor column", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\ntools:\n  - Read\n  - Edit\npermissionMode: default\nmaxTurns: 20\n---\nBody here.\n`;
-    const result = applyT3(input, modelLookup);
+    const result = applyT3(input, modelLookup, effortMap);
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
     expect(result).toContain("model: composer-2.5");
     expect(result).toContain("tools:");
     expect(result).toContain("- Read");
     expect(result).toContain("- Edit");
-    expect(result).not.toContain("effort:");
+    expect(result).toContain("effort: medium");
     expect(result).not.toContain("permissionMode:");
     expect(result).not.toContain("maxTurns:");
   });
 
-  it("drops Claude-only fields: effort, permissionMode, maxTurns, is_background, readonly", () => {
+  it("drops Claude-only fields: permissionMode, maxTurns, is_background, readonly (keeps remapped effort)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: high\npermissionMode: allowedTools\nmaxTurns: 10\nis_background: true\nreadonly: true\n---\nBody.\n`;
-    const result = applyT3(input, modelLookup);
-    expect(result).not.toContain("effort:");
+    const result = applyT3(input, modelLookup, effortMap);
+    expect(result).toContain("effort: high");
     expect(result).not.toContain("permissionMode:");
     expect(result).not.toContain("maxTurns:");
     expect(result).not.toContain("is_background:");
@@ -1044,10 +1048,12 @@ describe("applyOpencodeAgent", () => {
     ["build-plan", "ollama-local/qwen2.5:7b"],
     ["design-synthesize", "ollama-local/qwen2.5:14b"],
   ]);
+  const promptsMd = path.join(import.meta.dirname ?? ".", "..", "prompts.md");
+  const effortMap = parseEffortMap(promptsMd);
 
   it("emits mode: subagent, name, description, model", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\npermissionMode: acceptEdits\nmaxTurns: 100\n---\nBody here.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("mode: subagent");
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
@@ -1059,7 +1065,7 @@ describe("applyOpencodeAgent", () => {
     // opencode's AgentConfig.tools is an object {name: boolean}, NOT a YAML array, and
     // its tool names are lowercase. The array form fails: "tools: Expected object, got [...]".
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Glob\n  - Write\n  - Edit\n  - WebFetch\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("tools:\n");
     expect(result).toContain("  read: true");
     expect(result).toContain("  glob: true");
@@ -1071,40 +1077,79 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("Read: true");
   });
 
-  it("maps effort: medium → reasoningEffort: low", () => {
+  it("maps effort: medium → reasoningEffort: low (OpenCode Go/Zen column)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("reasoningEffort: low");
     expect(result).not.toContain("effort:");
   });
 
   it("maps effort: high → reasoningEffort: medium", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("reasoningEffort: medium");
   });
 
   it("maps effort: xhigh → reasoningEffort: high", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("reasoningEffort: high");
   });
 
   it("maps effort: low → reasoningEffort: none", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("reasoningEffort: none");
   });
 
   it("maps effort: max → reasoningEffort: max", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: max\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("reasoningEffort: max");
+  });
+
+  it("zai: reads Z.AI column — medium/high → high, xhigh → max", () => {
+    const zaiLookup = new Map([
+      ["build-plan", "zai/glm-5.1"],
+      ["design-synthesize", "zai/glm-5.2"],
+    ]);
+    expect(
+      applyOpencodeAgent(
+        `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-5\n---\nBody.\n`,
+        zaiLookup,
+        effortMap,
+        "zai",
+      ),
+    ).toContain("reasoningEffort: high");
+    expect(
+      applyOpencodeAgent(
+        `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-5\n---\nBody.\n`,
+        zaiLookup,
+        effortMap,
+        "zai",
+      ),
+    ).toContain("reasoningEffort: high");
+    expect(
+      applyOpencodeAgent(
+        `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-5\n---\nBody.\n`,
+        zaiLookup,
+        effortMap,
+        "zai",
+      ),
+    ).toContain("reasoningEffort: max");
+    expect(
+      applyOpencodeAgent(
+        `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`,
+        zaiLookup,
+        effortMap,
+        "zai",
+      ),
+    ).toContain("reasoningEffort: none");
   });
 
   it("drops Claude-only fields: permissionMode, maxTurns, is_background, readonly", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: high\npermissionMode: allowedTools\nmaxTurns: 10\nis_background: true\nreadonly: true\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).not.toContain("permissionMode:");
     expect(result).not.toContain("maxTurns:");
     expect(result).not.toContain("is_background:");
@@ -1114,7 +1159,7 @@ describe("applyOpencodeAgent", () => {
 
   it("rewrites the tools block to opencode's object map (not the Claude array)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\n  - Bash\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("tools:");
     expect(result).toContain("  read: true");
     expect(result).toContain("  edit: true");
@@ -1124,7 +1169,7 @@ describe("applyOpencodeAgent", () => {
 
   it("preserves agent body unchanged", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody content here.\nMore body.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
     expect(result).toContain("Body content here.\nMore body.\n");
   });
 
@@ -1150,6 +1195,51 @@ describe("applyOpencodeAgent", () => {
     const input = "# No frontmatter\nBody here.\n";
     const result = applyOpencodeAgent(input, opencodeModelLookup);
     expect(result).toBe(input);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseEffortMap — prompts.md Effort → provider thinking table
+// ---------------------------------------------------------------------------
+
+describe("parseEffortMap", () => {
+  const effortMap = parseEffortMap(".bkit/prompts.md");
+
+  it("parses Default | Claude | Cursor | OpenCode Go/Zen | NVIDIA | Z.AI | Moonshot", () => {
+    for (const col of [
+      "Default",
+      "Claude",
+      "Cursor",
+      "OpenCode Go/Zen",
+      "NVIDIA",
+      "Z.AI",
+      "Moonshot",
+    ]) {
+      expect(effortMap.has(col)).toBe(true);
+    }
+    expect(effortMap.get("Default")?.size).toBe(5);
+  });
+
+  it("Z.AI column collapses medium/high → high, xhigh → max", () => {
+    expect(lookupEffort(effortMap, "zai", "medium")).toBe("high");
+    expect(lookupEffort(effortMap, "zai", "high")).toBe("high");
+    expect(lookupEffort(effortMap, "zai", "xhigh")).toBe("max");
+    expect(lookupEffort(effortMap, "zai", "max")).toBe("max");
+    expect(lookupEffort(effortMap, "zai", "low")).toBe("none");
+  });
+
+  it("providers without a column inherit OpenCode Go/Zen", () => {
+    expect(effortColumnForProvider("groq")).toBe("OpenCode Go/Zen");
+    expect(lookupEffort(effortMap, "groq", "xhigh")).toBe("high");
+    expect(lookupEffort(effortMap, "nvidia", "xhigh")).toBe("high");
+    expect(lookupEffort(effortMap, "opencode-go", "medium")).toBe("low");
+  });
+
+  it("Claude / Cursor columns are identity with Default", () => {
+    for (const e of ["low", "medium", "high", "xhigh", "max"]) {
+      expect(lookupEffort(effortMap, "claude", e)).toBe(e);
+      expect(lookupEffort(effortMap, "cursor", e)).toBe(e);
+    }
   });
 });
 
@@ -1268,12 +1358,12 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("zai: single GLM family — glm-4.7 opus/convergent, glm-4.6 sonnet, glm-4.5-air haiku", () => {
+  it("zai: single GLM family — glm-5.2 opus/convergent, glm-5.1 sonnet, glm-4.5-air haiku", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zai");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("zai/glm-4.7"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-4.6"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("zai/glm-5.2"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-5.1"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("zai/glm-4.5-air"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("zai/glm-4.7"); // convergent
+    expect(lookup.get("bkit-build-challenge-2")).toBe("zai/glm-5.2"); // convergent
   });
 
   it("moonshot: single Kimi family — kimi-k3 opus/convergent, kimi-k2.7-code sonnet, kimi-k2.5 haiku", () => {

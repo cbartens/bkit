@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
@@ -10,7 +10,7 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

@@ -1111,12 +1111,20 @@ function makeClaudeContext(dryRun: boolean): ModuleContext {
   const advisories: PreflightFinding[] = [];
   return {
     dryRun,
-    tokens: new Map(),
+    tokens: {
+      NODE_VERSION: "22",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "test",
+      REPO_SLUG: "acme/test",
+    },
     modelLookup: new Map(),
+    opencodeModelLookup: new Map(),
+    effortMap: new Map(),
     advisories,
     ws,
     logPrefix: "[bkit-test]",
     postDispatch: [],
+    issueTracker: "none",
   };
 }
 

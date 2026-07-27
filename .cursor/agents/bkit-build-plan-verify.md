@@ -2,6 +2,7 @@
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

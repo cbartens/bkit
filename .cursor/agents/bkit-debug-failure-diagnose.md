@@ -2,6 +2,7 @@
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep

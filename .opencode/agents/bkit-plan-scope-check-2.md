@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-scope-check-2
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

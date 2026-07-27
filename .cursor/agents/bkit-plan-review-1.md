@@ -2,6 +2,7 @@
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

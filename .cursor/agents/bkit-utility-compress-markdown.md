@@ -2,6 +2,7 @@
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

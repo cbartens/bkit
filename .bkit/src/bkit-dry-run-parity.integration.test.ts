@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./bkit-modules";
-import { parseModelLookup, parseOpencodeModelLookup } from "./bkit-install";
+import { parseModelLookup, parseOpencodeModelLookup, parseEffortMap } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag, CloudVariant } from "./bkit-cli";
 
@@ -45,10 +45,13 @@ function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
       REPO_SLUG: "acme/test-project",
     },
     modelLookup: new Map(),
+    opencodeModelLookup: new Map(),
+    effortMap: new Map(),
     advisories: [],
     ws,
     logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
     postDispatch: [],
+    issueTracker: "none",
   };
 }
 
@@ -98,6 +101,8 @@ function makeCloudModuleCtx(
       REPO_SLUG: "acme/test-project",
     },
     modelLookup: new Map(),
+    opencodeModelLookup: new Map(),
+    effortMap: new Map(),
     advisories: [],
     ws,
     logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
@@ -187,6 +192,7 @@ describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.
   );
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
   const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
 
   function makeOpencodeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
     return {
@@ -199,6 +205,7 @@ describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      effortMap: EFFORT_MAP,
       opencodeProvider: "ollama-local",
       advisories: [],
       ws,

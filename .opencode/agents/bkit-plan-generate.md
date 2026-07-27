@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: high
+reasoningEffort: max
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

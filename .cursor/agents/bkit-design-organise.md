@@ -2,6 +2,7 @@
 name: bkit-design-organise
 description: Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep

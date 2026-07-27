@@ -2,6 +2,7 @@
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
 model: cursor-grok-4.5-high
+effort: medium
 tools:
   - Read
   - Grep

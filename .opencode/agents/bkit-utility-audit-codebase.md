@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-codebase
 description: Senior architect reviewing a codebase against best practices and project goals.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
@@ -10,7 +10,7 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

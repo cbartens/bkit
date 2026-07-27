@@ -2,6 +2,7 @@
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep

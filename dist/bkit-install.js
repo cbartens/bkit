@@ -337,15 +337,103 @@ export function applyModelOverrides(lookup, providerKey, overridesPath) {
 export function parseOpencodeModelLookup(subagentsMdPath) {
     return buildOpencodeModelLookup(subagentsMdPath, "ollama-local");
 }
-// Effort → reasoningEffort mapping for opencode frontmatter.
-// Claude's effort knob (low/medium/high/xhigh/max) maps to opencode's reasoningEffort.
-const EFFORT_TO_REASONING_EFFORT = {
-    low: "none",
-    medium: "low",
-    high: "medium",
-    xhigh: "high",
-    max: "max",
+/** Host/provider key → prompts.md effort-table column header. */
+const EFFORT_COLUMN_FOR_PROVIDER = {
+    claude: "Claude",
+    cursor: "Cursor",
+    nvidia: "NVIDIA",
+    zai: "Z.AI",
+    moonshot: "Moonshot",
+    "opencode-zen": "OpenCode Go/Zen",
+    "opencode-go": "OpenCode Go/Zen",
+    // Opencode providers without a dedicated column inherit the generic ladder.
+    "ollama-local": "OpenCode Go/Zen",
+    groq: "OpenCode Go/Zen",
+    cerebras: "OpenCode Go/Zen",
+    openrouter: "OpenCode Go/Zen",
+    ollama: "OpenCode Go/Zen",
 };
+const EFFORT_FALLBACK_COLUMN = "OpenCode Go/Zen";
+/**
+ * Parse prompts.md effort→provider table (header starts with Default | Claude | …).
+ * Returns column → (sourceEffort → target). Hard-fails if the table is absent/malformed.
+ */
+export function parseEffortMap(promptsMdPath) {
+    if (!fs.existsSync(promptsMdPath)) {
+        throw new Error(`${LOG_PREFIX} Effort map: file not found: ${promptsMdPath}`);
+    }
+    const content = fs.readFileSync(promptsMdPath, "utf-8");
+    const lines = content.split("\n");
+    let headerIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (!t.startsWith("|"))
+            continue;
+        const headers = t
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((c) => c.trim().replace(/`/g, ""));
+        if (headers[0]?.toLowerCase() === "default" &&
+            headers.some((h) => h.toLowerCase() === "claude") &&
+            headers.some((h) => /opencode/i.test(h))) {
+            headerIdx = i;
+            break;
+        }
+    }
+    if (headerIdx === -1) {
+        throw new Error(`${LOG_PREFIX} Could not find Effort → provider thinking table (Default | Claude | …) in ${promptsMdPath}`);
+    }
+    const headerCells = lines[headerIdx]
+        .trim()
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((c) => c.trim().replace(/`/g, ""));
+    // Skip separator row
+    let rowStart = headerIdx + 1;
+    if (rowStart < lines.length && /^[|\s:-]+$/.test(lines[rowStart].trim()))
+        rowStart++;
+    const out = new Map();
+    for (const h of headerCells)
+        out.set(h, new Map());
+    for (let i = rowStart; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (!t.startsWith("|"))
+            break;
+        const cells = t
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((c) => c.trim().replace(/`/g, ""));
+        if (cells.length < headerCells.length)
+            continue;
+        const sourceEffort = cells[0];
+        if (!sourceEffort || /^-+$/.test(sourceEffort))
+            continue;
+        for (let c = 0; c < headerCells.length; c++) {
+            const target = cells[c];
+            if (!target)
+                continue;
+            out.get(headerCells[c]).set(sourceEffort, target);
+        }
+    }
+    const defaultCol = out.get("Default");
+    if (!defaultCol || defaultCol.size === 0) {
+        throw new Error(`${LOG_PREFIX} Effort map Default column empty in ${promptsMdPath}`);
+    }
+    return out;
+}
+/** Resolve prompts.md column header for a host/provider key. */
+export function effortColumnForProvider(providerOrHost) {
+    return EFFORT_COLUMN_FOR_PROVIDER[providerOrHost] ?? EFFORT_FALLBACK_COLUMN;
+}
+/**
+ * Look up emitted thinking value for a host/provider + source prompt effort.
+ * Column resolution: provider map → named column → OpenCode Go/Zen fallback → identity.
+ */
+export function lookupEffort(effortMap, providerOrHost, sourceEffort) {
+    const colName = effortColumnForProvider(providerOrHost);
+    const col = effortMap.get(colName) ?? effortMap.get(EFFORT_FALLBACK_COLUMN);
+    return col?.get(sourceEffort) ?? sourceEffort;
+}
 // Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
 const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
 /**
@@ -382,11 +470,11 @@ export function opencodeToolsBlock(toolsBlock) {
 /**
  * OC1: opencode agent frontmatter rewrite.
  * Emits: mode, name, description, model, tools (Claude array → opencode object map),
- * reasoningEffort (from effort). Drops: Claude-only fields (permissionMode, maxTurns,
- * is_background, readonly) and the original effort field (replaced by reasoningEffort).
+ * reasoningEffort (from prompts.md effort table via provider column). Drops: Claude-only
+ * fields (permissionMode, maxTurns, is_background, readonly) and the original effort field.
  * Hard-fails with non-zero exit if model lookup missing for name.
  */
-export function applyOpencodeAgent(content, opencodeModelLookup) {
+export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, provider) {
     const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
     if (!fmMatch)
         return content;
@@ -418,14 +506,33 @@ export function applyOpencodeAgent(content, opencodeModelLookup) {
     }
     newFm += `model: ${opencodeModel}\n`;
     newFm += opencodeToolsBlock(toolsBlock);
-    if (effort) {
-        const reasoningEffort = EFFORT_TO_REASONING_EFFORT[effort];
-        if (reasoningEffort) {
-            newFm += `reasoningEffort: ${reasoningEffort}\n`;
-        }
+    if (effort && effortMap) {
+        const host = provider ?? "ollama-local";
+        newFm += `reasoningEffort: ${lookupEffort(effortMap, host, effort)}\n`;
     }
     newFm += "---\n";
     return newFm + afterFm;
+}
+/**
+ * Remap frontmatter `effort:` through the prompts.md effort table for a host column
+ * (Claude / Cursor). Used by Claude (native `effort:`) and Cursor (emits `effort:` from
+ * the Cursor column so thinking intent survives the T3 rewrite).
+ */
+export function applyEffortRemap(content, effortMap, host) {
+    const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+    if (!fmMatch)
+        return content;
+    const fmBlock = fmMatch[2];
+    const afterFm = content.slice(fmMatch[0].length);
+    const parsed = parseFrontmatter(fmBlock);
+    const effort = parsed.get("effort");
+    if (!effort)
+        return content;
+    const mapped = lookupEffort(effortMap, host, effort);
+    if (mapped === effort)
+        return content;
+    const newFm = fmBlock.replace(/^effort:\s*\S+\s*$/m, `effort: ${mapped}`);
+    return `---\n${newFm}\n---\n${afterFm}`;
 }
 /**
  * Session-prompt anchor prepended to every opencode command body. OpenCode
@@ -521,10 +628,10 @@ function extractFrontmatterField(fmBlock, field) {
     return m ? m[1] : null;
 }
 // T3: Cursor subagent frontmatter rewrite.
-// Emits: name, description, model, tools (passthrough — Cursor 2.4+ accepts identical tool names per BAR-113).
-// Drops: effort, permissionMode, maxTurns, readonly, is_background.
+// Emits: name, description, model, tools (passthrough — Cursor 2.4+ accepts identical tool names per BAR-113),
+// effort (from prompts.md Cursor column). Drops: permissionMode, maxTurns, readonly, is_background.
 // Hard-fails with non-zero exit if model lookup missing for name.
-export function applyT3(content, modelLookup) {
+export function applyT3(content, modelLookup, effortMap) {
     const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
     if (!fmMatch)
         return content;
@@ -542,6 +649,7 @@ export function applyT3(content, modelLookup) {
         process.exit(1);
     }
     const description = parsed.get("description") ?? "";
+    const effort = parsed.get("effort");
     const toolsBlock = extractFrontmatterField(fmBlock, "tools");
     let newFm = "---\n";
     newFm += `name: ${name}\n`;
@@ -553,6 +661,9 @@ export function applyT3(content, modelLookup) {
         newFm += `description: ${description}\n`;
     }
     newFm += `model: ${cursorModel}\n`;
+    if (effort && effortMap) {
+        newFm += `effort: ${lookupEffort(effortMap, "cursor", effort)}\n`;
+    }
     if (toolsBlock)
         newFm += `${toolsBlock}\n`;
     newFm += "---\n";
@@ -2092,6 +2203,7 @@ async function main() {
         // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
         let renderModelLookup = new Map();
         let renderOpencodeModelLookup = new Map();
+        let renderEffortMap = new Map();
         const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
         const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
         if (fs.existsSync(pkgPromptsMd)) {
@@ -2111,6 +2223,7 @@ async function main() {
                 }
                 applyModelOverrides(renderOpencodeModelLookup, renderProvider, consumerPromptsMd);
             }
+            renderEffortMap = parseEffortMap(pkgPromptsMd);
         }
         const renderWs = { writes: [] };
         const renderCtx = {
@@ -2118,6 +2231,7 @@ async function main() {
             tokens: tokens ?? { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
             modelLookup: renderModelLookup,
             opencodeModelLookup: renderOpencodeModelLookup,
+            effortMap: renderEffortMap,
             opencodeProvider: renderProvider,
             advisories: [],
             ws: renderWs,
@@ -2287,6 +2401,7 @@ async function main() {
     // section (below `bkit:end`) — per-agent, per-provider, preserved across upgrades.
     let modelLookup = new Map();
     let opencodeModelLookup = new Map();
+    let effortMap = new Map();
     const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
     const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
     if (fs.existsSync(promptsMdPath)) {
@@ -2309,6 +2424,7 @@ async function main() {
             }
             applyModelOverrides(opencodeModelLookup, provider, consumerPromptsMdPath);
         }
+        effortMap = parseEffortMap(promptsMdPath);
     }
     // Seed preflight advisories into ctx so modules can accumulate into the same list.
     const advisories = [...preflightAdvisories];
@@ -2415,6 +2531,7 @@ async function main() {
         tokens,
         modelLookup,
         opencodeModelLookup,
+        effortMap,
         opencodeProvider: renderOpencodeProvider,
         advisories,
         ws,

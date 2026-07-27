@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: opencode-go/deepseek-v4-pro
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

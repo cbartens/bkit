@@ -460,6 +460,7 @@ function makeModuleCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
     },
     modelLookup: new Map(),
     opencodeModelLookup: new Map(),
+    effortMap: new Map(),
     opencodeProvider: null,
     advisories,
     ws,

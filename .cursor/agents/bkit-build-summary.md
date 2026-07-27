@@ -2,6 +2,7 @@
 name: bkit-build-summary
 description: Senior reviewer evaluating a completed build cycle for shippability.
 model: composer-2.5
+effort: low
 tools:
   - Read
   - Write

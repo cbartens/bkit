@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

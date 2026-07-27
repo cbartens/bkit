@@ -2,6 +2,7 @@
 name: bkit-utility-audit-logs
 description: Senior SRE scanning GCP logs for unique error signatures and regressions.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

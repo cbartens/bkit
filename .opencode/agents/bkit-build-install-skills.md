@@ -2,13 +2,13 @@
 mode: subagent
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
   glob: true
   bash: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

@@ -2,6 +2,7 @@
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep

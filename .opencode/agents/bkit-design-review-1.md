@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-1
 description: Senior engineer assessing whether a design is buildable with the approved stack.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
@@ -12,7 +12,7 @@ tools:
   bash: true
   webfetch: true
   websearch: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

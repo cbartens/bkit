@@ -69,6 +69,14 @@
         "baseURL": "https://integrate.api.nvidia.com/v1",
         "apiKey": "{env:NVIDIA_API_KEY}"
       }
+    },
+    "zai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Z.AI (GLM)",
+      "options": {
+        "baseURL": "https://api.z.ai/api/coding/paas/v4",
+        "apiKey": "{env:ZAI_API_KEY}"
+      }
     }
   }
 }

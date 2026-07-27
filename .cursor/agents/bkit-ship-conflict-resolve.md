@@ -2,6 +2,7 @@
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep

@@ -2,6 +2,7 @@
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep

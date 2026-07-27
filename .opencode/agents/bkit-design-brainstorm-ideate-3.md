@@ -2,13 +2,13 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-3
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
-model: opencode-go/deepseek-v4-pro
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

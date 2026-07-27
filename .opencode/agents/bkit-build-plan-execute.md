@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
@@ -10,7 +10,7 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: low
+reasoningEffort: high
 ---
 <!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
