@@ -10,6 +10,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.10.0] — 2026-07-27
+
+Pins Z.AI agents onto the live GLM-5.2 Coding Plan catalog and makes host thinking knobs data-driven from `prompts.md`, so `xhigh` agents actually hit GLM max reasoning instead of a hardcoded one-size ladder. Also splits the README paste blocks into install vs upgrade so consumers stop bumping the package without resyncing managed files.
+
+### Changed
+
+- **Z.AI column pins to GLM-5.2 / 5.1 / 4.5-air.** Opus + convergent → `zai/glm-5.2`, sonnet → `zai/glm-5.1`, haiku → `zai/glm-4.5-air` (live-probed Coding Plan catalog + tool-call smoke). Docs in `providers.md` match.
+- **Effort → provider thinking is loaded from `prompts.md` at install.** The shared Default/Claude/Cursor/OpenCode/NVIDIA/Z.AI/Moonshot table drives Claude `effort:`, Cursor `effort:`, and OpenCode `reasoningEffort:` — no hardcoded ladders in TS. Z.AI collapses to `none` / `high` / `max`, so prompt `xhigh` emits `reasoningEffort: max` on GLM-5.2.
+- **README quick-start splits install vs upgrade paste blocks.** Upgrade path prefers `bkit upgrade --latest` (package bump + managed resync); warns against a bare `pnpm add` that leaves managed files stale. Clarifies classic-PAT `source` / `.npmrc` auth steps.
+
+---
+
 ## [4.9.0] — 2026-07-27
 
 Closes the pre-release audit gaps that would have shipped a CI drift blind spot and a Cursor host without the destructive-op / secret-exposure gates Claude and OpenCode already enforce. Also lands the always-on migration-lane CI scaffold and first-party-only Cursor model defaults that accumulated on `dev`.

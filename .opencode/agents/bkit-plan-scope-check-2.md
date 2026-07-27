@@ -11,7 +11,7 @@ tools:
   edit: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
 **Scope:** As specified by input and Read / Update / Create section.

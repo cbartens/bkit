@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 **Scope:** As specified by input and Read / Update / Create section.

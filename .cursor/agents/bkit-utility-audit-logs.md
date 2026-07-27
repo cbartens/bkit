@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior SRE scanning GCP logs for unique error signatures and regressions.
 **Scope:** As specified by input or session prompt.
