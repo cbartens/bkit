@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
