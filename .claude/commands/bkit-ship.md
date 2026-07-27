@@ -915,7 +915,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -n "$LIVE_NOT_OK" ] && echo "Live tier not green on CI run $RUN_ID ($LIVE_NOT_OK) — post-merge canary, not a merge gate; reproduce with /bkit-debug" >&2
    ```
    **If** exit non-zero → **Failure Path**.
-2. Update status, write close telemetry, batch-commit, and push:
+2. Update status, write close telemetry, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
