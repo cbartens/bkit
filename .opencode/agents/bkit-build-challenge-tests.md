@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
@@ -10,9 +10,9 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: low
+reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE engineer specialising in edge-case test design and regression coverage.
 **Scope:** As specified by input and Read / Update / Create section.

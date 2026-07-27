@@ -2,16 +2,16 @@
 mode: subagent
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   edit: true
   bash: true
-reasoningEffort: high
+reasoningEffort: max
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 **Scope:** As specified by input and Read / Update / Create section.

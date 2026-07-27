@@ -34,8 +34,10 @@ import {
   applyT2,
   applyT3,
   applyOpencodeAgent,
+  applyEffortRemap,
   applyOpencodeCommand,
   remapTemplateDest,
+  type EffortMap,
 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import {
@@ -166,6 +168,11 @@ export interface ModuleContext {
    * Populated only when --opencode is in the module set. Empty map when absent.
    */
   opencodeModelLookup: Map<string, string>;
+  /**
+   * Effort → provider thinking map from prompts.md (Default | Claude | Cursor | …).
+   * Shared by Claude / Cursor / opencode transforms. Empty map when prompts.md absent.
+   */
+  effortMap: EffortMap;
   /**
    * opencode provider chosen via `--opencode=<provider>`. null = not specified.
    * Used by runOpencodeModule to seed the provider block in opencode.json.
@@ -497,7 +504,7 @@ function trackMirrorWrite(ctx: ModuleContext, relPath: string, written: string[]
 }
 
 export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
-  const { dryRun, logPrefix } = ctx;
+  const { dryRun, logPrefix, effortMap } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
   const version = ctx.version ?? readInstallingVersion();
@@ -514,14 +521,15 @@ export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      // Resolve tracker blocks for workflow files; prompts are byte-identical. The
-      // managed-version marker is stamped LAST so it lands after any frontmatter the
-      // transform produced (#256).
-      const transform = (c: string) =>
-        stampManagedVersion(
-          dest === ".claude/commands" ? substituteWorkflow(c, issueTracker).output : c,
-          version,
-        );
+      // Resolve tracker blocks for workflow files; agents remap effort via prompts.md
+      // Claude column. Managed-version marker stamped LAST (#256).
+      const transform = (c: string) => {
+        const body =
+          dest === ".claude/commands"
+            ? substituteWorkflow(c, issueTracker).output
+            : applyEffortRemap(c, effortMap, "claude");
+        return stampManagedVersion(body, version);
+      };
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         const rel = path.join(dest, f);
         console.log(`${logPrefix} ${tag}write: ${rel}`);
@@ -539,7 +547,7 @@ export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
 }
 
 export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
-  const { dryRun, modelLookup, logPrefix } = ctx;
+  const { dryRun, modelLookup, effortMap, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
   const version = ctx.version ?? readInstallingVersion();
@@ -579,7 +587,8 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      const transform = (c: string) => stampManagedVersion(applyT3(c, modelLookup), version);
+      const transform = (c: string) =>
+        stampManagedVersion(applyT3(c, modelLookup, effortMap), version);
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         const rel = path.join(dest, f);
         console.log(`${logPrefix} ${tag}write: ${rel}`);
@@ -597,11 +606,12 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
 }
 
 export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
-  const { dryRun, opencodeModelLookup, logPrefix } = ctx;
+  const { dryRun, opencodeModelLookup, effortMap, opencodeProvider, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
   const version = ctx.version ?? readInstallingVersion();
   const written: string[] = [];
+  const provider = opencodeProvider ?? "ollama-local";
 
   // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
   {
@@ -615,7 +625,10 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
 
     for (const f of files) {
       const transform = (c: string) =>
-        stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup), version);
+        stampManagedVersion(
+          applyOpencodeAgent(c, opencodeModelLookup, effortMap, provider),
+          version,
+        );
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         const rel = path.join(dest, f);
         console.log(`${logPrefix} ${tag}write: ${rel}`);

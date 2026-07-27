@@ -2,12 +2,13 @@
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
 model: composer-2.5
+effort: low
 tools:
   - Read
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
 **Scope:** As specified by input and Read / Update / Create section.

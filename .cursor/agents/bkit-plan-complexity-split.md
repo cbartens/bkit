@@ -2,6 +2,7 @@
 name: bkit-plan-complexity-split
 description: Senior architect partitioning a large plan into lossless, self-contained sub-plans.
 model: cursor-grok-4.5-high
+effort: high
 tools:
   - Read
   - Grep
@@ -9,7 +10,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect partitioning a large plan into lossless, self-contained sub-plans.
 **Scope:** As specified by input and Read / Update / Create section.

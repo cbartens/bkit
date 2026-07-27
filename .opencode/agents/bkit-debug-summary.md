@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
-model: opencode-go/deepseek-v4-flash
+model: zai/glm-4.5-air
 tools:
   read: true
   write: true
   edit: true
 reasoningEffort: none
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
 **Scope:** As specified by input and Read / Update / Create section.

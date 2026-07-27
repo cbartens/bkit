@@ -2,15 +2,15 @@
 mode: subagent
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
   glob: true
   write: true
-reasoningEffort: low
+reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether a plan fits a single high-quality execution session.
 **Scope:** As specified by input and Read / Update / Create section.

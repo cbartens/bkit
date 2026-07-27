@@ -2,12 +2,13 @@
 name: bkit-ship-summary
 description: Senior reviewer evaluating a ship cycle for completion and follow-up needs.
 model: composer-2.5
+effort: low
 tools:
   - Read
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a ship cycle for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.

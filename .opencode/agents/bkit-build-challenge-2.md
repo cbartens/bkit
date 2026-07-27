@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
-model: opencode-go/deepseek-v4-pro
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
@@ -10,9 +10,9 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
 **Scope:** As specified by input and Read / Update / Create section.

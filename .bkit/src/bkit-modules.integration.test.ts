@@ -10,6 +10,7 @@ import {
   extractManagedBlock,
   parseModelLookup,
   parseOpencodeModelLookup,
+  parseEffortMap,
 } from "./bkit-install";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
@@ -54,6 +55,8 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
       REPO_SLUG: "acme/test-project",
     },
     modelLookup: new Map(),
+    opencodeModelLookup: new Map(),
+    effortMap: new Map(),
     advisories: [],
     ws: makeWriteSet(),
     logPrefix: "[bkit-install]",
@@ -2507,6 +2510,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   );
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
   const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
   const EXPECTED_AGENT_COUNT = CATALOG_MODEL_LOOKUP.size;
 
   function makeOpencodeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
@@ -2520,6 +2524,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      effortMap: EFFORT_MAP,
       opencodeProvider: "ollama-local",
       advisories: [],
       ws: makeWriteSet(),
@@ -2790,6 +2795,7 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      effortMap: parseEffortMap(PROMPTS_MD),
       opencodeProvider: "ollama-local",
       advisories: [] as PreflightFinding[],
       ws,

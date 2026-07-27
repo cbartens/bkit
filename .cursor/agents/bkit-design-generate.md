@@ -2,6 +2,7 @@
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
 model: cursor-grok-4.5-high
+effort: xhigh
 tools:
   - Read
   - Grep
@@ -9,7 +10,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read / Update / Create section.

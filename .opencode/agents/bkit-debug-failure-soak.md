@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-soak
 description: Senior debug engineer soaking an unknown-cause runtime failure — one accumulating-context instrument-and-fix step per iteration.
-model: opencode-go/deepseek-v4-pro
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
@@ -10,9 +10,9 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: high
+reasoningEffort: max
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer soaking an unknown-cause runtime failure against the failing boundary.
 **Scope:** As specified by input and Read / Update / Create section.

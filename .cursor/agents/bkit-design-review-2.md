@@ -2,6 +2,7 @@
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep
@@ -12,7 +13,7 @@ tools:
   - WebFetch
   - WebSearch
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 **Scope:** As specified by input and Read / Update / Create section.

@@ -2,13 +2,14 @@
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Glob
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical writer maintaining consistent file-path references across markdown.
 **Scope:** As specified by input or session prompt.

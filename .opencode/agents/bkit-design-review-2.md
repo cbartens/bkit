@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
-model: opencode-go/qwen3.7-plus
+model: zai/glm-5.1
 tools:
   read: true
   grep: true
@@ -12,9 +12,9 @@ tools:
   bash: true
   webfetch: true
   websearch: true
-reasoningEffort: low
+reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 **Scope:** As specified by input and Read / Update / Create section.

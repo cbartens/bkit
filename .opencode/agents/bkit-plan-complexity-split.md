@@ -2,16 +2,16 @@
 mode: subagent
 name: bkit-plan-complexity-split
 description: Senior architect partitioning a large plan into lossless, self-contained sub-plans.
-model: opencode-go/minimax-m3
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
   glob: true
   write: true
   edit: true
-reasoningEffort: medium
+reasoningEffort: high
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect partitioning a large plan into lossless, self-contained sub-plans.
 **Scope:** As specified by input and Read / Update / Create section.

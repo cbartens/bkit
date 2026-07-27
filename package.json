@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.9.0",
+  "version": "4.10.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -85,10 +85,11 @@
     "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "opencode-go",
+    "opencodeProvider": "zai",
     "opencodeProviders": [
       "nvidia",
-      "opencode-go"
+      "opencode-go",
+      "zai"
     ],
     "renovateRunner": "self"
   }

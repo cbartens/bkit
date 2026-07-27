@@ -2,13 +2,14 @@
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
 model: composer-2.5
+effort: medium
 tools:
   - Read
   - Grep
   - Glob
   - Write
 ---
-<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether a plan fits a single high-quality execution session.
 **Scope:** As specified by input and Read / Update / Create section.
