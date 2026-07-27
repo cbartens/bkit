@@ -922,13 +922,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PUSH_MODE=$(route_get_push_mode "$STATUS") || exit 2
    PARENT_SHA=$(git rev-parse HEAD)
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"debug", at:$t}' >> "$STATUS"
-   STATS="$(git rev-parse --show-toplevel)/.bkit/stats.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    COUNTER_VALUE=$(jq -s --arg wf "debug" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
@@ -948,7 +949,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    if git diff origin/dev..HEAD -- . ':(exclude)docs/plans' | grep -qE '^\+.*\[DEBUG-OBSERVE\]'; then
      echo "No-leak Assertion FAILED: [DEBUG-OBSERVE] instrumentation survived into the debug diff — soak did not strip it." >&2; exit 1
    fi
-   bash "$(git rev-parse --show-toplevel)/.bkit/scripts/bkit-workflow-telemetry.sh" debug {YYYYMM} {FID} >/dev/null
+   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" debug {YYYYMM} {FID} >/dev/null
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}${PR_MODE_AUTO_SUFFIX}"
    HEAD_MSG=$(git log -1 --pretty=%B)
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
@@ -1176,7 +1177,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
 - [ ] HEAD-Subject Assertion passed
-- [ ] Close telemetry included in close-workflow commit (`.bkit/stats.jsonl` counter+compliance+outcome — no stranded dirty file on main)
+- [ ] Close pathspec ledgers included in close-workflow commit (`.bkit/friction.jsonl` + `.bkit/stats.jsonl` under `$WT` — no stranded dirty ledger on main)
 
 
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
@@ -1195,6 +1196,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push `stats.jsonl` append)
+- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
 - [ ] Issue comment attempted (`Step 10` section)
 

@@ -207,9 +207,9 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -805,7 +805,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 2. Update status and commit:
    ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"plan", step:"plan-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
@@ -835,10 +836,9 @@ description: "Plan Feature — Autonomous plan generation"
    git merge --squash -X ours "feat/{FID}"
    STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$' || true)
    [ -n "$STRAY" ] && { echo "plan close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
-   git add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   git commit -m "docs({FID}): plan DONE bkit [skip ci]"
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    PARENT_SHA=$(git rev-parse HEAD)
@@ -854,9 +854,9 @@ description: "Plan Feature — Autonomous plan generation"
      --arg parentSha "$PARENT_SHA" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "plan" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   bash "$REPO_ROOT/.bkit/scripts/bkit-workflow-telemetry.sh" plan {YYYYMM} {FID} >/dev/null
-   git add -- .bkit/stats.jsonl
-   git commit --allow-empty -m "docs({FID}): close telemetry bkit [skip ci]" -- .bkit/stats.jsonl
+   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" plan {YYYYMM} {FID} >/dev/null
+   git add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   git commit --allow-empty -m "docs({FID}): plan DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
    git branch -D "feat/{FID}" 2>/dev/null || true
@@ -915,7 +915,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same for each `{FID}-plan-N.md` if SPLIT — `{YYYYMM}` = creation month)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
-- [ ] Close telemetry committed (`.bkit/stats.jsonl` counter+compliance+outcome staged before push — no stranded dirty file)
+- [ ] Close pathspec committed (`docs/plans/{YYYYMM}/logs/{FID}/` + `.bkit/friction.jsonl` + `.bkit/stats.jsonl` staged before push — no stranded dirty ledger)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
@@ -924,7 +924,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 12` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push `stats.jsonl` append)
+- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
 - [ ] Issue comment attempted (`Step 12` section)
 
 <!-- bkit:tracker true end -->

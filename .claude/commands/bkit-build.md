@@ -187,9 +187,9 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -1038,9 +1038,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
    echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
-   STATS="$(git rev-parse --show-toplevel)/.bkit/stats.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
    BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
    REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
    COUNTER_VALUE=$(jq -s --arg wf "build" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
@@ -1055,7 +1056,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      --arg parentSha "$(git rev-parse HEAD)" \
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   bash "$(git rev-parse --show-toplevel)/.bkit/scripts/bkit-workflow-telemetry.sh" build {YYYYMM} {FID} >/dev/null
+   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" build {YYYYMM} {FID} >/dev/null
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    HEAD_MSG=$(git log -1 --pretty=%B)
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
@@ -1202,7 +1203,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 
 - [ ] HEAD-Subject Assertion passed (close-workflow commit is the CI-triggering HEAD)
-- [ ] Close telemetry included in close-workflow commit (`.bkit/stats.jsonl` counter+compliance+outcome — no stranded dirty file on main)
+- [ ] Close pathspec ledgers included in close-workflow commit (`.bkit/friction.jsonl` + `.bkit/stats.jsonl` under `$WT` — no stranded dirty ledger on main)
 - [ ] Lock removed
 - [ ] Close-workflow commit pushed to `feat/{FID}` (no PR yet → no CI)
 - [ ] Open-PR probe ran (no pre-existing open PR, or probe fell through)
@@ -1223,6 +1224,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Artifact link list embedded in `Step 17` comment
-- [ ] Telemetry report embedded via summary-only read (no post-push `stats.jsonl` append)
+- [ ] Telemetry report embedded via summary-only read (no post-push ledger append)
 - [ ] Issue comment attempted (`Step 17` sections)
 

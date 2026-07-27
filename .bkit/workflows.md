@@ -151,7 +151,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) shares skeleton
 
 **Managed-version marker:** renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(blank line below) after frontmatter (claude) or top (cursor/opencode strips frontmatter). Stamped at`bkit install`/`upgrade`by`stampManagedVersion`— NEVER add version to source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when marker drifts — hard blocker on`main`/`dev` (or PR into them); advisory on feature branches (inherited drift).
 
-**Pre-worktree git scope:** Step 1 + Step 2 pre-worktree guard on originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl` only (FID-scoped — NEVER whole `docs/plans/` tree). Guard commit: `git diff --cached --quiet ||`. NEVER `git add -A` until `cd "$WORKTREE_PATH"` — sweeps unrelated user edits into workflow commit → rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` fine; cwd = sandbox. `git worktree add` does not inherit dirty state.
+**Pre-worktree git scope:** Step 1 + Step 2 pre-worktree guard on originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` only (FID-scoped — NEVER whole `docs/plans/` tree). Guard commit: `git diff --cached --quiet ||`. NEVER `git add -A` until `cd "$WORKTREE_PATH"` — sweeps unrelated user edits into workflow commit → rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` fine; cwd = sandbox. `git worktree add` does not inherit dirty state.
 
 **Worktree isolation (no Step 1 dev sync gate):** ALL phases Step 1: ZERO commits on `dev`; does NOT assert local `dev` synced with `origin/dev`. Step 1 only `git fetch origin dev`; work in `.worktrees/{FID}` on `feat/{FID}` (or `fix/{FID}` debug), rebased `origin/dev` in Step 2. Local `dev` ahead-of-origin irrelevant at start — Close reconciles at merge (`git pull --ff-only origin dev` before squash-merge design/plan; ship Step 9 re-check when switching post-merge). Rationale: blocking on unpushed local `dev` forces manual intervention before isolated work; those commits do not affect worktree until Close merges back.
 
@@ -1159,15 +1159,15 @@ When tracker call creates issue, MUST return non-empty `id`. Empty/null → Fail
 ```bash
 if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
   git status --short
-  git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-  git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-    || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+  git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+  git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+    || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
 fi
 ```
 
 Carries workflow log + friction rows into new worktree branch. `/bkit-ship` appends ` bkit [skip ci]`; `/bkit-debug` Step 2 omits primitive — branches `origin/dev` for hotfix isolation.
 
-Allow-list, never deny-list (#61): deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. `/bkit-ship` Step 6 second instance on `$REPO_ROOT` before squash-merge; also allow-lists `.bkit/stats.jsonl` (close telemetry outside worktree).
+Allow-list, never deny-list (#61): deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. Close on main (`design`/`plan`/`ship`) and `/bkit-ship` Step 6 pre-merge use the same pathspec: `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl`.
 
 ## File path conventions
 
@@ -1235,11 +1235,19 @@ Orchestrator behavior:
 
 - **Never-drop:** NEVER silently drop deferred work → append `kind:"deferral"` to `docs/deferrals.jsonl`.
 - **Found-bug:** NEVER silently drop discovered bug → append `kind:"failure"` to `docs/failures.jsonl` immediately.
-- **Friction/stats:** `friction` → `.bkit/friction.jsonl`; `counter`/`compliance`/`outcome` → `.bkit/stats.jsonl` at close (write into the tree that will commit — worktree for build/debug, `$REPO_ROOT` for design/plan/ship after DONE).
+- **Path idiom (all JSONL ledgers):** resolve once per bash block:
+  - `REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")` — main checkout (locks, `.bkit/version`, remotes).
+  - `WT=$(git rev-parse --show-toplevel)` — current write tree (worktree while on `feat/{FID}`; main after `cd "$REPO_ROOT"` / switch-to-dev). When the block only uses `git -C "$REPO_ROOT"`, set `WT="$REPO_ROOT"` (same tree).
+  - `STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"`
+  - `STATS="$WT/.bkit/stats.jsonl"` · `FRICTION="$WT/.bkit/friction.jsonl"`
+  - `docs/{deferrals,failures,knowledge,decisions}.jsonl` → `"$WT/docs/…"`. NEVER mix `$REPO_ROOT` and `show-toplevel` for the same ledger in one block.
+- **Friction/stats:** append to `$FRICTION` / `$STATS` at close; stage into the close commit that pushes (never leave dirty after push).
+- **Close commit pathspec (design/plan/ship on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
-- **Commit-before-push (#387):** close MUST stage `.bkit/stats.jsonl` before the final push (design/plan: `docs({FID}): close telemetry bkit [skip ci]` after DONE; build/debug: included in loud close-workflow commit; ship: pathspec on DONE). Tracker comment runs **summary-only** (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
+- **Tracker comment:** summary-only (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
 - **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
-- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$` — stats is a close-ledger peer of friction.
+- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$`.
+- **Pre-worktree allow-list:** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` (same ledger pair as close pathspec).
 
 ## Authoring Checklist for New / Refined Workflows
 
