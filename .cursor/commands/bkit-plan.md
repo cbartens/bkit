@@ -741,6 +741,6 @@
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 12` comment
-- [ ] Telemetry report embedded via summary-only read
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 12` section)
 

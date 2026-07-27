@@ -1221,6 +1221,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Artifact link list embedded in `Step 17` comment
-- [ ] Telemetry report embedded via summary-only read
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 17` sections)
 

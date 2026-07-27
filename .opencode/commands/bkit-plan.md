@@ -147,9 +147,9 @@ $ARGUMENTS
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
-     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git commit -m "chore({FID}): pre-worktree uncommitted changes" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -650,32 +650,18 @@ $ARGUMENTS
    ```
 2. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"plan", step:"plan-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"plan", at:$t}' >> "$STATUS"
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-   COUNTER_VALUE=$(jq -s --arg wf "plan" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
-   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
-   jq -nc \
-     --arg repo "$REPO_SLUG" \
-     --arg bkitVersion "$BKIT_VER" \
-     --arg step "plan-close-workflow" \
-     --arg counterName "PLAN_ATTEMPT" \
-     --argjson counterValue "$COUNTER_VALUE" \
-     --arg counterSource "shell-bus" \
-     --arg parentSha "$PARENT_SHA" \
-     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "plan" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
-     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
-3. Squash-merge to dev and clean up:
+3. Squash-merge to dev, write close telemetry, commit, push, and clean up:
    ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
@@ -693,10 +679,29 @@ $ARGUMENTS
    [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"
-   STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/friction\.jsonl$' || true)
+   STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$' || true)
    [ -n "$STRAY" ] && { echo "plan close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
-   git add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   git commit -m "docs({FID}): plan DONE bkit [skip ci]"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATS="$WT/.bkit/stats.jsonl"
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   PARENT_SHA=$(git rev-parse HEAD)
+   COUNTER_VALUE=$(jq -s --arg wf "plan" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "plan-close-workflow" \
+     --arg counterName "PLAN_ATTEMPT" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "plan" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
+   bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" plan {YYYYMM} {FID} >/dev/null
+   git add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+   git commit --allow-empty -m "docs({FID}): plan DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
    git branch -D "feat/{FID}" 2>/dev/null || true
@@ -713,7 +718,7 @@ $ARGUMENTS
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/plan-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
    printf '%s\n' "$ARTIFACTS"
-   TELEMETRY=$(bash "$RR/.bkit/scripts/bkit-workflow-telemetry.sh" plan {YYYYMM} {FID})
+   TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=plan) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
    printf '\n%s\n' "$TELEMETRY"
    ```
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -734,6 +739,7 @@ $ARGUMENTS
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same for each `{FID}-plan-N.md` if SPLIT — `{YYYYMM}` = creation month)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
@@ -741,5 +747,6 @@ $ARGUMENTS
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 12` comment
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 12` section)
 

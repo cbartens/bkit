@@ -1240,7 +1240,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
 - [ ] Artifact link list embedded in `Step 13` comment
-- [ ] Telemetry report embedded via summary-only read
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 13` section)
 
 <!-- bkit:tracker true end -->

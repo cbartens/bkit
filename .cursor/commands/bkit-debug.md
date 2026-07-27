@@ -355,7 +355,7 @@
    - **If** all tests passed → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
    - **Else** → `TEST_VERDICT` = FAIL, `TEST_FAILURES` = count of failing test suites (>=1).
 4. Extract `TEST_SCOPE` from run block `TEST_SCOPE=` line.
-5. Update status (**no commit** — `parentSha` advances via later steps):
+5. Update status:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -1193,6 +1193,6 @@
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
-- [ ] Telemetry report embedded via summary-only read
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 10` section)
 

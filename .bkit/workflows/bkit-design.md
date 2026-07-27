@@ -864,7 +864,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:design` unchanged)
 - [ ] Artifact link list embedded in `Step 10` comment
-- [ ] Telemetry report embedded via summary-only read
+- [ ] Telemetry report embedded via summary
 - [ ] Issue comment attempted (`Step 10` section)
 
 <!-- bkit:tracker true end -->
