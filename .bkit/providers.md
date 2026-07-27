@@ -121,7 +121,7 @@ Cursor model assignment: § Models below — per-agent lookup, NOT effort-tier d
 
 **Pinned selections canonical in `prompts.md`** (§ Models `Cursor` column + § Orchestrators) — not here. Cursor set churns; use pull recipe below.
 
-> **Default install = first-party pool only.** Shipped Cursor pins are **`cursor-grok-4.5-high`** + **`composer-2.5`** so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are **opt-in** via `prompts.md` § Model Overrides — never default pins.
+> **Default install = first-party pool only.** Shipped Cursor pins are **`cursor-grok-4.5-high`** + **`composer-2.5`** so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are **opt-in** via `prompts.md` § Model Overrides — never default pins. **Have API credits and want Opus back?** Paste the ready-to-use Opus override block in `prompts.md` § Model Overrides (maps every Claude-opus-tier agent → `claude-opus-5-thinking-high`; Cursor has no Sonnet — leave sonnet/haiku agents on shipped Composer/Grok, or optionally pin `gpt-5.6-sol-high` for API cross-family). Then `bkit install --cursor`.
 
 Tier guidance:
 
@@ -354,6 +354,8 @@ Cloud OpenAI-compatible cells (incl. four `opencode-go`) tool-call-smoked (`tool
 ```
 
 `Provider` = host/install key (`cursor`, `nvidia`, `ollama-local`, …). Install merges overrides over defaults (override wins). Claude reads frontmatter; not overridable via table yet.
+
+**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`). Cursor catalog has **no Sonnet** — sonnet-tier agents stay on shipped Composer/Grok unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
 
 ### Local Ollama memory-safety (server-side, not opencode.json)
 

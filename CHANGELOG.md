@@ -10,7 +10,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Changed
 
-- **Cursor defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) (#205).** Shipped Cursor pins no longer use the API pool (Claude / GPT / Fable), so workflows keep running when API credits are exhausted. Depth + synthesizer + `/design`/`/plan`/`/debug` orchestrators → Grok; volume + `/build`/`/ship` → Composer. API-pool models remain available via `prompts.md` § Model Overrides. Docs: `providers.md` catalog, Model Overrides CAUTION, README model labels.
+- **Cursor defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) (#205).** Shipped Cursor pins no longer use the API pool (Claude / GPT / Fable), so workflows keep running when API credits are exhausted. Depth + synthesizer + `/design`/`/plan`/`/debug` orchestrators → Grok; volume + `/build`/`/ship` → Composer. API-pool restore: `prompts.md` § Model Overrides carries a ready-to-paste Opus block (Claude-opus-tier → `claude-opus-5-thinking-high`; no Cursor Sonnet — leave sonnet/haiku on Composer/Grok or optionally `gpt-5.6-sol-high`). Docs: `providers.md` catalog, README model labels.
 
 ---
 
