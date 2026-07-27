@@ -130,6 +130,22 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(`${check.stdout}${check.stderr}`).toContain(".opencode/plugin/gateguard.js");
   });
 
+  // Host agent/command mirrors push would-writes into ws.writes — content drift (marker
+  // still current) must fail check, not only managed-version-marker stale.
+  it("tampered agent mirror content → check exits 1 (writeset drift)", () => {
+    if (!fs.existsSync(getTsxBin())) return;
+    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const agentFile = fs.readdirSync(agentDir).find((f) => f.endsWith(".md"));
+    expect(agentFile).toBeDefined();
+    fs.appendFileSync(path.join(agentDir, agentFile!), "\n<!-- consumer tampered -->\n", "utf-8");
+
+    const check = runBkit(["check"]);
+    expect(check.status).toBe(1);
+    expect(`${check.stdout}${check.stderr}`).toMatch(/write\(s\) would occur|DRIFT DETECTED/);
+  });
+
   // An adding-extra-keys edit is NOT drift: opencode.json is Tier-2 deep-contained, so a
   // consumer's own extra keys are theirs to keep. (Locks in the deep-contain contract so a
   // future over-eager gate doesn't start failing on benign consumer additions.)

@@ -221,9 +221,9 @@ describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.
     dispatchModules(new Set(["opencode"]), makeOpencodeModuleCtx(false, wsInstall));
     const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
 
-    // Both modes must predict/write exactly the same set of tier-writer paths.
-    // Note: agent/*.md and command/*.md are written via installFile (not tier-writers)
-    // so they are NOT recorded in ws.writes — same pattern as claude/cursor modules.
+    // Both modes must predict/write exactly the same set of tier-writer + mirror paths.
+    // Host agent/command mirrors push would-writes into ws.writes so `bkit check` exits 1
+    // on content drift (same path-set on dry-run and install).
     expect(checkPaths).toEqual(installPaths);
 
     // The tier-writer paths for opencode are opencode.json (Tier-2) and gateguard.js (Tier-1)

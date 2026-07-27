@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.8.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.9.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 **Scope:** As specified by input or session prompt.

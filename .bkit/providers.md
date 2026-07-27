@@ -232,7 +232,7 @@ Pre-edit advisory hook. First file touch per session → investigation checklist
 | --- | --- | --- | --- |
 | Claude Code | `gateguard.cjs` (CJS) | `.claude/hooks/gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
 | opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugin` array (opencode plugin spec — the key is `plugin`, singular; `plugins` is silently ignored and disables GateGuard) |
-| Cursor | **not supported** | n/a | Cursor has SessionStart/Stop + post-hoc `afterFileEdit` but no pre-edit event that injects model-visible context — faithful port impossible |
+| Cursor | **GateGuard port not supported** (no pre-edit advisory injection). Destructive-op / secret-exposure parity via `guardrails.cjs` instead. | `.cursor/hooks/guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`) |
 
 **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny first touch (checklist as reason), allow retry. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses gate-config advisory.
 
@@ -245,12 +245,13 @@ Pre-edit advisory hook. First file touch per session → investigation checklist
 ## Permissions / auto-approve
 
 <!-- prettier-ignore -->
-| Concern | Claude | Cursor |
-| --- | --- | --- |
-| File | `.claude/settings.json` → `permissions.{allow,deny,ask}` | `.cursor/settings.json` → `plugins.<name>.enabled` (per-plugin only); fine-grained file/bash gating not project-scoped — handled by Cursor UI/global config |
-| Granularity | Per-tool glob: `Bash(*)`, `Read(./.env)`, `WebFetch(domain:github.com)`, `Bash(rm -rf /*)` | Coarse per-plugin enable/disable |
-| Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) |
-| MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) |
+| Concern | Claude | Cursor | opencode |
+| --- | --- | --- | --- |
+| File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `Read(./.env)` ask) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
+| Shell / destructive | `permissions.deny` / `ask` on `Bash(git push --force:*)`, `rm -rf /*`, publish, `git reset --hard`, etc. | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map |
+| Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
+| Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | plugin + permission defaults |
+| MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
 
 **Install behaviour:** template drops, host-specific. No transform — no canonical form.
 

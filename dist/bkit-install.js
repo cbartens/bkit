@@ -2155,10 +2155,10 @@ async function main() {
         // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
         // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
-        // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs ARE
-        // in canonicalHashes (install records them via runBkitDocs → ws), so feed their writes
-        // in too — keeping install/upgrade `.bkit/version` parity. Agent/command writes are
-        // intentionally untracked (installFile), matching install — they never enter canonicalHashes.
+        // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs AND
+        // host agent/command mirrors land in renderWs.writes (mirrors now count toward check
+        // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
+        // parity.
         if (!upgradeFlags.dryRun) {
             const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")).version;
             const renderedDocPaths = renderWs.writes.map((w) => path.relative(process.cwd(), path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path)));
@@ -2477,9 +2477,9 @@ async function main() {
         logPrefix: LOG_PREFIX,
     });
     // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
-    // Host agent/command mirrors are untracked force-overwrites, so a stale
-    // managed-version marker never shows up in ws.writes — it surfaces as the
-    // bkit-rendered-prompts-stale Phase-3 blocker instead. The same is true for the
+    // Host agent/command mirrors push would-writes into ws.writes (content drift OR
+    // orphan delete). A stale managed-version marker ALSO surfaces as the
+    // bkit-rendered-prompts-stale Phase-3 blocker. The same is true for the
     // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
     // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
     // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated

@@ -261,6 +261,10 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks.json", format: "json", module: "cursor" },
   { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
+  // Destructive-op + secret-exposure gates (parity with Claude permissions / OpenCode
+  // permission map). Fully bkit-owned — consumers tune via editing the script only when
+  // deliberately diverging; writeTier1 force-overwrites on install/upgrade.
+  { path: ".cursor/hooks/guardrails.cjs", format: "byte-equal-text", module: "cursor" },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
   { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module

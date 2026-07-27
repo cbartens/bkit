@@ -397,10 +397,18 @@ describe("printUsage — help output", () => {
     expect(output).not.toMatch(/^\s*--git-hooks\b/m);
   });
 
-  it("includes compose + core examples", () => {
+  it("documents compose + core examples", () => {
     const output = usage();
     expect(output).toContain("--claude --cursor --tooling");
     expect(output).toMatch(/[Cc]ore \(implicit/);
+  });
+
+  it("lists opencode-zen and opencode-go (not bare opencode) as supported providers", () => {
+    const output = usage();
+    expect(output).toContain("opencode-zen");
+    expect(output).toContain("opencode-go");
+    // Old single-gateway help phrase must be gone.
+    expect(output).not.toContain("opencode (opencode-native gateway");
   });
 
   it("documents install requires ≥1 module flag", () => {

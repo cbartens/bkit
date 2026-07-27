@@ -812,10 +812,11 @@ Module flags (composable; symmetric install ↔ uninstall):
                   opencode.json; agent defaults track the last-installed (active) provider.
                   Provider value is REQUIRED. Supported: ollama-local, nvidia, groq,
                   cerebras, openrouter, ollama (cloud), zai (Z.AI/GLM), moonshot
-                  (Moonshot/Kimi), opencode (opencode-native gateway; auth via
-                  OPENCODE_API_KEY). Ships .opencode/** (agents, commands,
-                  opencode.json, gateguard). Configure your provider key; verify with
-                  \`bkit doctor\`. All installed providers tracked in bkit.opencodeProviders.
+                  (Moonshot/Kimi), opencode-zen, opencode-go (opencode-native gateways;
+                  auth via OPENCODE_API_KEY; legacy alias \`opencode\` → opencode-zen).
+                  Ships .opencode/** (agents, commands, opencode.json, gateguard).
+                  Configure your provider key; verify with \`bkit doctor\`. All installed
+                  providers tracked in bkit.opencodeProviders.
   --ci            Stack-agnostic CI/quality foundation: the ci.yml SKELETON (gate graph +
                   capstone contract + branch-protection, with Node/TS build/test steps as
                   commented examples) + Vale prose-lint. No Node/TS footprint — runs green

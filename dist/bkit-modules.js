@@ -354,6 +354,11 @@ export function readInstallingVersion() {
         return "0.0.0";
     }
 }
+/** Record a host mirror would-write so `bkit check` exits 1 on content drift. */
+function trackMirrorWrite(ctx, relPath, written) {
+    written.push(relPath);
+    ctx.ws.writes.push({ path: relPath, action: "write" });
+}
 export function renderClaudeAgentsCommands(ctx) {
     const { dryRun, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -374,12 +379,15 @@ export function renderClaudeAgentsCommands(ctx) {
             // transform produced (#256).
             const transform = (c) => stampManagedVersion(dest === ".claude/commands" ? substituteWorkflow(c, issueTracker).output : c, version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-                written.push(path.join(dest, f));
+                const rel = path.join(dest, f);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
             }
         }
         for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     return written;
@@ -400,12 +408,15 @@ export function renderCursorAgentsCommands(ctx) {
         for (const f of files) {
             const transform = (c) => stampManagedVersion(applyT2(applyT1(substituteWorkflow(c, issueTracker).output)), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-                written.push(path.join(dest, f));
+                const rel = path.join(dest, f);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
             }
         }
         for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     // Agents: T3
@@ -418,12 +429,15 @@ export function renderCursorAgentsCommands(ctx) {
         for (const f of files) {
             const transform = (c) => stampManagedVersion(applyT3(c, modelLookup), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-                written.push(path.join(dest, f));
+                const rel = path.join(dest, f);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
             }
         }
         for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+            const rel = path.join(dest, f);
+            console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+            trackMirrorWrite(ctx, rel, written);
         }
     }
     return written;
@@ -447,21 +461,26 @@ export function renderOpencodeAgentsCommands(ctx) {
         for (const f of files) {
             const transform = (c) => stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-                written.push(path.join(dest, f));
+                const rel = path.join(dest, f);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
             }
         }
         // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-        // is a dynamic mirror dir like .claude/agents and .cursor/agents)
-        if (!dryRun && fs.existsSync(dest)) {
+        // is a dynamic mirror dir like .claude/agents and .cursor/agents). dryRun still reports
+        // would-deletes into ws.writes so `bkit check` fails on stale mirrors.
+        if (fs.existsSync(dest)) {
             for (const f of fs.readdirSync(dest)) {
                 if (!f.endsWith(".md"))
                     continue;
                 if (!f.startsWith(BKIT_PREFIX))
                     continue;
                 if (!sourceSet.has(f)) {
-                    fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                    const rel = path.join(dest, f);
+                    if (!dryRun)
+                        fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+                    trackMirrorWrite(ctx, rel, written);
                 }
             }
         }
@@ -478,19 +497,23 @@ export function renderOpencodeAgentsCommands(ctx) {
         for (const f of files) {
             const transform = (c) => stampManagedVersion(applyOpencodeCommand(substituteWorkflow(c, issueTracker).output), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-                written.push(path.join(dest, f));
+                const rel = path.join(dest, f);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
             }
         }
-        if (!dryRun && fs.existsSync(dest)) {
+        if (fs.existsSync(dest)) {
             for (const f of fs.readdirSync(dest)) {
                 if (!f.endsWith(".md"))
                     continue;
                 if (!f.startsWith(BKIT_PREFIX))
                     continue;
                 if (!sourceSet.has(f)) {
-                    fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                    const rel = path.join(dest, f);
+                    if (!dryRun)
+                        fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+                    trackMirrorWrite(ctx, rel, written);
                 }
             }
         }
@@ -509,8 +532,9 @@ export function renderOpencodeAgentsCommands(ctx) {
 // getBkitDocsRoot() — they are NEVER relocated into .bkit/templates/.
 //
 // Doc writes land in ctx.ws (runBkitDocs uses the tier writers) so the caller can
-// refresh their canonicalHashes; agent/command writes are intentionally NOT
-// ws-tracked (installFile), matching install — they never enter canonicalHashes.
+// refresh their canonicalHashes. Agent/command mirrors also push to ws.writes on
+// would-write so `bkit check` exits 1 on content drift (not only managed-version
+// marker stale). They are still re-rendered from source (not the template walk).
 // `modules` should contain only hosts the consumer actually has installed.
 // Returns every consumer-relative path written (for the upgrade summary).
 // ---------------------------------------------------------------------------
@@ -979,6 +1003,20 @@ export function runCursorModule(ctx) {
                 continue;
             const prevLen = ws.writes.length;
             writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+            }
+        }
+    }
+    // byte-equal-text — Cursor destructive-op / secret-exposure guardrails (parity with
+    // Claude permissions deny/ask and OpenCode permission map). Force-overwrite; consumers
+    // do not customise via deep-merge.
+    {
+        const src = path.join(cursorTemplates, "hooks", "guardrails.cjs");
+        const dst = ".cursor/hooks/guardrails.cjs";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            writeTier1(src, dst, tokens, dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}cursor: ${dst}`);
             }

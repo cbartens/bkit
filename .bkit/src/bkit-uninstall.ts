@@ -648,6 +648,29 @@ export async function runUninstall(
     }
   }
 
+  // Full/core uninstall: strip the `bkit` install-state object from package.json
+  // (issueTracker / opencodeProvider(s) / depUpdater / cloudAgents / runners). Scripts
+  // and devDeps still need `--package`; this clears the preference/manifest block so an
+  // "uninstalled" repo does not keep advertising prior bkit choices.
+  if (moduleList.includes("core") && !ctx.dryRun) {
+    const pkgPath = path.join(ctx.cwd, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+        if (pkg.bkit !== undefined) {
+          delete pkg.bkit;
+          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+          console.log(`${ctx.logPrefix} package.json: removed bkit install-state block`);
+          result.stripped.push("package.json#bkit");
+        }
+      } catch (err) {
+        console.error(
+          `${ctx.logPrefix} error stripping package.json bkit block: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
   // Clean up .agents/ bkit-prefix mirror files
   // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
   if (!ctx.dryRun) {

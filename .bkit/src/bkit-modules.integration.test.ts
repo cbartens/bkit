@@ -2531,8 +2531,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   }
 
   it("clean install writes .opencode/agents/*.md (one per catalog agent)", () => {
-    // Note: agent files are written via installFile (not tier-writers), so they do NOT
-    // appear in ws.writes — same pattern as claude/cursor modules. Assert disk presence instead.
+    // Agent files are written via installFile and tracked in ws.writes so check exits 1 on drift.
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
@@ -2543,6 +2542,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(agentDir)).toBe(true);
     const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
     expect(agentFiles.length).toBe(EXPECTED_AGENT_COUNT);
+    expect(ws.writes.filter((w) => w.path.includes(path.join(".opencode", "agents"))).length).toBe(
+      EXPECTED_AGENT_COUNT,
+    );
 
     // Verify agent files have opencode frontmatter
     for (const f of agentFiles) {
@@ -2554,7 +2556,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   });
 
   it("clean install writes .opencode/commands/*.md (one per bkit workflow)", () => {
-    // Note: command files are written via installFile (not tier-writers) — not in ws.writes.
+    // Command files are written via installFile and tracked in ws.writes so check exits 1 on drift.
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
@@ -2562,6 +2564,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     const commandDir = path.join(tmpDir, ".opencode", "commands");
     expect(fs.existsSync(commandDir)).toBe(true);
     const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+    expect(
+      ws.writes.filter((w) => w.path.includes(path.join(".opencode", "commands"))).length,
+    ).toBe(commandFiles.length);
     expect(commandFiles.length).toBeGreaterThan(0);
 
     // Command files exist on disk
