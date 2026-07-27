@@ -11,7 +11,9 @@ FID="${3:?fid required}"
 REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 WT=$(git rev-parse --show-toplevel)
 STATUS="$WT/docs/plans/$YYYYMM/logs/$FID/status.jsonl"
-STATS="$REPO_ROOT/.bkit/stats.jsonl"
+# Write into the current tree (worktree or main) so the close commit can stage it — never
+# leave appends stranded on $REPO_ROOT while HEAD lives elsewhere (#387).
+STATS="$WT/.bkit/stats.jsonl"
 BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
 REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
 

@@ -572,32 +572,17 @@
    ```
 2. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
-   STATS="$REPO_ROOT/.bkit/stats.jsonl"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-   COUNTER_VALUE=$(jq -s --arg wf "design" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
-   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
-   jq -nc \
-     --arg repo "$REPO_SLUG" \
-     --arg bkitVersion "$BKIT_VER" \
-     --arg step "design-close-workflow" \
-     --arg counterName "DESIGN_ATTEMPT" \
-     --argjson counterValue "$COUNTER_VALUE" \
-     --arg counterSource "shell-bus" \
-     --arg parentSha "$PARENT_SHA" \
-     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
-     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
 3. Squash-merge to dev and clean up:
    ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
@@ -615,10 +600,30 @@
    [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"
-   STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/friction\.jsonl$' || true)
+   STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$' || true)
    [ -n "$STRAY" ] && { echo "design close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
    git add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    git commit -m "docs({FID}): design DONE bkit [skip ci]"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATS="$REPO_ROOT/.bkit/stats.jsonl"
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   PARENT_SHA=$(git rev-parse HEAD)
+   COUNTER_VALUE=$(jq -s --arg wf "design" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
+   case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
+   jq -nc \
+     --arg repo "$REPO_SLUG" \
+     --arg bkitVersion "$BKIT_VER" \
+     --arg step "design-close-workflow" \
+     --arg counterName "DESIGN_ATTEMPT" \
+     --argjson counterValue "$COUNTER_VALUE" \
+     --arg counterSource "shell-bus" \
+     --arg parentSha "$PARENT_SHA" \
+     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
+     >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
+   bash "$REPO_ROOT/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID} >/dev/null
+   git add -- .bkit/stats.jsonl
+   git commit --allow-empty -m "docs({FID}): close telemetry bkit [skip ci]" -- .bkit/stats.jsonl
    git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git show "dev:docs/plans/$(date +%Y%m)/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
@@ -636,7 +641,7 @@
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/design-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
    printf '%s\n' "$ARTIFACTS"
-   TELEMETRY=$(bash "$RR/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID})
+   TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=design) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
    printf '\n%s\n' "$TELEMETRY"
    ```
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -657,6 +662,7 @@
 - [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical design copied (`docs/plans/{YYYYMM}/{FID}-design.md`, verified on `dev` post-merge — `{YYYYMM}` = creation month)
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` counter+compliance+outcome staged before push — no stranded dirty file)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`design-summary.md` content verbatim)
@@ -664,5 +670,6 @@
 
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:design` unchanged)
 - [ ] Artifact link list embedded in `Step 10` comment
+- [ ] Telemetry report embedded via summary-only read (no post-push `stats.jsonl` append)
 - [ ] Issue comment attempted (`Step 10` section)
 

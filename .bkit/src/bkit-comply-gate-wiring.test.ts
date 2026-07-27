@@ -1,13 +1,15 @@
 // bkit-comply-gate-wiring.test.ts — close-gate wiring audit.
 //
-// Done-when contract (WS2-T6):
+// Done-when contract (WS2-T6 + #387):
 //   - Every wired close gate contains the PINNED fail-open idiom:
 //     `pnpm bkit comply --phase={phase} || echo "[bkit-comply] grader unavailable, skipping"`
 //   - No invocation sits on its own line under a bare `set -e` block that would
 //     defeat the `|| echo` guard.
 //   - Rollout: every workflow close is wired. design/plan/build/debug grade via
-//     the shared `.bkit/scripts/bkit-workflow-telemetry.sh` at their close step;
-//     ship inline at its close gate — each feeding the per-workflow telemetry report.
+//     the shared `.bkit/scripts/bkit-workflow-telemetry.sh` BEFORE the final push
+//     (so `.bkit/stats.jsonl` is commit-able); ship inline at its close gate.
+//   - Tracker close comments use summary-only (`pnpm bkit telemetry summary`) —
+//     NEVER re-invoke the write script after push (#387).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -177,5 +179,21 @@ describe("non-ship workflows — invoke the close script, no inline comply", () 
     it(`bkit-${phase}.md has no inline pnpm bkit comply (delegated to the script)`, () => {
       expect(content).not.toContain("pnpm bkit comply");
     });
+
+    it(`bkit-${phase}.md tracker comment uses summary-only (no post-push stats append)`, () => {
+      expect(content).toContain(`pnpm bkit telemetry summary --phase=${phase}`);
+      // Write script may appear once (pre-push); comment body must not be the only call site.
+      const writeCalls = content.split(`bkit-workflow-telemetry.sh" ${phase} `).length - 1;
+      expect(writeCalls).toBe(1);
+    });
   }
+});
+
+describe("ship workflow — summary-only tracker comment (#387 parity)", () => {
+  const content = readWorkflow("bkit-ship.md");
+
+  it("tracker comment uses telemetry summary, not the write script", () => {
+    expect(content).toContain("pnpm bkit telemetry summary --phase=ship");
+    expect(content).not.toContain("bkit-workflow-telemetry.sh");
+  });
 });

@@ -1235,9 +1235,11 @@ Orchestrator behavior:
 
 - **Never-drop:** NEVER silently drop deferred work → append `kind:"deferral"` to `docs/deferrals.jsonl`.
 - **Found-bug:** NEVER silently drop discovered bug → append `kind:"failure"` to `docs/failures.jsonl` immediately.
-- **Friction/stats:** `friction` → `.bkit/friction.jsonl`; `counter`/`compliance`/`outcome` → `.bkit/stats.jsonl` at close/summary.
+- **Friction/stats:** `friction` → `.bkit/friction.jsonl`; `counter`/`compliance`/`outcome` → `.bkit/stats.jsonl` at close (write into the tree that will commit — worktree for build/debug, `$REPO_ROOT` for design/plan/ship after DONE).
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
+- **Commit-before-push (#387):** close MUST stage `.bkit/stats.jsonl` before the final push (design/plan: `docs({FID}): close telemetry bkit [skip ci]` after DONE; build/debug: included in loud close-workflow commit; ship: pathspec on DONE). Tracker comment runs **summary-only** (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
 - **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
+- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$` — stats is a close-ledger peer of friction.
 
 ## Authoring Checklist for New / Refined Workflows
 
