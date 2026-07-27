@@ -8,18 +8,11 @@
 //
 // Output: JSON `{ permission: "allow"|"ask"|"deny", user_message?, agent_message? }`
 // Exit 0 always on a decided permission. failClosed:true in hooks.json blocks on crash.
+// Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
 
 "use strict";
 
 const fs = require("node:fs");
-
-function readStdin() {
-  try {
-    return fs.readFileSync(0, "utf8");
-  } catch {
-    return "";
-  }
-}
 
 function emit(decision) {
   process.stdout.write(JSON.stringify(decision) + "\n");
@@ -129,18 +122,17 @@ function decideRead(filePath) {
 }
 
 function main() {
-  const raw = readStdin().trim();
+  const raw = fs.readFileSync(0, "utf8").trim();
   if (!raw) return allow();
 
-  let payload;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    return allow();
-  }
+  const payload = JSON.parse(raw);
 
   // beforeShellExecution: { command }
-  if (typeof payload.command === "string" && payload.tool_name == null && payload.tool_input == null) {
+  if (
+    typeof payload.command === "string" &&
+    payload.tool_name == null &&
+    payload.tool_input == null
+  ) {
     return decideShell(payload.command);
   }
 
@@ -166,4 +158,8 @@ function main() {
   return allow();
 }
 
-main();
+try {
+  main();
+} catch {
+  allow();
+}
