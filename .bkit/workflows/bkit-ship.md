@@ -563,7 +563,8 @@ description: "Ship Feature — Autonomous merge and archive"
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
+   WT="$REPO_ROOT"
+   if [ -n "$(git -C "$WT" status --porcelain | grep -v '^??')" ]; then
      DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
      DEADLINE=$(( $(date +%s) + 600 ))
      until (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
@@ -573,10 +574,10 @@ description: "Ship Feature — Autonomous merge and archive"
        sleep 10
      done
      trap 'rm -f "$DEVLOCK"' EXIT
-     git -C "$REPO_ROOT" status --short
-     git -C "$REPO_ROOT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
-     git -C "$REPO_ROOT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
-       || git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$WT" status --short
+     git -C "$WT" add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
+     git -C "$WT" diff --cached --quiet -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl \
+       || git -C "$WT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
    fi
    ```
 3. Run HEAD-Subject Assertion:
@@ -1063,11 +1064,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 13 — Close Workflow
 
-1. Run compliance grader advisory (fail-open — advisory only, never gates the workflow):
-   ```bash
-   pnpm bkit comply --phase=ship || echo "[bkit-comply] grader unavailable, skipping"
-   ```
-2. Assert squash-merge CI run finished and its test tiers passed:
+1. Assert squash-merge CI run finished and its test tiers passed:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
@@ -1090,7 +1087,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -n "$LIVE_NOT_OK" ] && echo "Live tier not green on CI run $RUN_ID ($LIVE_NOT_OK) — post-merge canary, not a merge gate; reproduce with /bkit-debug" >&2
    ```
    **If** exit non-zero → **Failure Path**.
-3. Update status, batch-commit, and push:
+2. Update status, write close telemetry, batch-commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
@@ -1108,6 +1105,7 @@ description: "Ship Feature — Autonomous merge and archive"
    STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    STATS="$WT/.bkit/stats.jsonl"
    FRICTION="$WT/.bkit/friction.jsonl"
+   (cd "$WT" && pnpm bkit comply --phase=ship) || echo "[bkit-comply] grader unavailable, skipping"
    PARENT_SHA=$(git -C "$WT" rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"ship", step:"ship-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
@@ -1183,7 +1181,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git -C "$WT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-4. <!-- bkit:tracker github start -->
+3. <!-- bkit:tracker github start -->
    Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -1195,7 +1193,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-5. <!-- bkit:tracker true start -->
+4. <!-- bkit:tracker true start -->
    Build `{ARTIFACTS}` link list:
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
@@ -1205,7 +1203,7 @@ description: "Ship Feature — Autonomous merge and archive"
    printf '\n%s\n' "$TELEMETRY"
    ```
    <!-- bkit:tracker true end -->
-6. <!-- bkit:tracker github start -->
+5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -1221,7 +1219,7 @@ description: "Ship Feature — Autonomous merge and archive"
    {TELEMETRY}
    ```
    <!-- bkit:tracker true end -->
-7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
+6. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
    <!-- bkit:tracker true start -->
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
    <!-- bkit:tracker true end -->
@@ -1234,6 +1232,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Squash-merge CI run completed and not failed (`RUN_STATUS`, `RUN_CONCLUSION`)
 - [ ] Test tiers green (`TESTS_NOT_OK` empty)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
+- [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
 
@@ -1241,6 +1240,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
 - [ ] Artifact link list embedded in `Step 13` comment
+- [ ] Telemetry report embedded via summary-only read
 - [ ] Issue comment attempted (`Step 13` section)
 
 <!-- bkit:tracker true end -->
