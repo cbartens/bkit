@@ -344,23 +344,29 @@ Canonical per-agent metadata — **single source of truth for model per agent on
 > Example (non-Cursor): `| bkit-build-summary | nvidia | nvidia/moonshotai/kimi-k2.6 |`
 > Install merges overrides over defaults (override wins). Re-run `bkit install --cursor` after editing. Claude Code reads frontmatter — not overridable via this table yet.
 
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
+
 > [!NOTE]
-> **Cursor — API credits / third-party models.** Shipped Cursor defaults are **first-party only** (`cursor-grok-4.5-high`, `composer-2.5`) so workflows keep running when API credits are exhausted. **If** you have third-party / additional API credits and want Claude Opus (or other API-pool models) on Cursor workflows, add rows to the table below — do **not** edit the managed `## Models` table (upgrade overwrites it).
+> **Cursor — API credits / third-party models.** Shipped Cursor defaults are **first-party only** (`cursor-grok-4.5-high`, `composer-2.5`) so workflows keep running when API credits are exhausted. **If** you have third-party / additional API credits and want Claude Opus (or other API-pool models) on Cursor workflows, add rows to the table above — do **not** edit the managed `## Models` table (upgrade overwrites it).
 >
 > **Mapping (align Cursor to Claude-tier settings):**
->
-> | Claude column               | Cursor override               | Notes                                                                                                                     |
-> | --------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-> | `claude-opus-5`             | `claude-opus-5-thinking-high` | Depth / synthesizers / audits — paste block below                                                                         |
-> | `claude-sonnet-5`           | _(no Cursor Sonnet ID)_       | Leave shipped `composer-2.5` (volume) / `cursor-grok-4.5-high` (diversity). Optional API cross-family: `gpt-5.6-sol-high` |
-> | `claude-haiku-4-5-20251001` | leave `composer-2.5`          | Summaries — no change                                                                                                     |
->
-> **Orchestrators** (`/design` `/plan` `/debug`) are session model, not this table — set the Cursor session / Cloud Agent model to `claude-opus-5-thinking-high` when invoking. `/build` `/ship` stay `composer-2.5` unless you override the session.
->
-> **Ready-to-paste — restore Opus on every Claude-opus-tier Cursor agent** (copy into the empty table below):
 
 <!-- prettier-ignore -->
-```
+| Claude column | Cursor override | Notes |
+| --- | --- | --- |
+| `claude-opus-5` | `claude-opus-5-thinking-high` | Depth / synthesizers / audits — paste block below |
+| `claude-sonnet-5` | _(no Cursor Sonnet ID)_ | Leave shipped `composer-2.5` (volume) / `cursor-grok-4.5-high` (diversity). Optional API cross-family: `gpt-5.6-sol-high` |
+| `claude-haiku-4-5-20251001` | leave `composer-2.5` | Summaries — no change |
+
+> **Orchestrators** (`/design` `/plan` `/debug`) are session model, not the override table — set the Cursor session / Cloud Agent model to `claude-opus-5-thinking-high` when invoking. `/build` `/ship` stay `composer-2.5` unless you override the session.
+>
+> **Ready-to-paste — restore Opus on every Claude-opus-tier Cursor agent** (copy rows into the empty table above):
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |
 | bkit-design-brainstorm-ideate-1 | cursor | claude-opus-5-thinking-high |
 | bkit-design-brainstorm-ideate-3 | cursor | claude-opus-5-thinking-high |
 | bkit-design-review-1 | cursor | claude-opus-5-thinking-high |
@@ -385,10 +391,5 @@ Canonical per-agent metadata — **single source of truth for model per agent on
 | bkit-utility-audit-codebase | cursor | claude-opus-5-thinking-high |
 | bkit-utility-audit-security | cursor | claude-opus-5-thinking-high |
 | bkit-utility-audit-tests | cursor | claude-opus-5-thinking-high |
-```
 
 > Optional API cross-family (sonnet-tier diversity slots — Cursor has no Sonnet): `| bkit-design-brainstorm-ideate-2 | cursor | gpt-5.6-sol-high |` (+ same for `bkit-design-review-2`, `bkit-plan-scope-check-2`). Probe live `/v0/models` before pinning — catalog churns. See `.bkit/providers.md` § Cursor model catalog.
-
-<!-- prettier-ignore -->
-| Prompt | Provider | Model |
-| --- | --- | --- |
