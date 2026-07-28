@@ -78,11 +78,6 @@ const SKIP_CI_SUBJECTS: Array<{
     literal: "docs({FID}): ship DONE bkit [skip ci]",
   },
   {
-    file: "bkit-ship.md",
-    description: "ship pre-worktree dirty-tree commit",
-    literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
-  },
-  {
     file: "bkit-design.md",
     description: "design pre-worktree dirty-tree commit",
     literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
@@ -96,11 +91,6 @@ const SKIP_CI_SUBJECTS: Array<{
     file: "bkit-build.md",
     description: "build pre-worktree dirty-tree commit",
     literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
-  },
-  {
-    file: "bkit-ship.md",
-    description: "ship pre-merge dirty-dev commit",
-    literal: "chore: pre-merge uncommitted dev changes bkit [skip ci]",
   },
   // Failure Path aborts.
   {
@@ -173,14 +163,10 @@ describe("skip-ci subject convention", () => {
       expect(shipMd).toContain("AHEAD_NON_SKIP");
     });
 
-    // Regression pin: Step 2 commits on local `dev` without pushing, and
-    // Step 9 hard-exits when a commit ahead of origin/dev lacks the token.
-    // Drop the token from that subject and every ship with a dirty `dev`
-    // aborts. These two sites must agree.
-    it("the pre-merge dirty-dev commit it must tolerate carries the token", () => {
-      expect(shipMd).toContain('-m "chore: pre-merge uncommitted dev changes bkit [skip ci]"');
-    });
-
+    // The guard greps for non-[skip ci] commits ahead of origin/dev. In the
+    // rewritten workflow (#384) the pre-merge dirty-dev commit is gone (no
+    // local rebase), but the guard still protects against any ahead-of-dev
+    // commit that would cancel the in-flight CI run validating the merge.
     it("the guard greps for the same token the commit carries", () => {
       expect(shipMd).toContain("git log --format=%s origin/dev..dev | grep -cv '\\[skip ci\\]'");
     });
