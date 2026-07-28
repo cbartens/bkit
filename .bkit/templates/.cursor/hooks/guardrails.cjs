@@ -13,6 +13,7 @@
 "use strict";
 
 const fs = require("node:fs");
+const path = require("node:path");
 
 function emit(decision) {
   process.stdout.write(JSON.stringify(decision) + "\n");
@@ -68,14 +69,12 @@ function decideShell(cmd) {
     );
   }
 
-  // Ask — matches Claude ask list + OpenCode bash ask (incl. curl/wget so
-  // shell cannot bypass the shared WebFetch / webfetch domain allowlist).
+  // Ask — privileged / destructive shell. curl/wget: ask UNLESS the URL host is
+  // on the shared network allowlist (shipped defaults + `.cursor/allowlist.json`).
   const askPatterns = [
     /\bsudo\b/,
     /\bbrew\s+install\b/,
     /\b(pnpm|npm|bun)\s+publish\b/,
-    /\bcurl\b/,
-    /\bwget\b/,
     /\bgit\s+reset\s+--hard\b/,
     /\bgit\s+clean\s+-fdx?\b/,
     /\bgit\s+filter-branch\b/,
@@ -96,7 +95,61 @@ function decideShell(cmd) {
     }
   }
 
+  if (/\bcurl\b/.test(c) || /\bwget\b/.test(c)) {
+    if (curlWgetHostAllowed(c)) return allow();
+    return ask(
+      "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
+      `Command requires confirmation: ${c}`,
+    );
+  }
+
   return allow();
+}
+
+/** Tooling-only fallback — keep in sync with BKIT_SHIPPED_NETWORK_DOMAINS (no stack hosts). */
+const SHIPPED_NETWORK_BASES = [
+  "github.com",
+  "githubusercontent.com",
+  "anthropic.com",
+  "claude.com",
+  "cursor.com",
+  "linear.app",
+  "opencode.ai",
+  "ollama.com",
+  "nvidia.com",
+  "z.ai",
+  "moonshot.ai",
+  "kimi.com",
+  "npmjs.com",
+];
+
+function loadNetworkAllowlistBases() {
+  const bases = new Set(SHIPPED_NETWORK_BASES);
+  try {
+    const p = path.join(process.cwd(), ".cursor", "allowlist.json");
+    if (fs.existsSync(p)) {
+      const doc = JSON.parse(fs.readFileSync(p, "utf8"));
+      const domains = Array.isArray(doc.domains) ? doc.domains : [];
+      for (const d of domains) {
+        const b = String(d)
+          .replace(/^\*\./, "")
+          .trim();
+        if (b) bases.add(b);
+      }
+    }
+  } catch {
+    /* shipped fallback only */
+  }
+  return bases;
+}
+
+function curlWgetHostAllowed(cmd) {
+  const bases = loadNetworkAllowlistBases();
+  const lower = cmd.toLowerCase();
+  for (const b of bases) {
+    if (lower.includes(b.toLowerCase())) return true;
+  }
+  return false;
 }
 
 /** @param {string} filePath */

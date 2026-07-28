@@ -40,9 +40,18 @@ describe("cursor guardrails.cjs — shell", () => {
     expect(run({ command: "pnpm test" }).permission).toBe("allow");
   });
 
-  it("asks on curl/wget (parity with Claude/OpenCode network gate)", () => {
+  it("asks on curl/wget to unknown hosts; allows tooling hosts from shipped list", () => {
     expect(run({ command: "curl https://example.com" }).permission).toBe("ask");
-    expect(run({ command: "wget https://example.com" }).permission).toBe("ask");
+    expect(run({ command: "wget https://evil.example" }).permission).toBe("ask");
+    // Stack hosts are NOT shipped — ask until consumer declares them in config.md
+    expect(
+      run({
+        command:
+          'curl -s -H "Authorization: Bearer x" "https://api.vercel.com/v6/deployments?limit=5"',
+      }).permission,
+    ).toBe("ask");
+    // Tooling host (github) is always allowlisted
+    expect(run({ command: "curl -s https://api.github.com/repos/x/y" }).permission).toBe("allow");
   });
 });
 

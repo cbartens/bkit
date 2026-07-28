@@ -6,10 +6,10 @@ import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpen
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, enrichClaudeSettingsWebFetch, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
-import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
@@ -2115,7 +2115,7 @@ async function main() {
                         const contentOverride = relPath === CLOUD_WORKFLOW_RELPATH
                             ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
                             : relPath === OPENCODE_JSON_RELPATH
-                                ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider)
+                                ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
                                 : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
                                     ? buildMcpJson(entAbs, upgradeTracker)
                                     : undefined;
@@ -2169,7 +2169,7 @@ async function main() {
                 if (fs.existsSync(jsonSrc)) {
                     const upgradeWs = { writes: [] };
                     for (const provider of otherProviders) {
-                        const rendered = renderOpencodeJson(jsonSrc, upgradeTracker, provider);
+                        const rendered = renderOpencodeJson(jsonSrc, upgradeTracker, provider, process.cwd());
                         reconcileOpencodeJson(rendered, OPENCODE_JSON_DST, upgradeFlags.dryRun, upgradeWs);
                     }
                     for (const w of upgradeWs.writes) {
@@ -2263,6 +2263,25 @@ async function main() {
         if (!upgradeFlags.dryRun && renderModules.has("cursor") && tokens) {
             if (writeCursorCloudDoc(process.cwd(), tokens, upgradeTracker)) {
                 console.log(`${LOG_PREFIX} upgrade: .cursor/cloud.md (regenerated — gitignored, holds resolved secrets)`);
+            }
+        }
+        // Network allowlist — OpenCode curl/wget from renderOpencodeJson; Claude WebFetch
+        // enrich below; Cursor `.cursor/allowlist.json` only when cursor module installed.
+        {
+            const cwd = process.cwd();
+            if (renderModules.has("cursor")) {
+                const art = writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun);
+                if (art.wrote) {
+                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
+                }
+            }
+            if (renderModules.has("claude") &&
+                fs.existsSync(path.join(cwd, ".claude", "settings.json"))) {
+                const enrichWs = { writes: [] };
+                enrichClaudeSettingsWebFetch(".claude/settings.json", cwd, upgradeFlags.dryRun, enrichWs);
+                for (const w of enrichWs.writes) {
+                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`);
+                }
             }
         }
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion

@@ -2933,10 +2933,16 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(perm.bash["sudo *"]).toBe("ask");
     expect(perm.bash["curl *"]).toBe("ask");
     expect(perm.bash["wget *"]).toBe("ask");
+    // Stack hosts (vercel/supabase/…) are NOT shipped — only tooling defaults +
+    // consumer `.agents/config.md` allowed-domains (after bkit:end).
+    expect(perm.bash["curl *vercel.com*"]).toBeUndefined();
+    expect(perm.bash["curl *github.com*"]).toBe("allow");
+    const curlAskIdx = Object.keys(perm.bash).indexOf("curl *");
+    const curlGhIdx = Object.keys(perm.bash).indexOf("curl *github.com*");
+    expect(curlGhIdx).toBeGreaterThan(curlAskIdx);
     expect(perm.websearch).toBe("allow");
     // OpenCode schema: webfetch/websearch are Action only (ask|allow|deny), not
     // PermissionObjectConfig — URL maps fail validation (PermissionActionConfig).
-    // Domain allowlists stay Claude-only; opencode asks on every webfetch.
     expect(perm.webfetch).toBe("ask");
     // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
     // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
@@ -2961,6 +2967,20 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(keys.indexOf("git push --force-with-lease*")).toBeGreaterThan(
       keys.indexOf("git push --force*"),
     );
+  });
+
+  it("injects consumer allowed-domains as curl/wget allows (stack-agnostic)", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-net-"));
+    fs.mkdirSync(path.join(tmp, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, ".agents", "config.md"),
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\nsupabase.com\n<!-- allowed-domains:end -->\n",
+      "utf-8",
+    );
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia", tmp));
+    expect(parsed.permission.bash["curl *vercel.com*"]).toBe("allow");
+    expect(parsed.permission.bash["wget *supabase.com*"]).toBe("allow");
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 
   it("ollama-local (local): npm driver, NO apiKey (keyless local server)", () => {

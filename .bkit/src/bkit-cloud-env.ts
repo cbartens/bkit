@@ -463,6 +463,73 @@ export function expandAllowedDomains(declared: string[]): string[] {
 }
 
 /**
+ * Stack-agnostic tooling hosts only (tracker, package registry, AI provider docs,
+ * IDE/host docs). **Never** ship observability / app stacks here (Vercel, Supabase,
+ * Sentry, …) — those come solely from the consumer's `.agents/config.md`
+ * `allowed-domains` block (after `<!-- bkit:end -->`) via {@link resolveNetworkAllowlist}.
+ */
+export const BKIT_SHIPPED_NETWORK_DOMAINS: readonly string[] = [
+  "github.com",
+  "githubusercontent.com",
+  "anthropic.com",
+  "claude.com",
+  "cursor.com",
+  "linear.app",
+  "opencode.ai",
+  "ollama.com",
+  "nvidia.com",
+  "z.ai",
+  "moonshot.ai",
+  "kimi.com",
+  "npmjs.com",
+];
+
+/** Apex-only unique bases from an expanded (apex + `*.`) domain list. */
+export function networkAllowlistBases(expanded: string[]): string[] {
+  return [...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean))].sort();
+}
+
+/**
+ * Local + cloud network allowlist: stack-agnostic tooling defaults ∪ consumer
+ * `allowed-domains` from `.agents/config.md` (after `<!-- bkit:end -->`), each as
+ * apex + `*.` wildcard. Empty consumer block ⇒ tooling hosts only — no Vercel/etc.
+ */
+export function resolveNetworkAllowlist(cwd: string): string[] {
+  return expandAllowedDomains([...BKIT_SHIPPED_NETWORK_DOMAINS, ...extractAllowedDomains(cwd)]);
+}
+
+/** Cursor-relative path of the install-written curl/wget allowlist (guardrails). */
+export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
+
+/**
+ * Write `.cursor/allowlist.json` for Cursor `guardrails.cjs` (runtime curl/wget host
+ * checks). Claude/OpenCode bake the same domain set into their own configs at
+ * install/upgrade — they do not read this file. Call only when the cursor module
+ * is installed (do not create `.cursor/` for claude-only consumers).
+ */
+export function writeNetworkAllowlistArtifact(
+  cwd: string,
+  dryRun: boolean,
+): { path: string; domains: string[]; wrote: boolean } {
+  const domains = resolveNetworkAllowlist(cwd);
+  const rel = NETWORK_ALLOWLIST_RELPATH;
+  const abs = path.join(cwd, rel);
+  const body = JSON.stringify({ domains }, null, 2) + "\n";
+  let wrote = false;
+  if (!dryRun) {
+    const prev = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+    if (prev !== body) {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body, "utf-8");
+      wrote = true;
+    }
+  } else if (!fs.existsSync(abs) || fs.readFileSync(abs, "utf-8") !== body) {
+    wrote = true;
+  }
+  return { path: rel, domains, wrote };
+}
+
+/**
  * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
  * body. With declared `allowed-domains`, emits the **Custom** + "also include defaults"
  * (extends, never replaces) instruction plus the expanded paste block. With none,

@@ -110,7 +110,10 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
 
 ## Cloud allowed domains
 
-Cloud sessions (Claude Code on the web, Cursor background agents) run behind egress proxy. **Trusted** network: package registries + common SDK hosts only — log-backend / observability API hosts and app domains **not** reachable → cloud `/bkit-debug` no runtime logs, e2e can't reach deployment. Declare domains in `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>`, renders copy-paste **Custom** allowlist into `.claude/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — EXTENDS defaults, never replaces).
+Cloud sessions (Claude Code on the web, Cursor background agents) run behind egress proxy. **Trusted** network: package registries + common SDK hosts only — log-backend / observability API hosts and app domains **not** reachable → cloud `/bkit-debug` no runtime logs, e2e can't reach deployment. Declare domains in `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>`, then:
+
+1. Renders copy-paste **Custom** allowlist into `.claude/cloud.md` / `.cursor/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — EXTENDS defaults, never replaces).
+2. Merges those **consumer** domains with stack-agnostic tooling defaults into host local permissions on **`bkit install` and `bkit upgrade`**: OpenCode `curl`/`wget` allows (in `opencode.json`), Claude `WebFetch` (in `settings.json`), and — **Cursor only** — `.cursor/allowlist.json` for `guardrails.cjs`. Same policy; Cursor needs a runtime file because it has no settings-native curl host map (hook instead of baked config). Full matrix: `.bkit/providers.md` § Network allowlist. bkit never ships Vercel/Supabase/Sentry/etc. into every consumer — only what you list here.
 
 **Apex domains only**, one per line — bkit adds `*.` wildcard (whole domain; never list subdomains). Include every host debug-fetch blocks reach (incl. implicit CLI hosts `vercel` / `gcloud`) + app production + preview/dev domains. Declare none → `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
 
@@ -122,6 +125,7 @@ Cloud sessions (Claude Code on the web, Cursor background agents) run behind egr
 
 sentry.io
 supabase.com
+vercel.com
 
 # app production + preview/dev domains
 

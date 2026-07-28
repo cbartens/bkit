@@ -308,7 +308,7 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs |
+| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs, network allowlist encodings (`.cursor/allowlist.json` vs baked settings) |
 | `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks (repo-local, not seeded) |
 | `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Appended by phase workflows at runtime (not seeded); drained by `bkit harvest` only. Row shape: `.bkit/jsonl.md`. |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |

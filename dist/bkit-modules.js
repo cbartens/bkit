@@ -14,7 +14,7 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortR
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc, writeCursorCloudDoc } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -819,6 +819,7 @@ export function runClaudeModule(ctx) {
         }
         const prevLen = ws.writes.length;
         writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
+        enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
         }
@@ -1065,6 +1066,16 @@ export function runCursorModule(ctx) {
         }
         else if (result.suggested) {
             console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst} (exists; AI merge instructions printed)`);
+        }
+    }
+    // Cursor-only runtime curl/wget allowlist (guardrails.cjs reads `.cursor/allowlist.json`).
+    // Same domain set as Claude WebFetch / OpenCode bash allows — sourced from tooling
+    // defaults ∪ consumer `allowed-domains`. Not under `.bkit/` (IDE-scoped artifact).
+    {
+        const art = writeNetworkAllowlistArtifact(process.cwd(), dryRun);
+        if (art.wrote) {
+            ws.writes.push({ path: art.path, action: "write" });
+            console.log(`${logPrefix} ${tag}cursor: ${art.path}`);
         }
     }
     // Post-install advisory: macOS GUI-isolation note.
@@ -1317,8 +1328,12 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * Render the opencode.json template with tracker-filtered mcp + provider config.
  * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
  * and fills in provider-specific fields.
+ *
+ * Also injects `curl *{domain}*` / `wget *{domain}*` **allow** rules (after the
+ * template's `curl *` / `wget *` ask) for {@link resolveNetworkAllowlist} so
+ * debug-fetch / provider hosts do not prompt. OpenCode bash is last-match-wins.
  */
-export function renderOpencodeJson(templatePath, tracker, provider) {
+export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
     // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
     // a known key here. Fall back to the local default (never a synthesized placeholder URL)
@@ -1360,6 +1375,7 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
             if (providerDefaults.apiPlaceholder)
                 options.apiKey = providerDefaults.apiPlaceholder;
             parsed.provider = { [pid]: { options } };
+            injectOpencodeNetworkCurlAllows(parsed, cwd);
             return JSON.stringify(parsed, null, 2) + "\n";
         }
         // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
@@ -1379,10 +1395,54 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
                 },
             };
         }
+        injectOpencodeNetworkCurlAllows(parsed, cwd);
         return JSON.stringify(parsed, null, 2) + "\n";
     }
     catch {
         return rendered;
+    }
+}
+/** Append curl/wget domain allows after template ask rules (OpenCode last-match-wins). */
+function injectOpencodeNetworkCurlAllows(parsed, cwd) {
+    const permission = parsed.permission;
+    if (!permission || typeof permission.bash !== "object" || permission.bash === null)
+        return;
+    const bash = permission.bash;
+    for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
+        bash[`curl *${base}*`] = "allow";
+        bash[`wget *${base}*`] = "allow";
+    }
+}
+/**
+ * Ensure Claude `WebFetch(domain:…)` allows cover {@link resolveNetworkAllowlist}.
+ * Claude deny→ask→allow cannot except curl-by-domain once `Bash(curl:*)` is ask —
+ * network allowlisting for Claude is WebFetch-only; shell curl stays under Bash(*).
+ * Called from install (`runClaudeModule`) and upgrade (mirror — upgrade does not
+ * dispatch modules).
+ */
+export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws) {
+    if (!fs.existsSync(settingsDst))
+        return;
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
+    }
+    catch {
+        return;
+    }
+    const allow = doc.permissions?.allow;
+    if (!Array.isArray(allow))
+        return;
+    const needed = resolveNetworkAllowlist(cwd).flatMap((d) => [`WebFetch(domain:${d})`]);
+    const missing = needed.filter((r) => !allow.includes(r));
+    if (missing.length === 0)
+        return;
+    if (!dryRun) {
+        doc.permissions.allow = [...allow, ...missing];
+        fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    }
+    if (!ws.writes.some((w) => w.path === settingsDst)) {
+        ws.writes.push({ path: settingsDst, action: "write" });
     }
 }
 /**
@@ -1538,7 +1598,7 @@ export function runOpencodeModule(ctx) {
             // the consumer file. Install is additive: existing provider blocks are preserved.
             // reconcileOpencodeJson computes an identical writeset for dry-run vs real runs — no
             // `.bkit-staging` scratch file.
-            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
+            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider, process.cwd());
             const prevLen = ws.writes.length;
             reconcileOpencodeJson(rendered, jsonDst, dryRun, ws);
             if (ws.writes.length > prevLen) {

@@ -16,6 +16,8 @@ import {
   extractAllowedDomains,
   expandAllowedDomains,
   renderCloudNetworkAllowlist,
+  resolveNetworkAllowlist,
+  BKIT_SHIPPED_NETWORK_DOMAINS,
   writeClaudeCloudDoc,
   cursorCloudPolicy,
   renderCursorDebugFetchProvision,
@@ -379,6 +381,18 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     const out = renderCloudNetworkAllowlist(tmpDir);
     expect(out).toContain("Set to **Trusted** (default)");
     expect(out).toContain("No `allowed-domains` block declared");
+  });
+
+  it("resolveNetworkAllowlist stays stack-agnostic until consumer declares domains", () => {
+    expect(BKIT_SHIPPED_NETWORK_DOMAINS).not.toContain("vercel.com");
+    expect(BKIT_SHIPPED_NETWORK_DOMAINS).not.toContain("supabase.com");
+    expect(resolveNetworkAllowlist(tmpDir)).not.toContain("vercel.com");
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\n<!-- allowed-domains:end -->\n",
+    );
+    expect(resolveNetworkAllowlist(tmpDir)).toContain("vercel.com");
+    expect(resolveNetworkAllowlist(tmpDir)).toContain("*.vercel.com");
   });
 });
 

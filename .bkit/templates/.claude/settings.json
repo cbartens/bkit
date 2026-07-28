@@ -49,8 +49,6 @@
       "Bash(pnpm publish:*)",
       "Bash(npm publish:*)",
       "Bash(bun publish:*)",
-      "Bash(curl:*)",
-      "Bash(wget:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean -fd:*)",
       "Bash(git clean -fdx:*)",
