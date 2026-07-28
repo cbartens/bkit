@@ -167,7 +167,7 @@ No disagreement was observed. The `--explain` flag was not run against a live PR
 
 ## Rollout readiness
 
-The gate script + managed config + rewritten prose must release together in one `bkit upgrade` so no consumer sees prose calling a gate it does not have. `bkit check` catches a partially-applied upgrade (the manifest's `byte-equal-text` format for `bkit-ship-gate.sh` + the prose-invariant test's source↔mirror agreement assertion). This was verified by `node dist/bkit-install.js check` (exit 0, no drift) in the Seam 2 prelude.
+The gate script + managed config + rewritten prose must release together in one `bkit upgrade` so no consumer sees prose calling a gate it does not have. `bkit check` catches a partially-applied upgrade (the manifest's `byte-equal-text` format for `bkit-ship-gate.sh` + the prose-invariant test's source↔mirror agreement assertion). This was verified by `node dist/bkit-install.js check` (exit 0, no drift) in the Seam 2 prelude, then re-verified after the build-plan-gaps-remediate-3-1 cycle synced the `docs/deployments.md` template (the ship-gate consumer CI contract was added to the root managed block but not the template — now both match, 0 writes, exit 0).
 
 ---
 
