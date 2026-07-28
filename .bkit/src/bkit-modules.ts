@@ -60,7 +60,6 @@ import {
   writeClaudeCloudDoc,
   writeCursorCloudDoc,
   resolveNetworkAllowlist,
-  networkAllowlistBases,
   writeNetworkAllowlistArtifact,
 } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
@@ -1707,7 +1706,11 @@ function injectOpencodeNetworkCurlAllows(parsed: Record<string, unknown>, cwd: s
   const permission = parsed.permission as Record<string, unknown> | undefined;
   if (!permission || typeof permission.bash !== "object" || permission.bash === null) return;
   const bash = permission.bash as Record<string, string>;
-  for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
+  const expanded = resolveNetworkAllowlist(cwd);
+  const bases = [
+    ...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean)),
+  ].sort();
+  for (const base of bases) {
     bash[`curl *${base}*`] = "allow";
     bash[`wget *${base}*`] = "allow";
   }

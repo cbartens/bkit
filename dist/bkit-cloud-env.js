@@ -418,10 +418,6 @@ export const BKIT_SHIPPED_NETWORK_DOMAINS = [
     "kimi.com",
     "npmjs.com",
 ];
-/** Apex-only unique bases from an expanded (apex + `*.`) domain list. */
-export function networkAllowlistBases(expanded) {
-    return [...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean))].sort();
-}
 /**
  * Local + cloud network allowlist: stack-agnostic tooling defaults ∪ consumer
  * `allowed-domains` from `.agents/config.md` (after `<!-- bkit:end -->`), each as
