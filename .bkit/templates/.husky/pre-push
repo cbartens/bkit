@@ -66,3 +66,12 @@ pnpm slop:delta < /dev/null
 # regenerating the `.claude/*`/`.cursor/*`/`.husky/*` mirrors (same check CI runs).
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
+
+# bats suite (Tier-1 carrier + helper scripts). Runs after `bkit check` so drift
+# fails fast; runs before actionlint/dist so a bats failure fails before the
+# slower gates. Guard-skips when bats is absent.
+if command -v bats >/dev/null 2>&1; then
+  pnpm test:bats < /dev/null
+else
+  echo "[pre-push] bats missing — skipping bats suite (install bats to enable)" >&2
+fi

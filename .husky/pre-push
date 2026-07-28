@@ -60,6 +60,11 @@ pnpm slop:delta < /dev/null
 # bkit-repo only — fail push if `.agents/*` edits weren't mirrored via `pnpm bkit install`.
 pnpm bkit check < /dev/null
 
+# bkit-repo only — bats suite (Tier-1 carrier + helper scripts). Runs after
+# `bkit check` so a drift failure fails fast; runs before actionlint/dist so a
+# bats failure fails before the slower gates.
+pnpm test:bats < /dev/null
+
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.
 pnpm check:dist < /dev/null
