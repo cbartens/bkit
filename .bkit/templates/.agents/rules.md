@@ -72,8 +72,8 @@
 - **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Docs-only commits:** Append `bkit [skip ci]` but ONLY on commits carrying no code; NEVER on commits carrying code.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
-- **Branches:** `feat/{FID}` preferred when minting a new branch. FID is resolved from the tracker marker, not the branch name — an adopted branch (e.g. `claude/…`) that cannot be renamed satisfies this rule without containing `{FID}`.
-- **Merge bodies:** ANY squash-merge landing code on a shared branch MUST pass an EXPLICIT body and MUST NOT accept the default — the default concatenates the head branch's commit subjects and silently inherits a `[skip ci]` from an intermediate commit, suppressing CI nobody meant to skip. Holds on every transport (`gh`, MCP, or any other write path). Deliberate `bkit [skip ci]` in a docs-only commit SUBJECT is unaffected.
+- **Branches:** `feat/{FID}` preferred when minting new branches; resolve `FID` from tracker markers NOT branch names. Use adopted branches `claude/…` / `cursor/…` that cannot be renamed without `{FID}`.
+- **Merge bodies:** ALL squash-merges landing code MUST pass EXPLICIT bodies; do NOT accept defaults; do NOT allow default concatenating of commit subjects silently inheriting `[skip ci]` markers and suppressing CI.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease`.
 - **CI:** Pushes auto-trigger; NEVER manually. ANY push carrying code MUST have HEAD without `[skip ci]` so CI runs; batch doc commits into pushes OR add bare trigger commits. NEVER leave `[skip ci]` at HEAD of any PR pushes that require CI runs. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
@@ -84,9 +84,9 @@
 
 ### Runtime & Fallback
 
-- **No foreground sleep:** NEVER issue a blocking foreground `sleep` to poll for an external result; the runtime may not honour it. Use a bounded, `timeout`-wrapped poll (bash) or an agent-side per-turn yield loop (control flow) instead. Legitimate retry/backoff sleeps are exempt but MUST stay distinguishable from a wait-poll.
-- **gh->MCP fallback bounded:** ANY substitution of an MCP tool for an unavailable `gh` command MUST be bounded (max 1 transition per run), recorded (a `transport-fallback` row), and success-asserted via an independent re-read before being trusted. NEVER improvise an unrecorded substitution.
-- **Empty MCP read is inconclusive:** An MCP read returning empty/zero results is NEVER recorded as authoritative absence. Corroborate with a second, independent MCP call, or report the read as unavailable; log the corroboration attempt and its result as its own distinguishable state, never folded into "corroborated"/"unavailable".
+- **Polls / loops:** NEVER use blocking foreground `sleep` to poll; runtimes may not honour. ALWAYS use bounded, `timeout` wrapped bash poll (bash) or agent-side per-turn yield loop (control flow). Legitimate retry / backoff sleeps are exempt.
+- **Bounded gh fallback:** ALL substitutions of unavailable `gh` commands with MCP tools MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads. NEVER improvise unrecorded substitutions.
+- **Empty MCP reads inconclusive:** MCP reads returning empty / zero results are NEVER authoritative absence. ALWAYS corroborate with independent MCP calls or report reads as unavailable.
 
 ### Testing & Debugging
 
