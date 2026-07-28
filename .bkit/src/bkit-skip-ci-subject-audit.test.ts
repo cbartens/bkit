@@ -83,6 +83,21 @@ const SKIP_CI_SUBJECTS: Array<{
     literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
   },
   {
+    file: "bkit-design.md",
+    description: "design pre-worktree dirty-tree commit",
+    literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
+  },
+  {
+    file: "bkit-plan.md",
+    description: "plan pre-worktree dirty-tree commit",
+    literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
+  },
+  {
+    file: "bkit-build.md",
+    description: "build pre-worktree dirty-tree commit",
+    literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
+  },
+  {
     file: "bkit-ship.md",
     description: "ship pre-merge dirty-dev commit",
     literal: "chore: pre-merge uncommitted dev changes bkit [skip ci]",

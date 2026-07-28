@@ -213,7 +213,7 @@ Lifted verbatim into every workflow caution block. Change one wording → change
 | `ship` | Steps 1-8 on `feat/{FID}` (worktree); Steps 9-13 on `dev` (`$REPO_ROOT/...`) post-merge | Steps 1-8 commit on `feat/{FID}` (reach `dev` via the Step-6 squash-merge); Steps 9-13 append to dev's copy. Ship is terminal, so its `dev` commit + push (Close / Failure Path) is the legitimate state landing. |
 | `cloud` | — (none) | Stateless phase dispatcher — writes NO `status.jsonl` and makes no `dev` commit; the run is recorded only by its tracker comment. The dispatched skill owns its own state/FID/worktree. |
 
-Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source; NDJSON+union merge-safe regardless. `design`/`plan` on throwaway `feat/{FID}` like `build`/`debug` — status + docs reach `dev` via single Close squash-merge; only doc-link URLs in tracker comments hard-coded to `dev`. `cloud` = pure dispatcher — no worktree, no state, no `status.jsonl` (tracker comment only). Design/plan close `dev` commit = substantive feature commit, runs CI. (`audit` not built; per design follows design/plan feat pattern.)
+Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source; NDJSON+union merge-safe regardless. `design`/`plan` on throwaway `feat/{FID}` like `build`/`debug` — status + docs reach `dev` via single Close squash-merge; only doc-link URLs in tracker comments hard-coded to `dev`. `cloud` = pure dispatcher — no worktree, no state, no `status.jsonl` (tracker comment only). Design/plan close `dev` commit = docs/telemetry-only, carries `bkit [skip ci]`, no CI dispatched. (`audit` not built; per design follows design/plan feat pattern.)
 
 **Event types (one per line):**
 
