@@ -70,7 +70,7 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
 
 ### Upgrade — already installed
 
-Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
+Same paste block ships in `.bkit/README.md` (mirrored into consumer repos on install — keep both in sync when editing). Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
@@ -543,7 +543,7 @@ Lets consumers add own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) 
 
 ## Documentation
 
-**Full reference:** `.bkit/README.md` — what bkit does, prerequisites, triggering workflows, key files.
+**Full reference:** `.bkit/README.md` — what bkit does, prerequisites, upgrade paste + ongoing CLI, triggering workflows, key files. First-time install/auth stays in this root `README.md` (package README only — not copied to consumer repo root).
 
 **Workflow internals:** `.bkit/workflows.md`.
 

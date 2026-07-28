@@ -2,7 +2,7 @@
 
 **bkit** wires Claude Code (and Cursor) into five-phase tracker-integrated cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds opencode for non-Anthropic backends — ten providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), `zai` (GLM), `moonshot` (Kimi), `opencode-zen` + `opencode-go` (opencode-native gateways; auth via `OPENCODE_API_KEY`) — same harness, inference backend only changes (see `.bkit/providers.md` § Hosts + Providers).
 
-README: what bkit does, install, env / tracker setup. Workflow internals: `.bkit/workflows.md`; subagent metadata (effort, model, tools, `maxTurns`): `.bkit/prompts.md`.
+README: what bkit does, env / tracker setup, upgrade paste + ongoing CLI. First-time install/auth deep-dive: `node_modules/@cbartens/bkit/README.md`. Workflow internals: `.bkit/workflows.md`; subagent metadata (effort, model, tools, `maxTurns`): `.bkit/prompts.md`.
 
 ---
 
@@ -144,9 +144,43 @@ Full Linear ↔ Cursor setup: <https://linear.app/docs/cursor>.
 
 ## Distribution & install
 
-Consumer install, auth (`GH_BKIT_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel), CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) in root `README.md`.
-
 `.agents/` = **canonical**. `bkit install` regenerates host outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across consumer repo.
+
+First-time install, `GH_BKIT_TOKEN_INSTALL` / `.npmrc` / GHA / Vercel auth, uninstall, `.bkitignore`: package root `README.md` at `node_modules/@cbartens/bkit/README.md` (not copied to consumer repo root). Ongoing ops below.
+
+### Upgrade — paste into your AI
+
+Prefer `bkit upgrade --latest` (bumps package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if token not already loaded (direnv / `.bkit/.env`).
+
+````text
+Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
+1. Ensure `GH_BKIT_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
+   ```bash
+   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
+     bkit upgrade --latest
+   ```
+   If token already exported (direnv / shell profile), skip `source`:
+   ```bash
+   bkit upgrade --latest
+   ```
+   If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
+2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
+3. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
+````
+
+### Ongoing CLI
+
+```bash
+bkit upgrade              # re-render at CURRENT installed version (offline)
+bkit upgrade --latest     # bump @cbartens/bkit + resync in one step (or --to=<version>)
+bkit check                # drift gate — exits non-zero on drift
+bkit doctor               # advisories only; exits 0; no managed-file writes
+bkit install --claude --cursor --tooling   # (re)seed hosts + tooling; name ≥1 module
+```
+
+> **⚠️ Version bumps:** use `bkit upgrade --latest` (or `--to=<version>`). Bare `pnpm add @cbartens/bkit` / Renovate bumps refresh lockfile only — run `bkit upgrade` after and commit resync with the bump, or `bkit check` reds CI.
 
 ### Dogfood path (this repo only)
 
@@ -216,7 +250,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 
 ### Optional post-install decisions (tracker + dependency updater + cloud agents)
 
-Three capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **dependency updater** (`--dependency=renovate` or `--dependency=dependabot`, mutually exclusive), **cloud agents** (`--auto=claude|cursor|opencode`, ships phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — default install ships zero cloud footprint). Default wires none; post-install advisory emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); `"none"` silences nudge. Cloud router split: each job inert without model-auth secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker. Consumer rationale + decide/silence flow: root `README.md` § Optional post-install decisions. bkit-repo dogfoods neither updater by default.
+Three capabilities **opt-in**, excluded from default install: **issue tracker** (`--tracker=github|linear`), **dependency updater** (`--dependency=renovate` or `--dependency=dependabot`, mutually exclusive), **cloud agents** (`--auto=claude|cursor|opencode`, ships phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — default install ships zero cloud footprint). Default wires none; post-install advisory emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none`. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); `"none"` silences nudge. Cloud router split: each job inert without model-auth secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) + GHA write permissions + (Cursor) dashboard trigger; depends on opt-in GitHub tracker. Decide: run install → pick via flags above → or set `"none"` to silence. Full rationale: `node_modules/@cbartens/bkit/README.md` § Optional post-install decisions. bkit-repo dogfoods neither updater by default.
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
