@@ -485,6 +485,19 @@ export const BKIT_SHIPPED_NETWORK_DOMAINS: readonly string[] = [
 ];
 
 /**
+ * Apex-only unique bases from an expanded (apex + `*.`) domain list.
+ *
+ * Single call site (injectOpencodeNetworkCurlAllows in bkit-modules.ts), kept as a
+ * named export because (a) bkit-modules.ts is covered by the INTEGRATION lane only
+ * — inlining here would move these branches out of the unit-lane's measured file
+ * (bkit-cloud-env.ts) and silently erode the unit coverage floor, and (b) the
+ * apex-collapse is the same shape as expandAllowedDomains above; named for review.
+ */
+export function networkAllowlistBases(expanded: string[]): string[] {
+  return [...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean))].sort();
+}
+
+/**
  * Local + cloud network allowlist: stack-agnostic tooling defaults ∪ consumer
  * `allowed-domains` from `.agents/config.md` (after `<!-- bkit:end -->`), each as
  * apex + `*.` wildcard. Empty consumer block ⇒ tooling hosts only — no Vercel/etc.

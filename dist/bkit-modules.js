@@ -14,7 +14,7 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortR
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1408,11 +1408,7 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
     if (!permission || typeof permission.bash !== "object" || permission.bash === null)
         return;
     const bash = permission.bash;
-    const expanded = resolveNetworkAllowlist(cwd);
-    const bases = [
-        ...new Set(expanded.map((d) => d.replace(/^\*\./, "").trim()).filter(Boolean)),
-    ].sort();
-    for (const base of bases) {
+    for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
         bash[`curl *${base}*`] = "allow";
         bash[`wget *${base}*`] = "allow";
     }

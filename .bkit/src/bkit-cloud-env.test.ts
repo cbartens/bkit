@@ -15,6 +15,8 @@ import {
   renderCloudCacheBust,
   extractAllowedDomains,
   expandAllowedDomains,
+  networkAllowlistBases,
+  writeNetworkAllowlistArtifact,
   renderCloudNetworkAllowlist,
   resolveNetworkAllowlist,
   BKIT_SHIPPED_NETWORK_DOMAINS,
@@ -377,6 +379,23 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     ]);
   });
 
+  it("networkAllowlistBases collapses wildcards to apex, dedupes, and sorts", () => {
+    expect(
+      networkAllowlistBases(["*.sentry.io", "inngest.com", "*.inngest.com", "sentry.io"]),
+    ).toEqual(["inngest.com", "sentry.io"]);
+  });
+
+  it("networkAllowlistBases drops empty/whitespace entries and trims", () => {
+    expect(networkAllowlistBases(["  npmjs.com  ", "", "   ", "*.z.ai"])).toEqual([
+      "npmjs.com",
+      "z.ai",
+    ]);
+  });
+
+  it("networkAllowlistBases returns [] for an empty input", () => {
+    expect(networkAllowlistBases([])).toEqual([]);
+  });
+
   it("renders the Trusted fallback (with pointer) when nothing is declared", () => {
     const out = renderCloudNetworkAllowlist(tmpDir);
     expect(out).toContain("Set to **Trusted** (default)");
@@ -546,5 +565,49 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
     // Sanity: the real template exists, so a normal call returns true. (Absence is
     // covered structurally — writeCursorCloudDoc short-circuits on a missing src.)
     expect(writeCursorCloudDoc(tmpDir, TOKENS, "none")).toBe(true);
+  });
+});
+
+describe("writeNetworkAllowlistArtifact — .cursor/allowlist.json writer", () => {
+  const rel = path.join(".cursor", "allowlist.json");
+
+  it("writes the file when absent (dry-run=false) and reports wrote=true", () => {
+    const res = writeNetworkAllowlistArtifact(tmpDir, false);
+    expect(res.wrote).toBe(true);
+    expect(res.path).toBe(rel);
+    const written = JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
+    expect(Array.isArray(written.domains)).toBe(true);
+    expect(written.domains.length).toBeGreaterThan(0);
+    // Shipped defaults must be apex + wildcard expanded
+    expect(written.domains).toContain("github.com");
+    expect(written.domains).toContain("*.github.com");
+  });
+
+  it("is idempotent — a second write with no change reports wrote=false", () => {
+    writeNetworkAllowlistArtifact(tmpDir, false);
+    const res = writeNetworkAllowlistArtifact(tmpDir, false);
+    expect(res.wrote).toBe(false);
+  });
+
+  it("dry-run does NOT write, but reports wrote=true when the file is missing", () => {
+    const res = writeNetworkAllowlistArtifact(tmpDir, true);
+    expect(res.wrote).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, rel))).toBe(false);
+  });
+
+  it("dry-run reports wrote=false when the file already matches", () => {
+    writeNetworkAllowlistArtifact(tmpDir, false); // seed
+    const res = writeNetworkAllowlistArtifact(tmpDir, true);
+    expect(res.wrote).toBe(false);
+  });
+
+  it("picks up consumer allowed-domains from .agents/config.md", () => {
+    write(
+      ".agents/config.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nexample.invalid\n<!-- allowed-domains:end -->\n",
+    );
+    const res = writeNetworkAllowlistArtifact(tmpDir, false);
+    expect(res.domains).toContain("example.invalid");
+    expect(res.domains).toContain("*.example.invalid");
   });
 });
