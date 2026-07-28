@@ -29,6 +29,16 @@ if ! printf '%s' "$INPUT" | grep -q '"is_background_agent"[[:space:]]*:[[:space:
   exit 0
 fi
 
+# Runtime bridge — `is_background_agent` arrives ONLY on this hook's stdin JSON,
+# so a workflow shell has no way to see it. Drop a marker `bkit-runtime.sh`
+# reads back as RUNTIME=CLOUD_CURSOR. Gitignored, and a Cursor Cloud Agent gets
+# a fresh clone per session, so it cannot go stale. Best-effort: a failure here
+# degrades detection to LOCAL, it must never block the session.
+if BKIT_REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) && [[ -d "$BKIT_REPO_ROOT/.bkit" ]]; then
+  printf 'CLOUD_CURSOR\n' > "$BKIT_REPO_ROOT/.bkit/.runtime-cursor" 2>/dev/null \
+    || echo "[bkit-runtime] could not write .bkit/.runtime-cursor — runtime will resolve as LOCAL" >&2
+fi
+
 # emit_context — Cursor sessionStart expects { additional_context: ... } directly.
 # (Claude variant: wraps in { hookSpecificOutput: { hookEventName, additionalContext } }.)
 emit_context() {

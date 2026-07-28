@@ -101,3 +101,17 @@ Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces; 
 | `detectVercelEnv` | Vercel preview and production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.
+
+## Runtime capability row
+
+Each phase workflow's Step 2 (Worktree Setup — the first point `{FID}`/`WORKTREE_PATH` are resolved) resolves `.bkit/scripts/bkit-runtime.sh`'s capability table (`RUNTIME`/`CAN_WORKTREE`/`CAN_PUSH_DEV`/`CAN_SLEEP`/`GH_OK`) and records it once as a `runtime-resolved` `status.jsonl` row, via `bkit_runtime_row` called in the SAME bash block as `bkit_runtime_detect`/`bkit_runtime_assert_resolved` (D21 state-model requirement — the row is the durable, cross-block record later steps read `GH_OK` back from instead of re-probing `gh`). Row shape → `.bkit/workflows.md` § Status. `gh`-preflight loudness (never silent, non-blocking dual-lane signal) lives in `.claude/hooks/cloud-bootstrap.sh`.
+
+The Close Workflow's close-guard kernel (`bkit-runtime.sh`'s `bkit_close_guard_*` helpers) adds two more rows, both transport-agnostic: `transport-fallback` (one per gh->MCP transition, bounded max 1/run) and `close-transport` (the shape that ran, the landed SHA, and the D24 post-close skip-token-scan result). Row shapes → `.bkit/workflows.md` § Status.
+
+## gh→MCP fallback lane + peripheral loudness
+
+Every phase workflow header (`bkit-{design,plan,build,debug,ship}.md`) carries an additive **gh→MCP fallback** rule (Flow 6): when a gh command on the PR/CI/merge surface is unavailable (`GH_OK=false`), the agent uses the mapped MCP tool instead (`actions_list`/`actions_get`/`get_job_logs`/`download_workflow_run_artifact` require the `actions` MCP toolset, C1) — bounded to max 1 transition per run, recorded via `bkit_transport_fallback_row`, success-asserted by an independent re-read, with empty/zero MCP reads treated as INCONCLUSIVE (never authoritative absence) per D12. Trackers stay on MCP always (§6i) — the rule covers only the gh-covered surface.
+
+`bkit-worktree-{prune,sync}.md` (human-triggered utility commands, meaningless in adopt mode) call `bkit_worktree_helper_guard` and **self-skip loudly** — a distinguishable stdout message, never a silent no-op — when `CAN_WORKTREE=false`.
+
+`/bkit-debug`'s runtime `debug-fetch` narration (Step "Fetch Context") distinguishes `CHECKED` / `SELF-SKIPPED` / `NO BLOCKS CONFIGURED` per block, every attempt — a self-skip `exit 0` (missing CLI/token, or a host blocked by the cloud Trusted-egress allowlist, `.agents/config.md` § Cloud allowed domains) is never read as "no runtime errors"; it is logged as unavailable, not clean. This half carries no automated assertion — verified manually (run `/bkit-debug` in a `CAN_WORKTREE=false` runtime, confirm the loud narration) per the honest limit D3, an intentional asymmetry with the bats-tested worktree-helper self-skip above.

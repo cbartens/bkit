@@ -84,6 +84,8 @@ GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) 
 
 **PR-body marker trust:** `bkit-cloud.yml` SHARED-DERIV parses `bkit:issue=#N` / `bkit:fid=X` from PR body to resolve which issue's `bkit:auto` label to re-check (kill switch). PR body is collaborator-trusted (triage/write), not commit-signed — editing it to point at another issue could defeat the kill switch for the original (if replacement still carries `bkit:auto`). Mitigation: `bkit [auto route]` commit marker (free tier) must be on HEAD; PR body cannot forge commit markers. Gap is collaborator-vs-collaborator only; branch-derived FID fallback when body markers absent. Future hardening: cross-check `bkit:issue` vs `gh pr view --json closingIssuesReferences`.
 
+**FID slug allowlist:** the marker-derived `{FID}` (`bkit-auto` step 9, marker-primary) flows into filesystem paths (`docs/plans/{YYYYMM}/logs/{FID}/…`, `.worktrees/{FID}`) and downstream `/bkit-*` dispatch. Because the PR body is collaborator-trusted, every FID resolution site MUST assert a strict slug allowlist before path construction — `^[0-9]+-[a-z0-9-]+$` (github) / `^[a-z]+-[0-9]+-[a-z0-9-]+$` (linear) / `^[a-z0-9][a-z0-9-]*$` (no-tracker + branch-derive) — rejecting `/`, `.`, `..`, and shell metacharacters so a marker like `bkit:fid=../../elsewhere` cannot redirect writes. Marker failing the assertion falls through to the branch-derive fallback; branch-derive failing it is a Failure Path.
+
 ## PII
 
 No user PII processed, stored, or transmitted. Log lines use `[bkit-*]` prefix per naming convention. NEVER log consumer repo content verbatim in production output paths.

@@ -22,18 +22,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`; **if** none exists default to the current UTC month `date -u +%Y%m`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|FAIL|CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`); `debugAttempt` is carried by a `workflow-meta` event. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean.
-> - **Status branch:** debug status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO `dev` push.
+> - **Status branch:** status.jsonl committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO pushes.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
+> - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` / `fix/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
@@ -42,6 +43,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Limits:** Three counters derived from status.jsonl in fenced blocks below; caps from `bkit-counter-bus-config.sh`: `{DEBUG_ATTEMPT}`/`MAX_DEBUG_ATTEMPT` (cross-run; over → fresh `SOAK` run), `{NORMAL_ATTEMPT}`/`MAX_NORMAL_ATTEMPT`, `{SOAK_ATTEMPT}`/`MAX_SOAK_ATTEMPT` (resets on each `SOAK` entry).
 > - **Modes:** `PUSH_MODE` (`PR|LOCAL`) decided at Step 1; `DEBUG_MODE` (`NORMAL|SOAK`) at Step 1. `DEBUG_MODE` selects fix step: `NORMAL` → Diagnose (5) and Remediate (6); `SOAK` → Failure Remediate Soak (7). Entry: `[soak]` / soak criteria / exceeding `MAX_DEBUG_ATTEMPT` → `SOAK`. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts `MAX_NORMAL_ATTEMPT`; either switch resets the SOAK budget (fresh `{SOAK_ATTEMPT}`). `SOAK` is terminal.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
+> - **CI wait turn-loop:** **If** CI-wait blocks exit 3 `sleep blocked` → runtime cannot poll in bash → resolve same poll in agent turn-loop: Each orchestrator turn run once `gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length'` — result > 0 → outcome `dispatched`; 6th unresolved turn → outcome `unresolved`, reason `gh-error`; **Else** end turn and repeat. Re-run blocks with `BKIT_CI_OUTCOME` = resolved outcome, `BKIT_CI_ATTEMPTS` = turn count, `BKIT_CI_ALL_ERRORED` = true only when every turn errored.
 
 ---
 
@@ -212,51 +214,62 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Create/resume the worktree:
+1. Create / resume worktree, or adopt current branch in place:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   git worktree prune
-   WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-   if [ -d "$WORKTREE_PATH" ]; then
-     cd "$WORKTREE_PATH"
-     rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
-     git fetch origin dev
-     if ! git rebase --rebase-merges origin/dev; then
-       CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
-       if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
-         git checkout --theirs pnpm-lock.yaml
-         pnpm install --lockfile-only
-         git add pnpm-lock.yaml
-         if ! git rebase --continue; then
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
+   bkit_runtime_assert_resolved || exit 2
+   if [ "$RUNTIME_WORKTREES" = "true" ]; then
+     git worktree prune
+     WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
+     if [ -d "$WORKTREE_PATH" ]; then
+       cd "$WORKTREE_PATH"
+       rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+       git fetch origin dev
+       if ! git rebase --rebase-merges origin/dev; then
+         CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+         if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
+           git checkout --theirs pnpm-lock.yaml
+           pnpm install --lockfile-only
+           git add pnpm-lock.yaml
+           if ! git rebase --continue; then
+             git rebase --abort 2>/dev/null || true
+             mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
+             touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+           fi
+         else
            git rebase --abort 2>/dev/null || true
+           echo "Rebase conflict" >&2
            mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
            touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
          fi
-       else
-         git rebase --abort 2>/dev/null || true
-         echo "Rebase conflict" >&2
-         mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
-         touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
        fi
-     fi
-   else
-     if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
-       git worktree add "$WORKTREE_PATH" "feat/{FID}"
-     elif git fetch origin "feat/{FID}" 2>/dev/null \
-          && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
-       git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
      else
-       git fetch origin dev
-       git worktree add "$WORKTREE_PATH" -b "fix/{FID}" origin/dev
+       if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
+         git worktree add "$WORKTREE_PATH" "feat/{FID}"
+       elif git fetch origin "feat/{FID}" 2>/dev/null \
+            && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
+         git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
+       else
+         git fetch origin dev
+         git worktree add "$WORKTREE_PATH" -b "fix/{FID}" origin/dev
+       fi
+       cd "$WORKTREE_PATH"
      fi
+     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
+     for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
+       [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
+     done
+     [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
+     pnpm install --frozen-lockfile
+   else
+     WORKTREE_PATH="$REPO_ROOT"
      cd "$WORKTREE_PATH"
+     [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
+     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
-   mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
-   for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
-     [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
-   done
-   [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
-   pnpm install --frozen-lockfile
+   bkit_runtime_row debug "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
@@ -307,7 +320,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
+- [ ] Worktree created / resumed or current branch adopted
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] On branch that passed eligibility
 - [ ] Counters derived per-block from status.jsonl
@@ -507,7 +520,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
    [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
    ```
-5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`:
+5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`. **If** `RUNTIME_GITHUBCLI` = false → `gh run download -n playwright-report` fallback is `actions_get` method `download_workflow_run_artifact`, else `get_job_logs` (`failed_only=true`):
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
@@ -546,13 +559,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
-7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`:
+7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`. Distinctly narrate each block outcome; ALWAYS note blocks with fetch issues to avoid downstream interpretation as clean run:
    ````bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
+   if [ -z "$FETCH_NAMES" ]; then
+     echo "[bkit-debug] debug-fetch: NO BLOCKS CONFIGURED (.agents/config.md has none enabled) — runtime-log absence this attempt is UNCHECKED, not confirmed clean"
+   fi
    BLOCK=$(printf '%s\n' "$SECTION" | awk -v want="$NAME" '
      /^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); cur=(n==want); next }
      /^<!-- debug-fetch:end -->$/ { cur=0; next }
@@ -562,7 +578,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    RUNTIME_LOGS=$({customised BLOCK} 2>"$ERRF")
    SKIP=$(grep -m1 '^\[debug-fetch:' "$ERRF"); rm -f "$ERRF"
    OUT="docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${SUFFIX}${DEBUG_ATTEMPT}.md"
-   if [ -n "$RUNTIME_LOGS" ]; then printf '%s' "$RUNTIME_LOGS" > "$OUT"; elif [ -n "$SKIP" ]; then printf '%s\n' "$SKIP" > "$OUT"; fi
+   if [ -n "$RUNTIME_LOGS" ]; then
+     printf '%s' "$RUNTIME_LOGS" > "$OUT"
+     echo "[bkit-debug] debug-fetch:${NAME:-default} CHECKED — data returned"
+   elif [ -n "$SKIP" ]; then
+     printf '%s\n' "$SKIP" > "$OUT"
+     echo "[bkit-debug] debug-fetch:${NAME:-default} SELF-SKIPPED ($SKIP) — NOT CHECKED; this is NOT evidence of 'no runtime errors' (Trusted egress may also silently block the host — see .agents/config.md § Cloud allowed domains)"
+   else
+     echo "[bkit-debug] debug-fetch:${NAME:-default} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)"
+   fi
    ````
 8. `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 9. Update status and commit:
@@ -964,25 +988,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
      PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
      # --- CI-Dispatch Gate shared kernel ---
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ci-gate] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
      POLL_BUDGET_S=60; POLL_INTERVAL_S=10
      PUSHED_HEAD=$(git rev-parse HEAD)
-     CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
-     echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-     poll_dispatch() {
-       local out rc
-       out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
-         '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length' 2>/dev/null); rc=$?
-       [ "$rc" -ne 0 ] && { echo "err"; return; }
-       GH_ALL_ERRORED="false"
-       [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
-     }
-     elapsed=0
-     while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-       CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-       echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-       [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
-       sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-     done
+     CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
+     if [ -n "${BKIT_CI_OUTCOME:-}" ]; then
+       CI_OUTCOME="$BKIT_CI_OUTCOME"; CI_ATTEMPTS="${BKIT_CI_ATTEMPTS:-0}"; GH_ALL_ERRORED="${BKIT_CI_ALL_ERRORED:-false}"
+       echo "[bkit-ci-gate] outcome supplied by agent turn-loop: $CI_OUTCOME (attempts $CI_ATTEMPTS)"
+     else
+       echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+       bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+       CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+       [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+       [ "$CI_WAIT_BLOCKED" = "true" ] && { echo "[bkit-ci-gate] sleep blocked — resolve the poll in an agent turn-loop, then re-run this block with BKIT_CI_OUTCOME set" >&2; exit 3; }
+     fi
      # --- end CI-Dispatch Gate shared kernel ---
      if [ -z "$CI_OUTCOME" ]; then
        if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -996,15 +1016,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
          if [ -z "$CI_OUTCOME" ]; then
            git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
            B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
-           PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
-           echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
-           while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-             CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-             echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-             [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
-             sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-           done
-             RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
+           echo "[bkit-ci-gate] re-trigger pushed; re-polling"
+           bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+           CI_ATTEMPTS=$((CI_ATTEMPTS + CI_WAIT_ATTEMPTS))
+           PUSHED_HEAD=$(git rev-parse HEAD)
+           [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="self-healed"
+           RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
            if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
              CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
              echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
@@ -1025,10 +1042,34 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
          (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
      case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+     # --- Post-close body scan + transport cross-check + close-transport row ---
+     CLOSE_TRANSPORT="gh"
+     bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
+     case "$SCAN_RC" in
+       0) SCAN_RESULT="clean" ;;
+       1) SCAN_RESULT="skip-token-found" ;;
+       *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+     esac
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+     bkit_close_transport_row "push" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PUSHED_HEAD inherited a CI-suppression token in its body" >&2; exit 1; }
    else
+     REPO_ROOT=$(git rev-parse --show-toplevel)
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-close-guard] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
      jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
        '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
        >> "$STATUS"
+     # --- Post-close body scan + transport cross-check + close-transport row ---
+     CLOSE_TRANSPORT="gh"
+     bkit_close_guard_scan_body "$PARENT_SHA"; SCAN_RC=$?
+     case "$SCAN_RC" in
+       0) SCAN_RESULT="clean" ;;
+       1) SCAN_RESULT="skip-token-found" ;;
+       *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PARENT_SHA" >&2; exit 1 ;;
+     esac
+     bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+     bkit_close_transport_row "push" "$PARENT_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+     [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PARENT_SHA inherited a CI-suppression token in its body" >&2; exit 1; }
    fi
    ```
 3. Capture branch state:
@@ -1078,25 +1119,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
    PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
    # --- CI-Dispatch Gate shared kernel ---
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ci-gate] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    POLL_BUDGET_S=60; POLL_INTERVAL_S=10
    PUSHED_HEAD=$(git rev-parse HEAD)
-   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
-   echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
-   poll_dispatch() {
-     local out rc
-     out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
-       '[.statusCheckRollup[]? | select(.name // .context // "" | test("bkit-tests|decide"; "i"))] | length' 2>/dev/null); rc=$?
-     [ "$rc" -ne 0 ] && { echo "err"; return; }
-     GH_ALL_ERRORED="false"
-     [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
-   }
-   elapsed=0
-   while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-     echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-     [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
-     sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-   done
+   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"
+   if [ -n "${BKIT_CI_OUTCOME:-}" ]; then
+     CI_OUTCOME="$BKIT_CI_OUTCOME"; CI_ATTEMPTS="${BKIT_CI_ATTEMPTS:-0}"; GH_ALL_ERRORED="${BKIT_CI_ALL_ERRORED:-false}"
+     echo "[bkit-ci-gate] outcome supplied by agent turn-loop: $CI_OUTCOME (attempts $CI_ATTEMPTS)"
+   else
+     echo "[bkit-ci-gate] polling for a bkit CI check on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+     bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+     CI_ATTEMPTS="$CI_WAIT_ATTEMPTS"; GH_ALL_ERRORED="$CI_WAIT_ALL_ERRORED"
+     [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="dispatched"
+     [ "$CI_WAIT_BLOCKED" = "true" ] && { echo "[bkit-ci-gate] sleep blocked — resolve the poll in an agent turn-loop, then re-run this block with BKIT_CI_OUTCOME set" >&2; exit 3; }
+   fi
    # --- end CI-Dispatch Gate shared kernel ---
    if [ -z "$CI_OUTCOME" ]; then
      if [ "$GH_ALL_ERRORED" = "true" ]; then
@@ -1110,14 +1147,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        if [ -z "$CI_OUTCOME" ]; then
          git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
          B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
-         PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
-         echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
-         while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
-           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_dispatch)
-           echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
-           [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
-           sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
-         done
+         echo "[bkit-ci-gate] re-trigger pushed; re-polling"
+         bkit_wait_ci "$PR_NUMBER" "$POLL_BUDGET_S" "$POLL_INTERVAL_S"
+         CI_ATTEMPTS=$((CI_ATTEMPTS + CI_WAIT_ATTEMPTS))
+         PUSHED_HEAD=$(git rev-parse HEAD)
+         [ "$CI_WAIT_RESULT" = "found" ] && CI_OUTCOME="self-healed"
          RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
          if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
            CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
@@ -1137,6 +1171,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
      >> "$STATUS"
    case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+   # --- Post-close body scan + transport cross-check + close-transport row ---
+   CLOSE_TRANSPORT="gh"
+   bkit_close_guard_scan_body "$PUSHED_HEAD"; SCAN_RC=$?
+   case "$SCAN_RC" in
+     0) SCAN_RESULT="clean" ;;
+     1) SCAN_RESULT="skip-token-found" ;;
+     *) echo "Post-close body scan errored (rc=$SCAN_RC) on $PUSHED_HEAD" >&2; exit 1 ;;
+   esac
+   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
+   bkit_close_transport_row "push" "$PUSHED_HEAD" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $PUSHED_HEAD inherited a CI-suppression token in its body" >&2; exit 1; }
    ```
 9. No issue changes.
     **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.

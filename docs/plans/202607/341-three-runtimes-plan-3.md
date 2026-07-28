@@ -75,10 +75,10 @@ bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (
 
 ## 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions incl. OQ-C branch-protection). _(Unchecked → `REVISE`.)_
-- [ ] **Prerequisite:** Sub-Plan 1 landed (T2 marker-primary FID — required for adopt mode; T3 shim — extended by T9). Sub-Plan 2's `bkit-{build,debug,ship}.md` edits landed (serialise).
-- [ ] **Project Context:** `docs/knowledge.jsonl`; `docs/decisions.jsonl`. New `status.jsonl` row types (`transport-fallback`/`close-transport`) follow `.bkit/jsonl.md`.
-- [ ] **Gate 1 - Verified.**
+- [x] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions incl. OQ-C branch-protection). _(Unchecked → `REVISE`.)_
+- [x] **Prerequisite:** Sub-Plan 1 landed (T2 marker-primary FID — required for adopt mode; T3 shim — extended by T9). Sub-Plan 2's `bkit-{build,debug,ship}.md` edits landed (serialise).
+- [x] **Project Context:** `docs/knowledge.jsonl`; `docs/decisions.jsonl`. New `status.jsonl` row types (`transport-fallback`/`close-transport`) follow the existing NDJSON row shape (`.bkit/workflows.md` § Status).
+- [x] **Gate 1 - Verified.**
 
 ## Derived Test Matrix (this sub-plan)
 
@@ -93,36 +93,36 @@ _(T8's adopt-or-mint consumption is covered by Sub-Plan 1 row 4 (`WORKTREE_PATH`
 
 ## Agent Execution Runbook
 
-- [ ] **T8 — WS-9: Adopt-or-mint branch model + the 13 coupled sites, ONE commit (D7/D8/Flow 2). Requires T2's marker-primary FID resolution** — adopt mode is only reachable via `bkit-auto` once the `feat/`-prefix hard-reject is deleted (T2), so land T2 first. Step 2 of all five phases: `CAN_WORKTREE=true`→mint (untouched); `false`→adopt in place, `WORKTREE_PATH=$REPO_ROOT`, assert `branch != dev`. Ship together: `pwd != WORKTREE_PATH` rewrite (5 files), Placeholders redefinition (5 files), 5 `Worktree created/resumed` + 3 `Worktree removed` gate items removed/gated, 6 `WORKTREE_PATH` assignment sites. Verify build/debug/ship Step-2 uniformity (assumption). **Done when:** adopt mode takes every step without a `pwd`-outside-worktree Failure Path; all 13 coupled sites land in one commit; `WORKTREE_PATH` resolution covered by T3 row 4; prose-audit (T16 row 15) sees a `CAN_WORKTREE` reader at each site; consumption verified live in T16.
-- [ ] **T9 — WS-10: Close-guard + close-audit kernel, transport-agnostic (D23/D24/D25/Risk 4).** Shim helpers: D23 double-guard (`CAN_WORKTREE=true AND CAN_PUSH_DEV=true`) + reversible trap-restored checkout; D24 post-close `git log -1 --format=%B <SHA>` skip-token scan (fetch first for server-side); D25 cross-check (`GH_OK=false` + mapped-tool ⇒ `transport-fallback` row MUST exist). Emit `transport-fallback` + `close-transport` rows. Commit the Risk-4 pre-close assertion (on the real push) + write the `docs/deployments.md` dependency; record OQ5 not-adopted. **Done when:** **Integration (bats)** rows 7–9 pass over real git + real `status.jsonl`: D24 flags `[skip ci]` in a landed body → Failure Path; D25 flags a missing `transport-fallback` row → Failure Path; D23 double-guard + trap-restore keeps the original branch.
+- [x] **T8 — WS-9: Adopt-or-mint branch model + the 13 coupled sites, ONE commit (D7/D8/Flow 2). Requires T2's marker-primary FID resolution** — adopt mode is only reachable via `bkit-auto` once the `feat/`-prefix hard-reject is deleted (T2), so land T2 first. Step 2 of all five phases: `CAN_WORKTREE=true`→mint (untouched); `false`→adopt in place, `WORKTREE_PATH=$REPO_ROOT`, assert `branch != dev`. Ship together: `pwd != WORKTREE_PATH` rewrite (5 files), Placeholders redefinition (5 files), 5 `Worktree created/resumed` + 3 `Worktree removed` gate items removed/gated, 6 `WORKTREE_PATH` assignment sites. Verify build/debug/ship Step-2 uniformity (assumption). **Done when:** adopt mode takes every step without a `pwd`-outside-worktree Failure Path; all 13 coupled sites land in one commit; `WORKTREE_PATH` resolution covered by T3 row 4; prose-audit (T16 row 15) sees a `CAN_WORKTREE` reader at each site; consumption verified live in T16.
+- [x] **T9 — WS-10: Close-guard + close-audit kernel, transport-agnostic (D23/D24/D25/Risk 4).** Shim helpers: D23 double-guard (`CAN_WORKTREE=true AND CAN_PUSH_DEV=true`) + reversible trap-restored checkout; D24 post-close `git log -1 --format=%B <SHA>` skip-token scan (fetch first for server-side); D25 cross-check (`GH_OK=false` + mapped-tool ⇒ `transport-fallback` row MUST exist). Emit `transport-fallback` + `close-transport` rows. Commit the Risk-4 pre-close assertion (on the real push) + write the `docs/deployments.md` dependency; record OQ5 not-adopted. **Done when:** **Integration (bats)** rows 7–9 pass over real git + real `status.jsonl`: D24 flags `[skip ci]` in a landed body → Failure Path; D25 flags a missing `transport-fallback` row → Failure Path; D23 double-guard + trap-restore keeps the original branch.
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** close-guard helpers extend the existing shim (not a parallel script); no `.skip`/`@ts-ignore`/empty `catch`/error-swallowing introduced to pass a gate.
-- [ ] **Gate 2 - Verified:** Every task checkbox independently verified.
+- [x] **No bolt-on / no gate-weakening:** close-guard helpers extend the existing shim (not a parallel script); no `.skip`/`@ts-ignore`/empty `catch`/error-swallowing introduced to pass a gate.
+- [x] **Gate 2 - Verified:** Every task checkbox independently verified.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage:** rows 7–9→T9 map to checked tasks; T8 covered by row 4 (Sub-Plan 1) + prose audit (Sub-Plan 6).
-- [ ] **Write new tests:** rows 7–9 added to `tests/bkit-runtime.bats`.
-- [ ] **Verify observability:** the three `status.jsonl` row types (`runtime-resolved` from Sub-Plan 1, `transport-fallback`/`close-transport` here) documented in `docs/observability.md` / `.bkit/workflows.md`.
-- [ ] **Update documentation:** `docs/deployments.md` branch-protection + auto-delete-head-branches dependency (Risk 4); `.bkit/workflows.md` § Status — document `transport-fallback`/`close-transport` row shapes.
+- [x] **Verify test coverage:** rows 7–9→T9 map to checked tasks; T8 covered by row 4 (Sub-Plan 1) + prose audit (Sub-Plan 6).
+- [x] **Write new tests:** rows 7–9 added to `tests/bkit-runtime.bats`.
+- [x] **Verify observability:** the three `status.jsonl` row types (`runtime-resolved` from Sub-Plan 1, `transport-fallback`/`close-transport` here) documented in `docs/observability.md` / `.bkit/workflows.md`.
+- [x] **Update documentation:** `docs/deployments.md` branch-protection + auto-delete-head-branches dependency (Risk 4); `.bkit/workflows.md` § Status — document `transport-fallback`/`close-transport` row shapes.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
-- [ ] **Gate 3 - Verified.**
+- [x] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
+- [x] **Gate 3 - Verified.**
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · vale · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate.
-- [ ] **New bats:** `tests/bkit-runtime.bats` rows 7–9 execute over a real git repo + real `status.jsonl` and pass.
+- [x] **Full local gate suite:** `pnpm typecheck` (pass) · `pnpm format:check` (pass) · `pnpm lint:prose` (0/0/0) · `pnpm lint:slop` (10 pre-existing findings, unchanged) + `slop:delta` (net 0) · `pnpm bkit check` (EXPECTED `.bkit/scripts/bkit-runtime.sh` core-template drift only — batch mirror regen deferred to Sub-Plan 6 per D19; no other drift) · `pnpm test` (68 files / 2458 passed, 2 skipped, 1 todo) · `pnpm test:bats` (94/94 pass). No gate weakened.
+- [x] **New bats:** `tests/bkit-runtime.bats` rows 7–9 (12 new tests) execute over a real git repo + real `status.jsonl` and pass.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof.
+- [x] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof (test output / CLI results, captured in the execution log).
 
 ## Merge Method
 

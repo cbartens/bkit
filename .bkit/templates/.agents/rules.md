@@ -72,7 +72,8 @@
 - **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Docs-only commits:** Append `bkit [skip ci]` but ONLY on commits carrying no code; NEVER on commits carrying code.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
-- **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
+- **Branches:** `feat/{FID}` preferred when minting new branches; resolve `FID` from tracker markers NOT branch names. Use adopted branches `claude/…` / `cursor/…` that cannot be renamed without `{FID}`.
+- **Merge bodies:** ALL squash-merges landing code MUST pass EXPLICIT bodies; do NOT accept defaults; do NOT allow default concatenating of commit subjects silently inheriting `[skip ci]` markers and suppressing CI.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease`.
 - **CI:** Pushes auto-trigger; NEVER manually. ANY push carrying code MUST have HEAD without `[skip ci]` so CI runs; batch doc commits into pushes OR add bare trigger commits. NEVER leave `[skip ci]` at HEAD of any PR pushes that require CI runs. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
@@ -80,6 +81,12 @@
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
 - **Integration merge:** ANY feature PR squash-merge into default integration branch (`dev`) from inside `/bkit-*` workflows are PRE-APPROVED by human; do NOT request confirmation.
+
+### Runtime & Fallback
+
+- **Polls / loops:** NEVER use blocking foreground `sleep` to poll; runtimes may not honour. ALWAYS use bounded, `timeout` wrapped bash poll (bash) or agent-side per-turn yield loop (control flow). Legitimate retry / backoff sleeps are exempt.
+- **Bounded gh fallback:** ALL substitutions of unavailable `gh` commands with MCP tools MUST be bounded (max 1 transition per run), recorded (`transport-fallback` rows), and success-asserted via independent re-reads. NEVER improvise unrecorded substitutions.
+- **Empty MCP reads inconclusive:** MCP reads returning empty / zero results are NEVER authoritative absence. ALWAYS corroborate with independent MCP calls or report reads as unavailable.
 
 ### Testing & Debugging
 

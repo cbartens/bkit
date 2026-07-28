@@ -135,6 +135,15 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 
 Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
 
+## Autonomous phase-close prerequisites
+
+Design/plan Close Workflow lands docs on `dev` two ways. When the runtime can push `dev` (`RUNTIME_DEVPUSHES=true` — laptop, GitHub-Actions runner) it runs the local squash-merge and direct push: **no repo setting is required, and no PR is created**. When it cannot (cloud agent session, or an unclassified runtime) it opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted — no admin-scope token is required; the dependency asserts itself by the close's own merge failing loudly.
+
+- **Branch protection on `dev` permits the autonomous merge** — no required human review. The PR-path merge does **not** wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
+- **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch` — `gh` also deletes the local branch, which fails when that branch is checked out in a worktree and returns non-zero _after_ a successful merge. Head-branch cleanup relies on the repo setting instead.
+
+Confirm both before running phase closes from a cloud agent session.
+
 ## Run-level decision matrix
 
 Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level` / optional `run_migration`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` capstone joins them (asserts every expected tier ran and passed). Static/unit/build/integration wait only on the planner. **One exception (#385):** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane with `result != 'failure'` so they cannot race a schema the push has not applied (and a from-empty failure cannot reach remote). Do **not** gate live behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing). `bkit-tests-migration` (DB repos): always-on (no job-level `if:`); replay plan-/path-gated per-step; remote push on every `dev`/`main` push, un-gated by `run_migration` (self-heal); capstone asserts success whenever scope succeeded (`bkit-stub:bkit-tests-migration`). Before CI speed spend: **measure job graph, find pole** — same consumer: setup levers (browser cache, `node_modules` cache, composite setup, fetch-depth) ~3%; one `needs:` edge 35%; lever on non-pole lane = zero gain. Starter `ci.yml` ships primitives; **FULL CI SCAFFOLD REFERENCE** at end of `.github/workflows/ci.yml` reproduces every step for tier adoption. Table below: `none` / `partial` / `full` shape primitives + plan plug into.

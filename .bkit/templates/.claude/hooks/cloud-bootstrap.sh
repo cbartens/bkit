@@ -57,9 +57,44 @@ fi
 # stored creds), so the `gh auth status` guard no-ops there; it fires only where gh
 # isn't yet authed — e.g. Claude Code on the web. GH_BKIT_TOKEN comes from the
 # dashboard env vars (see cloud.md § Environment variables).
-if command -v gh >/dev/null 2>&1 && [ -n "${GH_BKIT_TOKEN:-}" ] && ! gh auth status >/dev/null 2>&1; then
+#
+# gh hardening (#341 C2): prefer the SANCTIONED `GH_TOKEN`/`GITHUB_TOKEN` env
+# var over `gh auth login --with-token`. gh reads GH_TOKEN -> GITHUB_TOKEN
+# with TOP precedence over any stored `gh auth login` credential (gh manual;
+# cli/cli#2922) — a placeholder/stray GH_TOKEN the platform happens to set
+# silently overrides a successful --with-token login. So: if GH_TOKEN or
+# GITHUB_TOKEN is already present, trust that lane and do NOT fight it with
+# --with-token; only fall back to logging in from GH_BKIT_TOKEN when neither
+# sanctioned env var is set. Single shared token — GH_BKIT_TOKEN is the one
+# secret both this hook (gh) and the GitHub MCP server (.mcp.json's
+# Authorization header) read; no second secret is introduced.
+if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+  log "gh-preflight: sanctioned GH_TOKEN/GITHUB_TOKEN env present — trusting it over --with-token"
+elif command -v gh >/dev/null 2>&1 && [ -n "${GH_BKIT_TOKEN:-}" ] && ! gh auth status >/dev/null 2>&1; then
   log "gh auth login --with-token"
   printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+fi
+
+# gh-preflight (#341 C2): loud, NEVER-silent RUNTIME_GITHUBCLI record. SessionStart hooks
+# cannot hard-stop the session (see header note) — this line is a loud,
+# NON-BLOCKING signal only. The ENFORCING dual-lane abort lives in each
+# workflow's Step-1 preflight (the shim reading RUNTIME_GITHUBCLI — see
+# bkit-runtime.sh's bkit_runtime_detect / bkit_runtime_assert_resolved), NOT
+# here.
+if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+  RUNTIME_GITHUBCLI=true
+else
+  RUNTIME_GITHUBCLI=false
+fi
+log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
+
+# Dual-lane signal: gh and the GitHub MCP server are BOTH keyed off the same
+# GH_BKIT_TOKEN (this hook + .mcp.json's Authorization header) — if none of
+# GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
+# Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
+# actually fails the run closed.
+if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${GH_BKIT_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
 fi
 
 # Provision debug-fetch CLIs the consumer declared in .agents/config.md. Stack-agnostic:
