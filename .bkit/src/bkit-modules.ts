@@ -2734,8 +2734,11 @@ export function runLintModule(ctx: ModuleContext): void {
             'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
         });
       }
-    } catch {
-      // Already handled above
+    } catch (e) {
+      console.error(
+        "[bkit-modules] package.json re-read failed:",
+        e instanceof Error ? e.message : e,
+      );
     }
   }
 
@@ -3212,8 +3215,11 @@ export function runDependabotModule(ctx: ModuleContext): void {
     if (!dryRun) {
       try {
         fs.chmodSync(scriptDst, 0o755);
-      } catch {
-        // non-fatal — surface via advisory below
+      } catch (e) {
+        console.error(
+          "[bkit-modules] chmod failed for dependabot script:",
+          e instanceof Error ? e.message : e,
+        );
       }
     }
   }

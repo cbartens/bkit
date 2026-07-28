@@ -2312,8 +2312,8 @@ export function runLintModule(ctx) {
                 });
             }
         }
-        catch {
-            // Already handled above
+        catch (e) {
+            console.error("[bkit-modules] package.json re-read failed:", e instanceof Error ? e.message : e);
         }
     }
     // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
@@ -2734,8 +2734,8 @@ export function runDependabotModule(ctx) {
             try {
                 fs.chmodSync(scriptDst, 0o755);
             }
-            catch {
-                // non-fatal — surface via advisory below
+            catch (e) {
+                console.error("[bkit-modules] chmod failed for dependabot script:", e instanceof Error ? e.message : e);
             }
         }
     }
