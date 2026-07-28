@@ -61,3 +61,4 @@
 {"type":"step-done","workflow":"ship","step":"ship-switch-to-dev","status":"DONE","at":"2026-07-28T06:37:48Z","parentSha":"d64ef5be1649588ac24389aa80bbab8849fdfcc9","artifacts":[]}
 {"type":"step-done","workflow":"ship","step":"ship-update-docs","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-28T06:46:20Z","parentSha":"d64ef5be1649588ac24389aa80bbab8849fdfcc9","artifacts":["docs/plans/202607/logs/341-three-runtimes/ship-update-docs.md"]}
 {"type":"step-done","workflow":"ship","step":"ship-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-28T06:46:20Z","parentSha":"d64ef5be1649588ac24389aa80bbab8849fdfcc9","artifacts":["docs/plans/202607/logs/341-three-runtimes/ship-summary.md"]}
+{"type":"step-done","workflow":"ship","step":"ship-prune-skills","status":"DONE","at":"2026-07-28T06:47:09Z","parentSha":"b8bd324b1e4977f97866b91c650cb0f44c268631","artifacts":[]}
