@@ -52,3 +52,6 @@
 {"type":"workflow-done","workflow":"build","at":"2026-07-24T04:22:52Z"}
 {"type":"step-done","workflow":"build","step":"build-create-pr","status":"DONE","at":"2026-07-24T04:23:46Z","parentSha":"effbee27d733b6d1f566f539dc41496499204ba1","artifacts":["https://github.com/cbartens/bkit/pull/382"]}
 {"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-07-24T04:24:34Z","parentSha":"effbee27d733b6d1f566f539dc41496499204ba1","artifacts":[],"ciDispatch":{"outcome":"dispatched","head":"effbee27d733b6d1f566f539dc41496499204ba1","attempts":1,"retrigger":false}}
+{"type":"workflow-started","workflow":"ship","at":"2026-07-28T06:08:51Z"}
+{"type":"step-done","workflow":"ship","step":"ship-start-workflow","status":"DONE","at":"2026-07-28T06:08:51Z","parentSha":"5230656fb76975408fae3cd1034fda99eea73b02","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-worktree-setup","status":"DONE","at":"2026-07-28T06:08:51Z","parentSha":"5230656fb76975408fae3cd1034fda99eea73b02","artifacts":["docs/plans/202607/logs/341-three-runtimes/ship-input.md"]}
