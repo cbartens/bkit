@@ -39,6 +39,11 @@ describe("cursor guardrails.cjs — shell", () => {
   it("allows ordinary commands", () => {
     expect(run({ command: "pnpm test" }).permission).toBe("allow");
   });
+
+  it("asks on curl/wget (parity with Claude/OpenCode network gate)", () => {
+    expect(run({ command: "curl https://example.com" }).permission).toBe("ask");
+    expect(run({ command: "wget https://example.com" }).permission).toBe("ask");
+  });
 });
 
 describe("cursor guardrails.cjs — read", () => {

@@ -25,15 +25,20 @@
       "WebFetch(domain:kimi.com)",
       "WebFetch(domain:*.kimi.com)",
       "WebFetch(domain:npmjs.com)",
-      "WebFetch(domain:*.npmjs.com)"
+      "WebFetch(domain:*.npmjs.com)",
+      "Bash(git push --force-with-lease:*)",
+      "Read(./.env.example)",
+      "Read(./**/.env.example)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)",
       "Bash(rm -rf $HOME/*)",
       "Bash(chmod -R 777 /:*)",
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
+      "Bash(git push --force)",
+      "Bash(git push --force *)",
+      "Bash(git push -f)",
+      "Bash(git push -f *)",
       "Read(./**/*.pem)",
       "Read(./**/*.p12)",
       "Read(./**/id_rsa)"
@@ -44,6 +49,8 @@
       "Bash(pnpm publish:*)",
       "Bash(npm publish:*)",
       "Bash(bun publish:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean -fd:*)",
       "Bash(git clean -fdx:*)",
@@ -56,7 +63,16 @@
       "Bash(gh pr close:*)",
       "Bash(gh release delete:*)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.local)",
+      "Read(./.env.development)",
+      "Read(./.env.development.local)",
+      "Read(./.env.production)",
+      "Read(./.env.production.local)",
+      "Read(./.env.staging)",
+      "Read(./.env.staging.local)",
+      "Read(./.env.test)",
+      "Read(./.env.test.local)",
+      "Read(./.bkit/.env)"
     ],
     "defaultMode": "acceptEdits"
   },

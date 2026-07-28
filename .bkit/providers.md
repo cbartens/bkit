@@ -247,13 +247,15 @@ Pre-edit advisory hook. First file touch per session → investigation checklist
 <!-- prettier-ignore -->
 | Concern | Claude | Cursor | opencode |
 | --- | --- | --- | --- |
-| File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `Read(./.env)` ask) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
-| Shell / destructive | `permissions.deny` / `ask` on `Bash(git push --force:*)`, `rm -rf /*`, publish, `git reset --hard`, etc. | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map |
+| File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
+| Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, `curl`/`wget`, destructive git/gh, etc. | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
+| Network fetch | `WebSearch` allow + `WebFetch(domain:…)` allowlist (else ask); `curl`/`wget` ask so Bash cannot bypass | No WebFetch tool — `curl`/`wget` ask only (same domain intent via confirmation) | `websearch` allow + `webfetch` URL globs mirroring Claude domains (`*` ask) |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
-| Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | plugin + permission defaults |
+| Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
+| Local-only (not shipped) | `.claude/settings.local.json` (`additionalDirectories`, extra allows) | Cursor project/user settings / MCP as needed | `~/.config/opencode/opencode.json` → `permission.external_directory` |
 
-**Install behaviour:** template drops, host-specific. No transform — no canonical form.
+**Install behaviour:** template drops, host-specific encoding of the **same** shared policy. No single canonical JSON — three native forms kept in lockstep. Machine-local paths stay out of templates.
 
 ### MCP config asymmetry — GitHub tracker
 

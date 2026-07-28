@@ -68,11 +68,14 @@ function decideShell(cmd) {
     );
   }
 
-  // Ask — matches Claude ask list
+  // Ask — matches Claude ask list + OpenCode bash ask (incl. curl/wget so
+  // shell cannot bypass the shared WebFetch / webfetch domain allowlist).
   const askPatterns = [
     /\bsudo\b/,
     /\bbrew\s+install\b/,
     /\b(pnpm|npm|bun)\s+publish\b/,
+    /\bcurl\b/,
+    /\bwget\b/,
     /\bgit\s+reset\s+--hard\b/,
     /\bgit\s+clean\s+-fdx?\b/,
     /\bgit\s+filter-branch\b/,

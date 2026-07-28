@@ -2931,6 +2931,12 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(perm.bash["rm -rf /*"]).toBe("deny");
     expect(perm.bash["chmod -R 777 /*"]).toBe("deny");
     expect(perm.bash["sudo *"]).toBe("ask");
+    expect(perm.bash["curl *"]).toBe("ask");
+    expect(perm.bash["wget *"]).toBe("ask");
+    expect(perm.websearch).toBe("allow");
+    expect(perm.webfetch["*"]).toBe("ask");
+    expect(perm.webfetch["*://github.com*"]).toBe("allow");
+    expect(perm.webfetch["*://*.npmjs.com*"]).toBe("allow");
     // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
     // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
     // surface must NOT be weaker than the Claude peer it ships alongside.
