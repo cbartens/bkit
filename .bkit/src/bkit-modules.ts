@@ -2734,11 +2734,11 @@ export function runLintModule(ctx: ModuleContext): void {
             'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
         });
       }
-    } catch (e) {
-      console.error(
-        "[bkit-modules] package.json re-read failed:",
-        e instanceof Error ? e.message : e,
-      );
+    } catch {
+      // Fail-open: a malformed package.json is already surfaced by the
+      // lint-package-json-malformed advisory above (the guard at this point
+      // guarantees the first read succeeded); a transient re-read failure after
+      // the devDeps write only skips the no-test-script check, which is non-fatal.
     }
   }
 
@@ -3215,11 +3215,10 @@ export function runDependabotModule(ctx: ModuleContext): void {
     if (!dryRun) {
       try {
         fs.chmodSync(scriptDst, 0o755);
-      } catch (e) {
-        console.error(
-          "[bkit-modules] chmod failed for dependabot script:",
-          e instanceof Error ? e.message : e,
-        );
+      } catch {
+        // Fail-open: chmod is best-effort. The dependabot-setup-repo-state
+        // advisory below invokes the helper via `bash <script>` (no +x bit
+        // required), so a chmod failure does not block the documented setup path.
       }
     }
   }

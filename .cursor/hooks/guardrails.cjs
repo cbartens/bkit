@@ -137,8 +137,9 @@ function loadNetworkAllowlistBases() {
         if (b) bases.add(b);
       }
     }
-  } catch (e) {
-    console.error("[bkit-guardrails] allowlist load failed, using shipped fallback:", e?.message || e);
+  } catch {
+    /* shipped fallback only — a corrupt/absent allowlist must not crash the
+       editor session; SHIPPED_NETWORK_BASES above is the correct fallback */
   }
   return bases;
 }
