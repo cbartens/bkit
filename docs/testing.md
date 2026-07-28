@@ -334,6 +334,33 @@ Each of the five phase workflows' Step 2 (Worktree Setup) now also emits the dur
 | `.bkit/src/bkit-template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan template or its repo copy (D20) |
 | `.bkit/src/bkit-runtime-prose-audit.test.ts` | Unit | Every `RUNTIME_*` flag has >=1 reader in `.bkit/workflows/`; `CAN_SLEEP` absent; every foreground CI-wait `sleep` sits inside `bkit_wait_ci` (never a raw call-site `sleep`); every OTHER raw `sleep` is an explicitly-catalogued `dev`-lock retry/backoff — presence, not behaviour |
 
+## Ship merge-gate + bookkeeping test coverage (#384)
+
+`#384` ships the ship gate + bookkeeping rework as a **tiered carrier**: the rule whose failure is unrecoverable is an executable `.bkit/scripts/bkit-ship-gate.sh` (Tier 1, bats); the prose invariants are enforced by a vitest markdown-invariant test (Tier 2); the status.jsonl step-set hole detector is a fail-open advisory (Tier 3). The three tiers trade confidence for cost: the merge gate is a gate (a wrong merge is unrecoverable); the prose invariants are a hard CI gate (a regression is a one-line fix); the hole detector is advisory (a noisy day-one gate on a 25–65% holey corpus is muted within a week — decision `384-tier3-promotion`).
+
+### Reusable bats external-command stub harness (`tests/fixtures/gh/` + `PATH` shim)
+
+The merge gate (`bkit-ship-gate.sh`) shells out to `gh api` against the GitHub Actions REST surface. Bats cannot call the real GitHub from CI. The reusable pattern (lift it for any future script that shells out to a network CLI):
+
+1. **Stub tree under `tests/fixtures/gh/`** — one script per named behaviour (`ok-capstone-success`, `refuse-no-run`, `refuse-skipped-lane`, `refuse-rate-limit`, …). Each is an executable that prints a canned JSON payload to stdout and exits with the CLI's real exit code. A top-level `tests/fixtures/gh/gh` dispatches on `$1/$2` (`api` + the path tail) to the matching canned response.
+2. **`PATH` shim per test** — `bats` prepends the fixture dir to `PATH` in `setup()` (`export PATH="$BATS_TEST_DIRNAME/fixtures/gh/bin:$PATH"`), so the script under test resolves `gh` to the stub with no source edit. The shipped script is invoked byte-for-byte — the test exercises the real dispatch, exit-code mapping, and `[bkit-ship-gate]` stderr formatting, not a re-implementation.
+3. **Override the script under test, never copy it** — `BKIT_SHIP_GATE` / `BKIT_SHIP_TIMEOUTS` env vars point at a worktree-relative path so a bats row can run the `dev` version against the worktree version for RED-vs-GREEN without a second clone (same idiom as the `BKIT_COUNTER_BUS` override above).
+
+`tests/ship-gate.bats` (16 cases) covers every exit code (0/2/10/11/12/13/14/15/16/20), the `cache_skip` short-circuit, the `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` honoured-vs-ignored split, and the `--capstone`/`--workflow` package.json config resolution. `tests/ship-failure-path.bats` (6) + `tests/ship-worktree-ownership.bats` (6) cover the hardened Failure Path (`BOOK_ROOT` resolution, `.deferred-blocked` sentinel writer) and the worktree-ownership outbox. The prose contract (no `git add -A`, `BOOK_PATHS` 8-path allow-list, `BOOK_ROOT` status writes, `--match-head-commit`, canonical 14 step keys, `.dev.lock`/trap) is asserted by `.bkit/src/bkit-ship-invariants.test.ts` (14 vitest assertions) — Tier 2, a regression is a one-line fix.
+
+### Tier-3 fail-open advisory channel
+
+The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisory, fail-open**: its CLI MUST exit 0 with a delta report on stdout (never non-zero), even on a known-holey fixture. A day-one blocking gate on a corpus that is 25–65% holey is noise that gets disabled, and once disabled it stays disabled (decision `384-tier3-promotion`). Promotion to a blocking gate is gated on one release of fail-open signal without muting — recorded in `docs/decisions.jsonl`, cross-linked from deferral `384-promote-status-hole-detector-from-advisory-to-gate`. The detector derives its expected step set from `.bkit/workflows/bkit-ship.md` (headings + `step:"ship-*"` literals), NEVER a hand-maintained table.
+
+<!-- prettier-ignore -->
+| File | Tier | Scope |
+| --- | --- | --- |
+| `tests/ship-gate.bats` | Shell (cross-process, `tests/fixtures/gh/` stub + `PATH` shim) | Every gate exit code (0/2/10/11/12/13/14/15/16/20); `cache_skip`; override honoured-vs-ignored; config resolution |
+| `tests/ship-failure-path.bats` | Shell (prose + behaviour) | `BOOK_ROOT` resolution (RUNTIME_DEVPUSHES conditional); `.deferred-blocked` sentinel writer; reader preserved |
+| `tests/ship-worktree-ownership.bats` | Shell (prose + behaviour) | Outbox ownership marker; absent-default skip; crash-survival outside worktree |
+| `.bkit/src/bkit-ship-invariants.test.ts` | Unit (markdown-invariant) | 14 assertions: no `git add -A`; `BOOK_PATHS`; `BOOK_ROOT` status writes; `--match-head-commit`; canonical 14 step keys; `.dev.lock`/trap |
+| `.bkit/src/bkit-status-hole-detector.test.ts` | Unit | Expected set derived from source md (no parallel table); path-conditional sets; advisory exit 0 on holey fixture; invented names surface as delta |
+
 ## Key test files
 
 <!-- prettier-ignore -->
