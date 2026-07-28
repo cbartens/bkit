@@ -2934,9 +2934,10 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(perm.bash["curl *"]).toBe("ask");
     expect(perm.bash["wget *"]).toBe("ask");
     expect(perm.websearch).toBe("allow");
-    expect(perm.webfetch["*"]).toBe("ask");
-    expect(perm.webfetch["*://github.com*"]).toBe("allow");
-    expect(perm.webfetch["*://*.npmjs.com*"]).toBe("allow");
+    // OpenCode schema: webfetch/websearch are Action only (ask|allow|deny), not
+    // PermissionObjectConfig — URL maps fail validation (PermissionActionConfig).
+    // Domain allowlists stay Claude-only; opencode asks on every webfetch.
+    expect(perm.webfetch).toBe("ask");
     // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
     // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
     // surface must NOT be weaker than the Claude peer it ships alongside.

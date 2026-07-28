@@ -249,7 +249,7 @@ Pre-edit advisory hook. First file touch per session → investigation checklist
 | --- | --- | --- | --- |
 | File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
 | Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, `curl`/`wget`, destructive git/gh, etc. | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
-| Network fetch | `WebSearch` allow + `WebFetch(domain:…)` allowlist (else ask); `curl`/`wget` ask so Bash cannot bypass | No WebFetch tool — `curl`/`wget` ask only (same domain intent via confirmation) | `websearch` allow + `webfetch` URL globs mirroring Claude domains (`*` ask) |
+| Network fetch | `WebSearch` allow + `WebFetch(domain:…)` allowlist (else ask); `curl`/`wget` ask so Bash cannot bypass | No WebFetch tool — `curl`/`wget` ask only (same domain intent via confirmation) | `websearch` allow + `webfetch: "ask"` (OpenCode schema is Action-only — no per-URL map); `curl`/`wget` ask |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
