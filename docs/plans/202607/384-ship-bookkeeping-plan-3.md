@@ -1,4 +1,4 @@
-Verdict: PASS
+Verdict: CONCERNS
 <!-- verdict:end -->
 
 # Sub-Plan 3 — Docs, Tier-3 Detector & E2E (Implementation Plan)
