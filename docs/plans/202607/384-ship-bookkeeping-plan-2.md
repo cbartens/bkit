@@ -166,11 +166,11 @@ Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/
 
 ### Automated Tests
 
-- [ ] **bats suite (this slice):** `pnpm test:bats tests/ship-failure-path.bats tests/ship-worktree-ownership.bats` pass; `tests/ship-gate.bats` still GREEN (no Tier-1 regression).
-- [ ] **Unit suite (this slice):** `.bkit/src/bkit-ship-invariants.test.ts` GREEN against rewritten `bkit-ship.md` (the RED→GREEN proof).
-- [ ] **Integration:** `pnpm test bkit-dogfood-noop` GREEN for both new scripts.
-- [ ] **Full gate suite:** `pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:prose && pnpm slop:delta && pnpm test:bats && pnpm bkit check` all green. Do NOT weaken any gate to pass.
-- [ ] **Test Synchronization:** `bkit-counter-prose-audit.test.ts` updated for any new ship step-key references (verify cross-check still passes); `bkit-ci-dispatch-gate-alignment.test.ts` unaffected (CI-Dispatch gate is build/debug; ship uses the new gate).
+- [x] **bats suite (this slice):** `pnpm test:bats tests/ship-failure-path.bats tests/ship-worktree-ownership.bats` pass; `tests/ship-gate.bats` still GREEN (no Tier-1 regression). _(verify-2-1: bats 140/140 GREEN — ship-failure-path 6/6, ship-worktree-ownership 6/6, ship-gate 16/16.)_
+- [x] **Unit suite (this slice):** `.bkit/src/bkit-ship-invariants.test.ts` GREEN against rewritten `bkit-ship.md` (the RED→GREEN proof). _(verify-2-1: 14/14 GREEN.)_
+- [x] **Integration:** `pnpm test bkit-dogfood-noop` GREEN for both new scripts. _(verify-2-1: 7/7 GREEN — gate + timeouts byte-identity + executable bit.)_
+- [x] **Full gate suite:** `pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:prose && pnpm slop:delta && pnpm test:bats && pnpm bkit check` all green. Do NOT weaken any gate to pass. _(verify-2-1: typecheck clean; vitest 2616 passed / 2 skipped / 1 todo; format:check all pass; lint:prose 0 errors / 1 warning; slop:delta 0 net-new; bats 140/140; bkit check exit 0.)_
+- [x] **Test Synchronization:** `bkit-counter-prose-audit.test.ts` updated for any new ship step-key references (verify cross-check still passes); `bkit-ci-dispatch-gate-alignment.test.ts` unaffected (CI-Dispatch gate is build/debug; ship uses the new gate). _(verify-2-1: counter-prose-audit + ci-dispatch-gate-alignment + skip-ci-subject-audit 178/178 GREEN.)_
 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** If build/test errors surface, NEVER resolve via hot fixes or anti-patterns. Halt and follow `docs/architecture.md` + `docs/knowledge.jsonl`.
