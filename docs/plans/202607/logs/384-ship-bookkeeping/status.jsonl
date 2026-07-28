@@ -27,3 +27,4 @@
 {"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-07-28T12:54:18Z","parentSha":"0e02c48814584dceb09f41f8cb0749050286829a","artifacts":[]}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-07-28T12:54:18Z","parentSha":"0e02c48814584dceb09f41f8cb0749050286829a","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/build-input.md"]}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-07-28T12:54:43Z","parentSha":"cf228e3aae66b7def874c9ddf89351fd6761c23f","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","attempt":1,"at":"2026-07-28T12:57:23Z","parentSha":"cf959f7c41c5d2d157de6ba950e86c374a2f96e2","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/build-install-skills.md"]}
