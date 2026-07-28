@@ -23,3 +23,4 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-28T10:51:07Z","parentSha":"30418988f2512aef9373265adb3aeb77155c427a","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-07-28T10:53:39Z","parentSha":"77acfff138b6c8ce820aecc27ea74c96e1d47e90","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-07-28T10:53:39Z"}
+{"type":"close-transport","shape":"local","sha":"76518374f380f6c16fc71df0d31c14887d722547","scanResult":"clean","at":"2026-07-28T10:58:38Z"}
