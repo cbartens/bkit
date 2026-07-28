@@ -17,6 +17,24 @@ Every feature runs through the gated pipeline a senior engineering team would in
 - **Single canonical source, mirrored to every IDE tree.** One `.bkit/` source regenerates `.claude/`, `.cursor/`, and `.opencode/` trees. No hand-maintained 11-tree sprawl; edit once, every host converges. `bkit check` is the CI drift gate.
 - **One feature in flight, enforced.** A repo-level concurrency lock prevents two pipelines from racing the same integration branch.
 
+### The pipeline at a glance
+
+```
+/bkit-design  →  /bkit-plan  →  /bkit-build  →  /bkit-ship  →  merged
+                                  ↑    ↓
+                              /bkit-debug   (side-rail, on test failure)
+```
+
+Every phase dispatches subagents in parallel under distinct lenses; the diff, plan, or design is reviewed by independent reasoners before you see the reconciled verdict. Parallel groups per phase:
+
+- **Design** — fetches related issues; 3 brainstorms (pragmatic / tradeoff / risk) + 2 reviews (feasibility, cross-tier)
+- **Plan** — fetches related issues + prior deferrals + prior failures; 3 critiques (tightness / dependency / regression) + 2 scope-checks
+- **Build** — execute ⇄ verify loop; 2 challenges (bug-hunting + security); local test gate (lint + typecheck + unit); CI runs the full multi-tier scaffold on the PR
+- **Ship** — pre-merge completeness gate; waits for CI capstone (`bkit-tests-check`) green before merge; docs update + summary in parallel
+- **Debug** — fetches CI failure logs + e2e reports + diff vs last-passing CI + runtime logs + related issues; diagnose (reads prior `knowledge.jsonl`) → remediate; broader test tier (adds integration + e2e + optional `@live` canary); soak mode for non-localisable failures
+
+Hard stops after Design, Plan, and Ship. For every subagent step in execution order (40+ distinct agents total), see `.bkit/comparison.md`.
+
 ### What ships with every install
 
 - **Tracker as source of truth.** GitHub Issues or Linear: bkit reads the issue for context, posts progress per phase, moves the issue through states, and links the resulting PR back. Project management stays where it already lives.
