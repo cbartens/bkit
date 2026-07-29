@@ -24,6 +24,16 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 ### Pipeline map (key steps only)
 
 ```
+┌────────────────────── bkit-auto (opt-in cloud router) ─────────────────┐
+│ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
+│ workflow_dispatch        → any phase (ship|debug|design|plan|build)    │
+│ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
+│ (Claude Code on the web / Cursor Background Agents / opencode).        │
+│ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
+└────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+
 /bkit-design ───── output: detailed design ───────────────────────────────────
   1. fetch related       (tracker search by design keywords → related-issues.md)
   2. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
@@ -125,6 +135,8 @@ bkit-tests-scope  (planner — derives tier set: PR vs push, run_level, web_affe
 Direct pushes to `dev` / `main` auto-escalate to full run. `@live` is a post-merge canary, not a gate — failures route to `/bkit-debug` for reproduction against the deployed boundary. Full tier rules and framework boundaries: `.agents/rules.md` § Testing & Debugging; `docs/testing.md`.
 
 Hard stops after Design, Plan, and Ship (production merge needs explicit human approval). Shared subagents cross-invoked: `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` run inside Build and Ship failure paths as well as the Debug phase.
+
+With `bkit-auto` enabled, the loop is unattended: Build opens a PR → CI runs → on green `bkit-auto` dispatches `/bkit-ship`, on red it dispatches `/bkit-debug`; debug re-pushes, CI re-runs, auto-routes again — no local session required until a human gate fires.
 
 ### Phase 1 — `/bkit-design`
 
