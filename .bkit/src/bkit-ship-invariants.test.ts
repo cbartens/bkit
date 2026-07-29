@@ -455,3 +455,91 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(gateInvocation!).toMatch(/\|\|\s*GATE_EXIT=\$\?/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #363 build-challenge H2 regression — the `AUTO_ROUTE_SUFFIX` handoff
+// ---------------------------------------------------------------------------
+//
+// H2 (HIGH): the FIRST attempt at threading `bkit [auto route]` onto the
+// squash-merge `--subject` read `${LABELS:-}` directly inside the Step 5
+// merge Bash block. `{LABELS}` is an MCP-derived value captured at Step 1,
+// several separate Bash-tool-call boundaries earlier — shell state does not
+// survive across those boundaries, so `${LABELS:-}` always expanded empty at
+// Step 5, `AUTO_ROUTE_SUFFIX` was always "", and the squash-merge commit
+// NEVER carried the marker. That is the entire mechanism #363 depends on to
+// admit a post-merge `dev` CI run through bkit-cloud.yml's free-tier gate —
+// the feature would have shipped silently inert. Fixed by materialising
+// `AUTO_ROUTE_SUFFIX` into a `BKIT_AUTO_ROUTE_FILE` handoff (via
+// `$GITHUB_ENV`) immediately adjacent to the Step 1 `{LABELS}` read, mirroring
+// `bkit-build.md:1261` / `bkit-debug.md:1258-1262`, and reading it back at
+// Step 5 with a same-block `{LABELS}` re-check only as a fallback.
+describe("bkit-ship.md — #363 build-challenge H2 regression: AUTO_ROUTE_SUFFIX handoff survives the Step1->Step5 boundary", () => {
+  it("Step 1 materialises AUTO_ROUTE_SUFFIX into BKIT_AUTO_ROUTE_FILE adjacent to the {LABELS} read (not deferred)", () => {
+    const ship = readShip();
+    // The Step 1 handoff-write block, keyed on its own unique anchor text.
+    const idx = ship.indexOf(
+      'echo "${LABELS:-}" | grep -q \'bkit:auto\' && AUTO_ROUTE_SUFFIX=" bkit [auto route]"',
+    );
+    expect(idx, "Step 1 AUTO_ROUTE_SUFFIX derivation not found").toBeGreaterThan(-1);
+    const window = ship.slice(idx, idx + 400);
+    // Must write the derived value to a temp file...
+    expect(window).toMatch(/BKIT_AUTO_ROUTE_FILE=\$\(mktemp\)/);
+    expect(window).toMatch(/printf\s+'%s'\s+"\$AUTO_ROUTE_SUFFIX"\s+>\s+"\$BKIT_AUTO_ROUTE_FILE"/);
+    // ...and export the path via GITHUB_ENV so it survives into the later
+    // Step 5 Bash-tool-call (a NEW shell — plain env/shell vars do not
+    // survive that boundary, only $GITHUB_ENV-persisted ones do).
+    expect(window).toMatch(/>>\s*"\$GITHUB_ENV"/);
+  });
+
+  it("Step 5 reads AUTO_ROUTE_SUFFIX from BKIT_AUTO_ROUTE_FILE (not a bare ${LABELS:-} re-read as primary)", () => {
+    const ship = readShip();
+    const subjectIdx = ship.indexOf('--subject "$(gh pr view {PR_NUMBER}');
+    expect(subjectIdx, "squash --subject line not found").toBeGreaterThan(-1);
+    const window = ship.slice(Math.max(0, subjectIdx - 600), subjectIdx + 120);
+    // The suffix must actually be threaded onto the squash subject.
+    expect(window).toContain("${AUTO_ROUTE_SUFFIX}");
+    // PRIMARY path: read the handoff file written at Step 1.
+    expect(window).toMatch(/if\s+\[\s+-n\s+"\$\{BKIT_AUTO_ROUTE_FILE:-\}"\s+\]/);
+    expect(window).toMatch(/AUTO_ROUTE_SUFFIX=\$\(cat\s+"\$BKIT_AUTO_ROUTE_FILE"\)/);
+    // FALLBACK only: a same-block {LABELS} re-check, gated behind the
+    // handoff-file-missing branch (an `else`), never as the sole source.
+    const elseIdx = window.indexOf("else");
+    const fallbackReadIdx = window.indexOf('echo "${LABELS:-}"');
+    expect(elseIdx, "fallback else branch not found").toBeGreaterThan(-1);
+    expect(fallbackReadIdx).toBeGreaterThan(elseIdx);
+  });
+
+  it("the squash --subject is built in the SAME fenced block that derives AUTO_ROUTE_SUFFIX (no cross-block var reuse)", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    let inFence = false;
+    let fenceStart = -1;
+    let fenceLines: string[] = [];
+    let target: string[] | undefined;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\s*```/.test(line)) {
+        if (!inFence) {
+          inFence = true;
+          fenceStart = i;
+          fenceLines = [];
+        } else {
+          inFence = false;
+          if (fenceLines.some((l) => l.includes("--subject") && l.includes("AUTO_ROUTE_SUFFIX"))) {
+            target = fenceLines;
+          }
+        }
+        continue;
+      }
+      if (inFence) fenceLines.push(line);
+    }
+    expect(fenceStart, "fence containing --subject...AUTO_ROUTE_SUFFIX not found").toBeGreaterThan(
+      -1,
+    );
+    expect(
+      target,
+      "no single fenced block derives AND consumes AUTO_ROUTE_SUFFIX together",
+    ).toBeDefined();
+    expect(target!.join("\n")).toMatch(/AUTO_ROUTE_SUFFIX=""/);
+  });
+});
