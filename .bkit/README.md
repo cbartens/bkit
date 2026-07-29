@@ -300,7 +300,7 @@ Slash commands at repo root:
 
 Claude reads issue, comments, plan files via tracker MCP.
 
-**Requirements:** `GH_BKIT_TOKEN`, active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` when `bkit.issueTracker = "linear"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.8 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_BKIT_TOKEN`, active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` when `bkit.issueTracker = "linear"`. Session model = orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column) — set via `/model` before invoking; not duplicated here.
 
 ### From Cursor (interactive — local)
 
