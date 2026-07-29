@@ -10,17 +10,24 @@
 #
 # Contract:
 #   bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>]
-#                                      [--repo <o/r>] [--explain]
+#                                      [--repo <o/r>] [--branch <name>] [--explain]
 #
 # Run selection (decided before exit codes can mean anything):
 #   gh api /repos/{o}/{r}/actions/workflows/{ciWorkflow}/runs?head_sha=<sha>
 #     - workflow-scoped (NOT repo-wide), then select the most recent
 #       `completed` run of that workflow at that exact head. If runs exist but
-#       none completed → code 11 (in progress, not absent).
+#       none completed → code 11 (in progress, not absent). Selecting the most
+#       recent COMPLETED run — not merely the most recent run — is load-bearing:
+#       a re-dispatch still in flight must not mask a finished run at the head.
 #
 # Capstone resolution:
-#   gh api /repos/{o}/{r}/actions/runs/{id}/jobs --paginate
+#   gh api /repos/{o}/{r}/actions/runs/{id}/jobs --paginate --slurp
 #     - find the capstone job by name; if absent → code 13.
+#     - `--slurp` is REQUIRED: without it `--paginate` emits one JSON document
+#       PER PAGE (per_page=100), and a >100-job run turns every downstream
+#       `jq` into a multi-document stream — `jq length` then yields "0\n0\n0",
+#       which `[ … -gt 0 ]` rejects as a non-integer and the lane check below
+#       silently stops running. `--slurp` collapses the pages into one array.
 #
 # Exit codes — one per condition, never collapsed:
 #    0  Capstone present in selected run, concluded `success`              → proceed
@@ -28,10 +35,21 @@
 #   11  Runs exist at head but none completed                               → refuse (poll)
 #   12  Selected run concluded failure                                      → refuse
 #   13  Selected run exists but capstone job ABSENT                         → refuse
-#   14  Green run exists, but at a SUPERSEDED SHA                           → refuse
+#   14  Green run exists, but at a SUPERSEDED SHA (needs --branch)          → refuse
 #   15  Selected run concluded `cancelled`                                  → refuse
 #   16  Capstone green but a lane concluded `skipped` (not full)            → refuse
 #   20  API error / rate limit / auth                                       → refuse
+#
+# Code 14 requires `--branch`: the head-keyed run query is filtered SERVER-SIDE,
+# so a superseded head returns an empty list and is indistinguishable from
+# "never validated" (code 10) without a second, branch-scoped query. Callers that
+# omit `--branch` get code 10 for both; both route the same way in bkit-ship.md.
+#
+# Code 16 fires on ANY skipped non-capstone lane. The jobs API does not report
+# WHY a job was skipped (a job skipped by a job-level `if:` never reaches a
+# runner and carries no steps), so the gate cannot distinguish a planned skip
+# from a vacuous one — the capstone owns that assertion. A consumer whose CI
+# legitimately path-filters lanes uses BKIT_SHIP_GATE_OVERRIDE, which is audited.
 #
 # `BKIT_SHIP_GATE_OVERRIDE=<sha>` is honoured ONLY when it equals the refused
 # head SHA (caller asserts "I know this head is the one I validated"); any
@@ -47,7 +65,7 @@ PREFIX="[bkit-ship-gate]"
 err() { printf '%s %s\n' "$PREFIX" "$*" >&2; }
 
 print_usage() {
-  sed -n '2,46p' "$0" >&2
+  sed -n '2,60p' "$0" >&2
 }
 
 # ---------------------------------------------------------------------------
@@ -59,6 +77,7 @@ HEAD_SHA=""
 CAPSTONE=""
 WORKFLOW=""
 REPO=""
+BRANCH=""
 EXPLAIN=0
 
 while [ "$#" -gt 0 ]; do
@@ -68,6 +87,7 @@ while [ "$#" -gt 0 ]; do
     --capstone) CAPSTONE="${2:-}"; shift ;;
     --workflow) WORKFLOW="${2:-}"; shift ;;
     --repo) REPO="${2:-}"; shift ;;
+    --branch) BRANCH="${2:-}"; shift ;;
     --explain) EXPLAIN=1 ;;
     -h|--help)
       print_usage
@@ -82,7 +102,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$ACTION" != "assert" ]; then
-  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--explain]"
+  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--branch <name>] [--explain]"
   exit 2
 fi
 
@@ -202,63 +222,63 @@ fi
 TOTAL_COUNT=$(printf '%s' "$RUNS_JSON" | jq -r '.total_count // 0' 2>/dev/null || printf '0')
 
 if [ "${TOTAL_COUNT:-0}" = "0" ]; then
+  # No run at THIS head. The query above is filtered SERVER-SIDE by head_sha, so
+  # a head that has since been superseded returns the same empty list as a head
+  # that was never validated. Separating code 14 from code 10 therefore needs a
+  # SECOND, branch-scoped query — only possible when the caller passed --branch.
+  if [ -n "$BRANCH" ]; then
+    RECENT_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=$BRANCH&status=success&per_page=1" 2>/dev/null || printf '')
+    STALE=$(printf '%s' "$RECENT_JSON" | jq -r '
+      .workflow_runs // []
+      | sort_by(.updated_at)
+      | last // empty
+    ' 2>/dev/null || printf '')
+    if [ -n "$STALE" ]; then
+      SELECTED_HEAD_SHA=$(printf '%s' "$STALE" | jq -r '.head_sha // empty' 2>/dev/null || printf '')
+      STALE_URL=$(printf '%s' "$STALE" | jq -r '.html_url // empty' 2>/dev/null || printf '')
+      err "no run at head $HEAD_SHA; latest green on $BRANCH is at a SUPERSEDED head ($SELECTED_HEAD_SHA) — re-validate"
+      refuse 14 "$STALE_URL"
+    fi
+  fi
   err "no run of $WORKFLOW exists at head $HEAD_SHA (total_count=0)"
   refuse 10
 fi
 
 # ---------------------------------------------------------------------------
 # 2. Run selection — most recent `completed` run at THIS head
+#
+# Every element is already at $HEAD_SHA (server-side filter), so the only real
+# choice is WHICH run. Filtering to `completed` BEFORE taking the most recent is
+# what makes the contract true: a re-dispatch still in flight is newer by
+# updated_at, and selecting it would report "none completed" over a run that has
+# in fact completed at this exact head.
 # ---------------------------------------------------------------------------
 
-SELECTED=$(printf '%s' "$RUNS_JSON" | jq -r '
+SELECTED=$(printf '%s' "$RUNS_JSON" | jq -r --arg head "$HEAD_SHA" '
   .workflow_runs
-  | map(select(.head_sha == $head))
+  | map(select(.head_sha == $head and .status == "completed"))
   | sort_by(.updated_at)
-  | reverse
-  | .[0:1]
-  | .[0] // empty
-' --arg head "$HEAD_SHA" 2>/dev/null || printf '')
-
-# Stale-green detection: API returned runs but NONE match the queried head.
-# The most-recent run (at any head) is the superseded-green candidate.
-if [ -z "$SELECTED" ]; then
-  STALE=$(printf '%s' "$RUNS_JSON" | jq -r '
-    .workflow_runs
-    | sort_by(.updated_at)
-    | reverse
-    | .[0:1]
-    | .[0] // empty
-  ' 2>/dev/null || printf '')
-  if [ -n "$STALE" ]; then
-    SELECTED_HEAD_SHA=$(printf '%s' "$STALE" | jq -r '.head_sha // empty' 2>/dev/null || printf '')
-    STALE_CONCLUSION=$(printf '%s' "$STALE" | jq -r '.conclusion // empty' 2>/dev/null || printf '')
-    STALE_URL=$(printf '%s' "$STALE" | jq -r '.html_url // empty' 2>/dev/null || printf '')
-    err "selected run is at a SUPERSEDED head ($SELECTED_HEAD_SHA, conclusion=$STALE_CONCLUSION) — not the requested $HEAD_SHA"
-    refuse 14 "$STALE_URL"
-  fi
-  err "no run could be selected at head $HEAD_SHA"
-  refuse 10
-fi
-
-SELECTED_ID=$(printf '%s' "$SELECTED" | jq -r '.id // empty' 2>/dev/null || printf '')
-SELECTED_STATUS=$(printf '%s' "$SELECTED" | jq -r '.status // empty' 2>/dev/null || printf '')
-SELECTED_CONCLUSION=$(printf '%s' "$SELECTED" | jq -r '.conclusion // empty' 2>/dev/null || printf '')
-SELECTED_HEAD_SHA=$(printf '%s' "$SELECTED" | jq -r '.head_sha // empty' 2>/dev/null || printf '')
-SELECTED_URL=$(printf '%s' "$SELECTED" | jq -r '.html_url // empty' 2>/dev/null || printf '')
-
-if [ "$SELECTED_HEAD_SHA" != "$HEAD_SHA" ]; then
-  err "selected run is at a SUPERSEDED head ($SELECTED_HEAD_SHA, conclusion=$SELECTED_CONCLUSION) — not the requested $HEAD_SHA"
-  refuse 14 "$SELECTED_URL"
-fi
+  | last // empty
+' 2>/dev/null || printf '')
 
 # ---------------------------------------------------------------------------
 # 3. Runs exist but none completed → code 11 (in progress, not absent)
 # ---------------------------------------------------------------------------
 
-if [ "$SELECTED_STATUS" != "completed" ]; then
-  err "runs exist at head $HEAD_SHA but none completed (status=$SELECTED_STATUS) — caller may poll"
-  refuse 11 "$SELECTED_URL"
+if [ -z "$SELECTED" ]; then
+  IN_FLIGHT=$(printf '%s' "$RUNS_JSON" | jq -r '
+    .workflow_runs // [] | sort_by(.updated_at) | last // empty
+  ' 2>/dev/null || printf '')
+  IN_FLIGHT_STATUS=$(printf '%s' "$IN_FLIGHT" | jq -r '.status // empty' 2>/dev/null || printf '')
+  IN_FLIGHT_URL=$(printf '%s' "$IN_FLIGHT" | jq -r '.html_url // empty' 2>/dev/null || printf '')
+  err "runs exist at head $HEAD_SHA but none completed (status=${IN_FLIGHT_STATUS:-unknown}) — caller may poll"
+  refuse 11 "$IN_FLIGHT_URL"
 fi
+
+SELECTED_ID=$(printf '%s' "$SELECTED" | jq -r '.id // empty' 2>/dev/null || printf '')
+SELECTED_CONCLUSION=$(printf '%s' "$SELECTED" | jq -r '.conclusion // empty' 2>/dev/null || printf '')
+SELECTED_HEAD_SHA=$(printf '%s' "$SELECTED" | jq -r '.head_sha // empty' 2>/dev/null || printf '')
+SELECTED_URL=$(printf '%s' "$SELECTED" | jq -r '.html_url // empty' 2>/dev/null || printf '')
 
 # ---------------------------------------------------------------------------
 # 4. Conclusion dispatch
@@ -286,8 +306,13 @@ esac
 # 5. Capstone resolution — read jobs, find the capstone by name
 # ---------------------------------------------------------------------------
 
+# `--slurp` collapses `--paginate`'s one-document-per-page output into a single
+# JSON array; without it every jq below silently becomes a multi-document stream
+# on any run with more than 100 jobs. Normalise back to one `{jobs:[…]}` object
+# so the filters downstream stay single-document regardless of page count.
 JOBS_JSON=""
-if ! JOBS_JSON=$(gh api "/repos/$REPO/actions/runs/$SELECTED_ID/jobs" --paginate); then
+JOBS_RAW=""
+if ! JOBS_RAW=$(gh api "/repos/$REPO/actions/runs/$SELECTED_ID/jobs" --paginate --slurp); then
   err "jobs query failed for run $SELECTED_ID — API error (distinct from 'no capstone')"
   if command -v gh >/dev/null 2>&1; then
     RATELIMIT=$(gh api rate_limit 2>/dev/null || printf '')
@@ -298,6 +323,13 @@ if ! JOBS_JSON=$(gh api "/repos/$REPO/actions/runs/$SELECTED_ID/jobs" --paginate
   fi
   refuse 20 "$SELECTED_URL"
 fi
+
+# Accept both shapes: `--slurp` gives `[{jobs:[…]}, …]` (one entry per page);
+# a single un-slurped object is wrapped so the same filter covers both.
+JOBS_JSON=$(printf '%s' "$JOBS_RAW" | jq -c '
+  (if type == "array" then . else [.] end)
+  | {jobs: (map(.jobs // []) | add // [])}
+' 2>/dev/null || printf '{"jobs":[]}')
 
 CAPSTONE_JOB=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE" '
   .jobs
@@ -321,39 +353,34 @@ fi
 # 6. Lane check — any non-success conclusion is a vacuous green unless cache_skip
 # ---------------------------------------------------------------------------
 
-# A lane (non-capstone job) concluded `skipped` is suspicious. Distinguish:
-#   - cache_skip: a step whose name matches `cache`/`restore` indicates the
-#     skip is a cache-hit short-circuit (sound — keyed to the exact commit SHA).
-#   - real skip: a lane skipped without a cache marker → vacuous green (code 16).
-SKIPPED_LANES=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE" '
+# A lane (non-capstone job) concluded `skipped` means the capstone's green did
+# not cover it. The jobs API reports no REASON for a skip: a job skipped by a
+# job-level `if:` is never assigned to a runner, so it carries an EMPTY `steps`
+# array — there is no observable difference between a planned path-filter skip
+# and a vacuous one. (An earlier revision tried to read a `cache`/`restore` step
+# name as cache-skip provenance; no skipped job ever carries steps, so that
+# carve-out could only ever match a hand-authored fixture. A cache HIT concludes
+# `success` with step-level skips and a `cache_skip` output — never `skipped`.)
+#
+# So the gate refuses on any skipped lane and lets the capstone own the
+# planned-vs-vacuous judgement. A consumer whose CI legitimately path-filters
+# lanes proceeds via BKIT_SHIP_GATE_OVERRIDE, which writes an audit row.
+SKIPPED_LANE_NAMES=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE" '
   .jobs
-  | map(select(.name != $capstone))
-  | map(select(.conclusion == "skipped"))
-' 2>/dev/null || printf '[]')
+  | map(select(.name != $capstone and .conclusion == "skipped"))
+  | map(.name // "<unnamed>")
+  | join(", ")
+' 2>/dev/null || printf '')
 
-SKIPPED_LANE_COUNT=$(printf '%s' "$SKIPPED_LANES" | jq 'length' 2>/dev/null || printf '0')
+SKIPPED_LANE_COUNT=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE" '
+  .jobs
+  | map(select(.name != $capstone and .conclusion == "skipped"))
+  | length
+' 2>/dev/null || printf '0')
 
 if [ "${SKIPPED_LANE_COUNT:-0}" -gt 0 ]; then
-  # A skipped lane is vacuous UNLESS it carries a cache-marker step.
-  VACUOUS_SKIPPED=$(printf '%s' "$SKIPPED_LANES" | jq -r '
-    map(
-      select(
-        (.steps // [])
-        | map(select((.name // "") | test("cache|restore"; "i")))
-        | length == 0
-      )
-    )
-    | length
-  ' 2>/dev/null || printf '0')
-
-  if [ "${VACUOUS_SKIPPED:-0}" -gt 0 ]; then
-    err "capstone green but $VACUOUS_SKIPPED lane(s) concluded 'skipped' without a cache marker at head $HEAD_SHA — vacuous green"
-    refuse 16 "$SELECTED_URL"
-  fi
-  if [ "$EXPLAIN" = "1" ]; then
-    printf '[bkit-ship-gate] capstone green at %s; %s skipped lane(s) carried a cache marker (cache_skip provenance — keyed to the exact commit SHA)\n' \
-      "$HEAD_SHA" "$SKIPPED_LANE_COUNT"
-  fi
+  err "capstone green but $SKIPPED_LANE_COUNT lane(s) concluded 'skipped' at head $HEAD_SHA — vacuous green: $SKIPPED_LANE_NAMES"
+  refuse 16 "$SELECTED_URL"
 fi
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
       "id": 1005,
       "name": "ci",
       "head_sha": "older-sha-stale-green",
-      "head_branch": "feat/example",
+      "head_branch": "feat/superseded",
       "status": "completed",
       "conclusion": "success",
       "event": "pull_request",

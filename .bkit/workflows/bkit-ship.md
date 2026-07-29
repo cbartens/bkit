@@ -642,7 +642,11 @@ description: "Ship Feature — Autonomous merge and archive"
    # `|| GATE_EXIT=$?` captures a refusal exit code without `set -e` aborting
    # before the routing block below runs. Initialised to 0 for the success path.
    GATE_EXIT=0
-   bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" || GATE_EXIT=$?
+   # `--branch` is what makes code 14 (stale green at a superseded head)
+   # separable from code 10 (never validated): the gate's head-keyed run query is
+   # filtered server-side, so a moved head returns an empty list either way and
+   # only a second, branch-scoped query can tell the two apart.
+   bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" --branch "feat/{FID}" || GATE_EXIT=$?
    ```
    **If** `GATE_EXIT` != 0 → write a status row carrying the exit code, then route:
    ```bash

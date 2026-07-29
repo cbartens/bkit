@@ -55,6 +55,34 @@ fi
 
 URL="$2"
 
+# Real `gh api --paginate` emits ONE JSON DOCUMENT PER PAGE; `--slurp` collapses
+# those pages into a single JSON array. The gate depends on that difference (a
+# >100-job run otherwise turns every downstream jq into a multi-document stream),
+# so the stub has to reproduce both shapes faithfully.
+SLURP=0
+for _a in "$@"; do
+  [ "$_a" = "--slurp" ] && SLURP=1
+done
+
+# Emit a fixture that holds an ARRAY of page objects in the shape the caller
+# asked for: slurped → the array verbatim; un-slurped → one document per page.
+emit_pages() {
+  if [ "$SLURP" = "1" ]; then
+    jq -c '.' "$1"
+  else
+    jq -c '.[]' "$1"
+  fi
+}
+
+# Emit a single-page fixture, wrapping it when the caller asked for --slurp.
+emit_single() {
+  if [ "$SLURP" = "1" ]; then
+    jq -c '[.]' "$1"
+  else
+    cat "$1"
+  fi
+}
+
 # gh api rate_limit — used by the gate to shape the code-20 message. Sampled
 # AFTER a run-list query fails, so this branch must NOT inherit the rate-limit
 # failure mode (otherwise the gate could not distinguish rate-limit from a
@@ -122,19 +150,45 @@ case "$URL" in
     printf '{"total_count":0,"workflow_runs":[]}'
     exit 0
     ;;
+  */actions/workflows/*/runs\?branch=*)
+    # Branch-scoped superseded-green probe (code 14). Only reached when the gate
+    # was given --branch AND the head-keyed query returned total_count=0.
+    BR="${URL##*\?branch=}"
+    BR="${BR%%&*}"
+    [[ "$BR" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "gh-fake: unsanitized branch '$BR' rejected" >&2; exit 1; }
+    F="$RUNS_DIR/branch-${BR//\//-}.json"
+    if [ -f "$F" ]; then
+      cat "$F"
+      exit 0
+    fi
+    printf '{"total_count":0,"workflow_runs":[]}'
+    exit 0
+    ;;
 esac
 
 # gh api /repos/{o}/{r}/actions/runs/<ID>/jobs [--paginate]
 case "$URL" in
   */actions/runs/*/jobs)
     ID="$(printf '%s' "$URL" | sed -E 's|.*/actions/runs/([0-9]+)/jobs.*|\1|')"
+    # `<ID>.pages.json` = a JSON ARRAY of page objects, for runs whose job list
+    # spans more than one page (>100 jobs under gh's --paginate per_page=100).
+    # Takes precedence over the single-page `<ID>.json` form.
+    PF="$JOBS_DIR/$ID.pages.json"
+    if [ -f "$PF" ]; then
+      emit_pages "$PF"
+      exit 0
+    fi
     F="$JOBS_DIR/$ID.json"
     if [ -f "$F" ]; then
-      cat "$F"
+      emit_single "$F"
       exit 0
     fi
     # No jobs fixture → empty list (the gate treats capstone-absent as code 13).
-    printf '{"total_count":0,"jobs":[]}'
+    if [ "$SLURP" = "1" ]; then
+      printf '[{"total_count":0,"jobs":[]}]'
+    else
+      printf '{"total_count":0,"jobs":[]}'
+    fi
     exit 0
     ;;
 esac

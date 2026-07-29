@@ -84,13 +84,23 @@ run_gate() {
 # ---------------------------------------------------------------------------
 
 @test "rejects-stale-green-at-superseded-head (exit 14)" {
-  # Fixture runs/superseded-green-target.json carries a run whose head_sha is
-  # 'older-sha-stale-green' — the gate must detect the mismatch.
-  run_gate --head superseded-green-target
+  # The head-keyed run query is filtered SERVER-SIDE, so a superseded head comes
+  # back empty and is indistinguishable from "never validated" — code 14 is only
+  # separable via the second, branch-scoped query --branch enables. Fixture
+  # runs/branch-feat-superseded.json holds a green at 'older-sha-stale-green'.
+  run_gate --head superseded-green-target --branch feat/superseded
   [ "$status" -eq 14 ]
-  [[ "$output" == *"[bkit-ship-gate] selected run is at a SUPERSEDED head (older-sha-stale-green"* ]]
+  [[ "$output" == *"latest green on feat/superseded is at a SUPERSEDED head (older-sha-stale-green)"* ]]
   [[ "$output" == *"required head:  superseded-green-target"* ]]
   [[ "$output" == *"SUPERSEDED"* ]]
+}
+
+@test "without --branch a superseded head is code 10, not 14 (no invented attribution)" {
+  # Same head as above, but no --branch: the gate cannot tell "superseded" from
+  # "never ran" and must NOT guess. Collapsing to 10 is the honest answer.
+  run_gate --head superseded-green-target
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"no run of ci.yml exists at head superseded-green-target"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -118,23 +128,48 @@ run_gate() {
 # ---------------------------------------------------------------------------
 
 @test "rejects-run-with-skipped-lanes (exit 16)" {
-  # Fixture jobs/1007.json: 'test' job concluded 'skipped' with no cache marker.
+  # Fixture jobs/1007.json: 'test' job concluded 'skipped'. GitHub reports no
+  # REASON for a skip (a job skipped by a job-level `if:` never reaches a runner
+  # and carries steps:[]), so the gate refuses and names the lane.
   run_gate --head skipped-lane
   [ "$status" -eq 16 ]
-  [[ "$output" == *"[bkit-ship-gate] capstone green but"* ]]
-  [[ "$output" == *"lane(s) concluded 'skipped' without a cache marker"* ]]
+  [[ "$output" == *"[bkit-ship-gate] capstone green but 1 lane(s) concluded 'skipped'"* ]]
+  [[ "$output" == *"vacuous green: test"* ]]
 }
 
 # ---------------------------------------------------------------------------
-# 9. Code 0 — cache_skip sentinel green (distinguished from code 16)
+# 9. Pagination — `--paginate` emits one document PER PAGE without `--slurp`
 # ---------------------------------------------------------------------------
 
-@test "accepts-cache-skipped-green (exit 0; --explain notes cache_skip provenance)" {
-  # Fixture jobs/1008.json: 'lint' job concluded 'skipped' BUT its steps include
-  # a 'Cache hit — restore' marker — sound cache_skip, not a vacuous green.
-  run_gate --head cache-skip-green --explain
+@test "detects a skipped lane that lands on page 2 of a paginated jobs list (exit 16)" {
+  # Regression: gh api --paginate uses per_page=100 and emits one JSON document
+  # per page. Without --slurp, `jq length` over that stream yields "0\n1", which
+  # `[ … -gt 0 ]` rejects as a non-integer — the lane check then silently stops
+  # running and a vacuous green MERGES. Fixture jobs/1009.pages.json puts the
+  # skipped lane on page 2 so an un-slurped read cannot see it.
+  run_gate --head paginated-skipped-lane
+  [ "$status" -eq 16 ]
+  [[ "$output" == *"vacuous green: test"* ]]
+}
+
+@test "capstone on page 1 of a paginated jobs list still resolves" {
+  # Same fixture, asserting the capstone lookup is not broken by pagination:
+  # the refusal must be 16 (skipped lane), NOT 13 (capstone absent).
+  run_gate --head paginated-skipped-lane
+  [ "$status" -ne 13 ]
+  [[ "$output" != *"ABSENT from run"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 9b. Run selection — most recent COMPLETED, not merely most recent
+# ---------------------------------------------------------------------------
+
+@test "a newer in-flight re-dispatch does not mask a completed green at the head (exit 0)" {
+  # Fixture runs/green-then-redispatch.json: run 1001 completed/success, run 1099
+  # in_progress with a LATER updated_at at the same head. Selecting "most recent
+  # run" reports 'none completed' over a run that has in fact completed.
+  run_gate --head green-then-redispatch
   [ "$status" -eq 0 ]
-  [[ "$output" == *"skipped lane(s) carried a cache marker (cache_skip provenance"* ]]
 }
 
 # ---------------------------------------------------------------------------
