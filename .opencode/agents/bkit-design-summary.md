@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-summary
 description: Senior reviewer evaluating a design doc for readiness to enter planning.
-model: zai/glm-4.5-air
+model: zai/glm-5.1
 tools:
   read: true
   write: true

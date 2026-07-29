@@ -121,7 +121,7 @@ Cursor model assignment: § Models below — per-agent lookup, NOT effort-tier d
 
 **Pinned selections canonical in `prompts.md`** (§ Models `Cursor` column + § Orchestrators) — not here. Cursor set churns; use pull recipe below.
 
-> **Default install = first-party pool only.** Shipped Cursor pins are **`cursor-grok-4.5-high`** + **`composer-2.5`** so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are **opt-in** via `prompts.md` § Model Overrides — never default pins. **Have API credits and want Opus back?** Paste the ready-to-use Opus override block in `prompts.md` § Model Overrides (maps every Claude-opus-tier agent → `claude-opus-5-thinking-high`; Cursor has no Sonnet — leave sonnet/haiku agents on shipped Composer/Grok, or optionally pin `gpt-5.6-sol-high` for API cross-family). Then `bkit install --cursor`.
+> **Default install = first-party pool only.** Shipped Cursor pins are **`cursor-grok-4.5-high`** + **`composer-2.5`** so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are **opt-in** via `prompts.md` § Model Overrides — never default pins. **Have API credits and want Opus back?** Paste the ready-to-use Opus override block in `prompts.md` § Model Overrides (maps every Claude-opus-tier agent → `claude-opus-5-thinking-high`; leave sonnet/haiku agents on shipped Composer/Grok, or optionally pin `gpt-5.6-sol-high` for API cross-family). Then `bkit install --cursor`. **Cursor having no Sonnet is not a gap** — under per-tier score targeting (§ Agentic-coding parity board) the sonnet cell should sit on the platform ceiling anyway, and `grok-4.5` lands 2.9 under the sonnet target at a quarter of Claude's cost per task.
 
 Tier guidance:
 
@@ -137,7 +137,7 @@ Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` 
 > [!NOTE]
 > **Native-default Cursor pins (#205).** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
 >
-> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day — **Claude host pins bumped; Cursor defaults moved off API pool** (native-only policy above). (#205)
+> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60), and it tops LiveBench Agentic Coding at **65.2** — also ahead of Fable 5 (62.2, at 1.7x the cost per task). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day — **Claude host pins bumped; Cursor defaults moved off API pool** (native-only policy above). (#205)
 
 ### Per-subagent model assignment
 
@@ -347,23 +347,63 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **opencode-zen / opencode-go — two OpenCode built-in providers.** Both emit minimal `provider.<id>` with only `options.apiKey: "{env:OPENCODE_API_KEY}"` (no npm driver, no baseURL). OpenCode resolves from models.dev — Go Qwen/MiniMax use Anthropic `/messages`, not openai-compatible `/chat/completions`. Zen keyed `opencode`; Go `opencode-go`. `bkit install --opencode=opencode-zen` (or `=opencode-go`) → `bkit.opencodeProvider` in `package.json`; legacy `opencode` → `opencode-zen` via `OPENCODE_PROVIDER_ALIASES`. Reinstall **replaces** seeded block (heals hijacked npm/baseURL). Set `OPENCODE_API_KEY` in `.bkit/.env` (<https://opencode.ai/auth>). Columns from **models.dev**.
 
-**All ten providers ship curated columns.** Tier design — opus→top coder, sonnet→mid, haiku→small/fast, convergent→CoT — each pins **newest catalog entry in tier family** (aggressive-latest):
+**All ten providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin** (#205). A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores of the Claude models bkit pins per tier. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
+
+### Agentic-coding parity board
+
+Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`). **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
 
 <!-- prettier-ignore -->
-| Provider | opus | sonnet | haiku | convergent | Notes |
-| --- | --- | --- | --- | --- | --- |
-| `ollama-local` | `qwen3-coder:30b` (uniform — all tiers) |  |  |  | One model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`; tiers differ only by `reasoningEffort`. |
-| `nvidia` | `moonshotai/kimi-k2.6` | `qwen/qwen3.5-397b-a17b` | `openai/gpt-oss-20b` | `deepseek-ai/deepseek-v4-pro` | Full tier; hosted NIM. NIM dropped `qwen3-coder-480b-a35b-instruct` → sonnet uses flagship general `qwen3.5-397b-a17b`; `kimi-k2.6` is still NIM's newest Kimi. |
-| `openrouter` | `moonshotai/kimi-k3` | `qwen/qwen3-coder` | `openai/gpt-oss-20b` | `deepseek/deepseek-v4-pro` | Aggregator ahead of NIM: opus `kimi-k3`, convergent `deepseek-v4-pro` (both newly listed 2026-07, superseding `kimi-k2.6`/`deepseek-v3.2`). |
-| `ollama` (cloud) | `kimi-k2.7-code` | `qwen3.5:397b` | `gpt-oss:20b` | `deepseek-v4-pro` | opus bumped to `kimi-k2.7-code`; `qwen3-coder:480b` removed → sonnet `qwen3.5:397b`. **opus+convergent (`kimi-k2.7-code`/`deepseek-v4-pro`) need a paid Ollama plan; sonnet+haiku validated free.** |
-| `groq` | `openai/gpt-oss-120b` | `qwen/qwen3.6-27b` | `openai/gpt-oss-20b` | `openai/gpt-oss-120b` | No Kimi/Qwen3-Coder in catalog → opus+convergent collapse onto `gpt-oss-120b`; `qwen3-32b` removed → sonnet `qwen3.6-27b`. |
-| `cerebras` | `zai-glm-4.7` | `gpt-oss-120b` | `gpt-oss-120b` | `zai-glm-4.7` | Two-model catalog → opus+convergent `glm-4.7`, sonnet+haiku `gpt-oss-120b`. |
-| `zai` | `glm-5.2` | `glm-5.1` | `glm-4.5-air` | `glm-5.2` | GLM Coding-Plan (`https://api.z.ai/api/coding/paas/v4`, `ZAI_API_KEY`). Live-probed 2026-07-27 + tool-call smoked. Single GLM family → opus+convergent flagship `glm-5.2` ([Migrate to GLM-5.2](https://docs.z.ai/guides/overview/migrate-to-glm-new)), sonnet prior-gen `glm-5.1`, haiku `glm-4.5-air` (matches [Coding Plan switch guide](https://docs.z.ai/devpack/latest-model)). |
-| `moonshot` | `kimi-k3` | `kimi-k2.7-code` | `kimi-k2.5` | `kimi-k3` | Kimi-For-Coding subscription (`https://api.moonshot.ai/v1`, `MOONSHOT_API_KEY`). Single Kimi family → opus+convergent flagship `kimi-k3`, sonnet coding-specialist `kimi-k2.7-code`, haiku `kimi-k2.5`. **Model IDs PENDING live-probe** — base URL + env verified; the coding sub may expose a subset (fall back haiku→`kimi-k2.7-code` if `kimi-k2.5` absent). Do NOT pin discontinued `kimi-k2`/`kimi-latest`/`kimi-thinking-preview`. |
-| `opencode-zen` | `opencode/kimi-k2.7-code` | `opencode/qwen3.6-plus` | `opencode/deepseek-v4-flash` | `opencode/deepseek-v4-pro` | Full Zen gateway (built-in id `opencode`). No Qwen3-Coder/gpt-oss in catalog → sonnet top Qwen (`qwen3.6-plus`), haiku fast open model (`deepseek-v4-flash`). Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/minimax-m3` | `opencode-go/qwen3.7-plus` | `opencode-go/deepseek-v4-flash` | `opencode-go/deepseek-v4-pro` | Budget open-weight-only plan: opus `minimax-m3`, sonnet `qwen3.7-plus`; prefer pins that stay within the Go 5h usage window. Built-in (no npm/baseURL) so Anthropic-protocol Qwen/MiniMax route correctly. |
+| Model | Score | $/task | Role in bkit |
+| --- | --- | --- | --- |
+| `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
+| `kimi-k3` | 62.2 | $1.76 | `moonshot` + `openrouter` opus+sonnet — only non-Claude pin above the sonnet target |
+| `claude-fable-5` (max) | 62.2 | $8.86 | not adopted — below Opus 5 at 1.7x the cost |
+| `claude-sonnet-5` (xhigh) | **59.4** | $2.14 | **sonnet target** |
+| `grok-4.5` | 56.5 | $0.54 | `cursor` opus (ceiling; −2.9 vs sonnet target at a quarter the cost) |
+| `glm-5.2` | 51.8 | $0.96 | `zai` opus+sonnet+convergent |
+| `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
+| `kimi-k2.6-thinking` | 46.9 | $0.72 | `nvidia` opus+sonnet (NIM pins the bare `kimi-k2.6` id) |
+| `kimi-k2.7-code` | 45.7 | $0.39 | `ollama`-cloud + `opencode-zen` opus+sonnet |
+| `glm-5.1` | ~45 † | — | `zai` haiku |
+| `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
+| `deepseek-v4-pro` | 42.6 | $0.14 | convergent everywhere; `opencode-go` opus+sonnet; haiku on `nvidia`/`openrouter`/`ollama` |
+| `kimi-k2.5` | ~42 † | — | `moonshot` haiku |
+| `qwen3.6-plus` | 41.4 | $1.55 | **dropped** — strictly dominated by `kimi-k2.7-code` (lower score, 4x cost) |
+| `minimax-m3` | 40.7 | $0.42 | **dropped** — `deepseek-v4-pro` scores higher at a third the cost |
+| `qwen3.6-27b` | 39.3 | $0.81 | `groq` whole column (its catalog ceiling) |
+| `deepseek-v4-flash` | 37.6 | **$0.03** | haiku on both opencode gateways — clears the haiku target at 1/180th of Opus 5 |
+| `claude-haiku-4-5` (thinking) | **~35 †** | — | **haiku target** |
+| `zai-glm-4.7` | ~35 † | — | `cerebras` whole column (its catalog ceiling) |
+| `gpt-oss-120b` | ~10 † | — | **dropped everywhere** — below every target, haiku included |
 
-Cloud OpenAI-compatible cells (incl. four `opencode-go`) tool-call-smoked (`tools:` round-trip `tool_calls`) — `/models` ≠ proof (validate-with-real-tool). `opencode-zen` existence-validated via models.dev (Zen balance zero; smoke on Go endpoint). Re-pin: edit agent `model:`, add `prompts.md` § Model Overrides row, or change column + `bkit check`. Probe live catalog first (models.dev opencode; `/v1/models` table rest).
+† **Estimated, not measured.** Model absent from the 2026-06-25 release; value bridged from its 2026-01-08 score via the mean delta of the three nearest-scoring models present in both releases. Cross-release scores are NOT comparable directly (LiveBench rotates questions — overlapping models moved −1.4 to −31.5), so treat † as a bracket, not a number. **Unmeasured entirely** (no anchor in either release, do not infer): `composer-2.5`, `qwen3.5-397b`, `qwen3-coder`, `qwen3.7-plus`, `glm-4.5-air`, `gpt-oss-20b`, `qwen3-coder:30b`.
+
+### Per-tier lineup across providers
+
+Cells show pin · score · $/task. Deltas are against that column's target. Convergent (CoT lens for risk/diagnosis agents) rides the same board.
+
+<!-- prettier-ignore -->
+| Provider | opus — target 65.2 | sonnet — target 59.4 | haiku — target ~35 | convergent | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `claude` | `claude-opus-5` **65.2** · $5.34 | `claude-sonnet-5` **59.4** · $2.14 | `claude-haiku-4-5` ~35 † | (opus) | The baseline. Its ladder is a genuine cost lever — every rung clears its own bar by construction. |
+| `moonshot` | `kimi-k3` 62.2 · $1.76 (−3.0) | `kimi-k3` 62.2 (**+2.8**) | `kimi-k2.5` ~42 † | `kimi-k3` | Closest full-column parity in the field, at a third of Claude cost. Kimi-For-Coding sub. Model IDs still PENDING live-probe. |
+| `openrouter` | `moonshotai/kimi-k3` 62.2 · $1.76 (−3.0) | `moonshotai/kimi-k3` (**+2.8**) | `deepseek/deepseek-v4-pro` 42.6 · $0.14 | `deepseek/deepseek-v4-pro` | Aggregator; same ceiling as `moonshot` with a broader catalog to re-pin from. |
+| `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ≈ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. |
+| `zai` | `glm-5.2` 51.8 · $0.96 (−13.4) | `glm-5.2` (−7.6) | `glm-5.1` ~45 † | `glm-5.2` | GLM Coding-Plan is a flat subscription — "cheapest sufficient" has no cost gradient here, so haiku picks the smaller model for latency, not price. `glm-4.5-air` dropped (below the haiku target). |
+| `nvidia` | `moonshotai/kimi-k2.6` 46.9 · $0.72 (−18.3) | `moonshotai/kimi-k2.6` (−12.5) | `deepseek-ai/deepseek-v4-pro` 42.6 · $0.14 | `deepseek-ai/deepseek-v4-pro` | Score measured on `kimi-k2.6-thinking`; NIM pins the bare id — verify the reasoning variant is what NIM serves. |
+| `ollama` (cloud) | `kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `kimi-k2.7-code` (−13.7) | `deepseek-v4-pro` 42.6 · $0.14 | `deepseek-v4-pro` | **Whole column now needs a paid Ollama plan.** The free `qwen3.5:397b` / `gpt-oss:20b` pins it replaced were unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `opencode-zen` | `opencode/kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `opencode/kimi-k2.7-code` (−13.7) | `opencode/deepseek-v4-flash` 37.6 · **$0.03** | `opencode/deepseek-v4-pro` | Best value in the matrix: the haiku cell clears its target at 1/180th of Opus 5. Existence-validated via models.dev. |
+| `opencode-go` | `opencode-go/deepseek-v4-pro` 42.6 · $0.14 (−22.6) | same (−16.8) | `opencode-go/deepseek-v4-flash` 37.6 · $0.03 | `opencode-go/deepseek-v4-pro` | Budget open-weight plan. `minimax-m3`/`qwen3.7-plus` dropped on the board. Prefer pins inside the Go 5h window. |
+| `groq` | `qwen/qwen3.6-27b` 39.3 · $0.81 (−25.9) | same (−20.1) | same | same | Catalog has no model near any target above haiku — `gpt-oss-120b` measures ~10. Whole column collapsed. **Use only when nothing else is reachable.** |
+| `cerebras` | `zai-glm-4.7` ~35 † (−30) | same (−24) | same | same | Two-model catalog, both weak; `gpt-oss-120b` dropped. Same warning as `groq`. |
+| `ollama-local` | `qwen3-coder:30b` **n/m** | same | same | same | **Meets no tier target.** Old Qwen open-weights score in the single digits on this category; a 30B Q4 local model is an offline / no-credit fallback, not a quality match. Uniform by hard constraint (`OLLAMA_MAX_LOADED_MODELS=1`, fanless M5 32GB), not by tier design. |
+
+**n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
+
+**Hard-constraint escape hatch.** "Cheapest that reaches the target" is bounded by constraints that are not about quality: local memory ceilings (`ollama-local`), paid-plan gating (`ollama` cloud), rate/quota/context walls when ~45 agents collapse onto one flagship. Deviate for those, and say so in the Notes cell — a constrained pin must never read as a tier judgement.
+
+Cloud OpenAI-compatible cells tool-call-smoked (`tools:` round-trip `tool_calls`) — `/models` != proof (validate-with-real-tool). `opencode-zen` existence-validated via models.dev (Zen balance zero; smoke on Go endpoint). Re-pin: edit agent `model:`, add `prompts.md` § Model Overrides row, or change column + `bkit check`. Probe live catalog first (models.dev opencode; `/v1/models` table rest).
 
 **Consumer model overrides (upgrade-safe):** `.bkit/prompts.md` marker-managed (`rules.md` pattern) — bkit refreshes `bkit:start`/`bkit:end` on upgrade; `## Model Overrides` below `bkit:end` consumer-owned. Pin different model per agent×host/provider:
 
@@ -375,7 +415,7 @@ Cloud OpenAI-compatible cells (incl. four `opencode-go`) tool-call-smoked (`tool
 
 `Provider` = host/install key (`cursor`, `nvidia`, `ollama-local`, …). Install merges overrides over defaults (override wins). Claude reads frontmatter; not overridable via table yet.
 
-**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`). Cursor catalog has **no Sonnet** — sonnet-tier agents stay on shipped Composer/Grok unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
+**Cursor API-credit restore:** when you have third-party / additional API credits and want Claude Opus on Cursor workflows, use the paste block in `prompts.md` § Model Overrides (Claude-opus-tier → `claude-opus-5-thinking-high`) — that is the only way to close the −8.7 opus gap on Cursor. Sonnet-tier agents stay on shipped Composer/Grok (correct under per-tier targeting, not a shortfall) unless you opt into `gpt-5.6-sol-high`. Orchestrators `/design` `/plan` `/debug` = session model (set at launch), not the override table.
 
 ### Local Ollama memory-safety (server-side, not opencode.json)
 

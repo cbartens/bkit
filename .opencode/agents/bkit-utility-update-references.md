@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   glob: true

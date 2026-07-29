@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-summary
 description: Senior reviewer evaluating a completed plan for build-readiness.
-model: zai/glm-4.5-air
+model: zai/glm-5.1
 tools:
   read: true
   write: true

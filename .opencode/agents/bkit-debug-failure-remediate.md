@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs-ship
 description: Senior SRE running a post-deploy smoke check for new errors and regressions.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

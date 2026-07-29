@@ -1077,23 +1077,23 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("Read: true");
   });
 
-  it("maps effort: medium → reasoningEffort: low (OpenCode Go/Zen column)", () => {
+  it("maps effort: medium → reasoningEffort: high (OpenCode Go/Zen column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
-    expect(result).toContain("reasoningEffort: low");
+    expect(result).toContain("reasoningEffort: high");
     expect(result).not.toContain("effort:");
   });
 
-  it("maps effort: high → reasoningEffort: medium", () => {
+  it("maps effort: high → reasoningEffort: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
-    expect(result).toContain("reasoningEffort: medium");
+    expect(result).toContain("reasoningEffort: max");
   });
 
-  it("maps effort: xhigh → reasoningEffort: high", () => {
+  it("maps effort: xhigh → reasoningEffort: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-4-8\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
-    expect(result).toContain("reasoningEffort: high");
+    expect(result).toContain("reasoningEffort: max");
   });
 
   it("maps effort: low → reasoningEffort: none", () => {
@@ -1108,7 +1108,7 @@ describe("applyOpencodeAgent", () => {
     expect(result).toContain("reasoningEffort: max");
   });
 
-  it("zai: reads Z.AI column — medium/high → high, xhigh → max", () => {
+  it("zai: reads Z.AI column — medium → high, high/xhigh → max", () => {
     const zaiLookup = new Map([
       ["build-plan", "zai/glm-5.1"],
       ["design-synthesize", "zai/glm-5.2"],
@@ -1128,7 +1128,7 @@ describe("applyOpencodeAgent", () => {
         effortMap,
         "zai",
       ),
-    ).toContain("reasoningEffort: high");
+    ).toContain("reasoningEffort: max");
     expect(
       applyOpencodeAgent(
         `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-5\n---\nBody.\n`,
@@ -1220,9 +1220,9 @@ describe("parseEffortMap", () => {
     expect(effortMap.get("Default")?.size).toBe(5);
   });
 
-  it("Z.AI column collapses medium/high → high, xhigh → max", () => {
+  it("Z.AI column collapses medium → high, high/xhigh → max", () => {
     expect(lookupEffort(effortMap, "zai", "medium")).toBe("high");
-    expect(lookupEffort(effortMap, "zai", "high")).toBe("high");
+    expect(lookupEffort(effortMap, "zai", "high")).toBe("max");
     expect(lookupEffort(effortMap, "zai", "xhigh")).toBe("max");
     expect(lookupEffort(effortMap, "zai", "max")).toBe("max");
     expect(lookupEffort(effortMap, "zai", "low")).toBe("none");
@@ -1230,9 +1230,22 @@ describe("parseEffortMap", () => {
 
   it("providers without a column inherit OpenCode Go/Zen", () => {
     expect(effortColumnForProvider("groq")).toBe("OpenCode Go/Zen");
-    expect(lookupEffort(effortMap, "groq", "xhigh")).toBe("high");
-    expect(lookupEffort(effortMap, "nvidia", "xhigh")).toBe("high");
-    expect(lookupEffort(effortMap, "opencode-go", "medium")).toBe("low");
+    expect(lookupEffort(effortMap, "groq", "xhigh")).toBe("max");
+    expect(lookupEffort(effortMap, "nvidia", "xhigh")).toBe("max");
+    expect(lookupEffort(effortMap, "opencode-go", "medium")).toBe("high");
+  });
+
+  // #205 — below-target providers ceiling out rather than downshift: a provider that scores
+  // under the Claude tier target must spend MORE thinking to close the gap, not less.
+  it("opencode columns ceiling out above low (never below the Default rung)", () => {
+    const RANK = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
+    for (const provider of ["opencode-go", "opencode-zen", "nvidia", "zai", "moonshot"]) {
+      expect(lookupEffort(effortMap, provider, "low")).toBe("none");
+      for (const e of ["medium", "high", "xhigh", "max"]) {
+        expect(RANK[lookupEffort(effortMap, provider, e)]).toBeGreaterThanOrEqual(RANK[e]);
+      }
+      expect(lookupEffort(effortMap, provider, "high")).toBe("max");
+    }
   });
 
   it("Claude / Cursor columns are identity with Default", () => {
@@ -1313,10 +1326,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "nvidia");
     // opus-tier general → kimi
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("nvidia/moonshotai/kimi-k2.6");
-    // sonnet-tier → flagship general Qwen3.5 (NIM dropped the Qwen3-Coder-480B)
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("nvidia/qwen/qwen3.5-397b-a17b");
-    // haiku-tier → gpt-oss
-    expect(lookup.get("bkit-design-summary")).toBe("nvidia/openai/gpt-oss-20b");
+    // sonnet-tier collapses onto the opus pin — NIM's ceiling is below the sonnet target (#205)
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("nvidia/moonshotai/kimi-k2.6");
+    // haiku-tier → cheapest pin that clears the haiku target (gpt-oss dropped: ~10 est)
+    expect(lookup.get("bkit-design-summary")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
     // reasoning lens (opus-tier but CoT override) → deepseek
     expect(lookup.get("bkit-build-challenge-2")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
@@ -1328,48 +1341,48 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   it("openrouter: kimi-k3 opus, deepseek-v4-pro reasoner for convergent (aggressive-latest)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k3");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/qwen/qwen3-coder");
-    expect(lookup.get("bkit-design-summary")).toBe("openrouter/openai/gpt-oss-20b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/moonshotai/kimi-k3");
+    expect(lookup.get("bkit-design-summary")).toBe("openrouter/deepseek/deepseek-v4-pro");
     expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro");
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v4-pro");
   });
 
-  it("ollama (cloud): kimi-k2.7-code opus, qwen3.5:397b sonnet, deepseek-v4-pro convergent", () => {
+  it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4-pro haiku+convergent", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.7-code");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3.5:397b");
-    expect(lookup.get("bkit-design-summary")).toBe("ollama/gpt-oss:20b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/kimi-k2.7-code");
+    expect(lookup.get("bkit-design-summary")).toBe("ollama/deepseek-v4-pro");
     expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
   });
 
-  it("groq: opus+convergent collapse onto gpt-oss-120b (no Kimi/Qwen3-Coder in catalog)", () => {
+  it("groq: whole column collapses onto qwen3.6-27b (gpt-oss scores ~10 — below every tier target)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "groq");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/openai/gpt-oss-120b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/qwen/qwen3.6-27b");
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3.6-27b");
-    expect(lookup.get("bkit-design-summary")).toBe("groq/openai/gpt-oss-20b");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("groq/openai/gpt-oss-120b");
+    expect(lookup.get("bkit-design-summary")).toBe("groq/qwen/qwen3.6-27b");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("groq/qwen/qwen3.6-27b");
   });
 
-  it("cerebras: two-model catalog collapse (glm-4.7 opus/convergent, gpt-oss-120b sonnet/haiku)", () => {
+  it("cerebras: whole column collapses onto glm-4.7 (gpt-oss scores ~10 — below every tier target)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "cerebras");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("cerebras/zai-glm-4.7");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("cerebras/gpt-oss-120b");
-    expect(lookup.get("bkit-design-summary")).toBe("cerebras/gpt-oss-120b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("cerebras/zai-glm-4.7");
+    expect(lookup.get("bkit-design-summary")).toBe("cerebras/zai-glm-4.7");
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("zai: single GLM family — glm-5.2 opus/convergent, glm-5.1 sonnet, glm-4.5-air haiku", () => {
+  it("zai: single GLM family — glm-5.2 opus/sonnet/convergent, glm-5.1 haiku", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zai");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("zai/glm-5.2"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-5.1"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("zai/glm-4.5-air"); // haiku
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-5.2"); // sonnet — collapsed onto ceiling
+    expect(lookup.get("bkit-design-summary")).toBe("zai/glm-5.1"); // haiku — glm-4.5-air is below the haiku target
     expect(lookup.get("bkit-build-challenge-2")).toBe("zai/glm-5.2"); // convergent
   });
 
-  it("moonshot: single Kimi family — kimi-k3 opus/convergent, kimi-k2.7-code sonnet, kimi-k2.5 haiku", () => {
+  it("moonshot: single Kimi family — kimi-k3 opus/sonnet/convergent, kimi-k2.5 haiku", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "moonshot");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("moonshot/kimi-k3"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("moonshot/kimi-k2.7-code"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("moonshot/kimi-k3"); // sonnet — k3 is the only non-Claude pin above the sonnet target
     expect(lookup.get("bkit-design-summary")).toBe("moonshot/kimi-k2.5"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("moonshot/kimi-k3"); // convergent
   });
@@ -1408,22 +1421,23 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       expect(model).not.toContain("set-model-id");
     }
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.7-code"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/kimi-k2.7-code"); // sonnet — qwen3.6-plus was strictly dominated (lower score, 4x cost)
     expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
   });
 
-  it("opencode-go: curated OpenCode Go column (minimax-m3, qwen3.7-plus)", () => {
-    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog
-    // (incl. minimax-m3 / qwen3.7-plus) is invisible to /zen/v1/models — sourced via models.dev.
+  it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4-flash)", () => {
+    // opencode-go = the budget open-weight-only plan (https://opencode.ai/zen/go/v1). Go catalog is
+    // invisible to /zen/v1/models — sourced via models.dev. minimax-m3 / qwen3.7-plus dropped: both
+    // score below deepseek-v4-pro at higher cost (#205 parity board).
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode-go\//);
       expect(model).not.toContain("set-model-id");
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/minimax-m3"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/qwen3.7-plus"); // sonnet
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/deepseek-v4-pro"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/deepseek-v4-pro"); // sonnet
     expect(lookup.get("bkit-design-summary")).toBe("opencode-go/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode-go/deepseek-v4-pro"); // convergent
   });

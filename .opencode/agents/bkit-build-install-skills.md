@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

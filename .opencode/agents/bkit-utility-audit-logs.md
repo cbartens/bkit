@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs
 description: Senior SRE scanning GCP logs for unique error signatures and regressions.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

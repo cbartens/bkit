@@ -12,7 +12,7 @@ tools:
   bash: true
   webfetch: true
   websearch: true
-reasoningEffort: high
+reasoningEffort: max
 ---
 <!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

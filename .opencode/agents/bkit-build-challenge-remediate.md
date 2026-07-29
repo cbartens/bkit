@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against a prioritised review report.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

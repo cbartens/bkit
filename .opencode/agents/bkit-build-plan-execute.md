@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

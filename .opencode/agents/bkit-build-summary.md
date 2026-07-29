@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-summary
 description: Senior reviewer evaluating a completed build cycle for shippability.
-model: zai/glm-4.5-air
+model: zai/glm-5.1
 tools:
   read: true
   write: true

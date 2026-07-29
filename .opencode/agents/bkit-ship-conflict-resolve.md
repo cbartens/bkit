@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   write: true

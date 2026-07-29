@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

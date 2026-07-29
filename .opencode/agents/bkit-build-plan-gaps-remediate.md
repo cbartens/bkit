@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true

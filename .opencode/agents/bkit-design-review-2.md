@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
-model: zai/glm-5.1
+model: zai/glm-5.2
 tools:
   read: true
   grep: true
