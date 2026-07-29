@@ -50,3 +50,10 @@
 {"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE","verdict":"PASS","scope":"pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:slop && pnpm lint:prose && pnpm test:coverage:unit","attempt":1,"failures":0,"at":"2026-07-29T00:28:35Z","parentSha":"1f538ce4fd37c0d71576ee9bd406bcd6ec4e5f25","artifacts":[]}
 {"type":"step-done","workflow":"build","step":"build-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T00:32:24Z","parentSha":"b5c804aff2a0a7be0524832e992eac11967cbdf4","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/build-summary.md"]}
 {"type":"workflow-done","workflow":"build","at":"2026-07-29T00:39:15Z"}
+{"type":"step-done","workflow":"build","step":"build-create-pr","status":"DONE","at":"2026-07-29T00:40:43Z","parentSha":"6f5393857533050478ccce28b6a6edecf19882cd","artifacts":["https://github.com/cbartens/bkit/pull/395"]}
+{"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-07-29T00:40:43Z","parentSha":"6f5393857533050478ccce28b6a6edecf19882cd","artifacts":[],"ciDispatch":{"outcome":"dispatched","head":"6f5393857533050478ccce28b6a6edecf19882cd","attempts":1,"retrigger":false}}
+{"type":"close-transport","shape":"push","sha":"6f5393857533050478ccce28b6a6edecf19882cd","scanResult":"clean","at":"2026-07-29T00:40:43Z"}
+{"type":"runtime-resolved","workflow":"ship","at":"2026-07-29T01:04:11Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":""}
+{"type":"workflow-started","workflow":"ship","at":"2026-07-29T01:04:30Z"}
+{"type":"step-done","workflow":"ship","step":"ship-start-workflow","status":"DONE","at":"2026-07-29T01:04:30Z","parentSha":"6f5393857533050478ccce28b6a6edecf19882cd","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-worktree-setup","status":"DONE","at":"2026-07-29T01:04:30Z","parentSha":"6f5393857533050478ccce28b6a6edecf19882cd","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/ship-input.md"]}
