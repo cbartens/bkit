@@ -21,6 +21,123 @@ Part 1: every subagent in execution order. Part 2: bkit vs Gulli agentic pattern
 
 Each phase lists subagents in execution order. "Parallel" = same-time run, merged after; distinct lenses = multi-perspective review. Orchestrator steps (git, worktree, tracker) noted but not listed as subagents.
 
+### Pipeline map (key steps only)
+
+```
+┌────────────────────── bkit-auto (opt-in cloud router) ─────────────────┐
+│ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
+│ workflow_dispatch        → any phase (ship|debug|design|plan|build)    │
+│ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
+│ (Claude Code on the web / Cursor Background Agents / opencode).        │
+│ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
+└────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+
+/bkit-design ───── output: detailed design ───────────────────────────────────
+  1. fetch related       (tracker search by design keywords → related-issues.md)
+  2. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
+     • pragmatic  • optimal-tradeoff  • risk / pre-mortem
+  3. generate design     (synthesise across lenses + related issues)
+  4. review × 2 (parallel, cross-tier models)
+     • feasibility (web)  • feasibility (cross-tier)
+  5. update design       (fold reviews back in)
+  6. organise            (decompose into workstreams + DAG)
+  7. summary             (tracker-facing)
+
+/bkit-plan ───── output: detailed plan ───────────────────────────────────────
+  1. generate plan
+  2. fetch context       (tracker: related issues; ledgers: prior deferrals,
+                         prior failures → feeds all three reviewers below)
+  3. review × 3 (parallel, distinct lenses)
+     • tightness + design-coverage  • dependency-correctness  • regression-risk
+  4. update plan         (merge critiques, max-wins on CRITICAL)
+  5. scope-check × 2 (parallel)
+     • internal-completeness  • scope audit (cross-family)
+  6. update plan         (merge scope findings)
+  7. complexity-check    (single vs split)
+  8. complexity-split    (only if SPLIT)
+  9. summary             (tracker-facing)
+
+/bkit-build ─── output: code, PR to dev, CI takes over ──────────────────────
+  1. install-skills
+  2. execute build       (producer — implement tasks)
+  3. verify build        (critic — verify each task; tick only on confirmed artifacts)
+                         ↶ producer-critic loop, capped 3 attempts
+  4. gaps-remediate      (fix verifier gaps, re-verify)
+  5. verify build        (holistic second pass across whole plan)
+  6. challenge × 2 (parallel, distinct lenses, no sibling reads)
+    • bug-hunting  • security
+  7. challenge-reconcile (merge findings, severity + verdict max-wins)
+  8. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
+  9. challenge-tests     (edge-case tests for changed files)
+  10. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
+                         no integration / e2e / @live — those run in CI)
+    ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
+  11. summary            (tracker-facing + PR link)
+  → PR opened; CI runs the full multi-tier scaffold (see "CI test scaffold" below)
+
+/bkit-debug ─── side-rail, invoked on test/CI failure ────────────────────────
+  1. run tests          (broader tier than build: lint + typecheck + unit
+                        + integration + e2e + optional @live canary —
+                        reproduces against the deployed boundary)
+  2. fetch context       (only if tests FAIL; CI: failed jobs/steps + error
+                         annotations + failed-step logs; e2e test reports; local
+                         test output; diff vs last-passing CI; runtime logs via
+                         debug-fetch blocks; tracker: related issues by error
+                         signature → feeds diagnose below)
+  Normal mode (localisable failure):
+  3. diagnose           (reads docs/knowledge.jsonl for prior failures;
+                        Standard → Pivot → Final strategy escalation)
+  4. remediate          (apply diagnosis fix)
+  5. re-run tests
+  6. summary
+    ↳ if diagnose can't localise, or loop exhausts 3 strategies → Soak mode
+  Soak mode (non-localisable / runtime-only failure):
+  1. soak loop          (one accumulating context per iteration:
+                        instrument OR smallest evidence-backed fix;
+                        strips all scaffolding before declaring a fix)
+  Escape hatch:
+  abort-handover       (unrecoverable failure → human handover doc + stop)
+
+/bkit-ship ─── output: squash-merged PR, hard stop before main ──────────────
+  1. conflict-resolve    (only if rebase sentinels exist)
+  2. deferred-sweep      (pre-merge completeness gate; FAIL blocks merge)
+  3. run tests           (wait for CI on squash-merge SHA; bkit-tests-check
+                         must be green — every planned tier ran and passed;
+                         @live canary is informational, not a gate)
+  4. merge               (orchestrator-only guarded git op)
+    ↳ on post-merge failure → /bkit-debug (diagnose + remediate)
+  5. update-docs / summary (parallel)
+  6. prune skills + worktree cleanup + close  (orchestrator-only)
+```
+
+### CI test scaffold (runs on every PR + push)
+
+The seeded `ci.yml` runs a flat, wide pipeline — a planner fans out to every lane in parallel, a capstone joins them and is the single branch-protection check. "CI is green" means every planned tier actually ran and passed; partial / cached / light runs cannot pass as validated.
+
+```
+bkit-tests-scope  (planner — derives tier set: PR vs push, run_level, web_affected)
+        │
+        ├── bkit-tests-static        (lint, typecheck, format, slop, prose)
+        ├── bkit-tests-unit          (Vitest unit + in-process integration)
+        ├── bkit-tests-build         (production build —TurboRepo / Next)
+        ├── bkit-tests-integration   (service / DB-backed; PR vs push scope)
+        ├── bkit-tests-e2e           (Playwright against preview deploy)
+        ├── bkit-tests-migration     (always-on; replays + remote push on merge to dev/main)
+        └── bkit-tests-live          (@live canary — NOT a merge gate)
+                │
+                ▼
+        bkit-tests-check  (capstone — asserts every planned tier ran and passed;
+                           sole required check; red → blocks merge + triggers /bkit-debug)
+```
+
+Direct pushes to `dev` / `main` auto-escalate to full run. `@live` is a post-merge canary, not a gate — failures route to `/bkit-debug` for reproduction against the deployed boundary. Full tier rules and framework boundaries: `.agents/rules.md` § Testing & Debugging; `docs/testing.md`.
+
+Hard stops after Design, Plan, and Ship (production merge needs explicit human approval). Shared subagents cross-invoked: `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` run inside Build and Ship failure paths as well as the Debug phase.
+
+With `bkit-auto` enabled, the loop is unattended: Build opens a PR → CI runs → on green `bkit-auto` dispatches `/bkit-ship`, on red it dispatches `/bkit-debug`; debug re-pushes, CI re-runs, auto-routes again — no local session required until a human gate fires.
+
 ### Phase 1 — `/bkit-design`
 
 Output: reviewed design (`docs/plans/{YYYYMM}/{FID}-design.md`). Hard stop for human approval.
@@ -113,6 +230,7 @@ Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safet
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-ship-conflict-resolve` | Conflict resolver | Resolves merge conflicts against the integration branch. Medium effort, with test gate. |
+| `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from plan `Done when` + ship-input acceptance + design scope; FAILs the merge if any unplanned gap (silent `TODO`, skipped test) is found. Declared deferrals resurfaced, never blocking. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If post-merge checks fail) diagnoses the regression. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If post-merge checks fail) applies the fix. |
 | `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. High effort. Parallel with summary. |

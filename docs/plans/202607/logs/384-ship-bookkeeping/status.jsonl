@@ -60,3 +60,4 @@
 {"type":"step-done","workflow":"ship","step":"ship-regression-guard","status":"DONE","verdict":"PASS","at":"2026-07-29T02:57:37Z","parentSha":"b3e046311081f3de29e96187a67bfe88af462289","artifacts":[]}
 {"type":"step-done","workflow":"ship","step":"ship-conflict-resolve","status":"DONE","verdict":"PASS","at":"2026-07-29T03:00:24Z","parentSha":"3c599f47cbf08153a97f07e9b7305925225f2911","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/ship-conflict-resolve.md"]}
 {"type":"step-done","workflow":"ship","step":"ship-deferred-sweep","status":"DONE","verdict":"PASS","at":"2026-07-29T03:13:59Z","parentSha":"80660ea1bff1a6ae486ee2b2b14295a62d255886","artifacts":["docs/plans/202607/logs/384-ship-bookkeeping/ship-deferred-sweep.md"]}
+{"type":"close-transport","shape":"local","sha":"76518374f380f6c16fc71df0d31c14887d722547","scanResult":"clean","at":"2026-07-28T10:58:38Z"}
