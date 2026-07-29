@@ -9,3 +9,5 @@
 {"type":"step-done","workflow":"plan","step":"plan-apply-scope","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T04:20:04Z","parentSha":"2e815ec1ab01f21222947416dd4abfab564a5ec9","artifacts":["docs/plans/202607/logs/363-widen-bkit-cloud-trigger/plan-v3-checked.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-complexity-check","status":"DONE","verdict":"SINGLE","attempt":1,"at":"2026-07-29T04:21:34Z","parentSha":"d53f6eecf20f7ed913de4f23e568b23b0e284024","artifacts":["docs/plans/202607/logs/363-widen-bkit-cloud-trigger/plan-complexity-check.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T04:26:13Z","parentSha":"d16b76be04c9019fd58e427059adc20872b1f97c","artifacts":["docs/plans/202607/logs/363-widen-bkit-cloud-trigger/plan-summary.md"]}
+{"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-07-29T04:28:02Z","parentSha":"143195641b3bf943ad1177895b4e0780b6723c9a","artifacts":[]}
+{"type":"workflow-done","workflow":"plan","at":"2026-07-29T04:28:02Z"}
