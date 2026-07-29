@@ -39,10 +39,20 @@ fi
 exit 1
 EOF
   chmod +x "$FAKE_BIN/gh"
+
+  # A tools-only PATH that is guaranteed NOT to contain gh, for the absent-gh
+  # case. Naming real system dirs there is host-dependent and silently wrong on
+  # GitHub-hosted runners, where gh ships as /usr/bin/gh next to the interpreter
+  # and coreutils the hook itself needs — so the hook found gh and the assertion
+  # failed in CI while passing on a machine with gh in /opt/homebrew/bin.
+  NO_GH_BIN="$(mktemp -d)"
+  for tool in bash cat awk; do
+    ln -s "$(command -v "$tool")" "$NO_GH_BIN/$tool"
+  done
 }
 
 teardown() {
-  rm -rf "$FAKE_BIN" "$WORKDIR"
+  rm -rf "$FAKE_BIN" "$WORKDIR" "$NO_GH_BIN"
 }
 
 run_bootstrap() {
@@ -101,8 +111,9 @@ run_bootstrap() {
 }
 
 @test "gh absent from PATH is stated plainly rather than falling through silently" {
-  # Empty PATH dir for gh: the hook must say the MCP lane is the only one left.
-  run env -i PATH="/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" bash "$BOOTSTRAP_SH" </dev/null
+  # gh-free PATH (see NO_GH_BIN in setup): the hook must say the MCP lane is the
+  # only one left.
+  run env -i PATH="$NO_GH_BIN" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" bash "$BOOTSTRAP_SH" </dev/null
   [ "$status" -eq 0 ]
   [[ "$output" == *"gh is not on PATH"* ]]
 }
