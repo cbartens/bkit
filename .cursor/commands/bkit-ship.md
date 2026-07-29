@@ -23,7 +23,7 @@
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded `$BOOK_ROOT/.../status.jsonl`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap` that removes `.dev.lock` on `EXIT`.
-> - **Status branch:** All steps write `$BOOK_ROOT/.../status.jsonl` (bookkeeping never rides the branch — #384). `BOOK_ROOT` resolves the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` → `$REPO_ROOT` (dev tree); `RUNTIME_DEVPUSHES=false` → current working branch tree (bookkeeping lands with the phase-close PR per #341 shape A). Staging is path-scoped via `BOOK_PATHS` (frozen 8-path allow-list); NEVER stage all files (the `-A` flag) or blanket `docs/`. `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
+> - **Status branch:** All steps write `$BOOK_ROOT/.../status.jsonl` (bookkeeping never rides the branch — #384). `BOOK_ROOT` resolves the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` → `$REPO_ROOT` (dev tree); `RUNTIME_DEVPUSHES=false` → current working branch tree (bookkeeping lands with the phase-close PR per #341 shape A). Staging is path-scoped via `BOOK_PATHS` (frozen allow-list: 9 book paths + any present host skill mirror); NEVER stage all files (the `-A` flag) or blanket `docs/`. `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -37,7 +37,7 @@
 
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** `MAX_MERGE_ATTEMPT` sourced via `bkit-ship-timeouts.sh` and the fenced shell routing block below.
+> - **Limits:** `MAX_MERGE_ATTEMPT` sourced via `bkit-counter-bus-config.sh` (its single definition) in the fenced shell routing block below; `bkit-ship-timeouts.sh` carries the timeout / poll / lock constants.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -142,7 +142,7 @@
    else
      BOOK_ROOT="$REPO_ROOT"
    fi
-   # BOOK_PATHS — frozen 8-path staging allow-list (path-scoped; never -A):
+   # BOOK_PATHS — frozen staging allow-list (path-scoped; never -A):
    #   docs/plans/{YYYYMM}/logs/{FID}/
    #   docs/completed.md
    #   docs/deferrals.jsonl
@@ -153,6 +153,16 @@
    #   .agents/skills
    #   skills-lock.json
    BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .agents/skills skills-lock.json"
+   # Host skill mirrors — `npx skills remove` (Step 11) deletes these alongside
+   # .agents/skills/<name>, so they must be stageable or the deletions leak into
+   # the working tree. Appended only when present on disk OR tracked in the
+   # index: staging a pathspec that matches neither is a fatal error, and
+   # a claude-only consumer has no .cursor/.opencode mirror at all.
+   for d in .claude/skills .cursor/skills .opencode/skills; do
+     if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
+       BOOK_PATHS="$BOOK_PATHS $d"
+     fi
+   done
    # Outbox: outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
    mkdir -p "$OUTBOX"
@@ -282,7 +292,16 @@
 3. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
 4. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**.
 5. **Route:**
-   - **If** `state` = MERGED → **Step 9**.
+   - **If** `state` = MERGED → record the resume marker, then → **Step 9**:
+     ```bash
+     STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     jq -nc --arg t "$(date -u +%FT%TZ)" \
+       '{type:"ship-merged-on-entry", workflow:"ship", at:$t}' >> "$STATUS"
+     ```
+     This marker is what lets an auditor tell a MERGED-on-entry resume from a run
+     that simply dropped rows: sub-step 8 below is skipped on this route, so the
+     absence of `ship-worktree-setup` / `ship-regression-guard` is otherwise
+     indistinguishable from a bookkeeping hole.
    - **Else** → next sub-step.
 6. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
    ```bash
@@ -856,6 +875,12 @@
      grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
    done
    ```
+   `npx skills remove` deletes the host mirrors (`.claude/skills`, `.cursor/skills`,
+   `.opencode/skills`) alongside `.agents/skills/<name>`. Those mirror paths are in
+   `BOOK_PATHS` (Step 1) so the Close-step staging carries the deletions. Without
+   them the prune commit holds only `.agents/skills` + `skills-lock.json` and the
+   mirror deletions leak into the working tree, where the next unrelated staging
+   sweeps them into a foreign commit.
 2. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"

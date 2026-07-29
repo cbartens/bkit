@@ -2,7 +2,7 @@
   "name": "@cbartens/bkit",
   "version": "4.10.0",
   "private": false,
-  "description": "Agent-stack consolidation CLI \u2014 distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
+  "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
   "bin": {
     "bkit": "./dist/bkit-install.js"
@@ -47,13 +47,13 @@
     "test:watch": "vitest",
     "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=70",
     "typecheck": "tsc --noEmit",
-    "check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale \u2014 run pnpm build and commit the result' && exit 1)",
+    "check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
     "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
-    "lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing \u2014 skipping workflow lint (install actionlint to enable)\"; fi'",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced \u2014 skipping (run `vale sync` to enable)\"; fi'",
+    "lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
     "prepare": "husky"
   },
   "dependencies": {

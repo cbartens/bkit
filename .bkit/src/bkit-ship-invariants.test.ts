@@ -85,6 +85,14 @@ export const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   ".bkit/friction.jsonl",
   ".agents/skills",
   "skills-lock.json",
+  // Host skill mirrors — `npx skills remove` in Step 11 deletes these alongside
+  // .agents/skills/<name>, so they must be stageable or the deletions leak into
+  // the working tree (they sat there across two ships before this was added).
+  // Appended conditionally in Step 1: present-on-disk OR tracked, because a bare
+  // `git add` on a pathspec matching neither is fatal.
+  ".claude/skills",
+  ".cursor/skills",
+  ".opencode/skills",
 ] as const;
 
 // ---------------------------------------------------------------------------
