@@ -10,6 +10,15 @@ Verdict: PASS
      no silent drops). See the "Scope-Check Resolution Index" near the end of this file for a
      finding-by-finding trace. Source references re-verified against the current worktree. -->
 
+<!-- v4 — post-plan review revision (2026-07-29, pre-build). The v1-v3 chain was authored
+     against parent SHA 2ee0da16, ten minutes BEFORE #384 (80660ac0) restructured
+     `bkit-ship.md` into Path A/B and four follow-up fixes landed on dev. Every
+     `bkit-ship.md:NNN` anchor in v3 was therefore stale, and v3's Task 4 premise
+     ("AUTO_ROUTE_SUFFIX is already derived on line 626") is now FALSE — #384 deleted the
+     variable from `bkit-ship.md` outright. v4 re-verifies every source anchor against dev
+     @ d87c8641 and closes seven defects. See the "Post-Plan Review Findings" index at the
+     end of this file for the finding-by-finding trace (P1-P7). -->
+
 # Widen bkit-cloud Trigger to Post-Merge dev CI Implementation Plan
 
 > [!CAUTION]
@@ -23,7 +32,10 @@ Verdict: PASS
 
 `bkit-cloud.yml`'s `workflow_run` trigger currently fires only on `feat/**` CI completion (pre-merge pull-request CI). When CI goes green on a `feat/{FID}` branch, the cloud orchestrator auto-ships the PR; when it fails, it auto-dispatches `/bkit-debug`. But once that PR squash-merges to `dev`, the `feat/{FID}` branch is deleted and **no cloud trigger fires for post-merge `dev` CI** — if the squash-merge reintroduces a failure (merge conflict resolution gone wrong, a dependency only resolved on the PR head, an env difference), bkit is blind to it. An operator must notice the red `dev` CI run and manually invoke `/bkit-debug`.
 
-This plan **widens the trigger** to `['feat/**', 'fix/**', 'dev']` and adds the branch-aware routing, FID-recovery, concurrency, and loop-bound machinery the `dev` path requires. `main` stays manual-only (production trunk never auto-dispatches a cloud agent). The design follows **Option A** from the issue comments: the existing free-tier gate (`bkit [auto route]` HEAD-commit marker, threaded by `bkit-ship` onto the squash-merge `--subject` when the issue carries `bkit:auto`) is reused verbatim for the `dev` path — no second gate, no new trust surface. The `[skip ci]` Close commit that follows the squash merge is unaffected (it never carried the marker, so it never triggered the cloud workflow).
+This plan **widens the trigger** to `['feat/**', 'fix/**', 'dev']` and adds the branch-aware routing, FID-recovery, concurrency, and loop-bound machinery the `dev` and `fix/**` paths require. `main` is **deliberately excluded** — a documented reversal of the issue's D-final decision, recorded as a deferral (see Out of Scope). The design follows **Option A** from the issue comments: the existing free-tier gate (`bkit [auto route]` HEAD-commit marker, threaded by `bkit-ship` onto the squash-merge `--subject` when the issue carries `bkit:auto`) is reused verbatim for the `dev` path — no second gate, no new trust surface. The `[skip ci]` Close commit that follows the squash merge is unaffected (it never carried the marker, so it never triggered the cloud workflow).
+
+> [!IMPORTANT]
+> **P1 — the Option A change point no longer exists (v4).** v3 asserted that `bkit-ship.md` already derives `AUTO_ROUTE_SUFFIX` from the `bkit:auto` label at line 626, so Task 4 was a one-token append. **#384 (80660ac0) deleted that derivation from `bkit-ship.md` entirely** — `grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` now returns 0, and the ship conflict-resolve commit carries a hard-coded `bkit [skip ci]` instead of the conditional marker. Task 4 must therefore **re-introduce** the derivation, not just thread it. The idiom to mirror is `bkit-build.md:1261` / `bkit-debug.md:1262` (`echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true`), which both still carry it. This also means `.bkit/workflows.md:605,1010` — which still document ship's dev-sync / conflict-resolve marker re-carry — are **stale against shipped code**; that drift is a #384 regression, out of scope here, and is raised separately on #363/#384.
 
 The `dev` path differs from the `feat/**` path in three load-bearing ways, all addressed here:
 
@@ -33,7 +45,8 @@ The `dev` path differs from the `feat/**` path in three load-bearing ways, all a
 
 **Success Criteria:**
 
-- `bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**`, `fix/**`, and `dev` CI completion (never `main`); the existing `feat/**` pre-merge routing (success -> ship, failure -> debug) is preserved for `feat/**` specifically. `fix/**` is a newly-folded surface (see "Breaking Changes" — `fix/**` PRs now follow the same ship/debug routing as `feat/**`).
+- `bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**`, `fix/**`, and `dev` CI completion (never `main`); the existing `feat/**` pre-merge routing (success -> ship, failure -> debug) is preserved for `feat/**` specifically. `fix/**` is a newly-folded surface and requires **three code changes to become functional at all** (P2, below) — it is NOT free.
+- `fix/**` routing works end-to-end: the ctx-step FID fallback strips `fix/` as well as `feat/`, `bkit-auto.md` Step 10 accepts a `fix/` branch prefix, and the `fix/**` CI-failure -> debug loop is bounded by the same dispatch cap as `dev` (keyed on the FID, not the branch).
 - On `dev` CI **failure**, the cloud orchestrator recovers the FID from the squash-merge commit scope, runs a sound stale-run guard (Option A — CI-run recency, NOT a git-tip comparison), re-checks `bkit:auto` on the issue (kill switch), enforces the `MAX_DEV_DISPATCH_ATTEMPTS` cap, writes the `dev-dispatch` counter row to `status.jsonl` (committed to dev with `[skip ci]` so it persists across runs), and dispatches `/bkit-debug {FID}`. On `dev` CI **success**, the run exits as a no-op (`::notice::`, `skip=true`).
 - The free-tier gate (`bkit [auto route]` in `head_commit.message`) admits `dev`-triggered runs by construction — `bkit-ship` threads the marker onto the squash `--subject` when the issue is `bkit:auto`-labeled. No separate gate path.
 - Cross-session debug loop on `dev` is bounded: after `MAX_DEV_DISPATCH_ATTEMPTS` (3) distinct failed dev CI SHAs for one FID, subsequent `dev`-CI-fail dispatches exit as no-ops with an operator-review `::notice::`.
@@ -74,9 +87,9 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 ### Key Edge Cases
 
 - **Squash-merge subject without scope:** A non-conventional commit (manual `git push` to `dev`, or a `chore(...)` scope that doesn't match `{FID}` slug regex) -> FID recovery fails -> fail-safe no-op exit (`::notice::`, `skip=true`). No dispatch, no crash.
-- **`[skip ci]` Close commit:** The `docs({FID}): ship DONE bkit [skip ci]` close commit (`bkit-ship.md:1206`) that follows the squash merge carries `[skip ci]` -> CI doesn't run -> no `workflow_run` event. Only the squash-merge commit (which DOES carry `bkit [auto route]` and does NOT carry `[skip ci]`) triggers CI -> the cloud gate matches. No interaction.
+- **`[skip ci]` Close commit:** The `docs({FID}): ship DONE bkit [skip ci]` close commit (`bkit-ship.md:1258`) that follows the squash merge carries `[skip ci]` -> CI doesn't run -> no `workflow_run` event. Only the squash-merge commit (which DOES carry `bkit [auto route]` and does NOT carry `[skip ci]`) triggers CI -> the cloud gate matches. No interaction.
 - **Two dev pushes fail CI near-simultaneously:** Concurrency group `bkit-auto-dev` with `cancel-in-progress: false` -> the in-flight debug runs to completion; the superseding run is **queued** (GHA queues one pending with `cancel-in-progress: false`; older pendings are cancelled as newer ones arrive). The queued run starts when the in-flight finishes and re-evaluates the cap at its ctx step (which sees the now-incremented `dev-dispatch` count). The operator does NOT need to manually re-trigger.
-- **Stale dev CI (Option A guard):** A CI run for an old `dev` SHA completes after a newer feature push has landed. The guard queries the most recent COMPLETED CI run on `dev` via `gh run list --branch dev --workflow CI --status completed`; if that run's `headSha` differs from `workflow_run.head_sha`, the run is stale -> `skip=true`. Close commits carry `[skip ci]` so they never appear in `gh run list` — the most-recent-completed-run head is always a feature/fix commit, which is exactly the staleness signal. (A naive `git rev-parse origin/dev` comparison is unsound: the close commit advances dev's tip during the CI run, guaranteeing a mismatch on every legitimate dispatch — see Review 3 F1.)
+- **Stale dev CI (Option A guard):** A CI run for an old `dev` SHA completes after a newer feature push has landed. The guard queries the most recent COMPLETED CI run on `dev` via `gh run list --branch dev --workflow ci.yml --status completed`; if that run's `headSha` differs from `workflow_run.head_sha`, the run is stale -> `skip=true`. Close commits carry `[skip ci]` so they never appear in `gh run list` — the most-recent-completed-run head is always a feature/fix commit, which is exactly the staleness signal. (A naive `git rev-parse origin/dev` comparison is unsound: the close commit advances dev's tip during the CI run, guaranteeing a mismatch on every legitimate dispatch — see Review 3 F1.)
 - **FID from merged PR (fallback):** If the squash-merge scope is missing/malformed but the merge commit is linked to a PR, recover FID from `gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls` -> PR body `bkit:fid` marker. Primary path is commit-scope; this is the fallback.
 - **`bkit:auto` revoked mid-loop:** Issue label removed between dispatches -> kill switch fires on the next ctx-step label re-check -> `skip=true`. Halts the loop even under the cap.
 - **Docs-only diff (Vercel cancel):** The dev path routes `dev CI failure -> /bkit-debug`. This is only correct for docs-only diffs if the consumer's `ci.yml` "Await Vercel Deployment" step neutralises a Vercel-CANCELED build (skip e2e, stay green) rather than red-ing it. If a consumer reds on Vercel-CANCELED, every docs-only squash-merge to dev false-dispatches `/bkit-debug` and burns cap budget. This invariant is asserted in `plan-input.md` and must be manually verified per target consumer (see Task 10).
@@ -87,9 +100,9 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 **Starting state:** Issue #142 is `bkit:auto`-labeled. PR #500 (`feat/142-add-auth`) passed pre-merge CI and is about to be squash-merged by `/bkit-ship`.
 
 1. `/bkit-ship` Step 6 squash-merges PR #500 to `dev` with subject `feat(142-add-auth): add OAuth flow (#500) bkit [auto route]` (the `bkit [auto route]` suffix threaded by Step 5 because the issue carries `bkit:auto`).
-2. `/bkit-ship` Step 13 commits `docs(142-add-auth): ship DONE bkit [skip ci]` and pushes it to `dev` (`bkit-ship.md:1206,1211`) — no CI, no cloud trigger. `dev`'s tip is now this close commit.
+2. `/bkit-ship` Step 13 commits `docs(142-add-auth): ship DONE bkit [skip ci]` and pushes it to `dev` (`bkit-ship.md:1258,1261-1265`) — no CI, no cloud trigger. `dev`'s tip is now this close commit.
 3. Post-merge CI runs on `dev` against the squash-merge SHA (triggered by the Step 6 push). It **fails** (a post-merge-only integration test broke).
-4. `workflow_run` fires. The gate matches (`bkit [auto route]` is in the squash-merge subject). The ctx step: `BRANCH=dev` -> dev path -> `CONCLUSION=failure` -> `PHASE=debug`. FID from commit scope `142-add-auth` -> `ISSUE=142`. Stale-run guard (Option A): `gh run list --branch dev --workflow CI --status completed` -> most-recent completed run's headSha == the squash-merge SHA == `workflow_run.head_sha` -> not stale. Loop cap: distinct `dev-dispatch` headSha count for `142-add-auth` = 0 < 3 -> proceed. Kill switch: `bkit:auto` still on #142 -> proceed. Write `dev-dispatch` row (headSha = squash-merge SHA), commit `docs(142-add-auth): dev-dispatch telemetry [skip ci]`, push to dev. Set `phase=debug arg=142-add-auth`.
+4. `workflow_run` fires. The gate matches (`bkit [auto route]` is in the squash-merge subject). The ctx step: `BRANCH=dev` -> dev path -> `CONCLUSION=failure` -> `PHASE=debug`. FID from commit scope `142-add-auth` -> `ISSUE=142`. Stale-run guard (Option A): `gh run list --branch dev --workflow ci.yml --status completed` -> most-recent completed run's headSha == the squash-merge SHA == `workflow_run.head_sha` -> not stale. Loop cap: distinct `dev-dispatch` headSha count for `142-add-auth` = 0 < 3 -> proceed. Kill switch: `bkit:auto` still on #142 -> proceed. Write `dev-dispatch` row (headSha = squash-merge SHA), commit `docs(142-add-auth): dev-dispatch telemetry [skip ci]`, push to dev. Set `phase=debug arg=142-add-auth`.
 5. Dispatch `/bkit-auto debug 142-add-auth`. `bkit-auto` Step 1.5: `ARG=142-add-auth` (non-numeric) -> `MODE=CI_DEV`, `FID=142-add-auth`, `ISSUE_ID=142`, `BRANCH=dev`. Steps 6-10 gated on `MODE=CI` (skipped). Dispatch `/bkit-debug 142-add-auth`.
 6. `bkit-debug` Step 2 worktree: existing 3-way fallback (`bkit-debug.md:318-327`) — `feat/142-add-auth` absent remotely (deleted on squash-merge) -> create `fix/142-add-auth` off `origin/dev`. Step 1.6: `gh pr list --head fix/142-add-auth --base dev` -> no PR -> `PUSH_MODE=LOCAL`. Debug runs, fixes, opens PR `fix/142-add-auth -> dev`, merges it.
 7. The fix-merge push triggers CI on `dev` again (new headSha). If green -> no dispatch (success = no-op). If red -> steps 4-6 repeat, cap's distinct-headSha count increments to 1.
@@ -97,26 +110,42 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 
 ### Derived Test Matrix
 
-| #   | Behaviour                                                                    | How to verify                                                                                                                                                                                     |
-| --- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1  | `workflow_run.branches` includes `dev`                                       | `yq` / `jq` parse of `bkit-cloud.yml` `on.workflow_run.branches` contains `dev`                                                                                                                   |
-| T2  | `cancel-in-progress` is `false` for `dev`, `true` otherwise                  | Expression `${{ github.event.workflow_run.head_branch != 'dev' }}` present; bash unit: `head_branch=feat/foo` -> true (cancel preserved); `head_branch=dev` -> false (queue)                      |
-| T3  | Ctx step derives FID from commit scope on `dev` (no PR)                      | Bash unit: feed a `feat(363-widen-bkit-cloud-trigger): ...` subject via `$COMMIT_MSG` env -> assert `FID=363-widen-bkit-cloud-trigger`                                                            |
-| T4  | Ctx step routes `dev` success -> skip, failure -> debug                      | Bash unit: `CONCLUSION=success` + `BRANCH=dev` -> `skip=true`; `CONCLUSION=failure` + `BRANCH=dev` -> `phase=debug`                                                                               |
-| T5  | Ctx step enforces `MAX_DEV_DISPATCH_ATTEMPTS` cap (distinct headSha count)   | Bash unit: seed status.jsonl with 3 `dev-dispatch` rows for 3 distinct headSha values -> assert `skip=true` + notice; 3 rows for the SAME headSha -> assert `skip=false` (counts distinct cycles) |
-| T6  | `bkit-auto` accepts non-numeric ARG as FID (CI_DEV mode)                     | Bash unit: `ARG=363-widen-bkit-cloud-trigger` -> `MODE=CI_DEV`, no `gh pr view` call (asserted via sentinel — Task 2 F1); `ISSUE_ID=363` derived                                                  |
-| T7  | `bkit-auto` CI_DEV skips `PR_STATE != OPEN` + `feat/` prefix asserts         | Read: Steps 7 and 10 gated on `MODE=CI` only; Step 9 (PR-body extraction) also gated                                                                                                              |
-| T8  | `bkit-debug` existing fallback creates `fix/{FID}` off `origin/dev`          | Read: `bkit-debug.md:318-327` fallback path verified (no code change required); `git diff --exit-code -- .bkit/workflows/bkit-debug.md` exits 0 (Task 3 F2)                                       |
-| T9  | `bkit-ship` squash `--subject` includes `bkit [auto route]` when `bkit:auto` | Bash unit: `LABELS` contains `bkit:auto` -> subject ends with `bkit [auto route]`                                                                                                                 |
-| T10 | `MAX_DEV_DISPATCH_ATTEMPTS=3` in counter-bus-config                          | `grep MAX_DEV_DISPATCH_ATTEMPTS .bkit/scripts/bkit-counter-bus-config.sh`                                                                                                                         |
-| T11 | Mirrors regenerated (`.claude/`, `.cursor/`, `.opencode/` in sync)           | `pnpm bkit upgrade --dry-run` produces no diff on canonical files                                                                                                                                 |
-| T12 | Version bumped 4.10.0 -> 4.11.0                                              | `jq -r .version package.json` = `4.11.0`; `grep pinnedVersion .bkit/version` = `4.11.0`                                                                                                           |
+| #   | Behaviour                                                                    | How to verify                                                                                                                                                                                         |
+| --- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | `workflow_run.branches` includes `dev`                                       | `yq` / `jq` parse of `bkit-cloud.yml` `on.workflow_run.branches` contains `dev`                                                                                                                       |
+| T2  | `cancel-in-progress` is `false` for `dev`, `true` otherwise                  | Expression `${{ github.event.workflow_run.head_branch != 'dev' }}` present; bash unit: `head_branch=feat/foo` -> true (cancel preserved); `head_branch=dev` -> false (queue)                          |
+| T3  | Ctx step derives FID from commit scope on `dev` (no PR)                      | Bash unit: feed a `feat(363-widen-bkit-cloud-trigger): ...` subject via `$COMMIT_MSG` env -> assert `FID=363-widen-bkit-cloud-trigger`                                                                |
+| T4  | Ctx step routes `dev` success -> skip, failure -> debug                      | Bash unit: `CONCLUSION=success` + `BRANCH=dev` -> `skip=true`; `CONCLUSION=failure` + `BRANCH=dev` -> `phase=debug`                                                                                   |
+| T5  | Ctx step enforces `MAX_DEV_DISPATCH_ATTEMPTS` cap (distinct headSha count)   | Bash unit: seed status.jsonl with 3 `dev-dispatch` rows for 3 distinct headSha values -> assert `skip=true` + notice; 3 rows for the SAME headSha -> assert `skip=false` (counts distinct cycles)     |
+| T6  | `bkit-auto` accepts non-numeric ARG as FID (CI_DEV mode)                     | Bash unit: `ARG=363-widen-bkit-cloud-trigger` -> `MODE=CI_DEV`, no `gh pr view` call (asserted via sentinel — Task 2 F1); `ISSUE_ID=363` derived                                                      |
+| T7  | `bkit-auto` CI_DEV skips `PR_STATE != OPEN` + `feat/` prefix asserts         | Read: Steps 7 and 10 gated on `MODE=CI` only; Step 9 (PR-body extraction) also gated                                                                                                                  |
+| T8  | `bkit-debug` existing fallback creates `fix/{FID}` off `origin/dev`          | Read: `bkit-debug.md:318-327` fallback path verified (no code change required); `git diff --exit-code -- .bkit/workflows/bkit-debug.md` exits 0 (Task 3 F2)                                           |
+| T9  | `bkit-ship` squash `--subject` includes `bkit [auto route]` when `bkit:auto` | Bash unit: `LABELS` contains `bkit:auto` -> subject ends with `bkit [auto route]`                                                                                                                     |
+| T10 | `MAX_DEV_DISPATCH_ATTEMPTS=3` in counter-bus-config                          | `grep MAX_DEV_DISPATCH_ATTEMPTS .bkit/scripts/bkit-counter-bus-config.sh`                                                                                                                             |
+| T11 | Mirrors regenerated (`.claude/`, `.cursor/`, `.opencode/` in sync)           | `pnpm bkit upgrade --dry-run` produces no diff on canonical files                                                                                                                                     |
+| T12 | Version bumped 4.10.0 -> 4.11.0                                              | `jq -r .version package.json` = `4.11.0`; `grep pinnedVersion .bkit/version` = `4.11.0` (re-verified: dev is still on 4.10.0, so the bump target is unchanged)                                        |
+| T13 | Ctx step recovers FID from a `fix/**` branch (v4/P2)                         | Bash unit: `BRANCH=fix/363-widen-bkit-cloud-trigger` -> `FID=363`; `BRANCH=fix/bar-123-auth` -> `FID=bar-123`; `BRANCH=feat/141-cloud-app` -> unchanged from today                                    |
+| T14 | `bkit-auto` Step 10 accepts `fix/` (v4/P2)                                   | Dry-run `MODE=CI BRANCH=fix/363-widen-bkit-cloud-trigger` reaches Step 11, NOT the Failure Path, with `FID=363-widen-bkit-cloud-trigger`; `BRANCH=chore/x` still routes to the Failure Path           |
+| T15 | `fix/**` failure loop is capped; success + `feat/**` are not (v4/P3)         | Bash unit: `BRANCH=fix/363-x CONCLUSION=failure` + 3 distinct-headSha rows -> `skip=true`; `fix/**` + `success` -> `phase=ship`, cap unconsulted; `feat/**` + `failure` -> `phase=debug`, unconsulted |
+| T16 | Dev path is tracker-agnostic (v4/P5)                                         | Bash unit: `COMMIT_MSG="feat(bar-123-auth): x"` on `BRANCH=dev` -> `FID=bar-123-auth`, `ISSUE=bar-123` (Linear shape admitted, not silently no-op'd)                                                  |
+| T17 | Counter write fails CLOSED (v4/P6)                                           | Bash unit with a `git` stub whose `push` always fails and whose `origin/dev` lacks the row -> assert `skip=true` + fail-closed notice, and that no `phase=`/`arg=` pair is emitted                    |
 
 ---
 
 ## Breaking Changes & Naming Review
 
 **`fix/**` surface newly routed (behaviour change — documented, not a regression).** Today `workflow_run.branches: ['feat/**']` excludes `fix/**`, so a `/bkit-debug`-created `fix/{FID}` PR's green CI does NOT auto-dispatch `/bkit-ship` — the debug orchestrator owns the merge (LOCAL direct push, or waits for manual merge). After this plan, `fix/**` CI success -> `workflow_run` -> ctx step `else` branch -> `gh pr list --head fix/{FID} --base dev` -> PR found -> `phase=ship` -> cloud auto-merges the fix PR. This is the intended folding (matches the routing table), but it IS a behaviour change to `/bkit-debug`'s fix-PR lifecycle: `/bkit-debug`-created fix PRs will now be auto-merged by the cloud on green CI. The `feat/**` pre-merge path is preserved byte-for-byte; the "preserved" claim is scoped to `feat/**` only.
+
+> [!WARNING]
+> **P2 — v3's `fix/**` folding was INERT, and its no-op was silent (v4 correction).** Adding `fix/**` to `workflow_run.branches` alone does nothing, because three downstream surfaces are `feat/`-only. Verified against dev @ d87c8641:
+>
+> 1. **ctx-step FID fallback is `feat/`-only** (`bkit-cloud.yml:198`): `FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+')`. For `BRANCH=fix/363-widen-bkit-cloud-trigger` the `sed` is a no-op and neither alternation matches (`^[0-9]+` fails on `f`; `^[a-z]+-[0-9]+` needs `fix-363`, the string has `fix/363`) -> `FID` empty.
+> 2. **The PRIMARY path cannot rescue it.** `bkit-debug.md:1244-1249` creates the fix PR with a body containing only a plan-doc link inside `bkit:start/end` — **no `bkit:issue=` / `bkit:fid=` markers** (`grep -c 'bkit:fid=' .bkit/workflows/bkit-debug.md` = 0). So the marker parse yields empty too, and the ctx step takes the `Cannot derive FID/ISSUE` fail-safe exit.
+> 3. **`bkit-auto.md:118` hard-rejects the branch anyway**: `**If** BRANCH does NOT start with feat/ -> **Failure Path**`. This fires in `MODE=CI` (a `fix/**` PR run IS `MODE=CI` with a numeric PR ARG), so even if 1+2 were fixed the dispatch would land in the Failure Path — which posts a failure comment and sets `bkit:failed`. That is strictly **worse** than today's silence.
+>
+> Net: as written in v3, every `fix/**` CI completion no-ops at the ctx step (best case) or fails the issue (if 1+2 are fixed in isolation). The Breaking-Changes claim above ("cloud auto-merges the fix PR") could not occur. v4 adds **Tasks 11-13** to make the folding real, per the issue pivot comment's "fix/** is a pre-existing routing gap worth folding in".
+>
+> **P3 — the `fix/**` failure loop is unbounded.** `MAX_DEV_DISPATCH_ATTEMPTS` is gated on `BRANCH = dev`. A `fix/**` CI **failure** dispatches `/bkit-debug`, whose fix push re-reds CI, which dispatches again — the exact cross-session feedback loop the cap exists to bound, on the surface this plan newly opens, with no bound at all. v4 rekeys the cap on the **FID** (not the branch) and applies it to both post-`feat/**` surfaces; see Task 1f and Task 13.
 
 **No other breaking changes.** The `dev` path is purely additive (a new branch in the trigger filter + ctx step branch). Existing consumer repos without `bkit:auto`-labeled issues see no behaviour change (the free-tier gate already blocks unmarked runs).
 
@@ -142,13 +171,17 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 
 5. **Counter write location.** Decision: **written by the cloud ctx step (both jobs), immediately before dispatch, committed to dev with `[skip ci]`.** NOT written by `/bkit-debug` (v1's design had no CI_DEV signal in bkit-debug, making the cap silently inert). The ctx step already knows `BRANCH=dev`, the FID, and the `workflow_run.head_sha`. Reader and writer co-located. F3 (undercount on early crash) closed: the write precedes dispatch.
 
+6. **(v4) P5 — the dev-path FID regex must be tracker-agnostic.** Decision: **the commit-scope regex and the FID slug allowlist accept BOTH tracker shapes**, matching the existing `feat/**` fallback at `bkit-cloud.yml:198` (`'^[0-9]+|^[a-z]+-[0-9]+'`). v3 hard-coded the GitHub shape only — scope regex `^\w+\(([0-9]+-[a-z0-9-]+)\):`, allowlist `^[0-9]+-[a-z0-9-]+$`, and `ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+')`. A Linear-tracker consumer's FID is `bar-123-slug`, which fails all three, so **the dev trigger would silently never fire for any Linear consumer** — a fail-safe no-op that looks identical to "no marker", giving the operator no signal. bkit's shipped surface must be tracker-independent (`.agents/rules.md`; the existing ctx-step fallback already honours this). v4 widens to allowlist `^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$` and derives `ISSUE` via `grep -oE '^[0-9]+|^[a-z]+-[0-9]+'` — the same alternation the `feat/**` path already uses. Applies identically to `bkit-auto.md` Step 1.5's CI_DEV `ISSUE_ID` derivation.
+
+7. **(v4) P6 — the counter write must fail CLOSED, not open.** Decision: **on telemetry push failure, re-fetch and retry once; if the row still is not on `dev`, `skip=true` and do NOT dispatch.** v3 tolerated a rejected push with `git push origin dev || echo "::notice::… row already on dev for this headSha; continuing."` and dispatched anyway. That claim only holds for the specific dual-job race it names; any other non-fast-forward (dev advanced for an unrelated reason — a concurrent ship close commit, a Renovate merge) also rejects the push, and then the row exists in NO durable location while the dispatch proceeds. Every such cycle is uncounted, so `MAX_DEV_DISPATCH_ATTEMPTS` never trips and the loop bound is defeated — precisely the failure mode the cap is a cost/security control against (Security section: "Without it, a stuck `dev` feedback loop could dispatch unbounded paid agent sessions"). A control that silently degrades to unbounded is worse than no control, because the plan's own text asserts the loop is bounded. Fail-closed is the correct posture: an undispatched debug costs one operator `workflow_dispatch`; an unbounded loop costs unbounded agent spend. See the revised Task 1f bash.
+
 **Assumptions:**
 
 - The squash-merge `--subject` set by `bkit-ship` Step 5 preserves the PR title verbatim, which follows `feat({FID}): ...` convention. This is already the case (`bkit-ship.md:634-635`: `--subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})"`).
 - `workflow_run.head_commit.message` on a `dev` push is the push's HEAD commit message — i.e. the squash-merge subject. This is GHA's documented behaviour for `workflow_run` events.
 - CI on `dev` runs on every push (the consumer repo's CI workflow triggers on `push: branches: [dev]`). This is the existing contract in `docs/deployments.md`.
 - `fix/{FID}` is the established debug-fix branch convention (referenced in `bkit-ship` Step 5 line 630, git rules line 31). The existing `bkit-debug.md:318-327` fallback already creates it off `origin/dev`.
-- The consumer's CI workflow is named "CI" (so `gh run list --workflow CI` resolves it). This matches `bkit-cloud.yml`'s `workflows: [CI]` trigger and `bkit-ship.md:610`'s `--workflow CI` idiom.
+- The consumer's CI workflow is named "CI" (so `gh run list --workflow CI` resolves it). This matches `bkit-cloud.yml`'s `workflows: [CI]` trigger. **(v4 correction)** It does NOT match `bkit-ship.md` — that file uses the **filename** form `--workflow ci.yml` throughout (`bkit-ship.md:543,546`; v3 cited `:610`'s `--workflow CI`, which no longer exists). `gh run list --workflow` accepts either a name or a filename, so both resolve, but the stale-guard should use the **`ci.yml` filename form** for consistency with every other `gh run list` call bkit ships, and because the workflow _name_ is consumer-editable free text while the filename is fixed by `bkit install`. Task 1f bash updated accordingly.
 
 ---
 
@@ -170,7 +203,9 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 
 ## Out of Scope
 
-- **`main` branch trigger.** Production trunk never auto-dispatches a cloud agent. `main` stays manual-only (`workflow_dispatch`).
+- **`main` branch trigger — DEFERRED, and this is a REVERSAL of a settled issue decision (P4).** Production trunk never auto-dispatches a cloud agent; `main` stays manual-only (`workflow_dispatch`). **This contradicts #363's pivot comment D-final** ("verify at **both `dev` (post-merge) and `main` (post dev->main promotion)** — `main` CI's e2e-await covers the _production_ deploy, folding the prod gap into the same mechanism"), whose routing table and diff both list `main`. v3 dropped it into Out of Scope without flagging the reversal, and scope-check-2 passed the plan as "zero silent drops" — that verdict was wrong on this item.
+  - **Why the exclusion is still the right call:** the issue's own **open item 3** never resolved it — "routing on `main` only works if the promotion commit carries the marker. bkit has no consumer-facing dev->main promotion workflow, so confirm where that commit is authored (may be out of bkit's control for some consumers)." With no bkit-authored promotion commit, there is nothing to thread `bkit [auto route]` onto, so a `main` trigger would be gated shut by construction for exactly the consumers it targets. Shipping it would be dead configuration plus a live risk of a paid agent dispatching against production trunk.
+  - **Required bookkeeping (Task 14):** append a `docs/deferrals.jsonl` row recording the reversal + rationale + the unresolved promotion-commit-authorship precondition, and post the decision change on #363. Do not let this stay an unrecorded silent drop.
 - **Cross-surface same-FID arbitration (#397).** The race between a dispatched build and the auto-ship it triggers (or two cloud dispatches for the same FID from different trigger surfaces) remains owned by #397's orchestrator-level stale-run guard + status.jsonl lock. This plan's `dev` concurrency group (`bkit-auto-dev`) collapses all `dev`-triggered runs into one group — FID-level mutual exclusion on `dev` is handled by `/bkit-debug` Step 1's `.lock` file (already exists), not by the GHA concurrency layer (which can't see the FID at group-evaluation time).
 - **bkit-ship Step 10 "Verify Deploy" / ship-verify block contract / preflight advisories / renumber cascade.** DROPPED per issue comments. The ship-verify work is a separate concern.
 - **#80 audit-logs-ship migration.** Lives in the triggered debug's `debug-fetch` independently. Not coupled to the trigger widening.
@@ -202,11 +237,15 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
 
 - [ ] `bkit-cloud.yml` template is at `.bkit/templates/.github/workflows/bkit-cloud.yml` (canonical source; `.github/workflows/bkit-cloud.yml` is the installed copy). The ctx step `shared-deriv` block is a `# bkit:start shared-deriv` / `# bkit:end shared-deriv` managed block, duplicated across both jobs (`run`/claude at lines 190-214 and `opencode` at lines 325-344). Both copies must be extended identically. The `if [ "$BRANCH" = "dev" ]` guard is inserted AFTER the `case "$CONCLUSION"` routing and BEFORE the `gh pr list` PR-lookup (which moves into the `else` branch); the `shared-deriv` markers extend upward to encompass the new guard.
 - [ ] The existing ctx step `env:` block carries `GH_TOKEN, EVENT, IN_PHASE, IN_ISSUE, CONCLUSION, BRANCH` only. `COMMIT_MSG` and `HEAD_SHA` must be ADDED to the `env:` block (injection-safe). `$GITHUB_WORKSPACE` and `$GITHUB_REPOSITORY` (GHA-provided) are used for sourcing `bkit-counter-bus-config.sh` and `gh api` repo path — `$REPO_ROOT` is NOT defined in the ctx step (v1 defect).
-- [ ] `bkit-ship.md` Step 5 already derives `AUTO_ROUTE_SUFFIX` from `bkit:auto` label (line 626) and threads it into the sync-merge commit (line 630). The squash `--subject` (lines 634-635) does NOT yet include it — this is the Option A change point.
+- [ ] **(v4 — REPLACES the stale v3 anchor.)** `bkit-ship.md` no longer derives `AUTO_ROUTE_SUFFIX` anywhere: #384 (80660ac0) deleted both the Step-4 conflict-resolve derivation (old lines 483-485) and the Step-6 dev-sync derivation (old lines 625-630), and removed the `chore({FID}): sync dev` merge commit. Verify before editing: `grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` -> `0`. The squash `--subject` is now at **line 682** (was 634-635) inside the `gh pr merge --squash --delete-branch --match-head-commit` block. Task 4 must ADD the derivation and thread it — mirror `bkit-build.md:1261`.
+- [ ] **(v4) All other `bkit-ship.md` anchors re-verified against dev @ d87c8641** — every v3 line number was authored against 2ee0da16 and is stale: HEAD-Subject Assertion `598` -> **647**; squash `--subject` `634-635` -> **682**; ship-DONE close commit `1206` -> **1258**; close-commit push `1211` -> **1261-1265** (now conditional on `RUNTIME_DEVPUSHES`); CI-wait idiom `610` -> **546**, and it is `--workflow ci.yml`, **not** `--workflow CI` (see Assumptions).
+- [ ] **(v4) `RUNTIME_DEVPUSHES` caveat on the close-commit narrative.** `bkit-ship.md:1261-1265` pushes the `docs({FID}): ship DONE bkit [skip ci]` close commit to `dev` **only when `RUNTIME_DEVPUSHES = true`** (LOCAL / GITHUB_ACTION / CLOUD_CURSOR per `bkit-runtime.sh:167-177`); under `CLOUD_CLAUDE` / `UNKNOWN` it stays on the working branch. The plan's edge-case narrative ("dev's tip is the close commit by the time the cloud workflow boots") therefore holds for the common runtimes but is not universal. This does NOT weaken stale-run guard Option A — that guard reads CI-run recency, never dev's tip, so it is correct under both runtimes. No task change; recorded so a builder does not "fix" the guard back to a tip comparison.
 - [ ] `bkit-auto.md` Step 1.5 (line 85) assumes `MODE=CI` -> `PR_NUMBER="$ARG"` (numeric). The CI_DEV extension discriminates on ARG shape (numeric = CI/PR, non-numeric = CI_DEV/FID). Steps 6-10 (lines 86-118) and Step 9 (lines 93-117, PR-body extraction) must be gated on `MODE=CI`.
 - [ ] `bkit-debug.md` Step 2 worktree fallback (`bkit-debug.md:318-327`) ALREADY creates `fix/{FID}` off `origin/dev` when `feat/{FID}` is absent — the post-merge condition. NO code change needed in `bkit-debug` (v1's redundant `CI_DEV` branch-selection edit is dropped).
 - [ ] `bkit-counter-bus-config.sh` bkit-debug section is at lines 16-19. `MAX_DEV_DISPATCH_ATTEMPTS` goes under a NEW `# bkit-cloud.yml counters` section header (it is consumed by the cloud ctx step, not bkit-debug).
-- [ ] `bkit-ship.md:1206` close commit is `docs({FID}): ship DONE bkit [skip ci]` (verified) — NOT `chore({FID}): merge-pr attempt N` (v1's misidentifier; that is a pre-merge per-attempt telemetry commit on `feat/{FID}`, line 655, and does NOT land on `dev`).
+- [ ] `bkit-ship.md:1258` (v3 said 1206) close commit is `docs({FID}): ship DONE bkit [skip ci]` (re-verified) — NOT `chore({FID}): merge-pr attempt N` (v1's misidentifier; that per-attempt telemetry commit no longer exists in the #384 Path A/B structure at all).
+- [ ] **(v4) `bkit-auto.md` + `bkit-debug.md` + `bkit-cloud.yml` anchors all re-verified and STILL CORRECT** — only `bkit-ship.md` drifted. Confirmed on dev @ d87c8641: `bkit-auto.md` Step 1.5 = line 85, Steps 6/7/8 = 86/87/88, Step 9 = 93-117, Step 10 = 118, Step 11 comment = 126-134, Gate 1 = 141. `bkit-debug.md` 3-way worktree fallback = 318-327 (`git worktree add` at 320/323/326), Step 1.6 PUSH_MODE = 179-181. `bkit-cloud.yml` header = 14-19, trigger = 31, concurrency = 73-74, `case "$CONCLUSION"` = 177, `gh pr list` = 182, `shared-deriv` = 190-214 (claude) / 325-344 (opencode).
+- [ ] **(v4) `bkit-debug`'s mint-mode fallback is reachable in this runtime.** Task 3's verify-only premise depends on `RUNTIME_WORKTREES = true`, since adopt mode (`bkit-runtime.sh:195-200`) sets `WORKTREE_PATH=$REPO_ROOT` and does NO `git worktree add` — the 3-way fallback at `bkit-debug.md:318-327` never runs there. `bkit-runtime.sh:167-172` maps `GITHUB_ACTION` -> `RUNTIME_WORKTREES=true`, and `bkit-cloud.yml` dispatches on a GH-Actions runner, so mint mode holds for the dev-trigger path. Note `workflows.md:113`: adopt mode "refuses outright if that branch is `dev`" — so under a hypothetical `RUNTIME_WORKTREES=false` cloud dispatch the dev path would refuse rather than corrupt `dev`. Fail-safe either way; recorded so Task 3 asserts the runtime, not just the file.
 - [ ] Consumer repos (`app-gether-life`, `visitfrasercoast-com`) run CI on `push: branches: [dev]` — verify in their CI workflow (documented in `docs/deployments.md`).
 
 ---
@@ -228,6 +267,8 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
 
 - **Written by:** the `bkit-cloud.yml` ctx step (both jobs), immediately BEFORE dispatching `/bkit-debug`, committed to `dev` as `docs({FID}): dev-dispatch telemetry [skip ci]` (so the row persists across runs). `headSha` = `workflow_run.head_sha` (the squash-merge / CI-failed SHA — the correct "which CI run failed" record); `parentSha` = `git rev-parse origin/dev` (dev tip at dispatch time, for correlation).
 - **Read by:** `bkit-cloud.yml` ctx step (both jobs), to count prior dev-triggered dispatch CYCLES for the FID: distinct `headSha` values among matching rows — `[.[] | select(.type=="dev-dispatch" and .fid==$f) | .headSha] | unique | length` (so a dual-job race writing two rows for the same event headSha counts as one cycle).
+- **(v4) One row type, both post-`feat/**` surfaces.** The `dev-dispatch` type is also written for `fix/**` CI-failure dispatches (P3), keyed on the same FID — a FID gets ONE post-`feat/**` debug budget however the failure surfaced. The name is kept for schema stability; the `type` is not re-namespaced per branch. `feat/**` never writes this row.
+- **(v4) Fail-closed write.** The row must be verified present on `origin/dev` before dispatch; if the push cannot land it, the run skips instead of dispatching uncounted (P6). A `dev-dispatch` row that exists only in the runner's workspace is equivalent to no row at all.
 - **Merge-safe:** NDJSON, `.jsonl merge=union` in `.gitattributes` (already configured). Additive row, no collision with existing types.
 - **Location:** `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (same file as all other workflow telemetry for the FID). The YYYYMM is resolved by glob: `ls -d docs/plans/*/logs/"$FID"/ 2>/dev/null | head -1`; if absent, `docs/plans/$(date -u +%Y%m)/logs/$FID/` is created.
 
@@ -317,17 +358,21 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
        fi
        # PHASE=debug below.
        # Primary: parse FID from commit scope: feat(363-widen-bkit-cloud-trigger): ...
-       FID=$(printf '%s' "$COMMIT_MSG" | grep -oE '^\w+\(([0-9]+-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
+       # v4/P5: scope regex accepts BOTH tracker shapes — GitHub `363-slug` and
+       # Linear `bar-123-slug` — mirroring the alternation the feat/** fallback
+       # already uses at bkit-cloud.yml:198. A GitHub-only regex silently no-ops
+       # the whole dev trigger for every Linear-tracker consumer.
+       FID=$(printf '%s' "$COMMIT_MSG" | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
        if [ -z "$FID" ]; then
          # Fallback: gh api merge-commit linked PR -> PR body bkit:fid marker.
          PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" --jq '.[0].body // empty' 2>/dev/null || echo "")
          FID=$(printf '%s' "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
        fi
-       if [ -z "$FID" ] || ! [[ "$FID" =~ ^[0-9]+-[a-z0-9-]+$ ]]; then
+       if [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
          echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
          echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
        fi
-       ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+')
+       ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
        ARG="$FID"
        # Stale-run guard (Option A): HEAD_SHA is current iff it is the headSha of the most
        # recent COMPLETED CI run on dev. Close commits carry [skip ci] so they never appear
@@ -335,7 +380,11 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
        # exactly the staleness signal. (A git rev-parse origin/dev comparison is unsound:
        # /bkit-ship Step 13 pushes docs({FID}): ship DONE bkit [skip ci] to dev during the
        # dev CI run, so dev's tip is the close commit by the time the cloud workflow boots.)
-       LATEST_CI_SHA=$(gh run list --branch dev --workflow CI --status completed --limit 10 \
+       # v4: --workflow ci.yml (filename), not `CI` (name). Both resolve, but the
+       # filename is fixed by `bkit install` while the display name is consumer-
+       # editable free text, and every other gh run list call bkit ships uses the
+       # filename form (bkit-ship.md:546).
+       LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
          --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
        if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
          echo "::notice::Stale dev CI (head_sha=$HEAD_SHA, latest completed dev CI head=$LATEST_CI_SHA) — no-op exit."
@@ -373,9 +422,27 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
          >> "$STATUS_FILE"
        git -C "$GITHUB_WORKSPACE" add -- "$STATUS_FILE"
        git -C "$GITHUB_WORKSPACE" commit -m "docs($FID): dev-dispatch telemetry [skip ci]" -- "$STATUS_FILE"
-       # Tolerate push race: if the parallel job (claude vs opencode) pushed first for the
-       # same headSha, this push is rejected — the row is already on dev; continue to dispatch.
-       git -C "$GITHUB_WORKSPACE" push origin dev || echo "::notice::dev-dispatch telemetry push rejected (parallel job won the race) — row already on dev for this headSha; continuing."
+       # v4/P6 — FAIL CLOSED. A rejected push is NOT automatically the dual-job race:
+       # any non-fast-forward (a concurrent ship close commit, a Renovate merge) rejects
+       # too, and then the row exists nowhere durable while the dispatch proceeds. Every
+       # such cycle would be uncounted, so the cap never trips and the loop bound this
+       # plan advertises silently degrades to unbounded paid agent spend. Retry once
+       # against a re-fetched dev, then VERIFY the row is actually on origin/dev — that
+       # verification is also what keeps the genuine dual-job race safe, since the
+       # sibling job's row for the same headSha satisfies it.
+       if ! git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null; then
+         git -C "$GITHUB_WORKSPACE" fetch origin dev
+         git -C "$GITHUB_WORKSPACE" rebase origin/dev || { git -C "$GITHUB_WORKSPACE" rebase --abort || true; }
+         git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null || true
+       fi
+       git -C "$GITHUB_WORKSPACE" fetch origin dev
+       LANDED=$(git -C "$GITHUB_WORKSPACE" show "origin/dev:${STATUS_FILE}" 2>/dev/null \
+         | jq -s --arg f "$FID" --arg h "$HEAD_SHA" \
+             '[.[] | select(.type=="dev-dispatch" and .fid==$f and .headSha==$h)] | length' 2>/dev/null || echo 0)
+       if [ "${LANDED:-0}" -lt 1 ]; then
+         echo "::notice::dev-dispatch row for $FID @ $HEAD_SHA is not on origin/dev after retry — refusing to dispatch uncounted (fail-closed). Resolve the dev push contention and re-run via workflow_dispatch."
+         echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+       fi
      else
        # Existing feat/** / fix/** path (PR-backed FID recovery) — unchanged.
        PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
@@ -389,7 +456,13 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
        ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
        FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
        if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
-         FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
+         # v4/P2: strip fix/ as well as feat/. bkit-debug's fix PR body carries NO
+         # bkit:fid= marker (bkit-debug.md:1244-1249), so fix/** ALWAYS lands here —
+         # a feat/-only strip leaves 'fix/363-...', which matches neither alternation
+         # and no-ops the entire fix/** surface this plan claims to fold in.
+         # NOTE the '#' sed delimiter: with the '|' delimiter the alternation would
+         # have to be escaped as \| and is then ambiguous under -E. Do not "simplify".
+         FID=$(echo "$BRANCH" | sed -E 's#^(feat|fix)/##' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
          ISSUE="$FID"
        fi
        if [ -z "$FID" ] || [ -z "$ISSUE" ]; then
@@ -401,6 +474,21 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
          echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
          echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
        fi
+       # v4/P3 — bound the fix/** debug loop. A fix/** CI FAILURE dispatches /bkit-debug,
+       # whose fix push re-reds CI, which dispatches again: the same cross-session loop
+       # MAX_DEV_DISPATCH_ATTEMPTS exists to bound, on a surface this plan newly opens.
+       # v3 keyed the cap on BRANCH = dev, leaving fix/** unbounded. The counter is keyed
+       # on the FID (shared with the dev path — one FID's post-feat debug budget, however
+       # the failure surfaced), so the dev and fix/** cycles for a FID share one budget.
+       # feat/** is deliberately NOT capped: it is pre-merge, PR-scoped, and already
+       # bounded by the in-session MAX_DEBUG_ATTEMPT / MAX_NORMAL_ATTEMPT counters.
+       case "$BRANCH" in
+         fix/*)
+           if [ "$PHASE" = "debug" ]; then
+             bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+           fi
+           ;;
+       esac
      fi
      # bkit:end shared-deriv
    fi
@@ -417,6 +505,8 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
    ```
 
    **Note:** The exact bash above is the spec; the builder applies it to BOTH jobs' ctx steps identically. The key additions vs today: (a) `COMMIT_MSG`/`HEAD_SHA` in `env:`, (b) the `if BRANCH == dev` branch with commit-scope FID recovery, (c) dev success -> skip, (d) stale-run guard Option A, (e) loop cap (distinct headSha count), (f) kill switch, (g) dev-dispatch write+commit+push before dispatch, (h) PR-lookup moved into `else`, (i) `shared-deriv` markers extended upward.
+
+   **(v4) `bkit_dev_dispatch_guard` — factor the cap block into one shell function.** The dev branch and the new `fix/**` branch (P3) need byte-identical cap-check + counter-write + fail-closed-verify logic, and the block is ~35 lines. Duplicating it inline in two branches × two jobs = four copies is a drift hazard the `shared-deriv` marker pair exists to prevent. Define it ONCE at the top of the `else` (CI-driven) arm, inside `shared-deriv`, as `bkit_dev_dispatch_guard <FID> <HEAD_SHA>`, and call it from both branches. It encapsulates, in order: source `bkit-counter-bus-config.sh`; resolve `STATUS_DIR`/`STATUS_FILE`; count distinct `dev-dispatch` headShas for the FID; `return 1` with the operator-review `::notice::` if `>= MAX_DEV_DISPATCH_ATTEMPTS`; else append the row, commit `docs($FID): dev-dispatch telemetry [skip ci]`, push with retry, verify the row landed on `origin/dev`, and `return 1` with the fail-closed `::notice::` if it did not. `return 0` = proceed to dispatch. The dev branch's inline block above is the function body; the caller writes `bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }`. Note the row `type` stays `dev-dispatch` for both surfaces — one budget per FID, one row type, no schema change (see Data Schema).
 
 ### `.bkit/workflows/bkit-auto.md` Step 1
 
@@ -451,6 +541,18 @@ The existing trust model (documented in `docs/security.md` § CI Auto-Route Trus
 
 5. **Step 10 (line 118):** `BRANCH does NOT start with feat/ -> Failure Path` — gate on `MODE=CI` only. CI_DEV mode has `BRANCH=dev` (intentionally not `feat/`); FID already set.
 
+   **(v4/P2) The `MODE=CI` gate is not sufficient — Step 10 must also accept `fix/`.** A `fix/**` PR run IS `MODE=CI` (numeric PR ARG, open PR), so gating Step 10 on `MODE=CI` leaves it firing for exactly the surface this plan newly folds in, and its verbatim text today is `**If** BRANCH does NOT start with feat/ -> **Failure Path**. **Else** -> FID="${BRANCH#feat/}"`. That routes every `fix/**` dispatch into the Failure Path, which posts a failure comment and sets `bkit:failed` on the issue — strictly worse than today's silence. Rewrite Step 10 to accept both prefixes and strip whichever matched:
+
+   ```bash
+   case "$BRANCH" in
+     feat/*) FID="${BRANCH#feat/}" ;;
+     fix/*)  FID="${BRANCH#fix/}" ;;
+     *) : ;;   # -> Failure Path
+   esac
+   ```
+
+   Keep the existing post-strip asserts unchanged (`FID` non-empty, `FID != BRANCH`, `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`). Note the existing charset assert already admits the Linear `bar-123-slug` shape, so no P5 change is needed here.
+
 6. **Step 11 comment body (lines 126-134):** The actions-link line `[{OWNER_REPO}/actions/run/{RUN_ID}]` is rendered ONLY when `RUN_ID` is non-empty (gate the line on `MODE=CI`, or on `[ -n "$RUN_ID" ]`). In CI_DEV, `RUN_ID` is empty -> omit the actions link (Review 3 F6.3). The branch/PR lines render with `dev` / `(none)` / `(merged)` harmlessly.
 
 7. **Gate 1 checklist (line 141):** Add `CI_DEV placeholders non-empty (FID, ISSUE_ID, BRANCH, HEAD_SHA, if MODE = CI_DEV)`.
@@ -475,14 +577,30 @@ Step 1.6 PUSH_MODE auto-detect (`bkit-debug.md:179-181`) already returns `PUSH_M
 
 ### `.bkit/workflows/bkit-ship.md` Step 5
 
-1. **Lines 634-635 (squash `--subject`):** Thread `AUTO_ROUTE_SUFFIX` (already derived on line 626):
+1. **(v4/P1 — REWRITTEN. v3's version of this item was authored against a file that no longer exists in that shape.)** v3 said: "Thread `AUTO_ROUTE_SUFFIX` (already derived on line 626) … This is the **entire** Option A change — one suffix appended to one `--subject` flag." That is now false. #384 (80660ac0) deleted every `AUTO_ROUTE_SUFFIX` derivation from `bkit-ship.md`; `grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` returns **0**. Task 4 must therefore ADD the derivation as well as thread it, in the **same shell block** as the merge (the value must not be assumed to survive a Bash-tool-call boundary — this is why `bkit-debug.md:1253` says "set and use `AUTO_ROUTE_SUFFIX` in same shell").
+
+   At **line 682** (v3 said 634-635), inside the existing `gh pr merge` block:
+
    ```bash
-   # Before:
-   --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
+   # Before (dev @ d87c8641):
+   if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
+     gh pr merge {PR_NUMBER} --squash --delete-branch --match-head-commit "$GATE_HEAD" \
+       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
+       --body ""
+   fi
    # After:
-   --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})${AUTO_ROUTE_SUFFIX}" \
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
+     gh pr merge {PR_NUMBER} --squash --delete-branch --match-head-commit "$GATE_HEAD" \
+       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})${AUTO_ROUTE_SUFFIX}" \
+       --body ""
+   fi
    ```
-   This is the **entire** Option A change — one suffix appended to one `--subject` flag. When `bkit:auto` is labeled, `AUTO_ROUTE_SUFFIX=" bkit [auto route]"`; when not, `AUTO_ROUTE_SUFFIX=""` (no-op). The squash-merge commit on `dev` then carries the marker, and the existing `bkit-cloud.yml` gate matches it for the `dev` trigger. The HEAD-Subject Assertion (`bkit-ship.md:598`) already rejects `[skip ci]` in PR titles, so the squash subject cannot accidentally carry it.
+
+   The derivation idiom is copied verbatim from `bkit-build.md:1261` and `bkit-debug.md:1262`, which both still carry it — do NOT invent a new one. `{LABELS}` is populated at ship Step 1 from the tracker read (`bkit-ship.md:247` / `:250`); assert it is in scope in this block, since after #384 it is an agent-substituted placeholder rather than an exported shell var. When `bkit:auto` is labeled the squash-merge commit on `dev` carries the marker and the existing `bkit-cloud.yml` gate matches it for the `dev` trigger; when not, the suffix is empty and nothing changes. The HEAD-Subject Assertion (**`bkit-ship.md:647`**, v3 said 598) already rejects `[skip ci]` in PR titles, so the squash subject cannot accidentally carry a suppressor.
+
+2. **(v4) Accepted cosmetic consequence — the marker becomes permanent `dev` history.** Until now `bkit [auto route]` only ever appeared on ephemeral `feat/{FID}` commits that were squashed away at merge. Threading it onto the squash `--subject` puts it in `git log dev` forever, and into anything generated from commit subjects (release notes, `git shortlog`). This is inherent to Option A — the gate reads `head_commit.message`, so the marker must be on the commit that lands. Accepted, not a defect; recorded so it is not "cleaned up" later by someone who does not know it is load-bearing. `.bkit/workflows.md` § `bkit [auto route]` Marker Propagation should gain the squash-merge row (folded into Task 5's doc sweep).
 
 ### `.bkit/scripts/bkit-counter-bus-config.sh`
 
@@ -552,6 +670,8 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 
 > Gate 2 — tasks with explicit `Depends on` fields. `[ ]` = pending. Check after completion.
 > **Same-file note:** Task 1 owns the entire `.bkit/templates/.github/workflows/bkit-cloud.yml` + `bkit-counter-bus-config.sh` surface (the v1 split across three tasks with an undeclared dependency is merged into one — Review 1 M1 / Review 2 #1 / Review 2 #8). Execute Task 1 fully before Task 2 (Task 2's CI_DEV mode is dead code until Task 1's ctx step dispatches a non-numeric ARG).
+>
+> **(v4) Same-file note extends to the new tasks.** Tasks **11** and **13** edit the SAME `bkit-cloud.yml` ctx step as Task 1 — apply all three in ONE edit pass over that managed block, or the second pass will fight the first. Task **12** edits the same `bkit-auto.md` Step 1 region as Task 2 — apply together. Task **14** is independent bookkeeping. Ordering: `1+11+13` -> `2+12` -> `3`-`7` -> `8` -> `9`. Task 4 carries a **PRE-CHECK that voids the task** if its premise has shifted again since this revision (P1) — run it before touching `bkit-ship.md`.
 
 ### Task 1 — Cloud trigger surface (trigger widen + concurrency + ctx step dev branch + counter-bus-config + dev-dispatch write)
 
@@ -562,7 +682,7 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 - [ ] **Sub-step 1c — concurrency:** Change `cancel-in-progress` from `true` to `${{ github.event.workflow_run.head_branch != 'dev' }}`.
 - [ ] **Sub-step 1d — header comment:** Replace lines 14-19 with the verbatim text in Architecture section item 1 (Review 2 L11).
 - [ ] **Sub-step 1e — ctx step env (both jobs):** Add `COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}` and `HEAD_SHA: ${{ github.event.workflow_run.head_sha }}` to the `env:` block (injection-safe — Review 1 M3).
-- [ ] **Sub-step 1f — ctx step run (both jobs):** Insert the `if [ "$BRANCH" = "dev" ]` branch after the `case "$CONCLUSION"` and before `gh pr list`; move PR-lookup into `else`; extend `shared-deriv` markers. Implement: commit-scope FID recovery (primary) + `gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls` (fallback — Review 2 M4); FID slug assertion; dev-success -> skip; stale-run guard Option A (`gh run list --branch dev --workflow CI --status completed` — Review 3 F1); loop cap (`. "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"` — Review 1 M2 / Review 2 #3; distinct headSha count); kill switch (`bkit:auto` re-check); dev-dispatch write + `git commit -m "docs($FID): dev-dispatch telemetry [skip ci]"` + `git push origin dev || <notice>` (Review 1 H1 / Review 2 #2 / Review 3 F3 — writer co-located with reader, before dispatch).
+- [ ] **Sub-step 1f — ctx step run (both jobs):** Insert the `if [ "$BRANCH" = "dev" ]` branch after the `case "$CONCLUSION"` and before `gh pr list`; move PR-lookup into `else`; extend `shared-deriv` markers. Implement: commit-scope FID recovery (primary) + `gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls` (fallback — Review 2 M4); FID slug assertion; dev-success -> skip; stale-run guard Option A (`gh run list --branch dev --workflow ci.yml --status completed` — Review 3 F1); loop cap (`. "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"` — Review 1 M2 / Review 2 #3; distinct headSha count); kill switch (`bkit:auto` re-check); dev-dispatch write + `git commit -m "docs($FID): dev-dispatch telemetry [skip ci]"` + push (Review 1 H1 / Review 2 #2 / Review 3 F3 — writer co-located with reader, before dispatch). **(v4)** The push is **fail-closed**, not `|| <notice>`: retry against a re-fetched `dev`, then verify the row is on `origin/dev`, else `skip=true` (P6). FID recovery is **tracker-agnostic** — both `363-slug` and `bar-123-slug` shapes (P5). The cap block is factored into `bkit_dev_dispatch_guard` so Task 13 can reuse it for `fix/**` (P3).
 - [ ] **Done when:**
   - `yq '.on.workflow_run.branches' .bkit/templates/.github/workflows/bkit-cloud.yml` contains `dev`.
   - `yq '.concurrency.cancel-in-progress'` is the dev-discriminating expression.
@@ -617,11 +737,13 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 
 ### Task 4 — Thread `AUTO_ROUTE_SUFFIX` into `bkit-ship.md` squash `--subject`
 
-- [ ] **Scope:** `.bkit/workflows/bkit-ship.md` Step 5, lines 634-635.
+- [ ] **Scope:** `.bkit/workflows/bkit-ship.md` — the `gh pr merge --squash` block at **line 682** (v3 said "Step 5, lines 634-635"; both the step structure and the line numbers changed under #384).
 - [ ] **Depends on:** none.
-- [ ] Append `${AUTO_ROUTE_SUFFIX}` to the `--subject` value (after `#{PR_NUMBER})`).
-- [ ] `AUTO_ROUTE_SUFFIX` is already derived on line 626 — no new gate logic.
-- [ ] **Done when:** Read: lines 634-635 `--subject` includes `${AUTO_ROUTE_SUFFIX}`; bash unit: `LABELS=bkit:auto` -> subject ends with `bkit [auto route]`; `LABELS=""` -> subject unchanged.
+- [ ] **PRE-CHECK (v4/P1 — do this first, the task is void if it fails):** `grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` must return `0`. If it returns non-zero, #384's removal has been reverted since this plan was revised — re-read the file and re-scope this task before editing.
+- [ ] ADD the derivation immediately above the `gh pr merge` call, in the SAME shell block: `AUTO_ROUTE_SUFFIX=""` then `echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true`. Copy the idiom verbatim from `bkit-build.md:1261`; do not invent a variant.
+- [ ] Append `${AUTO_ROUTE_SUFFIX}` to the `--subject` value (after `(#{PR_NUMBER})`).
+- [ ] Assert `{LABELS}` is in scope in that block (populated at ship Step 1 tracker read, `bkit-ship.md:247`/`:250`). Under `bkit:tracker none` it is empty -> suffix empty -> no marker, which is correct.
+- [ ] **Done when:** Read: the `gh pr merge` block derives AND threads `${AUTO_ROUTE_SUFFIX}`; bash unit: `LABELS=bkit:auto` -> subject ends with `bkit [auto route]`; `LABELS=""` -> subject unchanged; `grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` = 2.
 - [ ] **Test ref:** T9.
 
 ### Task 5 — Update `.bkit/cloud.md` (decision log + routing table)
@@ -676,9 +798,13 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 - [ ] `bkit-ship` Step 5 read: `--subject` includes `${AUTO_ROUTE_SUFFIX}`.
 - [ ] `bkit-counter-bus-config.sh` sources cleanly; `MAX_DEV_DISPATCH_ATTEMPTS=3`.
 - [ ] `bkit-debug.md` zero-diff: `git diff --exit-code -- .bkit/workflows/bkit-debug.md` exits 0 (Task 3 F2).
+- [ ] **(v4) `fix/**` dry-runs:** ctx step `BRANCH=fix/363-widen-bkit-cloud-trigger` -> `FID=363` (T13); `bkit-auto` Step 10 `MODE=CI BRANCH=fix/363-...` reaches Step 11, not the Failure Path (T14); `BRANCH=fix/363-x CONCLUSION=failure` + 3 distinct-headSha rows -> `skip=true`, and `feat/**` + `failure` does NOT consult the cap (T15).
+- [ ] **(v4) Tracker-agnostic dry-run:** `BRANCH=dev COMMIT_MSG="feat(bar-123-auth): x"` -> `FID=bar-123-auth`, `ISSUE=bar-123` (T16).
+- [ ] **(v4) Fail-closed dry-run:** `git` stub whose `push` always fails and whose `origin/dev` lacks the row -> `skip=true` + fail-closed notice, and NO `phase=`/`arg=` emitted (T17).
+- [ ] **(v4) Anchor re-verification before build:** re-run the P7 anchor checks (`grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` = 2 after Task 4; squash `--subject`, close commit and HEAD-Subject Assertion still where this revision says). `bkit-ship.md` moved twice in one afternoon; do not trust a line number this plan states without re-grepping.
 - [ ] `pnpm turbo lint typecheck` (or repo equivalent) passes.
 - [ ] **Done when:** All dry-run assertions pass; lint/typecheck green; `bkit-debug.md` zero-diff holds.
-- [ ] **Test ref:** T1-T12.
+- [ ] **Test ref:** T1-T17.
 
 ### Task 10 — Consumer-repo acceptance note (exercisable-path docs)
 
@@ -688,6 +814,45 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 - [ ] Cross-reference the docs-only-diff precondition from Task 6's `dev` matrix row (do NOT re-state it — Task 6 owns that note; Task 10 points to it to avoid the duplication risk flagged in scope-check-1 F3).
 - [ ] **Done when:** `docs/deployments.md` has a dedicated "Consumer-repo acceptance note" section documenting the consumer-repo-only exercisable happy path, cross-referencing Task 6's docs-only-diff precondition note.
 - [ ] **Test ref:** N/A (documentation).
+
+### Task 11 — Make `fix/**` FID recovery work in the cloud ctx step (v4/P2)
+
+- [ ] **Scope:** `.bkit/templates/.github/workflows/bkit-cloud.yml` — the `else` (PR-backed) arm of the ctx step, both jobs. Same file as Task 1; execute as part of the Task 1 edit pass to avoid two rewrites of one managed block.
+- [ ] **Depends on:** Task 1 (same surface).
+- [ ] Change the branch-strip fallback from `sed 's|^feat/||'` to `sed -E 's#^(feat|fix)/##'`. Keep the `#` delimiter — with `|` the alternation needs escaping and is ambiguous under `-E`.
+- [ ] Rationale to preserve in a comment: `bkit-debug.md:1244-1249` creates the fix PR with NO `bkit:issue=` / `bkit:fid=` body markers, so `fix/**` ALWAYS reaches this fallback; a `feat/`-only strip no-ops the entire surface.
+- [ ] **Done when:** bash unit against the extracted `run:` block: `BRANCH=fix/363-widen-bkit-cloud-trigger` -> `FID=363`, `ISSUE=363` (matching today's `feat/**` behaviour for a slugged branch); `BRANCH=fix/bar-123-auth` -> `FID=bar-123` (Linear shape); `BRANCH=feat/141-cloud-app` -> unchanged from today.
+- [ ] **Test ref:** T13.
+
+### Task 12 — Accept `fix/` in `bkit-auto.md` Step 10 (v4/P2)
+
+- [ ] **Scope:** `.bkit/workflows/bkit-auto.md` Step 10 (line 118).
+- [ ] **Depends on:** Task 11 (a `fix/**` dispatch must be reachable before this assert matters). Execute with Task 2 — same file, same edit pass.
+- [ ] Replace the `feat/`-only prefix assert with a `case` accepting `feat/*` and `fix/*` and stripping whichever matched; anything else -> Failure Path (unchanged).
+- [ ] Keep the existing post-strip asserts verbatim (`FID` non-empty, `FID != BRANCH`, charset `^[a-z0-9][a-z0-9-]*$`).
+- [ ] ASCII-only operators.
+- [ ] **Done when:** Read: Step 10 accepts both prefixes; dry-run `BRANCH=fix/363-widen-bkit-cloud-trigger` in `MODE=CI` reaches Step 11 (not the Failure Path) with `FID=363-widen-bkit-cloud-trigger`; `BRANCH=chore/x` still routes to the Failure Path.
+- [ ] **Test ref:** T14.
+
+### Task 13 — Bound the `fix/**` debug loop (v4/P3)
+
+- [ ] **Scope:** `.bkit/templates/.github/workflows/bkit-cloud.yml` ctx step, both jobs. Part of the Task 1 edit pass.
+- [ ] **Depends on:** Tasks 1, 11.
+- [ ] Factor the dev branch's cap-check + counter-write + fail-closed-verify block into a `bkit_dev_dispatch_guard <FID> <HEAD_SHA>` shell function defined once inside `shared-deriv` (see Architecture item 5's `bkit_dev_dispatch_guard` note). Call it from the dev branch and from a `case "$BRANCH" in fix/*)` guard in the `else` arm, the latter only when `PHASE = debug`.
+- [ ] Do NOT cap `feat/**` — pre-merge, PR-scoped, already bounded by in-session `MAX_DEBUG_ATTEMPT` / `MAX_NORMAL_ATTEMPT`.
+- [ ] Counter stays keyed on the FID with row type `dev-dispatch`: one post-`feat/**` debug budget per FID regardless of which surface the failure arrived on. No schema change.
+- [ ] **Done when:** bash unit: `BRANCH=fix/363-x CONCLUSION=failure` with 3 distinct-headSha `dev-dispatch` rows for the FID -> `skip=true` + operator-review notice; `CONCLUSION=success` on `fix/**` -> `phase=ship`, cap NOT consulted; `BRANCH=feat/141-x CONCLUSION=failure` -> `phase=debug`, cap NOT consulted (no regression to the pre-merge path).
+- [ ] **Test ref:** T15.
+
+### Task 14 — Record the `main` exclusion as an explicit deferral (v4/P4)
+
+- [ ] **Scope:** `docs/deferrals.jsonl` + the `#363` tracker issue.
+- [ ] **Depends on:** none.
+- [ ] Append one deferral row recording: #363's pivot comment D-final settled branch scope as `['feat/**','fix/**','dev','main']`; this plan ships without `main`; rationale = production trunk never auto-dispatches a paid agent AND the issue's own open item 3 (dev->main promotion commit authorship, hence marker placement) is unresolved and may be outside bkit's control for some consumers; revisit if/when a bkit-authored promotion path exists.
+- [ ] Post the same decision change as a comment on #363 so the reversal is visible on the tracker, not only in the plan.
+- [ ] **Why this task exists:** v3 moved `main` to Out of Scope with no deferral row and no tracker note, and scope-check-2 then certified the plan as "zero silent drops". This closes the bookkeeping hole, not the design question.
+- [ ] **Done when:** `grep -c '363' docs/deferrals.jsonl` includes the new row; the comment is on #363.
+- [ ] **Test ref:** N/A (bookkeeping).
 
 ---
 
@@ -714,7 +879,7 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 ## Manual Verification
 
 - Read the squash-merge commit on `dev` after a `/bkit-ship` — confirm the subject includes `bkit [auto route]` (when `bkit:auto` labeled) and does NOT include `[skip ci]`.
-- Read the `docs({FID}): ship DONE bkit [skip ci]` close commit (`bkit-ship.md:1206`) — confirm it includes `[skip ci]` and does NOT include `bkit [auto route]`.
+- Read the `docs({FID}): ship DONE bkit [skip ci]` close commit (`bkit-ship.md:1258`) — confirm it includes `[skip ci]` and does NOT include `bkit [auto route]`.
 - Trigger a `workflow_dispatch` with `phase=debug issue=363` — confirm the existing manual path still works (no regression from the ctx step restructuring).
 
 ---
@@ -762,4 +927,24 @@ Trace of the three non-blocking scope-check-1 findings and how v3 resolves each.
 | **SC1-F1** Task 2 negative criterion unobservable (`does NOT call gh pr view`)            | CONCERNS | verification strength | Task 2 gains an explicit **Verification (scope-check F1)** sub-bullet that wires the Task 1f `gh`-stubbing harness into a sentinel: `gh() { echo "called: $*" >> "$GH_CALLS"; }; export -f gh`, then after the `ARG=<FID>` dry-run asserts `! grep -q 'pr view' "$GH_CALLS"`. The negative criterion is now objectively observable. Test Matrix T6 updated to reference the sentinel.                                                    |
 | **SC1-F2** Task 3 criterion/verification strength mismatch (`no diff` vs `Read confirms`) | CONCERNS | verification strength | Task 3 gains an explicit **Verification (scope-check F2)** sub-bullet: `git diff --exit-code -- .bkit/workflows/bkit-debug.md` (exit 0 = no diff = PASS), run after the full build so it catches any other task touching the file. Test Matrix T8 + Task 9 validation both assert the zero-diff command. Verification strength now matches the criterion.                                                                                |
 | **SC1-F3** Task 10 scope disjunctive (`cloud.md` OR `deployments.md`)                     | CONCERNS | scope ambiguity       | The disjunction is collapsed to a single concrete owner file: **`docs/deployments.md`** (Task 10 Scope updated + Architecture `docs/deployments.md` item 3 + Documentation Updates table + Verification Plan all point to `deployments.md`). Task 10 owns a DISTINCT "Consumer-repo acceptance note" section that cross-references Task 6's docs-only-diff precondition note rather than restating it, eliminating the duplication risk. |
-| **SC2** boundary confirmation (no expansion, no silent drops)                             | PASS     | scope boundary        | No edit required — scope-check-2 found zero scope expansions (no `main` automation, no #397, no #80, no ship-verify smuggling) and zero silent drops (all in-scope items map to a concrete task). The four deferred items are all explicitly fenced in the Out of Scope section (pre-existing tracker issues or issue-pivot exclusions), so no `docs/deferrals.jsonl` append is needed.                                                  |
+| **SC2** boundary confirmation (no expansion, no silent drops)                             | PASS     | scope boundary        | ~~No edit required — scope-check-2 found zero scope expansions and zero silent drops.~~ **(v4) This verdict was WRONG on `main`** — see P4 below. `main` was settled IN scope by #363's pivot comment D-final and was moved to Out of Scope by v1-v3 with no deferral row and no tracker note, which is the definition of a silent drop. Closed by Task 14.                                                                              |
+
+---
+
+## Post-Plan Review Findings (v4 — 2026-07-29, pre-build)
+
+The v1-v3 chain was authored in a worktree at parent `2ee0da16`. Ten minutes later `80660ac0` (#384) restructured `bkit-ship.md` into Path A/B, and four follow-up fixes landed on `dev` the same afternoon. The plan's three reviews, two scope-checks and complexity-check all ran against the pre-#384 tree, so none of them could have caught P1. Every source anchor below was re-verified against `dev @ d87c8641`.
+
+| ID  | Finding                                                                                                                                                                                                                                                         | Severity | Resolution in v4                                                                                                                                                                                                        |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | **Task 4's premise is void.** v3: "`AUTO_ROUTE_SUFFIX` is already derived on line 626 — no new gate logic." #384 deleted every derivation from `bkit-ship.md`; the grep count is 0. The Option A change point is gone.                                          | CRITICAL | Task 4 rewritten to ADD the derivation (idiom from `bkit-build.md:1261`) and thread it at line 682, with a `grep -c` pre-check that voids the task if the premise shifts again. Context & Goals carries a callout.      |
+| P2  | **`fix/**` folding is inert.** Ctx-step FID fallback strips `feat/` only; `bkit-debug`'s fix PR body has no `bkit:fid=` marker; `bkit-auto.md:118` hard-fails non-`feat/` branches. The documented "cloud auto-merges the fix PR" cannot occur.                 | HIGH     | New Tasks 11 + 12; ctx-step `sed -E` strips both prefixes; `bkit-auto` Step 10 `case` accepts both. Breaking Changes corrected with the three verified reasons.                                                         |
+| P3  | **The `fix/**` failure loop is unbounded.** The cap is gated on `BRANCH = dev`, so the newly-opened `fix/**` surface has exactly the cross-session feedback loop the cap exists to prevent, with no bound.                                                      | HIGH     | New Task 13 — cap rekeyed on the FID and factored into `bkit_dev_dispatch_guard`, called from both post-`feat/**` surfaces. `feat/**` deliberately stays uncapped (pre-merge, already bounded in-session).              |
+| P4  | **`main` was silently dropped.** #363's pivot comment D-final settled `['feat/**','fix/**','dev','main']`; v3 moved `main` to Out of Scope with no deferral row and no tracker note, and scope-check-2 passed it as "zero silent drops".                        | MEDIUM   | Exclusion KEPT (the issue's own open item 3 — promotion-commit authorship — is unresolved, so a `main` trigger would be gated shut by construction). New Task 14 records the reversal in `deferrals.jsonl` and on #363. |
+| P5  | **Dev path is GitHub-tracker-only.** Scope regex, slug allowlist and `ISSUE` derivation all assume `363-slug`. A Linear consumer's `bar-123-slug` fails all three, so the dev trigger silently never fires for them.                                            | MEDIUM   | Regex / allowlist / derivation widened to the same alternation the existing `feat/**` fallback already uses (`bkit-cloud.yml:198`). New Open Question 6; T16.                                                           |
+| P6  | **The loop cap fails OPEN.** v3 tolerated a rejected telemetry push and dispatched anyway. Any non-fast-forward (not just the dual-job race it names) leaves the row nowhere durable, so the cycle is uncounted and the advertised bound degrades to unbounded. | MEDIUM   | Retry against a re-fetched `dev`, then VERIFY the row is on `origin/dev`; if not, `skip=true`. The same verification is what keeps the genuine dual-job race safe. New Open Question 7; T17.                            |
+| P7  | **Every `bkit-ship.md` line anchor is stale** (598->647, 634-635->682, 1206->1258, 1211->1261-1265, 610->546, and `--workflow CI` is now `--workflow ci.yml`). `bkit-auto` / `bkit-debug` / `bkit-cloud.yml` anchors were re-checked and are all still correct. | LOW      | Anchors corrected in Pre-Flight, Architecture and Manual Verification. Stale-guard switched to the `ci.yml` filename form (fixed by `bkit install`; the display name is consumer-editable free text).                   |
+
+**Two non-defects, recorded so a builder does not "fix" them:** (a) the `bkit [auto route]` marker becomes permanent `dev` history once threaded onto the squash subject — inherent to Option A, since the gate reads `head_commit.message`; (b) `bkit-ship`'s close commit only reaches `dev` when `RUNTIME_DEVPUSHES = true`, so the "dev's tip is the close commit" narrative is not universal — but stale-guard Option A reads CI-run recency, never dev's tip, so it stays correct under both runtimes.
+
+**Residual risk accepted (not fixed here).** The `dev` concurrency group is `bkit-auto-dev` for ALL FIDs. With `cancel-in-progress: false` GHA keeps at most ONE pending run per group, so if FID-A is in-flight and FID-B then FID-C arrive, **FID-B's dispatch is cancelled while pending and never re-fires**. The plan's "the operator does NOT need to manually re-trigger" claim holds only for the most recent queued run. FID-level arbitration belongs to #397; this loses a dispatch rather than corrupting one, so it fails safe.
