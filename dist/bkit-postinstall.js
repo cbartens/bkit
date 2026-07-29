@@ -919,10 +919,14 @@ export function detectBkitStubs(cwd) {
         const content = readOnce(stub.file);
         if (content === null)
             continue;
-        // Sentinel must be a literal `# bkit-stub:<id>` followed by space or end-of-token,
-        // so partial-prefix matches (e.g. `bkit-stub:e2e-paths` for stub `e2e`) don't fire.
+        // Sentinel must be the full HEADER form — `# bkit-stub:<id> — <description>` — because that
+        // is the line the advisory tells you to delete. Requiring the em-dash separator keeps prose
+        // back-references ("the bkit-stub:coverage integration report posts from HERE") from firing
+        // an advisory that can never be dismissed: the block is enabled, its header is gone, and the
+        // only match left is a comment nobody was told to remove. Also subsumes the partial-prefix
+        // guard — `# bkit-stub:e2e —` cannot match stub `e2e-coverage` (a `-` follows, not a space).
         const sentinel = `# bkit-stub:${stub.id}`;
-        const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`);
+        const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+—`);
         if (!re.test(content))
             continue;
         stubSentinelPresent.add(stub.id);

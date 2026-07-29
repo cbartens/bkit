@@ -933,6 +933,39 @@ describe("detectBkitStubs", () => {
     expect(detectBkitStubs(tmpDir)).toEqual([]);
   });
 
+  // A prose line that cites a stub id is not a stub HEADER. Without the em-dash requirement
+  // these fire an advisory that cannot be dismissed: the block is enabled, its header is gone,
+  // and the only match left is a cross-reference nobody was told to delete.
+  it("does not fire on prose back-references that merely cite a stub id", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "name: CI",
+        // provenance note on an already-enabled lane (bkit's own ci.yml)
+        "      # bkit-stub:coverage scaffold shipped to consumers. See testing.md.",
+        // cross-reference between blocks (shipped in the consumer template)
+        "# bkit-stub:coverage integration report posts from HERE, not bkit-tests-unit.",
+        "      - name: Report Unit Coverage on PR",
+        "        uses: davelosert/vitest-coverage-report-action@v2",
+      ].join("\n"),
+    );
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
+  });
+
+  it("still fires on the header form regardless of indentation", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "name: CI",
+        "# bkit-stub:coverage — Report vitest coverage on PRs.",
+        "      # - name: X",
+      ].join("\n"),
+    );
+    expect(detectBkitStubs(tmpDir).map((f) => f.id)).toEqual(["bkit-stub-coverage"]);
+  });
+
   it("flags vercel-enabled-without-e2e pair conflict", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(

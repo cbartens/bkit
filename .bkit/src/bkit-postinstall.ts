@@ -852,9 +852,13 @@ export function detectWorkflowLintToolsMissing(cwd: string): PreflightFinding | 
  * Each stub is keyed on (file, id). To dismiss an advisory: remove the sentinel
  * header line. Uncommenting the block alone does NOT silence the advisory —
  * delete the `# bkit-stub:<id> — ...` header line at the same time.
+ *
+ * Detection matches the HEADER form only (sentinel + em-dash). Prose that merely
+ * cites a stub id — cross-references between blocks, provenance notes on an already
+ * enabled lane — is not a header and must not raise an advisory.
  */
 interface BkitStub {
-  /** Stub identifier; matches `# bkit-stub:<id>` in the file. */
+  /** Stub identifier; matches the `# bkit-stub:<id> — ...` header line in the file. */
   id: string;
   /** Path relative to cwd. */
   file: string;
@@ -1001,10 +1005,14 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
   for (const stub of BKIT_STUBS) {
     const content = readOnce(stub.file);
     if (content === null) continue;
-    // Sentinel must be a literal `# bkit-stub:<id>` followed by space or end-of-token,
-    // so partial-prefix matches (e.g. `bkit-stub:e2e-paths` for stub `e2e`) don't fire.
+    // Sentinel must be the full HEADER form — `# bkit-stub:<id> — <description>` — because that
+    // is the line the advisory tells you to delete. Requiring the em-dash separator keeps prose
+    // back-references ("the bkit-stub:coverage integration report posts from HERE") from firing
+    // an advisory that can never be dismissed: the block is enabled, its header is gone, and the
+    // only match left is a comment nobody was told to remove. Also subsumes the partial-prefix
+    // guard — `# bkit-stub:e2e —` cannot match stub `e2e-coverage` (a `-` follows, not a space).
     const sentinel = `# bkit-stub:${stub.id}`;
-    const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`);
+    const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+—`);
     if (!re.test(content)) continue;
     stubSentinelPresent.add(stub.id);
     findings.push({
