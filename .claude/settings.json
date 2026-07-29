@@ -68,15 +68,9 @@
       "Bash(gh pr close:*)",
       "Bash(gh release delete:*)",
       "Read(./.env)",
-      "Read(./.env.local)",
-      "Read(./.env.development)",
-      "Read(./.env.development.local)",
-      "Read(./.env.production)",
-      "Read(./.env.production.local)",
-      "Read(./.env.staging)",
-      "Read(./.env.staging.local)",
-      "Read(./.env.test)",
-      "Read(./.env.test.local)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
       "Read(./.bkit/.env)"
     ],
     "defaultMode": "acceptEdits"

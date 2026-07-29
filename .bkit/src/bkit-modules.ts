@@ -1719,6 +1719,14 @@ function injectOpencodeNetworkCurlAllows(parsed: Record<string, unknown>, cwd: s
  * network allowlisting for Claude is WebFetch-only; shell curl stays under Bash(*).
  * Called from install (`runClaudeModule`) and upgrade (mirror — upgrade does not
  * dispatch modules).
+ *
+ * ADDITIVE ONLY — this never prunes. A domain dropped from a consumer's
+ * `allowed-domains` keeps its `WebFetch` grant, so `.agents/config.md` is the
+ * source of truth for ADDITIONS but not for removals. Pruning safely would need
+ * a record of what bkit itself wrote: nothing in `permissions.allow`
+ * distinguishes a bkit-derived entry from one the consumer added by hand, and
+ * removing the wrong one silently narrows their agent's reach. Tracked as
+ * follow-up on #394 rather than guessed at here.
  */
 export function enrichClaudeSettingsWebFetch(
   settingsDst: string,

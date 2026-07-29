@@ -144,13 +144,51 @@ function loadNetworkAllowlistBases() {
   return bases;
 }
 
-function curlWgetHostAllowed(cmd) {
-  const bases = loadNetworkAllowlistBases();
-  const lower = cmd.toLowerCase();
-  for (const b of bases) {
-    if (lower.includes(b.toLowerCase())) return true;
+/**
+ * Pull the HOST out of every `http(s)://…` URL in a command.
+ *
+ * Deliberately strict: only an explicit scheme counts. A scheme-less token
+ * cannot be told apart from a local path (`./deploy.sh`, `pkg.json`) without
+ * guessing, and guessing here converts an ask into an allow.
+ */
+function extractUrlHosts(cmd) {
+  const hosts = [];
+  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
+  let m;
+  while ((m = re.exec(cmd)) !== null) {
+    // Authority ends at the first /, ? or #.
+    let authority = m[1].split(/[/?#]/)[0];
+    // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
+    const at = authority.lastIndexOf("@");
+    if (at >= 0) authority = authority.slice(at + 1);
+    // Strip port.
+    authority = authority.split(":")[0];
+    if (authority) hosts.push(authority.toLowerCase());
   }
-  return false;
+  return hosts;
+}
+
+/** Suffix match on host labels — `github.com` covers `api.github.com`, not `github.com.evil.tld`. */
+function hostMatchesBase(host, base) {
+  const b = String(base).toLowerCase();
+  return host === b || host.endsWith("." + b);
+}
+
+/**
+ * Allow curl/wget only when EVERY URL in the command targets an allowlisted host.
+ *
+ * Matching the allowlist against the whole command string (an `includes` over
+ * `cmd`) is trivially defeated: `curl https://evil.example/x?src=github.com`,
+ * `curl https://github.com.attacker.io/`, or any request carrying an
+ * allowlisted domain in a header or query param all read as allowed. The host
+ * is the only part of the command that decides where the bytes go, so it is the
+ * only part consulted. No parseable URL, or any host off the list → ask.
+ */
+function curlWgetHostAllowed(cmd) {
+  const hosts = extractUrlHosts(cmd);
+  if (hosts.length === 0) return false;
+  const bases = loadNetworkAllowlistBases();
+  return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }
 
 /** @param {string} filePath */
