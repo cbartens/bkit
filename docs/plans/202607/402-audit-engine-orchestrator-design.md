@@ -508,6 +508,24 @@ Each of these is a concrete edit obligation. A stale count silently breaks the r
 
 `16 lenses` → **18** · `11 universal` → **13** · fan-out `11 → 16 slots` → **18 slots** · canonical **16-slug enum** → **18 slugs**, and the membership changes (`data-layer` out; `contract-conformance`, `derived-data`, `logic-dupe` in) · `status.json#steps[5].artifacts` fixed-length 16-entry array → a variable-length `artifacts` field on the Step-5 `step-done` NDJSON event, count derived from the enum · Step-5/Step-6 grep-assert row counts · `[lenses=…]` valid-slug validation list · Step-5 Failure-Path recovery-hint slug list · `16 - len(lenses-list)` excluded-slot stub arithmetic · `.bkit/prompts.md` § Models rows = 5 pipeline + 18 lenses = **23** rows × **12 provider columns ≈ 276 model-ID cells**, landed per sub-plan alongside each prompt (not batched into A7) · § Audit Phase agent list · "4 conditional lenses stress-test the keystone" → **5** · cost trajectory "16 opus lenses ~4.5× design triplet" → 18, ~5× · Pass-3 Decisions row "roster grows 11 → 16" → **11 → 18**, with the `supply-chain` seat move called out · flag inventory (−`hasCi`, +`hasDerivedStore`) · model pins `claude-opus-4-7` → **`claude-opus-5`** · Done-When grep targets `.agents/scripts/*.ts` → **`.bkit/src/*.ts`**.
 
+### Task 3 (cont.) — lens candidates considered and deliberately NOT in the 18
+
+**This section exists because this document is now the only one a plan run reads.** Pass 2 (`bar-199-audit-workflow-design.md`) deferred six named lens candidates with rationale; Pass 3 resolved some by absorption and said nothing about the rest. With Passes 2 and 3 reclassified as historical, an unrecorded defer becomes indistinguishable from an oversight — and the next design pass re-litigates it from scratch. The full list, with its current disposition:
+
+<!-- prettier-ignore -->
+| Pass-2 deferred candidate | Disposition in Pass 4 | Where it lives now |
+| --- | --- | --- |
+| **a11y** | **ABSORBED** — Pass 3 removed it from out-of-scope | `ui-ux` (C1): missing alternative text, clickable non-interactive elements, unlabelled inputs, heading-order skips, focus states, document language, contrast from declared tokens |
+| **i18n** | **ABSORBED** — Pass 3 removed it from out-of-scope | `ui-ux` (C1): hardcoded strings, fixed widths vs longer translations |
+| **migrations** | **ABSORBED as a secondary probe**, not a lens | `contract-conformance` (C2) retains Pass-3's migration-safety probe below the grant-matrix derivation |
+| **caching** | **PARTIALLY absorbed — the gap is deliberate and narrow** | `derived-data` (C3) covers cache **consistency** (dual-source divergence, unsynced recompute paths). It does **NOT** cover cache **correctness or efficiency**: TTL policy, invalidation strategy, stampede/thundering-herd protection, key-cardinality blowup. Nothing in the 18 covers those. |
+| **api-contracts** | **STILL DEFERRED — no lens covers it** | Nowhere. Pass-2 rationale stands: structural source probes have poor signal-to-noise without a live surface to diff against. Candidate home is WS-E (#83) once runtime evidence exists, or a future conditional lens gated on a `hasPublicApi` flag. |
+| **rate-limiting** | **STILL DEFERRED — no lens covers it** | Nowhere. Same rationale. Candidate home is WS-E (#83) or `security` (B9) as an amendment, but **not in `4.11.0`** — it needs request-path modelling the static lenses do not do. |
+
+**Rule for a future pass:** the three still-open rows above (`caching` correctness half, `api-contracts`, `rate-limiting`) are **not** silent gaps — they are recorded, with rationale, in `docs/deferrals.jsonl` under keys `402-caching-correctness-half-uncovered`, `402-api-contract-lens-still-deferred` and `402-rate-limiting-lens-still-deferred`. Do not add a lens for any of them without first reading those rows: two of them were deferred twice on the same signal-to-noise argument, and the `debt` lens (B6) will surface them from the ledger on any audit of this repo, which is the intended feedback path.
+
+**One known future delta to the WS-B count.** The #80 reorganisation record left open whether **DX** graduates out of the WS-D (#207) web-product family into the universal set — it is the one non-conditional member of a conditional family. If it does, WS-B becomes 14. That decision belongs to WS-D's design, not here, but a plan run should not treat 13 as permanent.
+
 ### Charter-level couplings the amendments create
 
 **The invariant, stated once and cited by every amendment that needs it: no lens reads another lens's artifact. All cross-lens knowledge is brokered by synthesis (A4).** Lens prompts are sibling-blind and standalone-runnable per `.bkit/prompts.md` § Prompt Authoring Rules; a direct sibling read would also break single-lens re-runs under `[lenses=…]`.
