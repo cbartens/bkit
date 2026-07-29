@@ -38,7 +38,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]`. New prefix only alongside new module; else reuse owning module's prefix.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-ship-gate]`. New prefix only alongside new module; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -77,6 +77,35 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 - `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier.
 - `[bkit-analysis] Per-rule compliance rates:` — compliance header.
 - `[bkit-analysis] writeRollupShard: {message}` — rollup status.
+
+### `[bkit-ship-gate]` prefix
+
+`bkit-ship-gate.sh assert` stderr (#384 Tier-1 merge gate). Brackets load-bearing — consumer CI log-drain grep key. `--explain` prints a human note to stderr on the green path; refusals carry the named exit code + run URL. Exit codes are the audit trail — every terminal route writes one:
+
+| Code | Meaning                                                                           | Route                                     |
+| ---- | --------------------------------------------------------------------------------- | ----------------------------------------- |
+| 0    | Capstone `success` at head (or `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` honoured) | merge                                     |
+| 2    | Usage error (missing `--head`, bad args)                                          | refuse (operator)                         |
+| 10   | No run of the CI workflow exists at head                                          | refuse (poll) → Step 5 re-validate        |
+| 11   | Runs exist at head but none completed                                             | refuse (poll) → Step 5                    |
+| 12   | Selected run concluded failure                                                    | refuse                                    |
+| 13   | Selected run exists but capstone job absent                                       | refuse                                    |
+| 14   | Green run exists, but at a SUPERSEDED SHA                                         | refuse → Step 5 (re-validate at new head) |
+| 15   | Selected run concluded `cancelled`                                                | refuse                                    |
+| 16   | Capstone green but a lane concluded `skipped` (not full)                          | refuse                                    |
+| 20   | API error / rate limit / auth                                                     | refuse                                    |
+
+Canonical grep patterns (the refusal itself is signalled by the process exit code; `print_refusal_context` always prefixes a refusal block):
+
+- `[bkit-ship-gate] capstone %s=success at head %s` — green at current head (job name, run id, sha).
+- `[bkit-ship-gate] capstone green at %s; %s skipped lane(s) carried a cache marker (cache_skip provenance — keyed to the exact commit SHA)` — green via the cache-skip short-circuit (still load-bearing — the sentinel is keyed to the exact SHA).
+- `[bkit-ship-gate] required head:  $HEAD_SHA` — refusal block header (every non-zero route emits this).
+- `[bkit-ship-gate] head tested:   $SHA  (SUPERSEDED)` — green run was at a superseded head (code 14).
+- `[bkit-ship-gate] no run of $WORKFLOW exists at head $HEAD_SHA (total_count=0)` — no CI run at head (code 10).
+- `[bkit-ship-gate] rate limit exhausted (...)` / `[bkit-ship-gate] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
+- `[bkit-ship-gate] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row for audit.
+
+The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EXACT head being refused — a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping). `--explain` is read-only and side-effect-free (the operator/`bkit-ship-gate.sh --explain` dry-run in Task 11 E2E uses it without writing).
 
 ## Advisory Checklist Output
 

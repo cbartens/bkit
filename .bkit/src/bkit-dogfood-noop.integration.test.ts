@@ -81,6 +81,47 @@ describe("runPayload() — zero writes when isDogfood() (in-repo install)", () =
 });
 
 // ---------------------------------------------------------------------------
+// Dogfood byte-identity — ship gate + timeout scripts (#384 SP2 Task 6)
+// ---------------------------------------------------------------------------
+//
+// `.bkit/scripts` is excluded from the npm `files` list — consumers receive
+// scripts from `.bkit/templates/.bkit/scripts/`; the root copy is the dogfood
+// mirror. `bkit-ship-gate.sh` + `bkit-ship-timeouts.sh` are byte-identical
+// pairs enforced here. Task 6 is the SOLE owner of this property's automation
+// (SP1 Tasks 1+4 satisfied byte-identity via manual `diff`).
+
+describe("dogfood byte-identity — ship gate + timeout scripts", () => {
+  it("bkit-ship-gate.sh: root copy === template copy (byte-identical)", () => {
+    const pkgRoot = getPkgRoot();
+    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-gate.sh");
+    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-gate.sh");
+    expect(fs.existsSync(root)).toBe(true);
+    expect(fs.existsSync(tmpl)).toBe(true);
+    expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
+  });
+
+  it("bkit-ship-timeouts.sh: root copy === template copy (byte-identical)", () => {
+    const pkgRoot = getPkgRoot();
+    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-timeouts.sh");
+    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-timeouts.sh");
+    expect(fs.existsSync(root)).toBe(true);
+    expect(fs.existsSync(tmpl)).toBe(true);
+    expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
+  });
+
+  it("bkit-ship-gate.sh is executable in both homes (directly invoked via bash)", () => {
+    // The gate is executed via `bash "$GATE_SH"` — the executable bit must
+    // survive templating. The timeouts script is sourced (`. file`), so it
+    // does not require the executable bit.
+    const pkgRoot = getPkgRoot();
+    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-gate.sh");
+    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-gate.sh");
+    expect(fs.statSync(root).mode & 0o111).toBeTruthy();
+    expect(fs.statSync(tmpl).mode & 0o111).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

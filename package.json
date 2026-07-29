@@ -91,6 +91,8 @@
       "opencode-go",
       "zai"
     ],
-    "renovateRunner": "self"
+    "renovateRunner": "self",
+    "capstoneJob": "bkit-tests-check",
+    "ciWorkflow": "ci.yml"
   }
 }

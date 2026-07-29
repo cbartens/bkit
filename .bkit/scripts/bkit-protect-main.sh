@@ -3,14 +3,17 @@
 #
 # Policy (aligns with the bkit release flow — main only ever moves via a
 # release PR; build/ship keep all feat/* PRs on dev):
-#   - main: require PR, require the `bkit-tests-check` status check, enforce for
-#     admins (no bypass), linear history, no force-push, no deletion.
+#   - main: require PR, require the capstone status check, enforce for admins
+#     (no bypass), linear history, no force-push, no deletion.
 #
-# `bkit-tests-check` (NOT `bkit-tests`) is the required check: it is the always-on
-# capstone that asserts every tier the plan expected actually ran and passed, so
-# "required check green" means "validated", not merely "the tests job did not fail".
-# A single-job repo whose ci.yml has no bkit-tests-check job yet should set
-# REQUIRED_JOB=bkit-tests below until it adopts the capstone (see ci.yml).
+# The required status check resolves from `package.json` `bkit.capstoneJob`
+# (default `bkit-tests-check`) via jq, so this script no longer carries the
+# literal — `bkit-ship-gate.sh` and branch protection share one source of truth.
+# `bkit-tests-check` (NOT `bkit-tests`) is the bkit default: it is the
+# always-on capstone that asserts every tier the plan expected actually ran and
+# passed, so "required check green" means "validated", not merely "the tests job
+# did not fail". A single-job repo whose ci.yml has no capstone job yet should
+# set `bkit.capstoneJob` to the always-on job name until it adopts the capstone.
 #
 # `dev` is intentionally left UNPROTECTED. Operators choose direct-push or
 # feat/PR and own that tests ran (either on dev directly or on the branch/PR).
@@ -19,8 +22,8 @@
 # so an admin-bypass exemption means the agent itself is the bypass. Covering
 # admins is the only way protection actually constrains agents.
 #
-# Before requiring `bkit-tests-check`, the script verifies a job by that name
-# exists in .github/workflows/ci.yml — requiring a status check that no CI job
+# Before requiring the capstone, the script verifies a job by that name exists
+# in .github/workflows/ci.yml — requiring a status check that no CI job
 # produces would wedge every PR (the context stays "Expected" forever).
 #
 # Usage:
@@ -35,7 +38,16 @@ set -euo pipefail
 
 DRY_RUN=0
 PRINT_ONLY=0
-REQUIRED_JOB="bkit-tests-check"
+# Resolve the capstone job name from package.json (`bkit.capstoneJob`) so the
+# required status check matches the workflow's source of truth. Falls back to
+# the bkit default `bkit-tests-check` when the key is absent or package.json
+# cannot be read. See `bkit.ciWorkflow` for the companion CI filename.
+CAPSTONE_JOB_DEFAULT="bkit-tests-check"
+if [ -f "package.json" ] && command -v jq >/dev/null 2>&1; then
+  REQUIRED_JOB=$(jq -r '.bkit.capstoneJob // "bkit-tests-check"' package.json 2>/dev/null || printf '%s' "$CAPSTONE_JOB_DEFAULT")
+else
+  REQUIRED_JOB="$CAPSTONE_JOB_DEFAULT"
+fi
 CI_YML=".github/workflows/ci.yml"
 
 for arg in "$@"; do

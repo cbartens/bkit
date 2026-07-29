@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# tests/fixtures/gh/bin/gh — PATH-shimmed `gh` stub for bats suites.
+#
+# Extends the existing PATH-shim idiom from tests/bkit-runtime.bats:44-58
+# (write fake `gh` to FAKE_BIN, chmod +x, prepend to PATH) with fixture-file
+# dispatch: argv URL → JSON file under tests/fixtures/gh/.
+#
+# Recognised calls (mirrors bkit-ship-gate.sh's `gh api` boundary):
+#
+#   gh api /repos/{o}/{r}/actions/workflows/{wf}/runs?head_sha=<SHA>
+#       → cat tests/fixtures/gh/runs/<SHA>.json
+#   gh api /repos/{o}/{r}/actions/runs/<ID>/jobs [--paginate]
+#       → cat tests/fixtures/gh/jobs/<ID>.json
+#   gh api rate_limit
+#       → cat tests/fixtures/gh/ratelimit/<BKIT_FAKE_RATELIMIT_STATE>.json
+#         (default state: "ok")
+#
+# Override knobs (set by the bats test):
+#   BKIT_FAKE_GH_API_ERROR=1   — every api call (including rate_limit) exits 1
+#                                with a generic HTTP-500-style stderr (auth /
+#                                network / unknown API blip). code-20 path.
+#   BKIT_FAKE_RATELIMITED=1    — run-list / jobs queries exit 1 with a
+#                                rate-limit-shaped stderr (HTTP 403 + reset hint),
+#                                BUT `rate_limit` succeeds with the `exhausted`
+#                                fixture. Lets the gate sample rate_limit to
+#                                shape the code-20 message (design: "Sample
+#                                `gh api rate_limit` for code-20 message").
+#   BKIT_FAKE_RATELIMIT_STATE  — filename under tests/fixtures/gh/ratelimit/
+#                                returned by `gh api rate_limit` (default: ok).
+#   BKIT_FAKE_GH_FIXTURE_ROOT  — override fixture root (default: this script's
+#                                parent dir). Tests may relocate per-case.
+#   BKIT_FAKE_GH_STDERR_NOISE=1 — emit a deprecation-header-shaped warning to
+#                                stderr BEFORE the successful JSON output (runs
+#                                + jobs queries). Simulates real `gh` behaviour
+#                                under GH_DEBUG / deprecation headers / transport
+#                                notices. Finding-6 regression test: the old
+#                                `2>&1` capture in bkit-ship-gate.sh merged this
+#                                into stdout and corrupted jq parsing.
+#
+# Anything else: exit 1 (matches the FAKE_BIN/gh precedent — fail loudly on
+# unrecognised calls so a missing boundary surfaces in the test).
+
+set -u
+
+FIXTURE_ROOT="${BKIT_FAKE_GH_FIXTURE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+RUNS_DIR="$FIXTURE_ROOT/runs"
+JOBS_DIR="$FIXTURE_ROOT/jobs"
+RATELIMIT_DIR="$FIXTURE_ROOT/ratelimit"
+
+# Not `gh api` → fall back to a generic non-zero (matches the bkit-runtime.bats
+# fake-gh idiom — only the calls we care about are wired).
+if [ "$#" -lt 2 ] || [ "$1" != "api" ]; then
+  exit 1
+fi
+
+URL="$2"
+
+# gh api rate_limit — used by the gate to shape the code-20 message. Sampled
+# AFTER a run-list query fails, so this branch must NOT inherit the rate-limit
+# failure mode (otherwise the gate could not distinguish rate-limit from a
+# generic API blip). Only BKIT_FAKE_GH_API_ERROR degrades rate_limit too.
+if [ "$URL" = "rate_limit" ]; then
+  if [ "${BKIT_FAKE_GH_API_ERROR:-0}" = "1" ]; then
+    echo "gh: HTTP 500 (fake API error injected by BKIT_FAKE_GH_API_ERROR=1)" >&2
+    exit 1
+  fi
+  STATE="${BKIT_FAKE_RATELIMIT_STATE:-ok}"
+  F="$RATELIMIT_DIR/$STATE.json"
+  if [ -f "$F" ]; then
+    cat "$F"
+    exit 0
+  fi
+  # Unknown state → degrade loudly (test misconfig surfaces).
+  echo "gh-fake: no ratelimit fixture '$STATE' (looked in $RATELIMIT_DIR)" >&2
+  exit 1
+fi
+
+# Global API-error injection (code 20 in bkit-ship-gate.sh). Fires before URL
+# dispatch so EVERY non-rate_limit api call degrades. Two flavours:
+#   BKIT_FAKE_GH_API_ERROR=1 — generic (HTTP 500); rate_limit also fails.
+#   BKIT_FAKE_RATELIMITED=1  — rate-limit-shaped (HTTP 403 + reset); rate_limit
+#                              still succeeds so the gate can shape the message.
+if [ "${BKIT_FAKE_GH_API_ERROR:-0}" = "1" ]; then
+  echo "gh: HTTP 500 (fake API error injected by BKIT_FAKE_GH_API_ERROR=1)" >&2
+  exit 1
+fi
+if [ "${BKIT_FAKE_RATELIMITED:-0}" = "1" ]; then
+  echo "gh: HTTP 403 rate limit exceeded (fake rate-limit injected by BKIT_FAKE_RATELIMITED=1; reset at 1789000600)" >&2
+  exit 1
+fi
+
+# Stderr noise on an otherwise-successful call (Finding-6 regression test):
+# real `gh` can emit deprecation headers / transport notices to stderr while
+# still returning valid JSON on stdout. Fires AFTER the error injections above
+# so it only applies to calls that would otherwise succeed.
+if [ "${BKIT_FAKE_GH_STDERR_NOISE:-0}" = "1" ]; then
+  echo "gh: Warning: deprecation header (fake stderr noise injected by BKIT_FAKE_GH_STDERR_NOISE=1)" >&2
+fi
+
+# gh api /repos/{o}/{r}/actions/workflows/{wf}/runs?head_sha=<SHA>
+#   workflow-scoped run list. The SHA is the dispatch key — each test passes a
+#   distinct SHA that names its fixture file.
+case "$URL" in
+  */actions/workflows/*/runs\?head_sha=*)
+    SHA="${URL##*\?head_sha=}"
+    # Strip any trailing &per_page=N etc. (gh adds these; tests don't need them
+    # but the gate may pass them).
+    SHA="${SHA%%&*}"
+    # Sanitize — SHAs are controlled fixture names but assert the charset so a
+    # copy-paste of this dispatch pattern into production code cannot
+    # path-traverse out of RUNS_DIR via a `../`-laden SHA.
+    [[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "gh-fake: unsanitized SHA '$SHA' rejected (expected [A-Za-z0-9._-]+)" >&2; exit 1; }
+    F="$RUNS_DIR/$SHA.json"
+    if [ -f "$F" ]; then
+      cat "$F"
+      exit 0
+    fi
+    # Absent fixture = no runs at this SHA. Return an empty workflow_runs list
+    # rather than failing, so the gate can distinguish "no run" (code 10) from
+    # "API error" (code 20). This mirrors real `gh api` behaviour: a valid
+    # query with zero matching runs is a 200 with total_count 0.
+    printf '{"total_count":0,"workflow_runs":[]}'
+    exit 0
+    ;;
+esac
+
+# gh api /repos/{o}/{r}/actions/runs/<ID>/jobs [--paginate]
+case "$URL" in
+  */actions/runs/*/jobs)
+    ID="$(printf '%s' "$URL" | sed -E 's|.*/actions/runs/([0-9]+)/jobs.*|\1|')"
+    F="$JOBS_DIR/$ID.json"
+    if [ -f "$F" ]; then
+      cat "$F"
+      exit 0
+    fi
+    # No jobs fixture → empty list (the gate treats capstone-absent as code 13).
+    printf '{"total_count":0,"jobs":[]}'
+    exit 0
+    ;;
+esac
+
+# Unrecognised URL — fail loudly so an unmocked boundary surfaces.
+echo "gh-fake: unrecognised api URL '$URL'" >&2
+exit 1

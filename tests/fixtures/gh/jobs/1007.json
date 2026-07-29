@@ -1,0 +1,29 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 20071,
+      "name": "lint",
+      "head_sha": "skipped-lane",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1007/job/20071"
+    },
+    {
+      "id": 20072,
+      "name": "test",
+      "head_sha": "skipped-lane",
+      "status": "completed",
+      "conclusion": "skipped",
+      "html_url": "https://github.com/example/example/actions/runs/1007/job/20072"
+    },
+    {
+      "id": 20073,
+      "name": "bkit-tests-check",
+      "head_sha": "skipped-lane",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1007/job/20073"
+    }
+  ]
+}

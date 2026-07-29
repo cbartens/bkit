@@ -329,6 +329,11 @@ const TRANSITIVE_EXEMPTIONS: ExemptionEntry[] = [
     reason:
       "KN-26: debug-run-tests deliberately has no in-block commit so a chore(...) HEAD does not make the Vercel-ignore regex skip the preview; parentSha advances transitively via Steps 4/5/6.",
   },
+  {
+    step: "ship-merge-pr",
+    reason:
+      "#384: ship-merge-pr integrates via `gh pr merge --squash` (server-side); the squash commit IS the integration. No local `git commit` — the PR merge is the advancement.",
+  },
 ];
 
 const DERIVE_CALL_PATTERN = /\bcounter_(?:next|current|count)\s+"[^"]+"\s+\S+\s+([A-Za-z][\w-]*)/g;

@@ -187,6 +187,31 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
+## Ship gate + bookkeeping
+
+`/bkit-ship` (#384) is keyed on `git merge-base --is-ancestor origin/dev origin/feat/{FID}`. **Path A** — `dev` has not moved — resumes read-only, no rebase, no bookkeeping commits, no push; merge. **Path B** — `dev` moved — integrates (B1 `gh pr update-branch`, or B2 worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease`), then re-validates unconditionally. Both paths end at the same gate: `bkit-ship-gate.sh assert --head <current>` concluded `success` at the **current** PR head.
+
+### Consumer CI contract — `pull_request` resolves to `run_level=full`
+
+The merge gate (`bkit-ship-gate.sh`) asserts the capstone job's `conclusion=success` at the head being merged. That assertion is only load-bearing while `pull_request ⇒ run_level=full` holds — i.e. the capstone is green **because every expected tier ran and passed**, not because the lanes were skipped (see `## Run-level decision matrix` above). A consumer that narrows CI on `pull_request` has opted out of the merge-gate guarantee by construction:
+
+- **`paths-ignore` / `paths` filters** that skip `pull_request` on some changes → the capstone may not run at all (no workflow run at head → gate code 10, refuse).
+- **A docs-only short-circuit** in the host's build-cancel (Vercel `ignoreCommand` / Netlify) that cancels the run mid-flight → capstone may land `cancelled` (gate code 15) or never complete (code 11).
+- **A `[skip ci]` token** in a feature-branch commit subject when the PR opens → GitHub suppresses the `pull_request` run entirely; the PR's `statusCheckRollup` is vacuously empty (KN-11) → no run at head (gate code 10).
+
+bkit-ship-gate covers the **common** violation shapes: a lane that concluded `skipped` (not `full`) is code 16 (refuse), and the SHA-cache short-circuit (`cache_skip` sentinel) is keyed to the exact commit SHA so it must pass. A run that is **present but degraded-but-not-skipped** (e.g. a required lane ran with a reduced test set due to a consumer config the gate cannot see) is a **residual risk named here, not claimed as covered** — the capstone is green because bkit's own `run_level` planner computed `full`; a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check so `green == validated` survives a docs-only push; do NOT add per-lane required checks (a hollow lane then green-bars the capstone).
+
+### Consumer rollback path
+
+The ship gate + bookkeeping rework ship together in one `bkit upgrade` so no consumer sees prose calling a gate it does not have. To unwind a bad ship surface (gate script, managed config, or rewritten `bkit-ship.md`) without downgrading unrelated fixes:
+
+1. **Pin the previous `@cbartens/bkit`** in `package.json` (the sliding `@v{N}` tag auto-receives patches; a regression lands via the tag, so pin to the last known-good immutable `v{N}.x.y` or `@<sha>` — see § Sliding major-version tag). Re-install and confirm `bkit check` reports no drift.
+2. **Hold `bkit upgrade` for ship surfaces** (`.bkit/workflows/bkit-ship.md`, `.bkit/scripts/bkit-ship-gate.sh`, `.bkit/scripts/bkit-ship-timeouts.sh`, the package-level `bkit.ship` config) until the regression is fixed upstream. Other bkit upgrades are independent.
+3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge — treat every row as a PR whose capstone was NOT green at the merged head and re-verify it against the pinned-good gate (`bkit-ship-gate.sh assert --head <sha>`). `[bkit-ship-gate] override honoured for head …` is the matching `docs/observability.md` grep key.
+4. **A per-workflow pin/revert affordance does not yet exist** (deferral `per-workflow-rollback-path-for-shipped-bkit-workflow-changes`); today the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
+
+Bookkeeping (`status.jsonl`, ship artifacts) goes to the dev tree from Step 1 when `RUNTIME_DEVPUSHES=true` (modes 1–2), or the current working branch tree when `false` (mode 3 — cloud) — see `.bkit/workflows.md` § Ship `BOOK_ROOT`. The single `[skip ci]` close push carries bookkeeping; no bookkeeping commit rides `feat/{FID}` before the merge.
+
 ## Smoke trigger plumbing
 
 Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). Pick the trigger by **where the deploy happens**, not by habit:

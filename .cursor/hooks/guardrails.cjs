@@ -138,7 +138,8 @@ function loadNetworkAllowlistBases() {
       }
     }
   } catch {
-    /* shipped fallback only */
+    /* shipped fallback only — a corrupt/absent allowlist must not crash the
+       editor session; SHIPPED_NETWORK_BASES above is the correct fallback */
   }
   return bases;
 }

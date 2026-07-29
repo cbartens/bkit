@@ -1,0 +1,29 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 20051,
+      "name": "lint",
+      "head_sha": "older-sha-stale-green",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1005/job/20051"
+    },
+    {
+      "id": 20052,
+      "name": "test",
+      "head_sha": "older-sha-stale-green",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1005/job/20052"
+    },
+    {
+      "id": 20053,
+      "name": "bkit-tests-check",
+      "head_sha": "older-sha-stale-green",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1005/job/20053"
+    }
+  ]
+}

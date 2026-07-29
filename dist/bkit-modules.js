@@ -2313,7 +2313,10 @@ export function runLintModule(ctx) {
             }
         }
         catch {
-            // Already handled above
+            // Fail-open: a malformed package.json is already surfaced by the
+            // lint-package-json-malformed advisory above (the guard at this point
+            // guarantees the first read succeeded); a transient re-read failure after
+            // the devDeps write only skips the no-test-script check, which is non-fatal.
         }
     }
     // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
@@ -2735,7 +2738,9 @@ export function runDependabotModule(ctx) {
                 fs.chmodSync(scriptDst, 0o755);
             }
             catch {
-                // non-fatal — surface via advisory below
+                // Fail-open: chmod is best-effort. The dependabot-setup-repo-state
+                // advisory below invokes the helper via `bash <script>` (no +x bit
+                // required), so a chmod failure does not block the documented setup path.
             }
         }
     }
