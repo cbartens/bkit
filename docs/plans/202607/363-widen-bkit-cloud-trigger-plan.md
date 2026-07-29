@@ -802,9 +802,9 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 - [x] **(v4) Tracker-agnostic dry-run:** `BRANCH=dev COMMIT_MSG="feat(bar-123-auth): x"` -> `FID=bar-123-auth`, `ISSUE=bar-123` (T16).
 - [x] **(v4) Fail-closed dry-run:** `git` stub whose `push` always fails and whose `origin/dev` lacks the row -> `skip=true` + fail-closed notice, and NO `phase=`/`arg=` emitted (T17).
 - [ ] **(v4) Anchor re-verification before build:** re-run the P7 anchor checks (`grep -c 'AUTO_ROUTE_SUFFIX' .bkit/workflows/bkit-ship.md` = 2 after Task 4; squash `--subject`, close commit and HEAD-Subject Assertion still where this revision says). `bkit-ship.md` moved twice in one afternoon; do not trust a line number this plan states without re-grepping.
-- [ ] `pnpm turbo lint typecheck` (or repo equivalent) passes.
-- [ ] **Done when:** All dry-run assertions pass; lint/typecheck green; `bkit-debug.md` zero-diff holds.
-- [ ] **Test ref:** T1-T17.
+- [x] `pnpm turbo lint typecheck` (or repo equivalent) passes.
+- [x] **Done when:** All dry-run assertions pass; lint/typecheck green; `bkit-debug.md` zero-diff holds.
+- [x] **Test ref:** T1-T17.
 
 ### Task 10 — Consumer-repo acceptance note (exercisable-path docs)
 
