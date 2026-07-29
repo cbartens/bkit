@@ -10,3 +10,4 @@
 {"type":"step-done","workflow":"design","step":"design-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T08:28:46Z","parentSha":"baeff2c0fd652b8e708e38d9342ac8bc6e586c11","artifacts":["docs/plans/202607/logs/381-provider-egress-domains/design-summary.md"]}
 {"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-07-29T08:31:31Z","parentSha":"f795e8ec3f97de09b6a1c8787d9658717e4222dd","artifacts":[]}
 {"type":"workflow-done","workflow":"design","at":"2026-07-29T08:31:31Z"}
+{"type":"close-transport","shape":"local","sha":"b0d5b1504fd77c4361238e429f9b17c6576d6a9c","scanResult":"clean","at":"2026-07-29T08:36:03Z"}
