@@ -62,8 +62,15 @@ pnpm bkit check < /dev/null
 
 # bkit-repo only — bats suite (Tier-1 carrier + helper scripts). Runs after
 # `bkit check` so a drift failure fails fast; runs before actionlint/dist so a
-# bats failure fails before the slower gates.
-pnpm test:bats < /dev/null
+# bats failure fails before the slower gates. Guard-skips when bats is absent
+# (it is NOT a devDependency — CI installs it via `npx --yes bats`), matching
+# the shipped template. Without the guard a contributor who has not installed
+# bats cannot push at all.
+if command -v bats >/dev/null 2>&1; then
+  pnpm test:bats < /dev/null
+else
+  echo "[pre-push] bats missing — skipping bats suite (install bats to enable)" >&2
+fi
 
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.

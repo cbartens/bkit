@@ -48,7 +48,7 @@ description: "Ship Feature — Autonomous merge and archive"
 <!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
-> - **Limits:** `MAX_MERGE_ATTEMPT` sourced via `bkit-ship-timeouts.sh` and the fenced shell routing block below.
+> - **Limits:** `MAX_MERGE_ATTEMPT` sourced via `bkit-counter-bus-config.sh` (its single definition) in the fenced shell routing block below; `bkit-ship-timeouts.sh` carries the timeout / poll / lock constants.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -1011,6 +1011,14 @@ description: "Ship Feature — Autonomous merge and archive"
      [ -d "$skill_dir" ] || continue
      skill=$(basename "$skill_dir")
      grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
+   done
+   # `npx skills remove` deletes the host mirrors (.claude/.cursor/.opencode)
+   # alongside .agents/skills/<name>. Stage those deletions HERE — the prune
+   # commit otherwise carries only .agents/skills + skills-lock.json and the
+   # mirror deletions leak into the working tree, where the next unrelated
+   # `git add -A` sweeps them into a foreign commit.
+   for d in .agents/skills .claude/skills .cursor/skills .opencode/skills skills-lock.json; do
+     git add -A -- "$d" 2>/dev/null || true
    done
    ```
 2. Update status (bookkeeping to `$BOOK_ROOT`):

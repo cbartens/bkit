@@ -1,11 +1,14 @@
 #!/usr/bin/env bats
-# tests/fixtures/gh/smoke.bats — fixtures/gh stub-harness smoke test (#384 SP1 T2).
+# tests/gh-stub-smoke.bats — fixtures/gh stub-harness smoke test (#384 SP1 T2).
 #
 # Proves the PATH-shimmed `gh` (tests/fixtures/gh/bin/gh) dispatches argv → JSON
 # fixture deterministically. This is the foundation bkit-ship-gate.sh will rest on
-# (tests/ship-gate.bats). Run: bats tests/fixtures/gh/smoke.bats
+# (tests/ship-gate.bats). Run: bats tests/gh-stub-smoke.bats
+#
+# Lives in tests/ NOT tests/fixtures/gh/ because both runners glob `tests/*.bats`
+# (package.json test:bats and ci.yml) — a file one level deeper never runs.
 
-GH_FIXTURE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+GH_FIXTURE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/gh" && pwd)"
 
 setup() {
   export PATH="$GH_FIXTURE_ROOT/bin:$PATH"
@@ -56,4 +59,21 @@ setup() {
   run env BKIT_FAKE_RATELIMITED=1 BKIT_FAKE_RATELIMIT_STATE=exhausted gh api rate_limit
   [ "$status" -eq 0 ]
   echo "$output" | jq -e '.rate.remaining == 0'
+}
+
+@test "stub: --paginate emits one document per page; --slurp collapses them into an array" {
+  # The gate depends on this difference — without --slurp a >100-job run turns
+  # every downstream jq into a multi-document stream and the lane check stops
+  # running. Fixture jobs/1009.pages.json holds two pages.
+  run gh api "/repos/example/example/actions/runs/1009/jobs" --paginate
+  [ "$status" -eq 0 ]
+  # Un-slurped: TWO separate documents in the stream (jq -s collects them).
+  echo "$output" | jq -s -e 'length == 2'
+
+  run gh api "/repos/example/example/actions/runs/1009/jobs" --paginate --slurp
+  [ "$status" -eq 0 ]
+  # Slurped: ONE document that is an array of the two pages.
+  echo "$output" | jq -s -e 'length == 1'
+  echo "$output" | jq -e 'type == "array" and length == 2'
+  echo "$output" | jq -e '[.[].jobs[]] | length == 3'
 }

@@ -30,8 +30,10 @@ SHIP_DEV_LOCK_STALE_S=900
 # Maximum seconds to spend contending for `.dev.lock` before giving up.
 SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S=600
 
-# Maximum merge attempts before the Failure Path. Mirrors MAX_MERGE_ATTEMPT in
-# bkit-counter-bus-config.sh; sourced by the merge-attempt counter-bus routing.
-MAX_MERGE_ATTEMPT=3
+# NOTE: MAX_MERGE_ATTEMPT is NOT defined here. It lives in
+# bkit-counter-bus-config.sh, which the merge-attempt routing already sources.
+# A second copy here would be a silent last-sourced-wins hazard: bkit-ship.md
+# Step 6 sources this file first and bkit-counter-bus-config.sh later, so the
+# two could drift and only the later value would take effect.
 
 # bkit:end
