@@ -210,6 +210,14 @@ $ARGUMENTS
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:ship"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   Immediately materialise the `bkit [auto route]` squash-marker decision from the just-read `{LABELS}` into a handoff file — `{LABELS}` does NOT survive into the later Step 5 (merge) Bash-tool-call's shell, so it must be captured HERE, adjacent to the read, same as `bkit-build.md:1261` / `bkit-debug.md:1258-1262` (#363 H2):
+   ```bash
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   BKIT_AUTO_ROUTE_FILE=$(mktemp)
+   printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
+   echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
+   ```
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -578,13 +586,18 @@ $ARGUMENTS
    ```
    - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
-5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread the `bkit [auto route]` marker onto the squash `--subject` when `{LABELS}` (assert in scope — populated at Step 1, `bkit-ship.md:247`/`:250`) carries `bkit:auto`: the squash-merge commit is what actually lands on `dev`, and `bkit-cloud.yml`'s free-tier gate (#363) reads `head_commit.message` on that commit to admit the post-merge `dev` CI trigger — same idiom as `bkit-build.md:1261` / `bkit-debug.md:1262`, set and used in the SAME shell block (do not assume the value survives a Bash-tool-call boundary):
+5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread the `bkit [auto route]` marker onto the squash `--subject` when `{LABELS}` carries `bkit:auto`: the squash-merge commit is what actually lands on `dev`, and `bkit-cloud.yml`'s free-tier gate (#363) reads `head_commit.message` on that commit to admit the post-merge `dev` CI trigger. `{LABELS}` was read at Step 1 (`bkit-ship.md:247`/`:250`), several tool-calls ago — it does NOT survive into this Bash-tool-call's shell, so the derived `AUTO_ROUTE_SUFFIX` is read from the `BKIT_AUTO_ROUTE_FILE` handoff written adjacent to that read (Step 1 item 5) — same idiom as `bkit-debug.md:1258-1262`, falling back to a direct `{LABELS}` re-check only if the handoff file is unavailable:
    ```bash
    # Marker admits the squash-merge SHA to bkit-cloud.yml's dev/fix trigger (#363);
    # any resulting cross-session /bkit-debug dispatch loop is capped by
    # MAX_DEV_DISPATCH_ATTEMPTS in bkit-counter-bus-config.sh.
    AUTO_ROUTE_SUFFIX=""
-   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
+     AUTO_ROUTE_SUFFIX=$(cat "$BKIT_AUTO_ROUTE_FILE")
+     rm -f "$BKIT_AUTO_ROUTE_FILE"
+   else
+     echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   fi
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
      gh pr merge {PR_NUMBER} --squash --delete-branch --match-head-commit "$GATE_HEAD" \
        --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})${AUTO_ROUTE_SUFFIX}" \
