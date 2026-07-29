@@ -602,20 +602,24 @@ Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate f
 
 ### `bkit [auto route]` Marker Propagation
 
-`bkit [auto route]` = CI commit-message marker enabling free-tier `bkit-cloud.yml` auto-route gate. On **close-workflow commit** (and debug **re-trigger commit**); re-carried onto later bkit-driven commits that can become CI-triggering feat-branch HEAD — ship **dev-sync merge** (`chore({FID}): sync dev`), **conflict-resolve** — ONLY when issue carried `bkit:auto`. Re-carry required: gate reads single commit `head_commit.message`; unmarked commit on top buries marker; ship dev-sync = bkit analogue of ad-hoc `merge origin/dev` that unblocked CI. NOT CI-suppressing (HEAD-Subject Assertion = deny-list, passes automatically).
+`bkit [auto route]` = CI commit-message marker enabling free-tier `bkit-cloud.yml` auto-route gate. On **close-workflow commit** (and debug **re-trigger commit**) — ONLY when issue carried `bkit:auto`. Gate reads single commit `head_commit.message`, so an unmarked commit on top buries the marker; build/debug therefore re-read `bkit:auto` immediately BEFORE constructing the CI-triggering HEAD. NOT CI-suppressing (HEAD-Subject Assertion = deny-list, passes automatically).
+
+**Ship does NOT carry the marker (#384).** Ship's integrate step no longer authors a markable feat-branch HEAD: B1 refreshes the head server-side via `gh pr update-branch` (GitHub authors that merge commit — bkit cannot set its message), and B2 pushes `chore({FID}): conflict-resolve bkit [skip ci]`. Both bury the marker by construction. This is deliberate, not drift: ship previously merged `origin/dev` into `feat/{FID}` locally and pushed it (`chore({FID}): sync dev{AUTO_ROUTE_SUFFIX}`), which mutated the PR head AFTER CI validated it — the #384 bug. Restoring the marker there would mean restoring that mutation. No hand-off is lost: ship owns the run it is in, dispatching CI itself at Step 5 (`gh workflow run ci.yml` — unconditional on observed head movement, since a buried `[skip ci]` poisons push-triggered dispatch identically) and polling to completion, so it never needs the router to route back into it. Ship carries the marker on no commit at all today.
+
+**Accepted residual:** after B1/B2 the feat-branch HEAD is unmarked, so a ship run that dies mid-flight is not auto-recoverable by the cloud router — the operator re-runs via `workflow_dispatch`. That is the accepted trade for never mutating a validated head; do NOT "fix" it by re-adding a marker-carrying local merge.
 
 **Placement (mode-dependent):**
 
 - `/bkit-build` Step 17: `bkit:auto` re-read BEFORE close-workflow commit. Present → subject `chore({FID}): close-workflow bkit [auto route]`. Close-workflow = feat-branch HEAD firing CI → gate checks `head_commit.message`.
 - `/bkit-debug` Step 12 PR-mode: same — marker on close-workflow. Create-pr (sub-step 9) does NOT run (`TRIGGER_PR=0`).
 - `/bkit-debug` Step 12 local-mode: `bkit:auto` re-read before create-pr (sub-step 9). Marker on create-pr = CI-triggering HEAD local-mode.
-- `/bkit-ship` Step 4 (conflict-resolve) + Step 6 (dev-sync): re-derive `AUTO_ROUTE_SUFFIX` from Step-1 `LABELS` (`echo "${LABELS:-}" | grep -q 'bkit:auto'`, fail-closed empty) → append to commit/merge subject — opted-in branch keeps marker when either commit becomes CI-triggering HEAD. Ship uses Step-1 `LABELS` (not fresh MCP); cloud gate in-job `bkit:auto` re-check = live kill switch.
+- `/bkit-ship`: no placement — see "Ship does NOT carry the marker (#384)" above. Step 4 B1 (`gh pr update-branch`) and B2 (`chore({FID}): conflict-resolve bkit [skip ci]`) both leave an unmarked HEAD by construction; there is no Step 6 dev-sync merge to mark. Cloud gate in-job `bkit:auto` re-check = live kill switch, unchanged.
 
 **Why re-read must precede commit (R2-1/R2-2):** kill-switch re-read at build Step 17 / debug Step 12 sub-step 11 runs AFTER commit+push — cannot source marker on existing commit. Fresh `bkit:auto` read BEFORE commit construction = authoritative "at close time" signal.
 
 **Coexistence with `bkit [verbose ci]`:** debug local-mode both on same subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. HEAD-Subject Assertion: both legitimate. Gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — `bkit [verbose ci]` does not interfere.
 
-**Cleanup:** self-clearing per push — only close-workflow, debug re-trigger, ship dev-sync/conflict-resolve carry it. No PR-title edit (unlike `bkit [verbose ci]` debug PR-mode); auto-route fires on commit message.
+**Cleanup:** self-clearing per push — only close-workflow and debug re-trigger carry it (ship carries it on nothing — #384). No PR-title edit (unlike `bkit [verbose ci]` debug PR-mode); auto-route fires on commit message.
 
 ### `bkit [verbose ci]` Marker Propagation
 
@@ -1007,7 +1011,7 @@ Precedence: `bkit [force build]` on head commit wins.
 | `chore({FID}): close-workflow` (build Step 17 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
 | `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
-| `chore({FID}): conflict-resolve` (ship Step 4) / `chore({FID}): sync dev` (ship Step 6 dev-sync merge) — opted-in | none / `bkit [auto route]` (conditional on `bkit:auto`, from Step-1 `LABELS`) — re-carries the marker onto the feat-branch HEAD so a bkit-driven conflict / dev-sync merge does not bury it (the ad-hoc `merge origin/dev` that buried it in a consumer is the human analogue) |
+| `chore({FID}): conflict-resolve` (ship Step 4 B2 — ONLY step that pushes `feat/{FID}`) | `bkit [skip ci]` — never `bkit [auto route]` (#384). Deliberate: ship dispatches CI itself at Step 5 on observed head movement and polls to completion, so the push must not also fire a push-triggered run. Ship Step 4 B1 (`gh pr update-branch`) likewise leaves an unmarked HEAD — GitHub authors that merge commit and bkit cannot set its message. The pre-#384 `chore({FID}): sync dev` local merge that carried the marker is DELETED; it mutated the validated PR head. |
 
 **CI trigger mechanic (build / debug / ship aligned):** last push to CI-validated ref must leave HEAD without `bkit [skip ci]` — else `pull_request` (build/debug) or `push` (ship) suppressed, `statusCheckRollup` empty → Ship Step 2 fail-fast admits vacuously green PR. Trigger in close-workflow (build/debug); ship via squash merge subject. CI-Dispatch Gate below enforces — § CI-Dispatch Gate.
 
