@@ -29,6 +29,13 @@
 #                                returned by `gh api rate_limit` (default: ok).
 #   BKIT_FAKE_GH_FIXTURE_ROOT  — override fixture root (default: this script's
 #                                parent dir). Tests may relocate per-case.
+#   BKIT_FAKE_GH_STDERR_NOISE=1 — emit a deprecation-header-shaped warning to
+#                                stderr BEFORE the successful JSON output (runs
+#                                + jobs queries). Simulates real `gh` behaviour
+#                                under GH_DEBUG / deprecation headers / transport
+#                                notices. Finding-6 regression test: the old
+#                                `2>&1` capture in bkit-ship-gate.sh merged this
+#                                into stdout and corrupted jq parsing.
 #
 # Anything else: exit 1 (matches the FAKE_BIN/gh precedent — fail loudly on
 # unrecognised calls so a missing boundary surfaces in the test).
@@ -80,6 +87,14 @@ fi
 if [ "${BKIT_FAKE_RATELIMITED:-0}" = "1" ]; then
   echo "gh: HTTP 403 rate limit exceeded (fake rate-limit injected by BKIT_FAKE_RATELIMITED=1; reset at 1789000600)" >&2
   exit 1
+fi
+
+# Stderr noise on an otherwise-successful call (Finding-6 regression test):
+# real `gh` can emit deprecation headers / transport notices to stderr while
+# still returning valid JSON on stdout. Fires AFTER the error injections above
+# so it only applies to calls that would otherwise succeed.
+if [ "${BKIT_FAKE_GH_STDERR_NOISE:-0}" = "1" ]; then
+  echo "gh: Warning: deprecation header (fake stderr noise injected by BKIT_FAKE_GH_STDERR_NOISE=1)" >&2
 fi
 
 # gh api /repos/{o}/{r}/actions/workflows/{wf}/runs?head_sha=<SHA>

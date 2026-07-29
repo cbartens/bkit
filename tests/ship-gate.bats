@@ -206,3 +206,52 @@ run_gate() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"[bkit-ship-gate] --head <sha> is required"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# Build-challenge remediation regressions (#384) — one case per fixed finding
+# that lives in the gate script or the gh stub. Markdown-prose findings are
+# covered by bkit-ship-invariants.test.ts.
+# ---------------------------------------------------------------------------
+
+# Finding 4 (facet b): STATUS_PATH unset must NOT crash the override under
+# `set -euo pipefail`. Old code: `local status="$STATUS_PATH"` → unbound
+# variable → exit 1 (escape hatch broken in production). Fix: `${STATUS_PATH:-}`.
+@test "F4b: override honoured (exit 0) when STATUS_PATH is unset — no set -u crash" {
+  run env -u STATUS_PATH BKIT_SHIP_GATE_OVERRIDE=failed bash "$GATE_SH" assert --repo "example/example" --head failed --explain
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"override honoured for head failed"* ]]
+}
+
+# Finding 4 (facet c): the audit row must NEVER be invisible. When STATUS_PATH
+# is set but unwritable, the override still exits 0 AND emits the audit row to
+# stderr. Old code: `>> "$status" 2>/dev/null || true` silenced the write → the
+# documented rollback grep missed the override. Fix: stderr fallback.
+@test "F4c: override audit row emitted to stderr when STATUS_PATH is unwritable (never invisible)" {
+  run env STATUS_PATH="/nonexistent-bkit-dir-384/status.jsonl" BKIT_SHIP_GATE_OVERRIDE=failed bash "$GATE_SH" assert --repo "example/example" --head failed --explain
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"override honoured for head failed"* ]]
+  # The stderr fallback must carry the audit row + the "emitting to stderr" note.
+  [[ "$output" == *"ship-gate-override"* ]]
+  [[ "$output" == *"emitting to stderr"* ]]
+}
+
+# Finding 6: `2>&1` on the `gh api` capture merged stderr noise into the JSON,
+# corrupting jq parsing into a false refusal (code 10/13). Fix: drop `2>&1` so
+# only the non-zero exit drives the code-20 path; stdout stays clean JSON.
+@test "F6: stderr noise on a successful gh api call does not corrupt JSON parsing (no 2>&1)" {
+  # Inject a deprecation-header-shaped warning on the runs + jobs queries.
+  # green-capstone is a green run — the gate MUST resolve exit 0, NOT default
+  # to total_count=0 (code 10) or capstone-absent (code 13) from corrupted JSON.
+  run env BKIT_FAKE_GH_STDERR_NOISE=1 bash "$GATE_SH" assert --repo "example/example" --head green-capstone
+  [ "$status" -eq 0 ]
+}
+
+# Finding 8: the test stub extracts the SHA from the URL and builds a path
+# `$RUNS_DIR/$SHA.json` unsanitized. Fix: `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]`
+# rejects a `../`-laden SHA before path construction (copy-paste hazard guard).
+@test "F8: SHA sanitization rejects '../'-laden SHA (no path traversal out of RUNS_DIR)" {
+  run "$GH_FIXTURE_ROOT/bin/gh" api "/repos/o/r/actions/workflows/ci.yml/runs?head_sha=../../etc/passwd"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unsanitized SHA"* ]]
+  [[ "$output" == *"rejected"* ]]
+}

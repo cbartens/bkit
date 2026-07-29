@@ -318,3 +318,132 @@ describe("bkit-ship.md — .deferred-blocked writer under BOOK_ROOT", () => {
     expect(underBookRoot).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Build-challenge remediation regressions — one assertion per fixed finding
+// ---------------------------------------------------------------------------
+//
+// These assertions target the 6 findings whose fix landed in this workflow
+// markdown (Findings 1, 2, 3, 4a, 5, 7). Each would FAIL if the original bug
+// were reintroduced. The remaining 3 findings (4b/c, 6, 8) are covered by
+// bats behaviour tests in tests/ship-gate.bats (gate script + gh stub).
+
+describe("bkit-ship.md — build-challenge remediation regressions", () => {
+  // Finding 1 (CRITICAL): B2 conflict resolution was silently lost —
+  // `git add $BOOK_PATHS` staged only bookkeeping, not the resolved source
+  // files the conflict-resolve subagent wrote. Fix: `git add -u && git add
+  // $BOOK_PATHS` (stages tracked modifications first, then bookkeeping).
+  it("F1: B2 conflict-resolve stages tracked source modifications via 'git add -u' before bookkeeping", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    // The B2 block is the ONLY fenced block that force-pushes feat/{FID}.
+    // Match the shell command form (`... origin "feat/{FID}"`) — the prose
+    // blockquote also mentions the flag but without `origin`.
+    const forcePushIdx = lines.findIndex((l) =>
+      /git\s+push\s+--force-with-lease\s+origin\b.*feat\/\{FID\}/.test(l),
+    );
+    expect(forcePushIdx, "B2 conflict-resolve force-push line not found").toBeGreaterThan(-1);
+    // The staging + commit lines are within a few lines above the force-push.
+    // (Fenced blocks in this workflow are indented under list items, so a
+    // window-based scan is more robust than fence-boundary extraction.)
+    const window = lines.slice(Math.max(0, forcePushIdx - 12), forcePushIdx + 1).join("\n");
+    // Must contain `git add -u` (stages resolved tracked source files).
+    expect(window).toMatch(/\bgit\s+add\s+-u\b/);
+    // And must still stage bookkeeping via $BOOK_PATHS.
+    expect(window).toMatch(/git\s+add.*BOOK_PATHS/);
+  });
+
+  // Finding 2 (HIGH): the ship-revalidate-timeout row was NEVER written — jq
+  // rejected the single-quoted program containing `${SHIP_CI_WAIT_TIMEOUT_S:-1800}`
+  // (literal braces inside jq = syntax error). Fix: pass via `--argjson timeout`.
+  it("F2: ship-revalidate-timeout row passes timeout via --argjson (not literal \${} in jq program)", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    const timeoutIdx = lines.findIndex((l) => l.includes("ship-revalidate-timeout"));
+    expect(timeoutIdx, "ship-revalidate-timeout row writer not found").toBeGreaterThan(-1);
+    const window = lines.slice(Math.max(0, timeoutIdx - 3), timeoutIdx + 3).join("\n");
+    // Must pass the timeout via --argjson (not as a literal ${} in the jq program).
+    expect(window).toContain("--argjson timeout");
+    // The jq program must reference $timeout (not ${SHIP_CI_WAIT_TIMEOUT_S}).
+    expect(window).toContain("timeout_s:$timeout");
+  });
+
+  // Finding 3 (HIGH): `gh pr update-branch` had no error guard — a 403/network/
+  // protection failure silently proceeded to merge an unintegrated PR. Fix: add
+  // `|| { echo ...; exit 1; }` so failure routes to Failure Path.
+  it("F3: every fenced 'gh pr update-branch' call carries an error guard", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    let inFence = false;
+    const violations: string[] = [];
+    for (const line of lines) {
+      // Fenced blocks in this workflow are indented under list items, so
+      // allow leading whitespace before the fence marker.
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (!inFence) continue;
+      if (!/gh\s+pr\s+update-branch\b/.test(line)) continue;
+      // Every fenced update-branch call must be guarded with || { ...; exit 1; }.
+      if (!/\|\|\s*\{/.test(line)) {
+        violations.push(line.trim());
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Finding 4a (MEDIUM): STATUS_PATH was never exported by the workflow — the
+  // gate's override audit row landed in a literal-brace junk path (or crashed
+  // under set -u). Fix: `export STATUS_PATH=...` before the gate call.
+  it("F4a: Step 6 exports STATUS_PATH before invoking the gate", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    const gateIdx = lines.findIndex((l) => /bash\s+"\$GATE_SH"\s+assert/.test(l));
+    expect(gateIdx, "gate invocation line not found").toBeGreaterThan(-1);
+    // The `export STATUS_PATH=` must appear in the preceding window (same block).
+    const window = lines.slice(Math.max(0, gateIdx - 10), gateIdx).join("\n");
+    expect(window).toMatch(/export\s+STATUS_PATH=/);
+  });
+
+  // Finding 5 (MEDIUM): gate code 11 (in progress — poll) was a dead branch —
+  // Step 6 routed ONLY 14/10 to Step 5, so code 11 fell through to Failure Path
+  // instead of polling. Fix: route 11 to Step 5 alongside 10/14.
+  it("F5: gate code 11 (poll) routes to Step 5 alongside codes 10 and 14", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    // The routing directive must list code 11 alongside 10/14 routing to Step 5.
+    const routingLine = lines.find((l) => /code\s+11/.test(l) && /Step\s+5/.test(l));
+    expect(routingLine, "code 11 must be routed to Step 5 (not Failure Path)").toBeTruthy();
+    // The same routing line must also mention codes 10 and 14 (all three poll-able codes together).
+    expect(routingLine!).toMatch(/14/);
+    expect(routingLine!).toMatch(/\b10\b/);
+  });
+
+  // Finding 7 (MEDIUM): `GATE_EXIT=$?` was unreachable under `set -e` — a gate
+  // refusal (non-zero exit) aborted the script before the routing block ran.
+  // Fix: initialise `GATE_EXIT=0` and use `|| GATE_EXIT=$?` so the exit code is
+  // captured before `set -e` can fire.
+  it("F7: gate invocation uses '|| GATE_EXIT=$?' to survive set -e", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    let inFence = false;
+    let gateInvocation: string | undefined;
+    for (const line of lines) {
+      // Fenced blocks in this workflow are indented under list items, so
+      // allow leading whitespace before the fence marker.
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (!inFence) continue;
+      if (/bash\s+"\$GATE_SH"\s+assert/.test(line)) {
+        gateInvocation = line;
+        break;
+      }
+    }
+    expect(gateInvocation, "fenced gate invocation not found").toBeTruthy();
+    // Must use the || GATE_EXIT=$? pattern (not a bare invocation + GATE_EXIT=$?).
+    expect(gateInvocation!).toMatch(/\|\|\s*GATE_EXIT=\$\?/);
+  });
+});
