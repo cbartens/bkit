@@ -10,3 +10,4 @@
 {"type":"step-done","workflow":"design","step":"design-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T08:04:31Z","parentSha":"8d0799e0e5b50e136e24603d4a86bd2caa8952b3","artifacts":["docs/plans/202607/logs/402-audit-engine-orchestrator/design-summary.md"]}
 {"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-07-29T08:07:33Z","parentSha":"eb6061fa584263a3460cf413682374853670e3bb","artifacts":[]}
 {"type":"workflow-done","workflow":"design","at":"2026-07-29T08:07:33Z"}
+{"type":"close-transport","shape":"local","sha":"5670f1602d27eb7fe15dfc4c34ab8b90933b454f","scanResult":"clean","at":"2026-07-29T08:10:10Z"}
