@@ -10,3 +10,4 @@
 {"type":"step-done","workflow":"design","step":"design-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T08:23:46Z","parentSha":"c3fbeded1bf35d6f5f94dfea9f3f25d021ed3dcf","artifacts":["docs/plans/202607/logs/397-cloud-concurrency-arbitration/design-summary.md"]}
 {"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-07-29T08:26:02Z","parentSha":"ecca8886e9edf3959eff966fbceed07b0ffa54ff","artifacts":[]}
 {"type":"workflow-done","workflow":"design","at":"2026-07-29T08:26:02Z"}
+{"type":"close-transport","shape":"local","sha":"31ccd3ac4704aa642282c90126efd9b12015e0b4","scanResult":"clean","at":"2026-07-29T08:30:47Z"}
