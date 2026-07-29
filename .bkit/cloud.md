@@ -445,6 +445,27 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 
 # Decision log
 
+## #363 — widen bkit-cloud trigger to post-merge dev CI
+
+**Decision: Option A — reuse the existing `bkit [auto route]` free-tier gate for the post-merge `dev` surface, no second gate.** `bkit-cloud.yml`'s `workflow_run` trigger widens from `['feat/**']` to `['feat/**', 'fix/**', 'dev']` (`main` is deliberately excluded — see the deferral row in `docs/deferrals.jsonl` and #363). `bkit-ship` threads `AUTO_ROUTE_SUFFIX` (` bkit [auto route]`) onto the PR squash-merge `--subject` when the issue carries `bkit:auto`, so the commit that actually lands on `dev` — and triggers post-merge CI — already carries the same marker the free-tier gate checks. The rejected alternative (a second `workflow_run` filter on `dev` deriving eligibility from the merged PR's `bkit:auto` label via a `gh pr list --base dev --merged` reverse-lookup) was passed over: it avoids polluting `dev` squash titles but adds a second gate mechanism and an extra API call on every `dev` push, for no real gain over reusing the existing marker.
+
+**Branch-aware routing table:**
+
+<!-- prettier-ignore -->
+| Trigger | success | failure |
+| --- | --- | --- |
+| `feat/**` / `fix/**` CI (pre-merge, via `pull_request`) | -> ship | -> debug |
+| `dev` CI (post-merge, via `push`) | -> nothing (no-op; the merge already happened) | -> `/bkit-debug {FID}` |
+| `main` CI (post `dev`->`main` promotion) | manual only — never auto-routed | manual only — never auto-routed |
+
+**FID recovery on `dev` (no open PR):** primary = parse the squash-merge commit scope (`feat({FID}): ...` — the PR title convention the squash `--subject` preserves verbatim), tracker-agnostic (`363-slug` and `bar-123-slug` both admitted, mirroring the existing `feat/**` branch-fallback alternation); fallback = `gh api repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/pulls` -> linked-PR body `bkit:fid=` marker. Either path failing -> fail-safe no-op (`skip=true`, no dispatch, no crash).
+
+**Stale-run guard — Option A (CI-run recency, NOT git-tip).** `/bkit-ship`'s terminal close commit (`docs({FID}): ship DONE bkit [skip ci]`) pushes to `dev` _during_ the post-merge CI run (on runtimes where `RUNTIME_DEVPUSHES = true`), so by the time CI completes and the cloud workflow boots, `dev`'s tip is often the close commit — a naive `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch and silently suppress the whole feature. Instead the guard queries the most recently COMPLETED CI run on `dev` (`gh run list --branch dev --workflow ci.yml --status completed`) and compares its `headSha` against the triggering `workflow_run.head_sha`. Close commits always carry `[skip ci]` so they never trigger CI and never appear in that list — the most-recent-completed-run head is always a feature/fix commit, which is exactly the staleness signal intended. `gh run list` returning empty fails OPEN (proceeds with dispatch) — better to dispatch than to silently swallow the feature on a transient API hiccup.
+
+**Loop-bound decision.** Cross-session cap = 3 DISTINCT failed dev/fix CI SHAs per FID, all-time, checked AND written by the `bkit-cloud.yml` ctx step (both jobs) immediately BEFORE dispatch — not by `/bkit-debug` (per-session `MAX_NORMAL_ATTEMPT` resets on every new cloud dispatch and cannot bound a cross-session loop). The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` so an early `/bkit-debug` crash cannot undercount, and the write is fail-closed: a rejected push is retried once against a re-fetched `dev`, then the row's presence on `origin/dev` is verified before dispatch proceeds — a row landing nowhere durable would let the cap silently degrade to unbounded. One budget per FID shared across the `dev` and `fix/**` failure surfaces (`fix/**` newly folded per #363 — a `fix/**` CI failure re-dispatches `/bkit-debug` exactly like `dev`, so it shares the same cap via a factored `bkit_dev_dispatch_guard` shell function). `feat/**` stays deliberately uncapped here — pre-merge, PR-scoped, already bounded by the in-session `MAX_DEBUG_ATTEMPT` / `MAX_NORMAL_ATTEMPT` counters.
+
+**Concurrency decision.** `cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}` — `feat/**`/`fix/**` keep `true` (latest-wins, unchanged). For `dev`, `false`: an in-flight `/bkit-debug` run is allowed to finish rather than being cancelled mid-flight (which risks leaving `status.jsonl` or a worktree lock inconsistent); GHA QUEUES at most one pending run per concurrency group when `cancel-in-progress: false` (older pendings are cancelled as newer ones arrive) — the queued run re-evaluates the dispatch cap at its own ctx step when it starts, so the operator does not need to manually re-trigger.
+
 ## opencode provider host
 
 **Superseded premise:** Original SP5 out-of-scope note classified opencode as separate file (`opencode-cloud.yml`) or separate CLI flag path. opencode host was "phase 2 post-PR" addition.

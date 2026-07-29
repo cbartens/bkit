@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
@@ -572,14 +572,17 @@
    ```
    - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
-5. Merge with empty body and `--match-head-commit` (server refuses if head moved):
+5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread the `bkit [auto route]` marker onto the squash `--subject` when `{LABELS}` (assert in scope — populated at Step 1, `bkit-ship.md:247`/`:250`) carries `bkit:auto`: the squash-merge commit is what actually lands on `dev`, and `bkit-cloud.yml`'s free-tier gate (#363) reads `head_commit.message` on that commit to admit the post-merge `dev` CI trigger — same idiom as `bkit-build.md:1261` / `bkit-debug.md:1262`, set and used in the SAME shell block (do not assume the value survives a Bash-tool-call boundary):
    ```bash
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
      gh pr merge {PR_NUMBER} --squash --delete-branch --match-head-commit "$GATE_HEAD" \
-       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
+       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})${AUTO_ROUTE_SUFFIX}" \
        --body ""
    fi
    ```
+   The marker becomes permanent `dev` history (accepted — inherent to reading `head_commit.message`; do not "clean it up" later). When `bkit:auto` is absent (or `bkit:tracker none`, where `{LABELS}` is empty), `AUTO_ROUTE_SUFFIX` stays empty and the subject is unchanged.
 6. `gh pr view {PR_NUMBER} --json state` → extract `state`.
 7. Decide `MERGE_VERDICT`:
    - **If** `state` = MERGED → `MERGE_VERDICT` = PASS; `MERGE_FAILURES` = 0.
