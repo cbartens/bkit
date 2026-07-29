@@ -381,17 +381,17 @@ $ARGUMENTS
    2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
    4. **If** `RESOLVE_VERDICT` = PASS → commit and push (B2 is the ONLY step that pushes to `feat/{FID}`):
-       ```bash
-       # B2 stages ALL working-tree changes — resolved source files first
-       # (`-u`: modifications to tracked files = the conflict resolutions the
-       # subagent wrote), then the bookkeeping allow-list (the
-       # ship-conflict-resolve.md artifact lands under $BOOK_PATHS). This is
-       # the ONLY commit that pushes feat/{FID}; every change here is
-       # intentional by construction.
-       git add -u && git add $BOOK_PATHS
-       git commit -m "chore({FID}): conflict-resolve bkit [skip ci]"
-       git push --force-with-lease origin "feat/{FID}"
-       ```
+      ```bash
+      # B2 stages ALL working-tree changes — resolved source files first
+      # (`-u`: modifications to tracked files = the conflict resolutions the
+      # subagent wrote), then the bookkeeping allow-list (the
+      # ship-conflict-resolve.md artifact lands under $BOOK_PATHS). This is
+      # the ONLY commit that pushes feat/{FID}; every change here is
+      # intentional by construction.
+      git add -u && git add $BOOK_PATHS
+      git commit -m "chore({FID}): conflict-resolve bkit [skip ci]"
+      git push --force-with-lease origin "feat/{FID}"
+      ```
       **Else** → **Failure Path** (non-mechanical conflict → handover).
 3. **Subagent:** Invoke `/bkit-ship-conflict-resolve` (non-mechanical handover — see step 2.1 above for the pattern; this sub-step covers the case where `mergeable` resolution fails unexpectedly). → **Failure Path**.
 4. Update status (bookkeeping to `$BOOK_ROOT`):
@@ -553,8 +553,8 @@ $ARGUMENTS
      '{type:"ship-gate-refusal", workflow:"ship", at:$t, exitCode:$code, head:$head}' \
      >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
-    - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
-    - Any other refusal (12/13/15/16/20) → **Failure Path**.
+   - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
+   - Any other refusal (12/13/15/16/20) → **Failure Path**.
 5. Merge with empty body and `--match-head-commit` (server refuses if head moved):
    ```bash
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
