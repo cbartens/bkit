@@ -61,26 +61,27 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   7. challenge-reconcile (merge findings, severity + verdict max-wins)
   8. challenge-remediate (classify-gate: architectural → FAIL; else fix + test)
   9. challenge-tests     (edge-case tests for changed files)
-  10. test gate          (local tier: lint + typecheck + unit + slop:delta + bkit check;
+  10. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
   11. summary            (tracker-facing + PR link)
   → PR opened; CI runs the full multi-tier scaffold (see "CI test scaffold" below)
 
 /bkit-debug ─── side-rail, invoked on test/CI failure ────────────────────────
-  1. fetch context       (CI: failed jobs/steps + error annotations + failed-step
-                         logs; e2e test reports; local test output; diff vs
-                         last-passing CI; runtime logs via debug-fetch blocks;
-                         tracker: related issues by error signature → feeds
-                         diagnose below)
-  Normal mode (localisable failure):
-  2. diagnose           (reads docs/knowledge.jsonl for prior failures;
-                        Standard → Pivot → Final strategy escalation)
-  3. remediate          (apply diagnosis fix)
-  4. test gate          (broader tier than build: lint + typecheck + unit
+  1. run tests          (broader tier than build: lint + typecheck + unit
                         + integration + e2e + optional @live canary —
                         reproduces against the deployed boundary)
-  5. summary
+  2. fetch context       (only if tests FAIL; CI: failed jobs/steps + error
+                         annotations + failed-step logs; e2e test reports; local
+                         test output; diff vs last-passing CI; runtime logs via
+                         debug-fetch blocks; tracker: related issues by error
+                         signature → feeds diagnose below)
+  Normal mode (localisable failure):
+  3. diagnose           (reads docs/knowledge.jsonl for prior failures;
+                        Standard → Pivot → Final strategy escalation)
+  4. remediate          (apply diagnosis fix)
+  5. re-run tests
+  6. summary
     ↳ if diagnose can't localise, or loop exhausts 3 strategies → Soak mode
   Soak mode (non-localisable / runtime-only failure):
   1. soak loop          (one accumulating context per iteration:
@@ -92,7 +93,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 /bkit-ship ─── output: squash-merged PR, hard stop before main ──────────────
   1. conflict-resolve    (only if rebase sentinels exist)
   2. deferred-sweep      (pre-merge completeness gate; FAIL blocks merge)
-  3. CI capstone gate    (wait for CI on squash-merge SHA; bkit-tests-check
+  3. run tests           (wait for CI on squash-merge SHA; bkit-tests-check
                          must be green — every planned tier ran and passed;
                          @live canary is informational, not a gate)
   4. merge               (orchestrator-only guarded git op)
