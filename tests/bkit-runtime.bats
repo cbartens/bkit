@@ -41,6 +41,7 @@ RUNTIME_SH="${BKIT_RUNTIME_SH:-$REPO_ROOT/.bkit/templates/.bkit/scripts/bkit-run
 # A fake `gh` on PATH so RUNTIME_GITHUBCLI is deterministic across test environments
 # (real gh auth may or may not be logged in on the machine running bats).
 setup() {
+  unset GIT_DIR GIT_WORK_TREE GIT_QUARANTINE_PATH
   FAKE_BIN="$(mktemp -d)"
   cat >"$FAKE_BIN/gh" <<'EOF'
 #!/usr/bin/env sh

@@ -95,6 +95,7 @@ SHIP_MD="$REPO_ROOT/.bkit/workflows/bkit-ship.md"
 # ---------------------------------------------------------------------------
 
 _setup_worktree_scenario() {
+  unset GIT_DIR GIT_WORK_TREE GIT_QUARANTINE_PATH
   TEST_TMP="$(mktemp -d)"
   TEST_REPO="$TEST_TMP/repo"
   TEST_FID="999-test-fid"
