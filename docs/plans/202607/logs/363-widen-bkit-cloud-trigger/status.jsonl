@@ -11,3 +11,7 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-29T04:26:13Z","parentSha":"d16b76be04c9019fd58e427059adc20872b1f97c","artifacts":["docs/plans/202607/logs/363-widen-bkit-cloud-trigger/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-07-29T04:28:02Z","parentSha":"143195641b3bf943ad1177895b4e0780b6723c9a","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-07-29T04:28:02Z"}
+{"type":"runtime-resolved","workflow":"build","at":"2026-07-29T07:33:20Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":""}
+{"type":"workflow-started","workflow":"build","at":"2026-07-29T07:34:01Z","parentSha":"4840de2bc7b37ca56087284a33319a360266f9bd"}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-07-29T07:34:01Z","parentSha":"4840de2bc7b37ca56087284a33319a360266f9bd","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-07-29T07:34:01Z","parentSha":"4840de2bc7b37ca56087284a33319a360266f9bd","artifacts":["docs/plans/202607/logs/363-widen-bkit-cloud-trigger/build-input.md"]}
