@@ -94,11 +94,26 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
      # resolve, directly.
      MODE=CI_DEV
      FID="$ARG"
+     # #363 M2: assert the slug allowlist BEFORE FID is used — every other FID
+     # resolution site in this file does (step 9 marker path, step 10
+     # branch-derive). FID flows into docs/plans/{YYYYMM}/logs/{FID}/,
+     # .worktrees/{FID}, and the /bkit-debug {FID} dispatch; the cloud-side
+     # ARG guard (bkit-cloud.yml) permits '.' and '/' so it cannot be relied
+     # on alone.
+     if ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+       echo "Invalid CI_DEV FID: $FID" >&2; exit 1
+     fi
      ISSUE_ID=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
      BRANCH=dev
      HEAD_SHA=$(git rev-parse origin/dev 2>/dev/null || echo "")
      PR_STATE=MERGED       # semantic: the feature PR was already merged
-     PR_URL="(merged)"
+     # #363 M5: leave PR_NUMBER unset and PR_URL empty (not a "(merged)"
+     # sentinel) — step 11's {BODY} template renders a
+     # [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL}) line unconditionally;
+     # rendering it with an empty PR_NUMBER produces a broken link, and an
+     # empty-string PR_URL is what makes the "omit for CI_DEV" assert
+     # unambiguous (`[ -n "$PR_URL" ]`, same idiom as the RUN_ID omit).
+     PR_URL=""
      RUN_ID=""             # no open-PR run to link; step 11 omits the actions link
    fi
    ```
@@ -160,7 +175,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
     `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker true start -->
-    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links; `MODE` = CI_DEV has no `RUN_ID` — omit that line only, e.g. via `[ -n "$RUN_ID" ]`):
+    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links; `MODE` = CI_DEV has no `PR_NUMBER`/`PR_URL` and no `RUN_ID` — omit the PR line and the run line only, e.g. via `[ -n "$PR_URL" ]` and `[ -n "$RUN_ID" ]` respectively — #363 M5):
     ```comment
     ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
@@ -176,7 +191,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
 - [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
 - [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
-- [ ] CI_DEV placeholders non-empty (`FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA`, if `MODE` = CI_DEV)
+- [ ] CI_DEV placeholders slug-asserted (`FID` matches `^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$`) and non-empty (`FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA`, if `MODE` = CI_DEV)
 
 <!-- bkit:tracker true start -->
 
