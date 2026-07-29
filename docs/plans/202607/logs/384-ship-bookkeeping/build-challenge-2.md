@@ -1,77 +1,82 @@
 Verdict: CONCERNS
 Failures: 0
+
 <!-- verdict:end -->
 
-# Build Challenge — Security Lens
+# Build Challenge — Round 2 (Security Lens)
 
-Lens: Security — auth, secrets, input validation, data exposure, OWASP, RLS / tenancy. Diff scope: `origin/dev..HEAD` for `384-ship-bookkeeping` (ship workflow restructure into Path A/B shape with merge gate). 84 files, +8291/-1273. Reviewed in full against the seven focus vectors.
+Lens: Security — auth, secrets, input validation, data exposure, OWASP, RLS / tenancy.
+
+## Scope
+
+Re-probe of the NOW-REMEDIATED diff for `384-ship-bookkeeping` (8 round-1 findings fixed). Verify fix security posture AND hunt for new attack surface introduced by the remediation itself. Diff scope: `origin/dev..HEAD`.
+
+## Round-1 fix verification (security posture)
+
+All 8 round-1 findings re-audited at HEAD. Posture:
+
+| #   | R1 Finding                                        | R1 Severity | Fix at HEAD                                                                                                   | Security posture                                                                                                                                                                                                                               |
+| --- | ------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | B2 staging silently lost                          | CRITICAL    | `git add -u && git add $BOOK_PATHS` + pathspec-free commit (`bkit-ship.md:470-471`)                           | **SAFE.** `-u` stages tracked modifications (the conflict resolutions); bookkeeping allow-list layered via the second `add`. `.env*` is gitignored (`docs/security.md:56`) so secrets cannot ride `-u`. Path specs are literal — no injection. |
+| 2   | jq telemetry literal bug                          | HIGH        | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` in object (`bkit-ship.md:539-540`)         | **SAFE.** Value no longer interpolated into single-quoted jq program.                                                                                                                                                                          |
+| 3   | Missing `update-branch` guard                     | HIGH        | `\|\| { echo …; exit 1; }` (`bkit-ship.md:451`)                                                               | **SAFE.** Failure now routes to Failure Path; no unintegrated merge. `{PR_NUMBER}` is integer-sourced from `gh pr list --jq '.[0].number'` (Step 2) — no injection into the echo.                                                              |
+| 4   | STATUS_PATH not exported / set -u / audit silence | MEDIUM      | Workflow exports STATUS_PATH (`:641`); gate uses `${STATUS_PATH:-}`; stderr fallback (`gate:148-160`)         | **PARTIAL — see Finding 1 below.** Facets (a) export + (b) set -u safe are correct; facet (c) "NEVER invisible" claim is unmet for the `/dev/null` case R1 explicitly flagged.                                                                 |
+| 5   | Code 11 dead branch                               | MEDIUM      | Step 6.4 routes code 11 → Step 5 (`bkit-ship.md:653`)                                                         | **PARTIAL — see Finding 2 below.** Code 11 no longer hard-fails, but Step 5's poll loop is head-movement-conditional — Path A gets a no-poll loop. No merge bypass.                                                                            |
+| 6   | `2>&1` corrupts jq                                | MEDIUM      | Both `gh api` captures dropped `2>&1` (`gate:182, 290`); 4 remaining `2>&1` are `command -v` guards (correct) | **SAFE.** Verified at HEAD.                                                                                                                                                                                                                    |
+| 7   | `set -e` unreachable routing                      | MEDIUM      | `GATE_EXIT=0` + `bash "$GATE_SH" … \|\| GATE_EXIT=$?` (`bkit-ship.md:644-645`)                                | **SAFE.** Refusal captured before abort; routing + telemetry row execute.                                                                                                                                                                      |
+| 8   | SHA sanitization in test stub                     | LOW         | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` before path construction (`tests/fixtures/gh/bin/gh:112`)                 | **SUFFICIENT.** Blocks `/` (path traversal), whitespace, glob metachars, ANSI/control chars. Test-only stub.                                                                                                                                   |
+
+### Answers to the 5 round-2 questions
+
+1. **STATUS_PATH export — secret exposure?** No. The exported value is `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` — a docs log path with no secret material. `$BOOK_ROOT` is `$REPO_ROOT` or `$WT_TOP` (filesystem paths only). `{FID}` is regex-asserted (`bkit-ship.md:248`). `status.jsonl` carries only `jq -nc --arg`-shaped step rows (no PII/secrets — cleared in round 1). The export propagates only to subprocesses (gate + jq), none of which log env. No new exposure.
+2. **`git add -u` safety?** Safe for the security lens. `-u` stages modifications to TRACKED files only (untracked files excluded). `.env*`, `.DS_Store`, `*.log`, `node_modules/` are gitignored (`docs/security.md:56`, `bkit-ship.md:31`) → not stageable. Path specs are literal (no injection / traversal). The round-1 data-loss hole (silent discard of conflict resolutions) is closed. Minor residual: the orchestrator does not run `git status --short` between subagent return and `git add -u` to scope-verify the diff — but this is a process/correctness concern, not a security concern (no secret can leak via a tracked-file mod because tracked files don't include secrets).
+3. **SHA sanitization sufficient?** Yes. Regex `^[A-Za-z0-9._-]+$` requires ≥1 char, blocks `/` (path traversal), `\`, whitespace, glob metachars (`*`, `?`, `[`), and ANSI/control chars. The subsequent `"$F"` is quoted. Even `..` (two dots without `/`) becomes the literal filename `..json` inside `RUNS_DIR`, not a traversal. Test-only stub; copy-paste hazard mitigated.
+4. **New attack surface from error guards / routing?** Two residual items (see Findings 1 + 2 below): the override-audit sinkhole (R1-incomplete) and the Path-A code-11 no-poll loop. Neither bypasses the merge gate, force-push, or secret boundary. The new error guards (`update-branch \|\| exit 1`, `GATE_EXIT=0 … \|\| GATE_EXIT=$?`, jq `--argjson timeout`) are mechanically sound — all interpolated values are integer-sourced or `jq -nc --arg`-escaped.
+5. **Merge gate / override escape / force-push still secure?** Yes, at the structural level. Merge uses `--match-head-commit "$GATE_HEAD"` (TOCTOU-safe, `bkit-ship.md:658`). Override honours ONLY when `OVERRIDE_SHA == HEAD_SHA` (`gate:141`) — exact-pin, no arbitrary-head bypass. Force-push remains scoped to `feat/{FID}` (`bkit-ship.md:472`), FID regex-asserted (`:248`); no path reaches `--force-with-lease` against `dev`/`main`. The only residual is the audit-trail sinkhole (Finding 1), which weakens the override's "trust the caller + audit row" contract but does not bypass the gate.
 
 ## Findings Log
 
-- **F1 — MEDIUM (mechanical):** `.bkit/scripts/bkit-ship-gate.sh:146-154` — `BKIT_SHIP_GATE_OVERRIDE` audit-trail integrity weakened. `local status="$STATUS_PATH"` under `set -euo pipefail` crashes when STATUS_PATH unset (verified — fails safe at exit 1 but breaks the documented escape hatch in production; the workflow's Step 6 gate call never exports STATUS_PATH). The audit-row write `>> "$status" 2>/dev/null || true` is silenced: if STATUS_PATH is set but unwritable, the override grants exit 0 with NO audit row, defeating the documented rollback audit (`docs/deployments.md` § Ship gate + bookkeeping step 3). Fix: `local status="${STATUS_PATH:-}"`; drop the silence / write to a fallback; export STATUS_PATH in Step 6 sub-step 4.
-- **F2 — LOW (informational, mechanical):** `tests/fixtures/gh/bin/gh:90-94` — SHA extracted from URL flows unsanitized into `$RUNS_DIR/$SHA.json` (path-traversal risk if SHA contains `../`). Test-only, never shipped; flagged as a copy-paste hazard. Fix: assert `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` before path construction.
+### Finding 1 — MEDIUM · mechanical · actionable · `.bkit/scripts/bkit-ship-gate.sh:153-160` (and template twin)
 
-## Verdict Rationale
+**`STATUS_PATH=/dev/null` (or any writable sinkhole) still silently defeats the override audit row — round-1 Finding 4 facet 3 NOT fully remediated.**
 
-Diff scope: `origin/dev..HEAD` for `384-ship-bookkeeping` — 84 files, +8291/-1273. Reviewed in full against the seven focus vectors. No CRITICAL findings. One MEDIUM finding on the override audit-trail integrity; one LOW informational on the test stub. The merge gate, force-push scoping, gh stub harness, status.jsonl hygiene, sentinel design, and template markers are sound.
+The round-1 fix replaced `>> "$status" 2>/dev/null \|\| true` with a conditional stderr fallback:
 
-## Focus Vector Findings
-
-### 1. `BKIT_SHIP_GATE_OVERRIDE` escape hatch — MEDIUM finding
-
-**Finding F1 (MEDIUM, mechanical):** `.bkit/scripts/bkit-ship-gate.sh:146-154` — the override audit-trail integrity is weakened by two related defects.
-
-The `maybe_override()` function references `$STATUS_PATH` unguarded under `set -euo pipefail`:
-
-```sh
-local status="$STATUS_PATH"   # line 146 — crashes if STATUS_PATH unset
+```bash
+if [ -n "$status" ] && printf '%s\n' "$row" >> "$status" 2>/dev/null; then
+  : # audit row landed in the canonical status.jsonl
+else
+  err "override audit row (STATUS_PATH unset/unwritable: …), emitting to stderr:"
+  printf '%s\n' "$row" >&2
+fi
 ```
 
-Verified empirically: with `BKIT_SHIP_GATE_OVERRIDE=failed` and `STATUS_PATH` unset, the script crashes at line 146 with `STATUS_PATH: unbound variable` and exits 1 (NOT 0) — the override does NOT grant exit 0. This is **fail-safe** (no merge bypass) but **breaks the documented escape hatch in production**: the workflow's Step 6 sub-step 4 calls `bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}"` and never exports `STATUS_PATH` (confirmed: only the bats tests at `tests/ship-gate.bats:175` export it). So the override is only usable from tests, never from the workflow.
+The fallback fires only when the write FAILS. Empirically verified: `STATUS_PATH=/dev/null` makes the `printf >> /dev/null` succeed (exit 0), so the `if` branch fires, the row is discarded, and the stderr fallback NEVER emits. The remediate-log's claim that "the override is NEVER invisible" is unmet for the exact scenario round-1 flagged ("operator or compromised workflow sets `STATUS_PATH=/dev/null`").
 
-The audit-row write itself is silenced:
+The unset / permission-denied cases ARE correctly handled (stderr fallback fires — verified). Only writable-but-discarded sinkhole paths slip through.
 
-```sh
-jq -nc ... >> "$status" 2>/dev/null || true   # line 153
+**Exploit scenario:** an operator (or a workflow compromised via prose edit — `bkit-ship.md:641` is prose-resolvable) sets `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` AND `STATUS_PATH=/dev/null` (or `/tmp/audit.log` they control and can shred). The gate exits 0 → Step 6 merges → the `type:"ship-gate-override"` audit row "lands" at the sinkhole → the documented rollback grep (`grep "ship-gate-override" status.jsonl`, `docs/deployments.md` § Ship gate step 3) misses it. The escape hatch's contract is "trust the caller + audit row"; this breaks the audit half for the sinkhole case.
+
+**Suggested fix (mechanical, surgical):** emit the audit row to stderr UNCONDITIONALLY alongside the file write (the file write is best-effort; stderr is the immutable audit trail):
+
+```bash
+# ALWAYS emit to stderr (immutable audit trail)...
+err "override honoured for head $HEAD_SHA — audit row:"
+printf '%s\n' "$row" >&2
+# ...THEN best-effort append to STATUS_PATH (canonical log).
+if [ -n "$status" ]; then
+  printf '%s\n' "$row" >> "$status" 2>/dev/null || err "STATUS_PATH '$status' unwritable — stderr copy above is the audit of record"
+fi
 ```
 
-If `STATUS_PATH` is set but unwritable (e.g. an operator or compromised workflow sets `STATUS_PATH=/dev/null` or a permission-denied path), the override grants `exit 0` with **NO audit row**. `docs/deployments.md` § Ship gate + bookkeeping step 3 makes the audit row load-bearing: "Audit any `BKIT_SHIP_GATE_OVERRIDE` rows... treat every row as a PR whose capstone was NOT green at the merged head." A silenced write defeats that rollback audit.
+This makes the override NEVER invisible regardless of where `STATUS_PATH` points — closing the round-1 threat model without depending on the write failing.
 
-- **Exploit scenario:** an operator (or a workflow compromised via prose edit) sets `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` plus `STATUS_PATH` to an unwritable path → the gate returns exit 0 → Step 6 merges → the `type:"ship-gate-override"` audit row never lands → the documented rollback grep (`grep "ship-gate-override" status.jsonl`) misses it. The escape hatch is "trust the caller + audit row"; the silence breaks the audit half.
-- **Suggested fix:** (a) `local status="${STATUS_PATH:-}"` to remove the `set -u` crash; (b) drop `2>/dev/null || true` on the audit write — write to a fallback (`stderr` or a sibling `.ship-gate-override.log`) when `$status` is unset/unwritable so the override is NEVER invisible; (c) in `bkit-ship.md` Step 6 sub-step 4, export `STATUS_PATH="$STATUS"` before invoking the gate so the override works as documented.
-- **Class:** mechanical (surgical edit, no redesign — the override model is unchanged).
+### Finding 2 — LOW · mechanical · informational · `.bkit/workflows/bkit-ship.md:519-546, 653`
 
-### 2. gh stub harness — PASS (no token leak, not shipped)
+**Round-1 Finding 5 fix is partial in Path A — code 11 routes to Step 5, but Step 5's poll loop is head-movement-conditional, creating a no-poll loop until workflow timeout.**
 
-`tests/fixtures/gh/bin/gh` is a pure local-fixture dispatcher: it reads JSON files under `tests/fixtures/gh/{runs,jobs,ratelimit}/` based on the URL's SHA/ID. It never invokes any network call, never reads `GH_TOKEN`/`GH_ENTERPRISE_TOKEN`/`GH_BKIT_TOKEN*`/`.env*`, and its `gh auth status` branch is a deliberate exit-1 fallback. Confirmed not shipped to consumers: the install manifest in `.bkit/version` lists only `.bkit/scripts/`, `.claude/`, `.cursor/`, `.opencode/` paths — `tests/` is repo-local to bkit itself. The PATH-shim is applied only inside bats `setup()` blocks (`tests/fixtures/gh/smoke.bats:11`, `tests/ship-gate.bats:28`); no production path prepends `tests/fixtures/gh/bin`.
+Step 6.4 routing (`:653`) now sends code 11 → Step 5 (re-validate). But Step 5's CI poll loop (`:522`) fires only when `CURRENT_HEAD != ENTRY_HEAD`. In Path A (dev is ancestor — head unchanged), `CURRENT_HEAD == ENTRY_HEAD`, so the poll block is skipped; Step 5 runs the deferred sweep (`:548`) and routes back to Step 6 → gate emits code 11 again → Step 5 → … a no-op loop with no actual CI polling.
 
-**Finding F2 (LOW, informational, mechanical):** `tests/fixtures/gh/bin/gh:90-94` — the SHA extracted from the URL (`SHA="${URL##*\?head_sha=}"; SHA="${SHA%%&*}"`) flows unsanitized into `F="$RUNS_DIR/$SHA.json"`. A SHA containing `../` would path-traverse out of `RUNS_DIR`. Test-only (the stub is never shipped and SHAs are controlled fixture names), but flagged in case the dispatch pattern is copy-pasted into production code. Suggested fix: assert `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` before path construction.
+**Exploit scenario (benign):** any Path-A ship where build's CI is still in-progress when ship reaches Step 6 (e.g., ship started immediately after a fast build's green capstone was superseded by a re-run, or build's CI is slow). The loop runs until workflow/agent timeout, consuming `gh pr view` / `gh run list` calls. **NOT a security bypass** — Step 7 merge is never reached (gate still emits code 11, which doesn't merge), no force-push occurs, no secret exposure. The residual concern is API rate-limit exhaustion (benign self-DoS), which could degrade subsequent `gh` calls in the same workflow.
 
-### 3. status.jsonl writes — PASS (no PII, no secrets, properly escaped)
-
-Every status write uses `jq -nc --arg ... --argjson ...`, so all interpolation flows through jq's string-safe `--arg` (no JSON injection, no shell metacharacter risk). Confirmed by grepping the workflow for `>> "$STATUS"` — every match is `jq -nc`-shaped. Content is pure workflow telemetry: git SHAs (`parentSha`), ISO timestamps, verdict strings (`PASS|FAIL|CONCERNS`), integer attempt/failure counts, artifact paths under `docs/plans/{YYYYMM}/logs/{FID}/`. No user PII, no tokens, no consumer-repo content. The `assertedBy:"bkit-ship-gate.sh"` value is a literal. The `bkit-status-hole-detector.ts` parser uses `JSON.parse(line)` in try/catch (advisory, fail-open) — malformed rows are skipped, never crash. Paths derive from `BOOK_ROOT` + allowlisted `{FID}` (workflow asserts `^[0-9]+-[a-z0-9-]+$` at Step 1 sub-step 7), so path traversal via FID is blocked at the workflow layer.
-
-### 4. Merge gate's CI assertion — PASS (sound, residual risk documented)
-
-The gate is structurally strong: (a) workflow-scoped run query (`/actions/workflows/$WORKFLOW/runs`) — not repo-wide, so an unrelated workflow's green cannot satisfy it; (b) exact-head validation (`SELECTED_HEAD_SHA != HEAD_SHA → code 14`) — a stale-green at a superseded SHA is refused; (c) capstone job resolved by name with `conclusion=success` required; (d) vacuous-green detection (code 16) catches lanes that concluded `skipped` without a cache marker; (e) the cache-skip sentinel is step-name-keyed to the exact commit SHA (sound). The merge call carries `--match-head-commit "$GATE_HEAD"` so the server refuses if the head drifts between gate and merge (TOCTOU-safe). The `[skip ci]` PR-title assertion (Step 6 sub-step 3) blocks the KN-11 vacuous-empty-rollup vector. Residual risk (a `workflow_dispatch` run with custom inputs bypassing lanes, or a degraded-but-not-skipped lane) is explicitly named as uncovered in `docs/deployments.md` § Consumer CI contract — accepted, not a finding.
-
-### 5. Force-push in Path B2 — PASS (scoped to personal branch)
-
-Step 4 B2's push is hardcoded to the literal `feat/{FID}`: `git push --force-with-lease origin "feat/{FID}"` (line 466). `{FID}` is asserted to match `^[0-9]+-[a-z0-9-]+$` at Step 1 sub-step 7 (no `/`, `.`, `..`, or shell metacharacters). The workflow's Git directive (line 32) prohibits bare `git push --force` and ANY force-push to `dev`/`main`, and the Step 2 sub-step 3 branch-eligibility check refuses branches that don't contain `{FID}`/`{ISSUE_ID}`. The Tier-2 invariant at `.bkit/src/bkit-ship-invariants.test.ts:115-144` asserts no `git commit`/`git push` to `feat/{FID}` outside the B2 conflict-resolve block (GREEN). No path can reach `--force-with-lease` against `dev`/`main` from this workflow.
-
-### 6. `.deferred-blocked` sentinel — PASS (low-impact routing only)
-
-The sentinel is written only by Step 5 sub-step 7 (`touch "$BOOK_ROOT/.../.deferred-blocked"` on sweep FAIL) and read only by Failure Path step 4 to choose between `@bkit-debug-abort-handover` (step 5) and STOP (step 12). Manipulating it (touch or rm) changes only the handover-vs-stop routing inside the Failure Path — neither route bypasses the merge gate, the capstone check, or branch protection. The Tier-2 invariant at `.bkit/src/bkit-ship-invariants.test.ts:294-319` asserts the writer exists and resolves under `BOOK_ROOT` (GREEN), and `tests/ship-failure-path.bats:79-87` asserts the Failure Path does NOT `rm -f` it (reader preserved). No security impact.
-
-### 7. Template/mirror rendering — PASS (no injection)
-
-The `<!-- bkit:tracker {github|linear|true|false} {start|end} -->` markers are static literals rendered by `bkit install` — no user input flows through them. The `{OWNER}`, `{REPO}`, `{ISSUE_ID}`, `{FID}`, `{YYYYMM}` placeholders are filled by the agent at runtime from trusted sources: OWNER/REPO from `gh repo view --json nameWithOwner` (Step 1 sub-step 2), ISSUE_ID from the session prompt (numeric), FID allowlisted, YYYYMM from directory listing. MCP tool-call bodies are emitted as JSON object literals in the prose (the agent constructs the actual call), so even if a placeholder held a malicious value it would be JSON-escaped by the MCP transport — no shell surface. The mirror hash updates in `.bkit/version` for `.claude/commands/bkit-ship.md`, `.cursor/commands/bkit-ship.md`, `.opencode/commands/bkit-ship.md` confirm the rendered mirrors are byte-identical to the source `bkit-ship.md`.
-
-## Additional Observations (no findings)
-
-- **`execFileSync` discipline:** the new `bkit-config-keys.test.ts` uses `execFileSync("jq", [...args])` per `docs/security.md` § Shell Injection — no interpolated `execSync`. Clean.
-- **No secrets in diff:** grepped for `gh[po]_`, `github_pat_`, `sk-`, `Bearer ` — no matches in the diff.
-- **`.dev.lock` write:** uses `set -C` (no-clobber) with mtime-based stale reclaim; content is `{FID}` (allowlisted) + timestamp. No injection.
-- **Step 13 telemetry:** computes linesAdded/linesDeleted/filesChanged from `git diff --shortstat` — no PII, no consumer-repo content (counts only).
-- **`bkit-protect-main.sh` capstone resolution:** now reads `bkit.capstoneJob` from `package.json` via `jq -r '.bkit.capstoneJob // "bkit-tests-check"'` — shares one source of truth with the gate. The `jq` invocation is safe (constant filter, no interpolation). Falls back to the bkit default when package.json is absent/unreadable.
-- **Pre-push husky hook:** adds `pnpm test:bats` to the gate. The template version guards on `command -v bats`; the root version doesn't (bkit-repo assumes bats present). Portability concern, not security.
+**Suggested fix (mechanical):** route code 11 to an inline poll at Step 6 (mirroring Step 5's `DEADLINE`/`ATTEMPT` loop but unconditionally — not gated on head movement), OR document the precondition that code 11's "(poll)" contract only triggers actual polling in Path B (head moved) and add a Step 6 inline poll for the Path-A case.

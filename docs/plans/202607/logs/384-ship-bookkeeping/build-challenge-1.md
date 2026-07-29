@@ -1,103 +1,96 @@
-Verdict: FAIL
-Failures: 1
+Verdict: CONCERNS
+Failures: 0
 
 <!-- verdict:end -->
 
-# Build Challenge 1
+# Build Challenge — Round 2 (post-remediation)
 
 Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integrity.
 
-Scope: Ship workflow restructure (384-ship-bookkeeping) — `.bkit/workflows/bkit-ship.md` Path A/B rewrite with merge gate (`bkit-ship-gate.sh`).
+## Scope
+
+Re-probe of the NOW-REMEDIATED diff (`origin/dev..HEAD`, 89 files, +9089/-1273) after round 1 found 8 issues (1 CRITICAL + 2 HIGH + 4 MEDIUM + 1 LOW). All 8 findings were remediated in `build-challenge-remediate-log.md` (Verdict: PASS). This round verifies the 8 fixes are correct and complete, and looks for NEW issues introduced by the fixes or missed in round 1.
+
+Partial-diff coverage: none — full diff reviewed with focus on the 6 remediated surfaces (`bkit-ship.md` + 3 mirrors, `bkit-ship-gate.sh` + template, `tests/fixtures/gh/bin/gh`) and the surrounding merge-gate / conflict-resolution / error-path vectors.
+
+## Remediation Verification (8/8 fixes confirmed correct)
+
+| #   | Finding                                                 | Fix                                                                                                                              | Verified                                                                                                                                  |
+| --- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | B2 conflict staging lost                                | `git add -u && git add $BOOK_PATHS` + pathspec-free commit                                                                       | ✅ `.bkit/workflows/bkit-ship.md:470-472` + 3 mirrors identical; Tier-2 F1 regression test (`bkit-ship-invariants.test.ts:336-354`) GREEN |
+| 2   | jq telemetry literal                                    | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` in object                                                     | ✅ `:539-541` + 3 mirrors; F2 regression test GREEN                                                                                       |
+| 3   | `gh pr update-branch` no guard                          | `\|\| { echo …; exit 1; }`                                                                                                       | ✅ `:451` + 3 mirrors; F3 regression test GREEN                                                                                           |
+| 4   | STATUS_PATH not exported / set -u crash / audit silence | (a) `export STATUS_PATH=…` `:641`; (b) `local status="${STATUS_PATH:-}"` `bkit-ship-gate.sh:148`; (c) stderr fallback `:156-160` | ✅ F4a regression test (invariants:399-407) + F4b/F4c bats (`ship-gate.bats:219-236`) GREEN                                               |
+| 5   | Code 11 dead branch                                     | Routes 11 → Step 5 alongside 10/14                                                                                               | ✅ `:653` + 3 mirrors; F5 regression test GREEN — **but see Finding 1 (incomplete)**                                                      |
+| 6   | `2>&1` stderr merge                                     | Dropped from both `gh api` captures                                                                                              | ✅ `bkit-ship-gate.sh:182,290` + template byte-identical; F6 bats GREEN                                                                   |
+| 7   | `set -e` gate routing                                   | `GATE_EXIT=0` + `\|\| GATE_EXIT=$?`                                                                                              | ✅ `:644-645` + 3 mirrors; F7 regression test GREEN                                                                                       |
+| 8   | Test stub SHA unsanitized                               | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]`                                                                                              | ✅ `tests/fixtures/gh/bin/gh:112`; F8 bats GREEN                                                                                          |
+
+All 8 fixes are mechanically correct at their remediated surface. The gate script's two copies (installed + template) are byte-identical. All 4 workflow mirrors carry the same shell/routing content at the edited offsets. The Tier-2 invariant file gained 6 new regression assertions (one per markdown-resident finding) and the bats suite gained 4 (one per gate/stub-resident finding).
 
 ## Findings Log
 
-Prioritized by severity. One CRITICAL (Finding 2) drives Verdict = FAIL.
+### Finding 1 — MEDIUM · mechanical · `.bkit/workflows/bkit-ship.md:653` (routing) + `:519-545` (Step 5 re-validate gate)
 
-### Finding 1 — HIGH · mechanical · `.bkit/workflows/bkit-ship.md:533-535`
+**Code 11 routing is incomplete — Step 5's poll loop only fires on head MOVEMENT, so a gate-emitted 11 (CI in-progress, head unchanged) loops back to Step 6 without polling.**
 
-**Broken timeout telemetry — jq syntax error in `ship-revalidate-timeout` row writer.**
+The F5 fix routed code 11 → Step 5 alongside codes 10/14 (`:653`). But Step 5's re-validate poll loop (`:531-537`) is entirely inside `if [ "$CURRENT_HEAD" != "$ENTRY_HEAD" ]` (`:522`). For the exact scenario Finding 5 identified — Path A where build's CI is still in-progress when ship reaches the gate — the head has NOT moved, so Step 5 skips the poll, runs the deferred-sweep subagent unconditionally (`:548+`), and routes back to Step 6 (`:575`). The gate emits code 11 again. Loop.
 
-The jq program is single-quoted, so `${SHIP_CI_WAIT_TIMEOUT_S:-1800}` is passed literally to jq, which rejects it:
+The routing has **no max-attempts guard**: `MAX_MERGE_ATTEMPT=3` (`bkit-counter-bus-config.sh:22`) is consulted ONLY at `:699` for the `state != MERGED` case, not for the code 11/14/10 → Step 5 routing. The `ship-merge-pr` counter increments each iteration (`:610`) but is never checked against the cap on this path.
 
-```bash
-jq -nc --arg t "$(date -u +%FT%TZ)" --argjson attempt "$ATTEMPT" \
-  '{type:"ship-revalidate-timeout", workflow:"ship", at:$t, attempt:$attempt, timeout_s:${SHIP_CI_WAIT_TIMEOUT_S:-1800}}' \
-  >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-```
+**Exploit scenario:** any Path-A ship where build's CI hasn't concluded when ship reaches Step 6 (slow suite, queued runner). Each loop iteration invokes the `@bkit-ship-deferred-sweep` subagent (expensive — spawns an agent) + the gate (≥2 `gh api` calls) + writes 2+ status rows. Bounded only by CI completion (or GitHub's 6h job timeout). In a stuck-runner scenario this is a resource-amplification vector: hundreds to thousands of subagent invocations + API calls + status.jsonl bloat. The original behavior (code 11 → immediate Failure Path) was fail-closed; the fix traded a false negative for an unbounded loop that doesn't actually poll.
 
-Verified: `jq: error: syntax error, unexpected '{'` (exit 3). The row is **never written** — the exact diagnostic that explains "CI did not complete after N polls" is silently dropped on the timeout path. The next line `exit 1` still fires (fail-closed), but the operator gets a Failure Path with no telemetry.
+**Suggested fix:** Step 5's re-validate block should fire when invoked from a gate refusal (not only on head movement). Either: (a) pass a `REVALIDATE_REASON=in-progress|head-moved` flag from Step 6.4 routing and have Step 5 poll when reason is `in-progress` regardless of head movement; or (b) route code 11 to an inline poll at Step 6.4 (before delegating to Step 5) with its own `SHIP_CI_WAIT_TIMEOUT_S` deadline; or (c) add a `MAX_GATE_POLL_ATTEMPTS` guard on the code 11 → Step 5 routing so the loop fails-closed after N iterations. The F5 regression test (`bkit-ship-invariants.test.ts:412-421`) only asserts the routing DIRECTIVE in prose (`code 11 ... Step 5`); it does not verify polling behaviour, so the test passes despite the incomplete fix.
 
-**Exploit scenario:** any Path-B re-validation whose CI doesn't conclude within `SHIP_CI_WAIT_TIMEOUT_S` (1800s). This is the common cloud-CI case (queued runners, slow suites).
+### Finding 2 — LOW · mechanical · `.bkit/workflows/bkit-ship.md:470`
 
-**Fix:** pass the value through `--argjson`:
+**`git add -u` in B2 re-opens Finding 6's leftover-staging concern and misses NEW files the conflict-resolve subagent may create.**
 
-```bash
-jq -nc --arg t "$(date -u +%FT%TZ)" --argjson attempt "$ATTEMPT" --argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}" \
-  '{type:"ship-revalidate-timeout", workflow:"ship", at:$t, attempt:$attempt, timeout_s:$timeout}' \
-  >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-```
+The F1 fix changed `git add $BOOK_PATHS` to `git add -u && git add $BOOK_PATHS`. `git add -u` stages ALL tracked modifications/deletions in the worktree — not just the conflict-resolve subagent's resolutions. If build/debug left dirty tracked files in the shared worktree (Finding 6's original "stages whatever build or debug left dirty" concern), `git add -u` stages them, the `[skip ci]` conflict-resolve commit carries them, `--force-with-lease` pushes them to `feat/{FID}`, and Step 6 squash-merges them to `dev`. Additionally, `git add -u` does NOT stage NEW (untracked) files the subagent may create (e.g., a new helper module imported by the resolved code) — those are lost and the merge fails to build.
 
-### Finding 2 — CRITICAL · mechanical · `.bkit/workflows/bkit-ship.md:462-467`
+The Tier-2 invariant test `every git add resolves via BOOK_PATHS` (`bkit-ship-invariants.test.ts:174-189`) has a **coverage gap**: it checks the regex per-LINE, not per-COMMAND. The line `git add -u && git add $BOOK_PATHS` passes because the regex `\bgit\s+add\b.*\$?BOOK_PATHS` matches the second command, but the first `git add -u` does NOT resolve via BOOK_PATHS — violating the invariant's spirit ("every git add resolves via this list — never `-A`, never a bare `docs/`"). A future edit that drops the `&& git add $BOOK_PATHS` suffix would still pass the test if `git add -u` shares the line with any BOOK_PATHS reference.
 
-**B2 conflict resolution is silently lost — `git add $BOOK_PATHS` stages bookkeeping, not the resolved source files.**
+**Exploit scenario:** low likelihood — Step 2 worktree setup starts clean, bookkeeping routes to `$BOOK_ROOT` (not the worktree), and conflict-resolve rarely creates new files. But the risk is not zero: a debug session that modified a tracked fixture without cleanup, or a resolution that extracts a new module, would be silently mis-staged or dropped.
 
-Step 4.2.4 (B2 textual-conflict resolution) commits with the frozen bookkeeping allow-list:
+**Suggested fix:** either (a) record `paths-touched-by-subagent` in `ship-conflict-resolve.md` and stage exactly those + `$BOOK_PATHS` (the alternative Finding 1's suggested fix offered); or (b) assert the worktree is clean (`git diff --quiet`) before invoking the conflict-resolve subagent so `git add -u` can only stage the subagent's resolutions; or (c) tighten the Tier-2 invariant test to split on `&&`/`;`/`||` and check each `git add` command separately.
+
+### Finding 3 — LOW · mechanical · `.bkit/scripts/bkit-ship-gate.sh:156-160`
+
+**Stderr fallback comment overclaims "documented rollback grep still surfaces it".**
+
+The F4c fix added a stderr fallback when STATUS_PATH is unset/unwritable:
 
 ```bash
-git add $BOOK_PATHS
-git commit -m "chore({FID}): conflict-resolve bkit [skip ci]" -- $BOOK_PATHS
-git push --force-with-lease origin "feat/{FID}"
+# NEVER invisible: STATUS_PATH unset/unwritable → emit to stderr so the
+# documented rollback grep (deployments.md § Ship gate) still surfaces it.
+err "override audit row (STATUS_PATH unset/unwritable: ...), emitting to stderr:"
+printf '%s\n' "$row" >&2
 ```
 
-`BOOK_PATHS` (defined `:187`) is the **8-path bookkeeping allow-list** (`docs/plans/.../logs/{FID}/`, `docs/completed.md`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/friction.jsonl`, `.agents/skills`, `skills-lock.json`) — NONE are source files. But the conflict-resolve subagent "Update: Conflicted source files" (`:458`), and subagents do NOT commit (convention `:32`). So the orchestrator's `git add $BOOK_PATHS` stages zero source changes: the commit is empty (or bookkeeping-only), `--force-with-lease` pushes a branch whose conflict fix is uncommitted, and Step 12's `worktree remove --force` destroys the worktree with the only copy of the resolution.
+But `docs/deployments.md:210` documents the rollback procedure as:
 
-**Exploit scenario:** every Path-B2 run (the design's "common case" per Comment 1 — "Path B is the common case (doc-line collisions)"). The merge then either fails (still CONFLICTING) or, if `--match-head-commit` matches the pre-resolution head, merges unmerged-conflict content.
+> **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`
 
-**Fix:** stage the resolved source files, not bookkeeping. Either let the conflict-resolve commit stage all resolved tracked changes (`git add -u` for modified tracked files, or `git add <paths-touched-by-subagent>` recorded in the artifact), and keep `$BOOK_PATHS` only for the bookkeeping tail. The `[skip ci]` + unconditional Step-5 dispatch interaction is intentional; only the staging set is wrong.
+The documented grep targets `status.jsonl`, NOT stderr. When STATUS_PATH is unwritable and the row goes to stderr, the documented rollback grep misses it (the row is in agent shell logs, not status.jsonl). The comment's claim is misleading. The behaviour itself is an improvement (override no longer completely invisible — it surfaces on stderr) and the production case is correct (F4a's `export STATUS_PATH=` means the row lands in status.jsonl and the grep works), but the edge-case comment overclaims.
 
-### Finding 3 — HIGH · mechanical · `.bkit/workflows/bkit-ship.md:449-453`
+**Exploit scenario:** none — behaviour is improved. The comment is documentation drift.
 
-**`gh pr update-branch` failure is silently ignored — Path-B1 proceeds to merge an unintegrated PR.**
+**Suggested fix:** correct the comment to: "emit to stderr so the override is visible in agent shell logs; the documented `status.jsonl` rollback grep surfaces it ONLY when STATUS_PATH is writable (the production case via Step 6's `export STATUS_PATH=`)." Or stronger: write the fallback row to a sibling `.ship-gate-override.log` under `$BOOK_ROOT` so a `grep -r ship-gate-override $BOOK_ROOT` catches both.
 
-Step 4.1 (B1 mergeable) runs `gh pr update-branch {PR_NUMBER}` with no error guard, then unconditionally routes to Step 5. `update-branch` can fail (403 actions:write, network, branch protection, concurrent head move). On failure the PR head does NOT move; Step 5's head-movement check (`CURRENT_HEAD != ENTRY_HEAD`, `:516`) is then false → Step 5 skips re-validation → Step 6 gate validates the OLD (pre-integration) head and Step 6.5 merges a PR that is still behind `origin/dev` with no re-validation. This violates the design's hard rule ("Re-validation is mandatory in B").
+## Not-Actionable / Verified Clean
 
-**Exploit scenario:** any B1 where `gh pr update-branch` 403s (the workflow itself flags `actions:write` preflight as best-effort at `:219`). The merge lands content that was never validated against the moved dev.
+The following surfaces were re-reviewed and explicitly cleared (no new finding):
 
-**Fix:** capture the exit code and route to Failure Path on non-zero (mirroring Step 5's `gh workflow run ... || { ...; exit 1; }`): `gh pr update-branch {PR_NUMBER} || { echo "[bkit-ship] update-branch failed" >&2; exit 1; }`.
+- **All 8 round-1 fixes** — mechanically correct at their remediated surface; regression tests (6 Tier-2 + 4 bats) cover each finding; 4 workflow mirrors byte-consistent; gate script installed/template pair byte-identical.
+- **`export STATUS_PATH` leak** — only consumer is the gate subprocess; no subsequent step reads STATUS_PATH; export is scoped to Step 6's fenced block.
+- **`GATE_EXIT` capture under `set -e`** — `|| GATE_EXIT=$?` is the canonical set -e-safe pattern; handles signal exits (>128) and unknown codes (fail-closed to Failure Path).
+- **`--argjson code "$GATE_EXIT"`** — GATE_EXIT is initialised to 0 before the gate call, never empty; `$?` is always numeric.
+- **SHA sanitization regex** `^[A-Za-z0-9._-]+$` — accepts real Git SHAs (40-hex), short SHAs, and fixture names (`green-capstone`, `failed`); rejects `../`, spaces, empty; no valid fixture rejected.
+- **`gh api` captures without `2>&1`** — stdout stays clean JSON; stderr surfaces naturally; rate_limit queries still use `2>/dev/null` (informational only, not parsing-critical).
+- **`git push --force-with-lease` in B2** — B2 is the ONLY step that pushes `feat/{FID}` (Gate 4 `:504`); lease uses remote-tracking ref as expectation; no race in the single-pusher convention.
 
-### Finding 4 — MEDIUM · mechanical · `.bkit/scripts/bkit-ship-gate.sh:140-159` (vs `.bkit/workflows/bkit-ship.md:631`)
+## Verdict Rationale
 
-**Override audit row is unwriteable in production — workflow never exports `STATUS_PATH`, test masks it.**
+No CRITICAL findings. The 8 round-1 fixes are all mechanically correct and covered by regression tests. The most significant NEW issue is Finding 1 (MEDIUM): the F5 fix routed code 11 to Step 5 but Step 5's poll loop is gated on head MOVEMENT, so for the head-unchanged + CI-in-progress case (the exact scenario Finding 5 identified) the fix creates an unbounded subagent-amplification loop instead of polling. This is an incomplete fix, not a correctness bug — the merge gate still validates CI before merging, so no unvalidated content reaches `dev`. The two LOW findings are a staging-hygiene edge case re-opened by the F1 fix and a misleading comment in the F4c stderr fallback.
 
-`maybe_override()` reads `$STATUS_PATH` (`:146`); if empty it falls back to the literal default `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`:148`) — a path whose `{YYYYMM}`/`{FID}` braces are NEVER expanded (the script's own comment `:143-145` admits the brace groups are avoided precisely because bash would mis-parse them). The bats override test (`ship-gate.bats:174-176`) explicitly `export STATUS_PATH="$STATUS_DIR/status.jsonl"`, so the test passes. But the workflow's only gate invocation (`:631`) does NOT export `STATUS_PATH`, so in production the audit `>> "$status" 2>/dev/null || true` writes to a literal-brace junk path (or silently no-ops). The override escape hatch works (exit 0) but its "made visible" audit trail is dead.
-
-**Fix:** either have the workflow export `STATUS_PATH="$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.jsonl"` (with the already-expanded `$YYYYMM`) before invoking the gate, or have the gate accept `--status <path>`.
-
-### Finding 5 — MEDIUM · architectural · `.bkit/workflows/bkit-ship.md:640-641`
-
-**Gate code 11 ("in progress — poll") is a dead branch — Step 6 routes it to Failure Path with no polling.**
-
-The gate contract (`bkit-ship-gate.sh:28`) defines code 11 as "refuse (poll)" — the one condition whose remedy is to wait, not fail. But Step 6.4 routing (`:640-641`) sends ONLY codes 14/10 to Step 5 (re-validate) and "any other refusal → Failure Path". So code 11 → Failure Path immediately. Step 5's poll loop only runs on detected head movement (`:516`), never on a gate-emitted 11. In Path A (head unchanged) ship can reach Step 6 while build's CI is still in-progress → gate 11 → Failure Path instead of polling.
-
-**Fix:** route code 11 to Step 5's poll loop (or an inline poll) the same way codes 10/14 route there; or document that 11 is fatal and drop the "(poll)" contract from the gate header.
-
-### Finding 6 — MEDIUM · mechanical · `.bkit/scripts/bkit-ship-gate.sh:175,283-293`
-
-**`2>&1` merges gh stderr into the captured JSON — a successful `gh api` that emits any stderr noise corrupts jq parsing and yields a false code-10.**
-
-`if ! RUNS_JSON=$(gh api "..." 2>&1); then` (`:175`) and the jobs query (`:283`) merge stderr into stdout. On a _successful_ gh call that still writes a warning/deprecation/notice line to stderr (real gh does this under `GH_DEBUG`, deprecation headers, or transport notices), `RUNS_JSON` becomes `<stderr-noise><json>` → `jq` parse fails → `TOTAL_COUNT` defaults to `0` (`:195`) → false `refuse 10` ("no run"). The jobs query has the same shape: a noisy success → `CAPSTONE_JOB` empty → false `refuse 13` ("capstone ABSENT"). Both mis-classify a healthy run as a structural refusal.
-
-**Fix:** capture stderr separately (`RUNS_JSON=$(gh api "..." 2>/tmp/gh-err)` or drop `2>&1` and let stderr surface naturally); only the non-zero exit should drive the code-20 path.
-
-### Finding 7 — MEDIUM · mechanical · `.bkit/workflows/bkit-ship.md:631-632`
-
-**Gate-refusal routing depends on the agent shell NOT having `set -e` — `GATE_EXIT=$?` is unreachable when the gate exits non-zero under `set -e`.**
-
-```bash
-bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}"
-GATE_EXIT=$?
-```
-
-Under `set -e` (a common agent-shell default), a gate refusal (exit 10/11/12/13/14/15/16/20) aborts the script on the `bash "$GATE_SH"` line, so `GATE_EXIT=$?` and the entire routing block (`:634-641`) never execute — the refusal becomes a hard, unhandled abort with no `ship-gate-refusal` status row and no Step-5/Failure-Path routing. Contrast `:610` (`ANCESTOR=$(... && echo true || echo false)`) which is `set -e`-safe by construction.
-
-**Fix:** `bash "$GATE_SH" assert ... || GATE_EXIT=$?` (and initialise `GATE_EXIT=0` before), or wrap in `set +e ... set -e`.
+Max severity = MEDIUM → Verdict = CONCERNS. No CRITICAL → Failures = 0.
