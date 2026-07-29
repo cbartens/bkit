@@ -757,13 +757,13 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 
 ### Task 6 — Update `docs/deployments.md` (CI/CD matrix + auto-route contract + docs-only-diff precondition)
 
-- [ ] **Scope:** `docs/deployments.md`.
-- [ ] **Depends on:** none.
-- [ ] CI/CD matrix: add `dev` branch row (post-merge CI -> `workflow_run` -> success=no-op, failure=`/bkit-debug`).
-- [ ] Auto-route contract: document that `bkit [auto route]` is now threaded onto the squash-merge `--subject` (Option A), enabling the `dev` trigger gate.
-- [ ] Docs-only-diff precondition: note that the dev-trigger path assumes the consumer's `ci.yml` neutralises (not reds) Vercel-CANCELED builds (Review 3 F4). This is the AUTHORITATIVE location for that note; Task 10 cross-references it rather than restating it.
-- [ ] **Done when:** `deployments.md` CI/CD matrix includes a `dev` row with the post-merge routing + docs-only-diff precondition.
-- [ ] **Test ref:** N/A (documentation).
+- [x] **Scope:** `docs/deployments.md`.
+- [x] **Depends on:** none.
+- [x] CI/CD matrix: add `dev` branch row (post-merge CI -> `workflow_run` -> success=no-op, failure=`/bkit-debug`).
+- [x] Auto-route contract: document that `bkit [auto route]` is now threaded onto the squash-merge `--subject` (Option A), enabling the `dev` trigger gate.
+- [x] Docs-only-diff precondition: note that the dev-trigger path assumes the consumer's `ci.yml` neutralises (not reds) Vercel-CANCELED builds (Review 3 F4). This is the AUTHORITATIVE location for that note; Task 10 cross-references it rather than restating it.
+- [x] **Done when:** `deployments.md` CI/CD matrix includes a `dev` row with the post-merge routing + docs-only-diff precondition.
+- [x] **Test ref:** N/A (documentation).
 
 ### Task 7 — Update `docs/security.md` § CI Auto-Route Trust
 
@@ -808,12 +808,12 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 
 ### Task 10 — Consumer-repo acceptance note (exercisable-path docs)
 
-- [ ] **Scope:** `docs/deployments.md` — a dedicated "Consumer-repo acceptance note" section (CANONICAL OWNER — scope-check F3 resolution). The prior `.bkit/cloud.md` **or** `docs/deployments.md` disjunction is collapsed to `docs/deployments.md` so a builder/reviewer is not guessing. Task 6 owns the `dev` CI/CD matrix ROW + the docs-only-diff precondition NOTE inline in that row; Task 10 owns a DISTINCT "Consumer-repo acceptance note" section describing the full exercisable happy-path loop — the two do NOT duplicate. (Rationale: Task 6 already adds the `dev` row to `deployments.md`; co-locating the acceptance note avoids splitting deployment-related docs across `cloud.md`, which Task 5 owns as the decision-log surface.)
-- [ ] **Depends on:** none.
-- [ ] Document: the `dev`-trigger happy path can only be fully exercised on consumer repos (`app-gether-life`, `visitfrasercoast-com`) that run CI on `push: branches: [dev]` and have `bkit-cloud.yml` installed with secrets. This repo (bkit itself) dogfoods the YAML structure but the full `workflow_run -> /bkit-debug -> fix -> dev CI` loop requires a real consumer repo with `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` secret wired.
-- [ ] Cross-reference the docs-only-diff precondition from Task 6's `dev` matrix row (do NOT re-state it — Task 6 owns that note; Task 10 points to it to avoid the duplication risk flagged in scope-check-1 F3).
-- [ ] **Done when:** `docs/deployments.md` has a dedicated "Consumer-repo acceptance note" section documenting the consumer-repo-only exercisable happy path, cross-referencing Task 6's docs-only-diff precondition note.
-- [ ] **Test ref:** N/A (documentation).
+- [x] **Scope:** `docs/deployments.md` — a dedicated "Consumer-repo acceptance note" section (CANONICAL OWNER — scope-check F3 resolution). The prior `.bkit/cloud.md` **or** `docs/deployments.md` disjunction is collapsed to `docs/deployments.md` so a builder/reviewer is not guessing. Task 6 owns the `dev` CI/CD matrix ROW + the docs-only-diff precondition NOTE inline in that row; Task 10 owns a DISTINCT "Consumer-repo acceptance note" section describing the full exercisable happy-path loop — the two do NOT duplicate. (Rationale: Task 6 already adds the `dev` row to `deployments.md`; co-locating the acceptance note avoids splitting deployment-related docs across `cloud.md`, which Task 5 owns as the decision-log surface.)
+- [x] **Depends on:** none.
+- [x] Document: the `dev`-trigger happy path can only be fully exercised on consumer repos (`app-gether-life`, `visitfrasercoast-com`) that run CI on `push: branches: [dev]` and have `bkit-cloud.yml` installed with secrets. This repo (bkit itself) dogfoods the YAML structure but the full `workflow_run -> /bkit-debug -> fix -> dev CI` loop requires a real consumer repo with `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` secret wired.
+- [x] Cross-reference the docs-only-diff precondition from Task 6's `dev` matrix row (do NOT re-state it — Task 6 owns that note; Task 10 points to it to avoid the duplication risk flagged in scope-check-1 F3).
+- [x] **Done when:** `docs/deployments.md` has a dedicated "Consumer-repo acceptance note" section documenting the consumer-repo-only exercisable happy path, cross-referencing Task 6's docs-only-diff precondition note.
+- [x] **Test ref:** N/A (documentation).
 
 ### Task 11 — Make `fix/**` FID recovery work in the cloud ctx step (v4/P2)
 

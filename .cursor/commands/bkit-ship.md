@@ -574,6 +574,9 @@
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
 5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread the `bkit [auto route]` marker onto the squash `--subject` when `{LABELS}` (assert in scope — populated at Step 1, `bkit-ship.md:247`/`:250`) carries `bkit:auto`: the squash-merge commit is what actually lands on `dev`, and `bkit-cloud.yml`'s free-tier gate (#363) reads `head_commit.message` on that commit to admit the post-merge `dev` CI trigger — same idiom as `bkit-build.md:1261` / `bkit-debug.md:1262`, set and used in the SAME shell block (do not assume the value survives a Bash-tool-call boundary):
    ```bash
+   # Marker admits the squash-merge SHA to bkit-cloud.yml's dev/fix trigger (#363);
+   # any resulting cross-session /bkit-debug dispatch loop is capped by
+   # MAX_DEV_DISPATCH_ATTEMPTS in bkit-counter-bus-config.sh.
    AUTO_ROUTE_SUFFIX=""
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then

@@ -187,6 +187,21 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
+## Post-merge dev CI auto-routing (#363)
+
+`bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**`, `fix/**`, AND `dev` CI completion (never `main`). The `dev` row:
+
+<!-- prettier-ignore -->
+| Branch | Trigger | Success | Failure | FID source | Loop bound |
+| --- | --- | --- | --- | --- | --- |
+| `dev` (post-merge) | `workflow_run` on `dev` CI completion | No-op (`skip=true`, `::notice::`) — the merge already happened, so a green post-merge run just confirms the regression check passed. | Auto-dispatch `/bkit-debug {FID}` | Squash-merge commit scope (`feat({FID}): …`, primary); `gh api …/commits/{sha}/pulls` → PR body `bkit:fid` marker (fallback) | `MAX_DEV_DISPATCH_ATTEMPTS` (distinct failed dev CI SHAs per FID, shared with `fix/**`) |
+
+**Auto-route contract:** the `bkit [auto route]` free-tier gate marker is threaded by `/bkit-ship` onto the squash-merge `--subject` (not just the sync-merge commit) whenever the issue carries `bkit:auto` — this is what admits `dev`-triggered runs through the existing `bkit-cloud.yml` gate; there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger.
+
+**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `ci.yml` "Await Vercel Deployment" step neutralises a Vercel-CANCELED build (skip e2e, stay green) rather than reds it — if a consumer reds on Vercel-CANCELED, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
+
+**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see `GH_BKIT_TOKEN_INSTALL` — presence matrix, below, and the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on — the feature degrades to a silent no-op, not a failure.
+
 ## Ship gate + bookkeeping
 
 `/bkit-ship` (#384) is keyed on `git merge-base --is-ancestor origin/dev origin/feat/{FID}`. **Path A** — `dev` has not moved — resumes read-only, no rebase, no bookkeeping commits, no push; merge. **Path B** — `dev` moved — integrates (B1 `gh pr update-branch`, or B2 worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease`), then re-validates unconditionally. Both paths end at the same gate: `bkit-ship-gate.sh assert --head <current>` concluded `success` at the **current** PR head.

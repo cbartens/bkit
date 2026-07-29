@@ -1,0 +1,18 @@
+Verdict: PASS
+Strategy: STANDARD
+
+<!-- verdict:end -->
+
+# Plan Gaps
+
+## Remediation Log
+
+DONE — Gap 1: `docs/deployments.md` had zero #363 content — the Task 6 edit had gone into the installed copy, not the canonical template, so `pnpm bkit upgrade` in Task 8 silently re-rendered the managed block from `.bkit/templates/docs/deployments.md` and discarded it. Added a new `## Post-merge dev CI auto-routing (#363)` section (dev CI/CD matrix row, auto-route contract note, docs-only-diff precondition, consumer-repo acceptance note) to `.bkit/templates/docs/deployments.md`, then ran `pnpm bkit upgrade` to re-render `docs/deployments.md` and refresh `canonicalHashes` in `.bkit/version` — content now survives future upgrades (`.bkit/templates/docs/deployments.md`, `docs/deployments.md`, `.bkit/version`).
+
+DONE — Gap 2: Task 10's "Consumer-repo acceptance note" section did not exist (same root cause as Gap 1 — wiped by the unedited-template upgrade), and `docs/security.md` carried a dangling cross-reference to it. Folded into the same template edit as Gap 1 (Task 6 and Task 10 share one section per the plan's Task 10 scope note); the `pnpm bkit upgrade` re-render landed the section at `docs/deployments.md:190` with the exact heading `docs/security.md:97` cross-references (`§ Post-merge \`dev\` CI auto-routing`), so the xref now resolves (`.bkit/templates/docs/deployments.md`, `docs/deployments.md`).
+
+DONE — Gap 3: `pnpm test` was RED — `.bkit/src/bkit-counter-prose-audit.test.ts` requires every `MAX_*` constant in `bkit-counter-bus-config.sh` to be referenced inside a fenced code block somewhere in the fixed `.bkit/workflows/*.md` corpus it audits (`bkit-build.md`/`bkit-debug.md`/`bkit-plan.md`/`bkit-design.md`/`bkit-ship.md`); `MAX_DEV_DISPATCH_ATTEMPTS` was referenced only in `bkit-cloud.yml` (not one of those 5 files). Added a fenced bash comment referencing `MAX_DEV_DISPATCH_ATTEMPTS` immediately above the `AUTO_ROUTE_SUFFIX` derivation in `.bkit/workflows/bkit-ship.md` (the file that emits the marker admitting dev-triggered runs) — this preserves the `bkit-debug.md` zero-diff invariant (T8, "no code changes required for the dev path") and the config script's own section-header intent (the constant stays filed under `# bkit-cloud.yml counters`, not the bkit-debug section — only the workflow-doc _reference_ location changed, not the config script). `pnpm test` now passes: 2669 passed / 2 skipped / 1 todo (`.bkit/workflows/bkit-ship.md`).
+
+DONE — Gap 4: `pnpm lint:workflows` (actionlint) was RED with 2 new SC2012 findings, one per job, from `status_dir=$(ls -d docs/plans/*/logs/"$guard_fid"/ 2>/dev/null | head -1 || true)` inside `bkit_dev_dispatch_guard`. No prior-art shellcheck-disable idiom exists elsewhere in the shipped `.yml` corpus, so rewrote per shellcheck's own SC2012 guidance (use `find`, not `ls`, to glob-match): `status_dir=$(find docs/plans -mindepth 3 -maxdepth 3 -type d -path "docs/plans/*/logs/$guard_fid" 2>/dev/null | head -1 || true)` followed by an explicit `[ -n "$status_dir" ] && status_dir="${status_dir}/"` to preserve the original trailing-slash semantics. Applied identically to both occurrences (claude + opencode jobs) in `.bkit/templates/.github/workflows/bkit-cloud.yml` and mirrored to the installed `.github/workflows/bkit-cloud.yml`. `pnpm lint:workflows` (actionlint) now clean.
+
+DONE — Post-fix full verification: `pnpm typecheck` clean; `pnpm test` 2669 passed / 2 skipped / 1 todo; `pnpm lint:workflows` (actionlint) clean; `pnpm lint:slop` exits 0 (repo score unchanged by this remediation — no new findings in touched files); `pnpm lint:prose` (vale) exits 0 with 1 pre-existing unrelated warning in `docs/testing.md`; `pnpm format:check` clean after formatting this log file.

@@ -215,7 +215,8 @@ jobs:
               # shellcheck source=/dev/null
               . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"
               local status_dir status_file dev_count parent_sha landed
-              status_dir=$(ls -d docs/plans/*/logs/"$guard_fid"/ 2>/dev/null | head -1 || true)
+              status_dir=$(find docs/plans -mindepth 3 -maxdepth 3 -type d -path "docs/plans/*/logs/$guard_fid" 2>/dev/null | head -1 || true)
+              [ -n "$status_dir" ] && status_dir="${status_dir}/"
               if [ -z "$status_dir" ]; then
                 status_dir="docs/plans/$(date -u +%Y%m)/logs/$guard_fid/"
               fi
@@ -482,7 +483,8 @@ jobs:
               # shellcheck source=/dev/null
               . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"
               local status_dir status_file dev_count parent_sha landed
-              status_dir=$(ls -d docs/plans/*/logs/"$guard_fid"/ 2>/dev/null | head -1 || true)
+              status_dir=$(find docs/plans -mindepth 3 -maxdepth 3 -type d -path "docs/plans/*/logs/$guard_fid" 2>/dev/null | head -1 || true)
+              [ -n "$status_dir" ] && status_dir="${status_dir}/"
               if [ -z "$status_dir" ]; then
                 status_dir="docs/plans/$(date -u +%Y%m)/logs/$guard_fid/"
               fi
