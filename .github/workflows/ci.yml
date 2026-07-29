@@ -414,6 +414,15 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
+      # Tier-3 status-hole detector — ADVISORY, fail-open (the CLI exits 0 even
+      # when it finds holes). Decision 384-tier3-promotion gates promotion to a
+      # blocking gate on one release of fail-open signal without muting; that
+      # signal only accrues if something actually runs it, so it runs here.
+      # `|| true` is belt-and-braces: the CLI's own contract is exit 0 always.
+      - name: Status-Hole Detector (advisory)
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm audit:status-holes || true
+
   # ── bkit-tests-unit ──────────────────────────────────────────────────────
   # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —
   # wall-clock = MAX(lane). Emits tests_ran for the non-hollow capstone check.

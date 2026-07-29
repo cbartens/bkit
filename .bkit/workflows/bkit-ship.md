@@ -357,7 +357,16 @@ description: "Ship Feature — Autonomous merge and archive"
 3. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
 4. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**.
 5. **Route:**
-   - **If** `state` = MERGED → **Step 9**.
+   - **If** `state` = MERGED → record the resume marker, then → **Step 9**:
+     ```bash
+     STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     jq -nc --arg t "$(date -u +%FT%TZ)" \
+       '{type:"ship-merged-on-entry", workflow:"ship", at:$t}' >> "$STATUS"
+     ```
+     This marker is what lets an auditor tell a MERGED-on-entry resume from a run
+     that simply dropped rows: sub-step 8 below is skipped on this route, so the
+     absence of `ship-worktree-setup` / `ship-regression-guard` is otherwise
+     indistinguishable from a bookkeeping hole.
    - **Else** → next sub-step.
 6. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
    ```bash

@@ -100,8 +100,10 @@ function pathBStatus(): string {
 function mergedOnEntryStatus(): string {
   return [
     row("ship-start-workflow"),
-    row("ship-worktree-setup"),
-    row("ship-regression-guard"),
+    // Step 2 routes to Step 9 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
+    // 8 writes ship-worktree-setup + ship-regression-guard, so neither appears.
+    // The explicit marker is what makes this path unambiguous to an auditor.
+    JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
     // Steps 3–8 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
     row("ship-update-docs"),
@@ -177,6 +179,33 @@ describe("source derivation", () => {
     expect(headingSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
     expect(literalSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
   });
+
+  it("flags a status write that lives outside any numbered step (orphanSteps)", () => {
+    // headingSteps is a SUBSET of literalSteps by construction (both scan the
+    // same regex; the heading pass only narrows the line range), so comparing
+    // them for mutual disagreement is a tautology. The one direction that
+    // carries signal is a literal recorded outside every `## … Step N` section:
+    // a step the workflow writes but never numbers, so no gate covers it.
+    const fakeMd = [
+      "## Step 1 — Start",
+      "```bash",
+      '  step:"ship-start-workflow"',
+      "```",
+      "## Appendix — not a numbered step",
+      "```bash",
+      '  step:"ship-orphaned-write"',
+      "```",
+    ].join("\n");
+    const { headingSteps, literalSteps, orphanSteps } = deriveExpectedStepSetFromSource(fakeMd);
+    expect(headingSteps).toEqual(["ship-start-workflow"]);
+    expect(literalSteps).toEqual(["ship-orphaned-write", "ship-start-workflow"]);
+    expect(orphanSteps).toEqual(["ship-orphaned-write"]);
+  });
+
+  it("the live bkit-ship.md records no step outside a numbered section", () => {
+    const { orphanSteps } = deriveExpectedStepSetFromSource(shipMd);
+    expect(orphanSteps).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -219,7 +248,28 @@ describe("classifyRun", () => {
     expect(classifyRun(observed, false)).toBe("PATH_B");
   });
 
-  it("classifies a MERGED-on-entry run (no merge-pr, no deferred-sweep)", () => {
+  it("classifies a MERGED-on-entry run (Step 2 routed to Step 9 before its writes)", () => {
+    // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
+    // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
+    // MERGED-on-entry resume carries neither. (The previous fixture included
+    // both, which is a shape the MERGED path cannot produce.)
+    const observed = new Set([
+      "ship-start-workflow",
+      "ship-switch-to-dev",
+      "ship-update-docs",
+      "ship-summary",
+      "ship-prune-skills",
+      "ship-worktree-cleanup",
+      "ship-close-workflow",
+    ]);
+    expect(classifyRun(observed, false)).toBe("MERGED_ON_ENTRY");
+  });
+
+  it("does NOT read a double hole as MERGED_ON_ENTRY (regression)", () => {
+    // A Path A run that dropped BOTH ship-merge-pr and ship-deferred-sweep. The
+    // previous classifier keyed MERGED_ON_ENTRY on exactly that absence, so it
+    // reclassified the run and then excluded both from the mandatory set —
+    // reporting zero holes for the worst case in the corpus.
     const observed = new Set([
       "ship-start-workflow",
       "ship-worktree-setup",
@@ -231,7 +281,12 @@ describe("classifyRun", () => {
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
-    expect(classifyRun(observed, false)).toBe("MERGED_ON_ENTRY");
+    expect(classifyRun(observed, false)).toBe("PATH_A");
+
+    const universe = [...SHIP_STEP_ORDER];
+    const { missing } = detectHoles(observed, universe, "PATH_A");
+    expect(missing).toContain("ship-merge-pr");
+    expect(missing).toContain("ship-deferred-sweep");
   });
 
   it("classifies an aborted run (workflow-failed, no close-workflow)", () => {
@@ -313,7 +368,7 @@ describe("detectHoles", () => {
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
-    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A", false);
+    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
     expect(missing).toEqual([]);
     expect(unexpected).toEqual([]);
   });
@@ -332,7 +387,7 @@ describe("detectHoles", () => {
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
-    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A", false);
+    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
     expect(missing).toContain("ship-regression-guard");
     expect(unexpected).toEqual([]);
   });
@@ -354,7 +409,7 @@ describe("detectHoles", () => {
     ]);
     // This set has merge-pr + no conflict-resolve → PATH_A classification.
     // But if we force PATH_B, conflict-resolve is mandatory.
-    const { missing } = detectHoles(observed, universe, "PATH_B", false);
+    const { missing } = detectHoles(observed, universe, "PATH_B");
     expect(missing).toContain("ship-conflict-resolve");
   });
 
@@ -373,7 +428,7 @@ describe("detectHoles", () => {
       "ship-close-workflow",
       "ship-resume-human-override", // invented name — not in canonical set
     ]);
-    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A", false);
+    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
     expect(missing).toEqual([]);
     expect(unexpected).toContain("ship-resume-human-override");
   });
@@ -392,7 +447,7 @@ describe("detectHoles", () => {
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
-    const { missing } = detectHoles(observed, universe, "PATH_A", false);
+    const { missing } = detectHoles(observed, universe, "PATH_A");
     expect(missing).not.toContain("ship-failure-diagnose");
     expect(missing).not.toContain("ship-failure-remediate");
   });
@@ -405,7 +460,7 @@ describe("detectHoles", () => {
       "ship-deferred-sweep",
       // Run aborted here — merge-pr and everything after is NOT a hole
     ]);
-    const { missing } = detectHoles(observed, universe, "ABORTED", true);
+    const { missing } = detectHoles(observed, universe, "ABORTED");
     expect(missing).toContain("ship-regression-guard"); // pre-abort hole
     expect(missing).not.toContain("ship-merge-pr"); // post-abort — not a hole
     expect(missing).not.toContain("ship-close-workflow"); // post-abort — not a hole
@@ -413,7 +468,7 @@ describe("detectHoles", () => {
 
   it("in-progress run: no holes reported", () => {
     const observed = new Set(["ship-start-workflow", "ship-worktree-setup"]);
-    const { missing, unexpected } = detectHoles(observed, universe, "IN_PROGRESS", false);
+    const { missing, unexpected } = detectHoles(observed, universe, "IN_PROGRESS");
     expect(missing).toEqual([]);
     expect(unexpected).toEqual([]);
   });

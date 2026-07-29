@@ -53,8 +53,16 @@ export const SHIP_STEP_ORDER = [
 const RETRY_LOOP_STEPS = new Set(["ship-failure-diagnose", "ship-failure-remediate"]);
 /** The step that Path A skips (dev is ancestor → no integration needed). */
 const PATH_B_ONLY_STEPS = new Set(["ship-conflict-resolve"]);
-/** The middle steps MERGED-on-entry resume skips entirely. */
+/**
+ * The steps a MERGED-on-entry resume skips entirely.
+ *
+ * bkit-ship.md Step 2 routes to Step 9 at sub-step 5 (`state` = MERGED), which
+ * is BEFORE sub-step 8 writes `ship-worktree-setup` + `ship-regression-guard` —
+ * so those two are absent too, not just the middle.
+ */
 const MERGED_ON_ENTRY_SKIP = new Set([
+    "ship-worktree-setup",
+    "ship-regression-guard",
     "ship-conflict-resolve",
     "ship-deferred-sweep",
     "ship-merge-pr",
@@ -72,8 +80,13 @@ const MERGED_ON_ENTRY_SKIP = new Set([
  *    to the step key(s) found within it.
  * 3. Return the union of all unique step keys.
  *
- * The headings + literals cross-check ensures both signals agree — a step with
- * a heading but no literal (or vice versa) is a prose bug the detector surfaces.
+ * The two passes scan the SAME `step:"ship-*"` regex and the heading pass only
+ * narrows the line range, so `headingSteps` is always a subset of
+ * `literalSteps` — comparing them for mutual disagreement would be a tautology.
+ * The one direction that carries signal is `orphanSteps`: a status write that
+ * appears in the file but NOT inside any `## … Step N` section. That is a real
+ * prose bug (a step the workflow records but never numbers, so no gate covers
+ * it), and it is what the detector reports.
  */
 export function deriveExpectedStepSetFromSource(shipMd) {
     const lines = shipMd.split("\n");
@@ -110,12 +123,14 @@ export function deriveExpectedStepSetFromSource(shipMd) {
             re.lastIndex = 0;
         }
     }
-    // 3. Union
+    // 3. Union + the one asymmetry that carries signal (see the docstring).
     const all = new Set([...literalSet, ...headingSet]);
+    const orphanSteps = [...literalSet].filter((s) => !headingSet.has(s)).sort();
     return {
         steps: [...all].sort(),
         headingSteps: [...headingSet].sort(),
         literalSteps: [...literalSet].sort(),
+        orphanSteps,
     };
 }
 /**
@@ -141,17 +156,34 @@ export function checkSourceCanonicalDrift(sourceSteps) {
  * Classify a run based on the observed step set and whether a workflow-failed
  * row was emitted. Classification logic mirrors bkit-ship.md's routing:
  *
- * - close-workflow present → completed (sub-classify by which middle steps ran)
- *   - no merge-pr AND no deferred-sweep → MERGED_ON_ENTRY (Step 2 jumped to 9)
+ * - close-workflow present → completed (sub-classify by the Step 2 marker)
+ *   - no regression-guard → MERGED_ON_ENTRY (Step 2 jumped to 9)
  *   - conflict-resolve present → PATH_B
  *   - else → PATH_A
  * - workflow-failed present (and no close-workflow) → ABORTED
  * - else → IN_PROGRESS
+ *
+ * MERGED_ON_ENTRY is decided by the explicit `ship-merged-on-entry` row that
+ * bkit-ship.md Step 2 sub-step 5 writes on the `state` = MERGED route. It
+ * deliberately does NOT key on the absence of `ship-merge-pr` /
+ * `ship-deferred-sweep`, which is what an earlier revision did: those are the
+ * very rows this detector exists to flag, so a Path A/B run that dropped BOTH
+ * (a double hole) was reclassified as MERGED_ON_ENTRY, which then removed both
+ * from the mandatory set and reported zero holes. Inferring the path from the
+ * evidence under audit hides exactly the worst cases.
+ *
+ * For corpus rows written BEFORE the marker existed, fall back to requiring
+ * BOTH `ship-worktree-setup` and `ship-regression-guard` to be absent. Step 2
+ * writes those two in a single fenced block, so a genuine MERGED-on-entry
+ * resume has neither, while a run that dropped only one stays Path A/B and its
+ * hole still surfaces. Ambiguity remains only when a run loses the whole Step 2
+ * write — narrow, and it resolves as soon as the marker is in the corpus.
  */
-export function classifyRun(observedSteps, hasWorkflowFailed) {
+export function classifyRun(observedSteps, hasWorkflowFailed, hasMergedOnEntryMarker = false) {
     if (observedSteps.has("ship-close-workflow")) {
-        // Completed — sub-classify
-        if (!observedSteps.has("ship-merge-pr") && !observedSteps.has("ship-deferred-sweep")) {
+        if (hasMergedOnEntryMarker)
+            return "MERGED_ON_ENTRY";
+        if (!observedSteps.has("ship-worktree-setup") && !observedSteps.has("ship-regression-guard")) {
             return "MERGED_ON_ENTRY";
         }
         if (observedSteps.has("ship-conflict-resolve")) {
@@ -198,10 +230,10 @@ export function computeMandatoryForPath(path, sourceUniverse) {
  * holes BEFORE the abort point (e.g. a run that aborted at merge-pr but skipped
  * regression-guard earlier).
  */
-export function detectHoles(observed, sourceUniverse, path, hasWorkflowFailed) {
+export function detectHoles(observed, sourceUniverse, path) {
     const universeSet = new Set(sourceUniverse);
     // Unexpected = observed but not in the source universe
-    const unexpected = [...observed].filter((s) => !universeSet.has(s));
+    const unexpected = [...observed].filter((s) => !universeSet.has(s)).sort();
     // Missing = mandatory but not observed
     if (path === "ABORTED") {
         // Determine the last observed step in canonical order
@@ -231,15 +263,15 @@ export function detectHoles(observed, sourceUniverse, path, hasWorkflowFailed) {
         return { missing: [], unexpected };
     }
     const mandatory = computeMandatoryForPath(path, sourceUniverse);
-    const missing = [...mandatory].filter((s) => !observed.has(s));
-    return { missing: missing.sort(), unexpected: unexpected.sort() };
+    const missing = [...mandatory].filter((s) => !observed.has(s)).sort();
+    return { missing, unexpected };
 }
 // ---------------------------------------------------------------------------
 // Full audit — parse status.jsonl + ship md, classify, detect, report
 // ---------------------------------------------------------------------------
 export function auditStatusJsonl(statusJsonl, shipMd) {
     // Derive expected set from source
-    const { steps: sourceUniverse } = deriveExpectedStepSetFromSource(shipMd);
+    const { steps: sourceUniverse, orphanSteps } = deriveExpectedStepSetFromSource(shipMd);
     const sourceCanonicalDrift = checkSourceCanonicalDrift(sourceUniverse);
     // Parse status rows
     const rows = [];
@@ -257,6 +289,7 @@ export function auditStatusJsonl(statusJsonl, shipMd) {
     // Filter to ship step-done rows + workflow-failed rows
     const shipStepRows = rows.filter((r) => r.type === "step-done" && r.workflow === "ship" && typeof r.step === "string");
     const hasWorkflowFailed = rows.some((r) => r.type === "workflow-failed" && r.workflow === "ship");
+    const hasMergedOnEntryMarker = rows.some((r) => r.type === "ship-merged-on-entry" && r.workflow === "ship");
     // Collect observed steps
     const observed = new Set();
     for (const r of shipStepRows) {
@@ -264,8 +297,8 @@ export function auditStatusJsonl(statusJsonl, shipMd) {
             observed.add(r.step);
     }
     // Classify + detect
-    const runPath = classifyRun(observed, hasWorkflowFailed);
-    const { missing, unexpected } = detectHoles(observed, sourceUniverse, runPath, hasWorkflowFailed);
+    const runPath = classifyRun(observed, hasWorkflowFailed, hasMergedOnEntryMarker);
+    const { missing, unexpected } = detectHoles(observed, sourceUniverse, runPath);
     return {
         missing,
         unexpected,
@@ -273,6 +306,7 @@ export function auditStatusJsonl(statusJsonl, shipMd) {
         observed: [...observed].sort(),
         sourceUniverse: [...sourceUniverse].sort(),
         sourceCanonicalDrift,
+        orphanSteps,
     };
 }
 // ---------------------------------------------------------------------------
@@ -285,6 +319,9 @@ export function formatAdvisoryReport(report) {
     lines.push(`  observed: ${report.observed.length} step(s)`);
     if (report.sourceCanonicalDrift.length > 0) {
         lines.push(`  ⚠ source/canonical drift: ${report.sourceCanonicalDrift.join(", ")}`);
+    }
+    if (report.orphanSteps.length > 0) {
+        lines.push(`  ⚠ recorded outside any numbered step: ${report.orphanSteps.join(", ")}`);
     }
     if (report.missing.length > 0) {
         lines.push(`  missing (mandatory for ${report.path}): ${report.missing.join(", ")}`);
@@ -305,26 +342,28 @@ export function formatAdvisoryReport(report) {
 // ---------------------------------------------------------------------------
 export function main(argv) {
     const args = argv.slice(2);
-    // Resolve status.jsonl path (first positional)
-    const statusPath = args.find((a) => !a.startsWith("--"));
-    if (!statusPath) {
+    // Resolve the ship-md override FIRST so its VALUE is never mistaken for a
+    // positional. `args.find(a => !a.startsWith("--"))` alone picks up the value
+    // of `--ship-md` when the flag is passed before the status path.
+    const mdFlagIdx = args.indexOf("--ship-md");
+    const shipMdOverride = mdFlagIdx >= 0 ? args[mdFlagIdx + 1] : undefined;
+    const consumed = new Set();
+    if (mdFlagIdx >= 0) {
+        consumed.add(mdFlagIdx);
+        if (shipMdOverride)
+            consumed.add(mdFlagIdx + 1);
+    }
+    // Every remaining positional is a status.jsonl to audit — one report each, so
+    // a whole corpus can be swept in one advisory CI step.
+    const statusPaths = args.filter((a, i) => !consumed.has(i) && !a.startsWith("--"));
+    if (statusPaths.length === 0) {
         process.stdout.write("[bkit-status-hole-detector] no status.jsonl path given — skipping (advisory)\n");
         return; // exit 0
     }
     // Resolve ship md path — derive script dir from import.meta.url (ESM-safe)
-    const mdFlagIdx = args.indexOf("--ship-md");
     const scriptDir = path.dirname(fileURLToPath(import.meta.url));
     const defaultShipMd = path.resolve(scriptDir, "../workflows/bkit-ship.md");
-    const shipMdPath = mdFlagIdx >= 0 && args[mdFlagIdx + 1] ? args[mdFlagIdx + 1] : defaultShipMd;
-    // Read inputs (advisory — missing files = skip, never fail)
-    let statusJsonl = "";
-    try {
-        statusJsonl = fs.readFileSync(statusPath, "utf-8");
-    }
-    catch {
-        process.stdout.write(`[bkit-status-hole-detector] ${statusPath} not found — skipping (advisory)\n`);
-        return; // exit 0
-    }
+    const shipMdPath = shipMdOverride || defaultShipMd;
     let shipMd = "";
     try {
         shipMd = fs.readFileSync(shipMdPath, "utf-8");
@@ -333,8 +372,20 @@ export function main(argv) {
         process.stdout.write(`[bkit-status-hole-detector] ${shipMdPath} not found — skipping (advisory)\n`);
         return; // exit 0
     }
-    const report = auditStatusJsonl(statusJsonl, shipMd);
-    process.stdout.write(formatAdvisoryReport(report) + "\n");
+    for (const statusPath of statusPaths) {
+        // Read inputs (advisory — missing files = skip, never fail)
+        let statusJsonl = "";
+        try {
+            statusJsonl = fs.readFileSync(statusPath, "utf-8");
+        }
+        catch {
+            process.stdout.write(`[bkit-status-hole-detector] ${statusPath} not found — skipping (advisory)\n`);
+            continue; // exit 0
+        }
+        const report = auditStatusJsonl(statusJsonl, shipMd);
+        process.stdout.write(`\n${statusPath}\n`);
+        process.stdout.write(formatAdvisoryReport(report) + "\n");
+    }
     // ALWAYS exit 0 — this is advisory / fail-open
 }
 // Run if invoked directly (ESM-compatible main-module detection)
