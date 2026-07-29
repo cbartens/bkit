@@ -50,7 +50,12 @@ if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
     echo "Logged in to github.com" >&2
     exit 0
   else
-    echo "You are not logged into any GitHub hosts" >&2
+    # FAKE_GH_ERR lets a test drive the exact stderr text the shim captures into
+    # RUNTIME_GITHUBCLI_ERR — needed to cover error messages containing
+    # characters that must be JSON-escaped (backslashes, quotes).
+    # `printf '%s\n'`, never `echo`: POSIX echo expands backslash escapes, and
+    # `\c` would silently truncate the very messages these tests exist to carry.
+    printf '%s\n' "${FAKE_GH_ERR:-You are not logged into any GitHub hosts}" >&2
     exit 1
   fi
 fi
@@ -181,6 +186,93 @@ teardown() {
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row '' '2026-07-24T00:00:00Z' 2>/dev/null"
   [ "$status" -eq 2 ]
   [ -z "$output" ]
+}
+
+# --- JSON escaping (regression) --------------------------------------------
+# The emitters used printf + `sed 's/"/\\"/g'`, which escapes `"` but not `\`.
+# RUNTIME_GITHUBCLI_ERR is raw `gh auth status` stderr, so one backslash in it
+# emitted an invalid JSON escape. Because status.jsonl is read with `jq -s`,
+# that poisoned the WHOLE run's ledger, not just the bad row — and it fired
+# only on the RUNTIME_GITHUBCLI=false path, the one the shim exists to serve.
+
+@test "row: a backslash in the gh error is escaped — runtime-resolved stays parseable (regression)" {
+  # A gh stderr line whose backslash is NOT a valid JSON escape (`\U`).
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 FAKE_GH_ERR='x509: cert C:\Users\ca "quoted"' \
+    REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row build '2026-07-24T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . >/dev/null
+  err=$(printf '%s' "$output" | jq -r '.runtimeGithubCliErr')
+  [ "$err" = 'x509: cert C:\Users\ca "quoted"' ]
+}
+
+@test "row: one such row does not make the whole status ledger unreadable (regression)" {
+  status_dir="$(mktemp -d)"; status_file="$status_dir/status.jsonl"
+  env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=0 FAKE_GH_ERR='proxy C:\Users' \
+    REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row ship '2026-07-24T00:00:00Z'" >>"$status_file"
+  printf '%s\n' '{"type":"transport-fallback","from":"gh pr merge","to":"merge_pull_request","reason":"r","assertedBy":"a","at":"t"}' >>"$status_file"
+  # The cross-check reads the ledger with `jq -s`; it must see the fallback row
+  # rather than failing with "could not read status file".
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_guard_cross_check '$status_file' mcp"
+  [ "$status" -eq 0 ]
+}
+
+@test "row: bkit_transport_fallback_row records backslash args verbatim, not as control chars (regression)" {
+  # `C:\temp\new` survived the old sed as valid-but-WRONG JSON: `\t` and `\n`
+  # decoded to a literal tab and newline, silently corrupting the audit trail.
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_transport_fallback_row 'gh pr merge' 'merge_pull_request' 'C:\\temp\\new' 'reread' '2026-07-24T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . >/dev/null
+  reason=$(printf '%s' "$output" | jq -r '.reason')
+  [ "$reason" = 'C:\temp\new' ]
+}
+
+@test "row: bkit_close_transport_row emits parseable JSON via the same emitter" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c ". '$RUNTIME_SH' && bkit_close_transport_row A deadbeef clean '2026-07-24T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . >/dev/null
+  [ "$(printf '%s' "$output" | jq -r '.shape')" = "A" ]
+  [ "$(printf '%s' "$output" | jq -r '.scanResult')" = "clean" ]
+}
+
+# --- set -u safety (regression) ---------------------------------------------
+# The shim ships to consumers and is sourced by callers bkit does not control.
+# Unguarded `$CLAUDE_CODE_REMOTE` / `$CI` / `$1` reads aborted the caller's whole
+# block with "unbound variable" under `set -u` — on LOCAL, where none of the
+# detection primitives are set. Same class as tests/ship-gate.bats F4b.
+
+@test "set -u: detect resolves LOCAL with no primitives set (regression)" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c "set -u; . '$RUNTIME_SH'; bkit_runtime_detect; printf '%s\n' \"\$RUNTIME\""
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"unbound variable"* ]]
+  [ "$output" = "LOCAL" ]
+}
+
+@test "set -u: detect reads REPO_ROOT/FID from the env when they are unset without aborting (regression)" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c "set -u; . '$RUNTIME_SH'; bkit_runtime_detect; printf 'rc=%s\n' \$?"
+  [[ "$output" != *"unbound variable"* ]]
+  [[ "$output" == *"REPO_ROOT and FID must both be non-empty"* ]]
+}
+
+@test "set -u: assert_resolved and the arg-less guards fail loudly, not with 'unbound variable' (regression)" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c "set -u; . '$RUNTIME_SH'; bkit_runtime_assert_resolved"
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"unbound variable"* ]]
+  [[ "$output" == *"UNRESOLVED"* ]]
+
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c "set -u; . '$RUNTIME_SH'; bkit_close_guard_checkout"
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"unbound variable"* ]]
+
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c "set -u; . '$RUNTIME_SH'; bkit_wait_ci"
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"unbound variable"* ]]
+}
+
+@test "set -u: close_guard_checkout still prints its loud refusal when detect was never called (regression)" {
+  run env -i PATH="$FAKE_BIN:$PATH" bash -c "set -u; . '$RUNTIME_SH'; bkit_close_guard_checkout dev"
+  [ "$status" -eq 2 ]
+  [[ "$output" != *"unbound variable"* ]]
+  [[ "$output" == *"refusing local checkout"* ]]
 }
 
 # ---------------------------------------------------------------------------

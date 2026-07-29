@@ -52,21 +52,59 @@ run_bootstrap() {
   printf '' | env -i PATH="$FAKE_BIN:/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" "$@" bash "$BOOTSTRAP_SH"
 }
 
-@test "prefers sanctioned GH_TOKEN over --with-token login (does not invoke gh auth login)" {
+@test "prefers a WORKING sanctioned GH_TOKEN over --with-token login (does not invoke gh auth login)" {
   run run_bootstrap env GH_TOKEN=sanctioned-token FAKE_GH_AUTH_OK=1
-  [[ "$output" == *"sanctioned GH_TOKEN/GITHUB_TOKEN env present"* ]]
+  [[ "$output" == *"gh already authenticates"* ]]
   [[ "$output" != *"gh auth login --with-token invoked"* ]]
 }
 
-@test "prefers sanctioned GITHUB_TOKEN over --with-token login" {
+@test "prefers a WORKING sanctioned GITHUB_TOKEN over --with-token login" {
   run run_bootstrap env GITHUB_TOKEN=sanctioned-token GH_BKIT_TOKEN=would-login FAKE_GH_AUTH_OK=1
-  [[ "$output" == *"sanctioned GH_TOKEN/GITHUB_TOKEN env present"* ]]
+  [[ "$output" == *"gh already authenticates"* ]]
   [[ "$output" != *"gh auth login --with-token invoked"* ]]
 }
 
 @test "falls back to --with-token login from GH_BKIT_TOKEN when neither GH_TOKEN nor GITHUB_TOKEN is set" {
   run run_bootstrap env GH_BKIT_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
   [[ "$output" == *"gh auth login --with-token"* ]]
+}
+
+# --- placeholder/expired sanctioned token (regression) ----------------------
+# #341 §2's documented mode-3 failure: the platform sets a GH_TOKEN that does
+# NOT authenticate. It outranks any stored credential, so `--with-token` cannot
+# win. An earlier revision keyed the skip on the variable being merely SET, so
+# this case produced only "trusting it over --with-token" — reassuring, wrong,
+# and with no pointer to the actual remedy. The branch now keys on the probe.
+
+@test "a PRESENT but non-authenticating GH_TOKEN is diagnosed, not silently trusted (regression)" {
+  run run_bootstrap env GH_TOKEN=placeholder GH_BKIT_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"does NOT authenticate"* ]]
+  # Must NOT claim the lane is fine.
+  [[ "$output" != *"gh already authenticates"* ]]
+  # Must name where the fix actually lives.
+  [[ "$output" == *"Environment variables"* ]]
+}
+
+@test "the placeholder diagnosis does not pretend a --with-token login would help (regression)" {
+  # gh reads GH_TOKEN ahead of stored credentials, so attempting the login here
+  # would report success while gh stayed broken — a false green.
+  run run_bootstrap env GITHUB_TOKEN=placeholder GH_BKIT_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
+  [[ "$output" != *"gh auth login --with-token invoked"* ]]
+  [[ "$output" == *"does NOT authenticate"* ]]
+}
+
+@test "the placeholder path still records RUNTIME_GITHUBCLI=false and never hard-stops the session" {
+  run run_bootstrap env GH_TOKEN=placeholder GH_BKIT_TOKEN=bkit-token FAKE_GH_AUTH_OK=0
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"RUNTIME_GITHUBCLI=false"* ]]
+}
+
+@test "gh absent from PATH is stated plainly rather than falling through silently" {
+  # Empty PATH dir for gh: the hook must say the MCP lane is the only one left.
+  run env -i PATH="/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" bash "$BOOTSTRAP_SH" </dev/null
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gh is not on PATH"* ]]
 }
 
 @test "records RUNTIME_GITHUBCLI=true loudly when gh is authed" {

@@ -82,7 +82,8 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```
    Assert `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`.
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
-10. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**.
+10. **Fallback (marker absent or malformed).** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — step 11 keys EVERY tracker call on `{ISSUE_ID}` and asserts it non-empty, so a fallback that resolves only `{FID}` can never complete and always ends at **Failure Path**:
+     `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links):
     ```comment

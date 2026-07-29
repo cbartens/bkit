@@ -109,8 +109,14 @@ _bkit_runtime_norm_flag() {
 # violation) is an error return.
 # ---------------------------------------------------------------------------
 bkit_runtime_detect() {
-  _brd_repo_root="${1:-$REPO_ROOT}"
-  _brd_fid="${2:-$FID}"
+  # Every env/positional read in this file is `${VAR:-}`-guarded: the shim ships
+  # to consumers and is sourced by callers we do not control, so it must survive
+  # `set -u`. An unguarded `$CLAUDE_CODE_REMOTE`-style read aborts the caller's
+  # whole block with "unbound variable" on the LOCAL runtime (where none of the
+  # detection primitives are set) — the most common runtime of all. Same class as
+  # the `${STATUS_PATH:-}` fix in bkit-ship-gate.sh (tests/ship-gate.bats F4b).
+  _brd_repo_root="${1:-${REPO_ROOT:-}}"
+  _brd_fid="${2:-${FID:-}}"
 
   if [ -z "$_brd_repo_root" ] || [ -z "$_brd_fid" ]; then
     echo "[bkit-runtime] bkit_runtime_detect: REPO_ROOT and FID must both be non-empty (got REPO_ROOT='${_brd_repo_root}' FID='${_brd_fid}')" >&2
@@ -130,19 +136,19 @@ bkit_runtime_detect() {
   # tooling, and treating them as ambiguous would cost the laptop its
   # worktree model. Only a value that is neither truthy nor falsy is genuinely
   # ambiguous — that alone goes least-capable, loudly.
-  _brd_cloud_flag=$(_bkit_runtime_norm_flag "$CLAUDE_CODE_REMOTE")
-  _brd_gha_flag=$(_bkit_runtime_norm_flag "$GITHUB_ACTIONS")
-  _brd_ci_flag=$(_bkit_runtime_norm_flag "$CI")
+  _brd_cloud_flag=$(_bkit_runtime_norm_flag "${CLAUDE_CODE_REMOTE:-}")
+  _brd_gha_flag=$(_bkit_runtime_norm_flag "${GITHUB_ACTIONS:-}")
+  _brd_ci_flag=$(_bkit_runtime_norm_flag "${CI:-}")
 
-  if [ -n "$BKIT_RUNTIME" ]; then
+  if [ -n "${BKIT_RUNTIME:-}" ]; then
     # Explicit override — wins over every primitive. Validated against the
     # enum so a typo fails loud instead of silently landing in UNKNOWN.
-    case "$BKIT_RUNTIME" in
+    case "${BKIT_RUNTIME:-}" in
       LOCAL | GITHUB_ACTION | CLOUD_CLAUDE | CLOUD_CURSOR | UNKNOWN)
-        RUNTIME="$BKIT_RUNTIME"
+        RUNTIME="${BKIT_RUNTIME:-}"
         ;;
       *)
-        echo "[bkit-runtime] bkit_runtime_detect: BKIT_RUNTIME='${BKIT_RUNTIME}' is not a valid runtime (LOCAL | GITHUB_ACTION | CLOUD_CLAUDE | CLOUD_CURSOR | UNKNOWN) — defaulting RUNTIME=UNKNOWN, least-capable" >&2
+        echo "[bkit-runtime] bkit_runtime_detect: BKIT_RUNTIME='${BKIT_RUNTIME:-}' is not a valid runtime (LOCAL | GITHUB_ACTION | CLOUD_CLAUDE | CLOUD_CURSOR | UNKNOWN) — defaulting RUNTIME=UNKNOWN, least-capable" >&2
         RUNTIME="UNKNOWN"
         ;;
     esac
@@ -154,7 +160,7 @@ bkit_runtime_detect() {
     # is a fresh clone per session, so it cannot go stale there.
     RUNTIME="CLOUD_CURSOR"
   elif [ "$_brd_cloud_flag" = "ambiguous" ] || [ "$_brd_gha_flag" = "ambiguous" ] || [ "$_brd_ci_flag" = "ambiguous" ]; then
-    echo "[bkit-runtime] bkit_runtime_detect: ambiguous detection primitives (CLAUDE_CODE_REMOTE='${CLAUDE_CODE_REMOTE}' GITHUB_ACTIONS='${GITHUB_ACTIONS}' CI='${CI}') — defaulting RUNTIME=UNKNOWN, least-capable" >&2
+    echo "[bkit-runtime] bkit_runtime_detect: ambiguous detection primitives (CLAUDE_CODE_REMOTE='${CLAUDE_CODE_REMOTE:-}' GITHUB_ACTIONS='${GITHUB_ACTIONS:-}' CI='${CI:-}') — defaulting RUNTIME=UNKNOWN, least-capable" >&2
     RUNTIME="UNKNOWN"
   elif [ "$_brd_cloud_flag" = "true" ]; then
     RUNTIME="CLOUD_CLAUDE"
@@ -221,16 +227,16 @@ bkit_runtime_detect() {
 bkit_runtime_assert_resolved() {
   _bar_rc=0
 
-  case "$RUNTIME" in
+  case "${RUNTIME:-}" in
     LOCAL | GITHUB_ACTION | CLOUD_CLAUDE | CLOUD_CURSOR | UNKNOWN) : ;;
     *)
-      echo "[bkit-runtime] RUNTIME is UNRESOLVED (got '${RUNTIME}') — shim not sourced or bkit_runtime_detect not called this block" >&2
+      echo "[bkit-runtime] RUNTIME is UNRESOLVED (got '${RUNTIME:-}') — shim not sourced or bkit_runtime_detect not called this block" >&2
       _bar_rc=2
       ;;
   esac
 
   for _bar_flag_name in RUNTIME_WORKTREES RUNTIME_DEVPUSHES RUNTIME_GITHUBCLI; do
-    eval "_bar_flag_val=\"\${${_bar_flag_name}}\""
+    eval "_bar_flag_val=\"\${${_bar_flag_name}:-}\""
     case "$_bar_flag_val" in
       true | false) : ;;
       *)
@@ -260,8 +266,8 @@ bkit_runtime_assert_resolved() {
 # capability globals are not resolved (delegates to bkit_runtime_assert_resolved).
 # ---------------------------------------------------------------------------
 bkit_runtime_row() {
-  _brr_workflow="$1"
-  _brr_at="$2"
+  _brr_workflow="${1:-}"
+  _brr_at="${2:-}"
 
   if [ -z "$_brr_workflow" ] || [ -z "$_brr_at" ]; then
     echo "[bkit-runtime] bkit_runtime_row: WORKFLOW and AT must both be non-empty" >&2
@@ -269,10 +275,32 @@ bkit_runtime_row() {
   fi
   bkit_runtime_assert_resolved || return 2
 
-  printf '{"type":"runtime-resolved","workflow":"%s","at":"%s","runtime":"%s","runtimeWorktrees":%s,"runtimeDevPushes":%s,"runtimeGithubCli":%s,"runtimeGithubCliExit":%s,"runtimeGithubCliErr":"%s"}\n' \
-    "$_brr_workflow" "$_brr_at" "$RUNTIME" "$RUNTIME_WORKTREES" "$RUNTIME_DEVPUSHES" "$RUNTIME_GITHUBCLI" \
-    "$RUNTIME_GITHUBCLI_EXIT" "$(printf '%s' "$RUNTIME_GITHUBCLI_ERR" | sed 's/"/\\"/g')"
-  return 0
+  # `jq -nc --arg`, NOT printf + `sed 's/"/\\"/g'`. The sed idiom escapes `"`
+  # but not `\`, and RUNTIME_GITHUBCLI_ERR is raw `gh auth status` stderr: a
+  # single backslash in it (a Windows path, an escaped URL, an `x509:` chain
+  # detail) emits an invalid JSON escape and makes this line unparseable. That
+  # line goes to status.jsonl, and every consumer of the ledger reads it with
+  # `jq -s` — one bad row makes the WHOLE run's status file unreadable, not just
+  # this entry (bkit_close_guard_cross_check then reports "could not read status
+  # file" while the transport-fallback row it wants is sitting right there). The
+  # failure fires exactly on the RUNTIME_GITHUBCLI=false path this shim exists to
+  # serve, because that is the only path where the err string is non-trivial.
+  # jq owns the escaping; the emitters must never hand-roll it.
+  #
+  # `--argjson` for the three booleans + the exit code: assert_resolved above
+  # guarantees the booleans are the literals `true`/`false`, and the exit code is
+  # always numeric ($? or 127), but both are defaulted so a caller that hand-set
+  # the globals cannot make jq abort mid-emit.
+  jq -nc \
+    --arg w "$_brr_workflow" \
+    --arg at "$_brr_at" \
+    --arg rt "${RUNTIME:-}" \
+    --argjson wt "${RUNTIME_WORKTREES:-false}" \
+    --argjson dp "${RUNTIME_DEVPUSHES:-false}" \
+    --argjson gc "${RUNTIME_GITHUBCLI:-false}" \
+    --argjson ge "${RUNTIME_GITHUBCLI_EXIT:-0}" \
+    --arg er "${RUNTIME_GITHUBCLI_ERR:-}" \
+    '{type:"runtime-resolved",workflow:$w,at:$at,runtime:$rt,runtimeWorktrees:$wt,runtimeDevPushes:$dp,runtimeGithubCli:$gc,runtimeGithubCliExit:$ge,runtimeGithubCliErr:$er}'
 }
 
 # ---------------------------------------------------------------------------
@@ -310,7 +338,7 @@ bkit_runtime_row() {
 # (`sleep`) is `timeout`-wrapped, so the worst case is a loud, bounded abort.
 # ---------------------------------------------------------------------------
 bkit_wait_ci() {
-  _bwc_pr="$1"
+  _bwc_pr="${1:-}"
   _bwc_budget="${2:-60}"
   _bwc_interval="${3:-10}"
 
@@ -428,13 +456,13 @@ bkit_wait_ci() {
 # checkout itself fails (target does not exist, dirty tree conflict, etc).
 # ---------------------------------------------------------------------------
 bkit_close_guard_checkout() {
-  _bcg_target="$1"
+  _bcg_target="${1:-}"
 
   if [ -z "$_bcg_target" ]; then
     echo "[bkit-close-guard] bkit_close_guard_checkout: TARGET_BRANCH must be non-empty" >&2
     return 2
   fi
-  if [ "$RUNTIME_WORKTREES" != "true" ] || [ "$RUNTIME_DEVPUSHES" != "true" ]; then
+  if [ "${RUNTIME_WORKTREES:-}" != "true" ] || [ "${RUNTIME_DEVPUSHES:-}" != "true" ]; then
     echo "[bkit-close-guard] refusing local checkout: RUNTIME_WORKTREES='${RUNTIME_WORKTREES:-unset}' RUNTIME_DEVPUSHES='${RUNTIME_DEVPUSHES:-unset}' — both must be 'true' to checkout '$_bcg_target' locally; refusing" >&2
     return 2
   fi
@@ -485,7 +513,7 @@ bkit_close_guard_checkout() {
 # (distinct from "found a token").
 # ---------------------------------------------------------------------------
 bkit_close_guard_scan_body() {
-  _bcs_sha="$1"
+  _bcs_sha="${1:-}"
   _bcs_remote="${2:-}"
 
   if [ -z "$_bcs_sha" ]; then
@@ -542,8 +570,8 @@ bkit_close_guard_scan_body() {
 # Returns 2 if args are empty or STATUS_PATH is missing/unreadable.
 # ---------------------------------------------------------------------------
 bkit_close_guard_cross_check() {
-  _bcx_status="$1"
-  _bcx_transport="$2"
+  _bcx_status="${1:-}"
+  _bcx_transport="${2:-}"
 
   if [ -z "$_bcx_status" ] || [ -z "$_bcx_transport" ]; then
     echo "[bkit-close-guard] bkit_close_guard_cross_check: STATUS_PATH and TRANSPORT must both be non-empty" >&2
@@ -590,24 +618,29 @@ bkit_close_guard_cross_check() {
 # Returns 2 (nothing on stdout) if any arg is empty.
 # ---------------------------------------------------------------------------
 bkit_transport_fallback_row() {
-  _btf_from="$1"
-  _btf_to="$2"
-  _btf_reason="$3"
-  _btf_asserted_by="$4"
-  _btf_at="$5"
+  _btf_from="${1:-}"
+  _btf_to="${2:-}"
+  _btf_reason="${3:-}"
+  _btf_asserted_by="${4:-}"
+  _btf_at="${5:-}"
 
   if [ -z "$_btf_from" ] || [ -z "$_btf_to" ] || [ -z "$_btf_reason" ] || [ -z "$_btf_asserted_by" ] || [ -z "$_btf_at" ]; then
     echo "[bkit-close-guard] bkit_transport_fallback_row: FROM, TO, REASON, ASSERTED_BY and AT must all be non-empty" >&2
     return 2
   fi
 
-  printf '{"type":"transport-fallback","from":"%s","to":"%s","reason":"%s","assertedBy":"%s","at":"%s"}\n' \
-    "$(printf '%s' "$_btf_from" | sed 's/"/\\"/g')" \
-    "$(printf '%s' "$_btf_to" | sed 's/"/\\"/g')" \
-    "$(printf '%s' "$_btf_reason" | sed 's/"/\\"/g')" \
-    "$(printf '%s' "$_btf_asserted_by" | sed 's/"/\\"/g')" \
-    "$_btf_at"
-  return 0
+  # jq owns the escaping — see the note in bkit_runtime_row. These args are
+  # agent-supplied prose (a gh command line, a failure reason), so a backslash is
+  # if anything MORE likely here; the old sed idiom either produced invalid JSON
+  # (`\U`) or silently rewrote the recorded value (`C:\temp\new` -> a literal tab
+  # and newline), corrupting the audit trail the cross-check reads back.
+  jq -nc \
+    --arg from "$_btf_from" \
+    --arg to "$_btf_to" \
+    --arg reason "$_btf_reason" \
+    --arg assertedBy "$_btf_asserted_by" \
+    --arg at "$_btf_at" \
+    '{type:"transport-fallback",from:$from,to:$to,reason:$reason,assertedBy:$assertedBy,at:$at}'
 }
 
 # ---------------------------------------------------------------------------
@@ -625,19 +658,26 @@ bkit_transport_fallback_row() {
 # Returns 2 (nothing on stdout) if any arg is empty.
 # ---------------------------------------------------------------------------
 bkit_close_transport_row() {
-  _bct_shape="$1"
-  _bct_sha="$2"
-  _bct_scan_result="$3"
-  _bct_at="$4"
+  _bct_shape="${1:-}"
+  _bct_sha="${2:-}"
+  _bct_scan_result="${3:-}"
+  _bct_at="${4:-}"
 
   if [ -z "$_bct_shape" ] || [ -z "$_bct_sha" ] || [ -z "$_bct_scan_result" ] || [ -z "$_bct_at" ]; then
     echo "[bkit-close-guard] bkit_close_transport_row: SHAPE, SHA, SCAN_RESULT and AT must all be non-empty" >&2
     return 2
   fi
 
-  printf '{"type":"close-transport","shape":"%s","sha":"%s","scanResult":"%s","at":"%s"}\n' \
-    "$_bct_shape" "$_bct_sha" "$_bct_scan_result" "$_bct_at"
-  return 0
+  # jq owns the escaping — see the note in bkit_runtime_row. These four args are
+  # constrained today (A/B/C, a SHA, a two-value enum, a timestamp), so this is
+  # uniformity rather than a live bug: one emission idiom across all three row
+  # writers means the next arg added here cannot reintroduce the escaping hole.
+  jq -nc \
+    --arg shape "$_bct_shape" \
+    --arg sha "$_bct_sha" \
+    --arg scanResult "$_bct_scan_result" \
+    --arg at "$_bct_at" \
+    '{type:"close-transport",shape:$shape,sha:$sha,scanResult:$scanResult,at:$at}'
 }
 
 # ---------------------------------------------------------------------------
@@ -666,7 +706,7 @@ bkit_close_transport_row() {
 # flags) — callers MUST NOT treat a 2 the same as a legitimate 1 self-skip.
 # ---------------------------------------------------------------------------
 bkit_worktree_helper_guard() {
-  _bwh_repo_root="$1"
+  _bwh_repo_root="${1:-}"
   _bwh_label="${2:-worktree-util}"
 
   if [ -z "$_bwh_repo_root" ]; then

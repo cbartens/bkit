@@ -115,7 +115,16 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    Assert `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`.
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
      <!-- bkit:tracker false end -->
-10. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**.
+10. **Fallback (marker absent or malformed).** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — step 11 keys EVERY tracker call on `{ISSUE_ID}` and asserts it non-empty, so a fallback that resolves only `{FID}` can never complete and always ends at **Failure Path**:
+     <!-- bkit:tracker github start -->
+    `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
+     <!-- bkit:tracker github end -->
+     <!-- bkit:tracker linear start -->
+    `ISSUE_ID` = first two dash-segments of `{FID}`, uppercased (`bar-191-cloud-envs` → `BAR-191`). Assert `[[ "{ISSUE_ID}" =~ ^[A-Z]+-[0-9]+$ ]]`. **Else** → **Failure Path**.
+     <!-- bkit:tracker linear end -->
+     <!-- bkit:tracker false start -->
+    No tracker wired — `ISSUE_ID` stays empty by design and step 11 is skipped.
+     <!-- bkit:tracker false end -->
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
