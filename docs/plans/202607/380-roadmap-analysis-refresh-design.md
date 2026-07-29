@@ -26,7 +26,7 @@ As a bkit user, after I close any workflow phase for an issue, `docs/roadmap.md`
 1. After every workflow close, `docs/roadmap.md`'s status board reflects each in-flight issue's current phase, **built primarily from on-disk artifacts so it works with NO tracker connected** — the presence of `docs/plans/{YYYYMM}/{FID}-{design,plan}.md`, the folded per-FID `status.jsonl`, and open `docs/deferrals.jsonl`/`docs/failures.jsonl` items — with no manual edit and no analysis/subagent turn. **When a tracker IS wired** (`github`/`linear` per the #202 inline-marker model, NOT `none`), the board is additionally enriched with open tracker issues and their `bkit:*` phase + readiness via an orchestrator-mediated `list_issues` MCP call piped to the fold (never a standalone `gh`/`search_issues` path — that breaks Linear tracker-agnosticism and silently returns 0 on private repos). The tracker read is **additive, never a precondition**: under `tracker: none` it is skipped entirely and the board is still complete from on-disk sources.
 2. A concurrent close, a merge conflict, or an `-X ours` squash never aborts a close or silently corrupts the board — the status board is deterministically regenerable from the on-disk artifacts (and the tracker read when wired).
 3. Ship-close and `/bkit-roadmap` produce a refreshed analysis block: a ranked best-next-step, dependency-aware issue groupings, and bkit-usage prompt suggestions, stamped with scan coverage.
-4. Ledger/audit integration fires on a deterministic threshold (not "periodically"), computed by counting persisted ship-close rows in the committed `.bkit/stats.jsonl` (NOT the non-persisted `bkit-counter-bus.sh` helper) plus a staleness-days fallback: open `deferrals.jsonl`/`failures.jsonl` items and a #80 audit candidate surface as grouped next-steps.
+4. Ledger/audit integration fires on a deterministic threshold (not "periodically"), computed by counting DISTINCT FIDs that reached `BUILT` in `docs/roadmap.jsonl` since the last cadence FIRE (Addendum 3 § Q — never `.bkit/stats.jsonl` rows, which carry no FID by § R, and never the non-persisted `bkit-counter-bus.sh` helper) plus a staleness-days fallback measured from that same fire: open `deferrals.jsonl`/`failures.jsonl` items and a #80 audit candidate surface as grouped next-steps.
 5. `docs/roadmap.md` stays consumer-owned — `bkit install` never overwrites it and `bkit check` drift stays clean; only the generator, the analysis prompt, the utility, the five close-step edits, and one `.agents/docs.md` index row ship.
 
 ### Key Edge Cases
@@ -420,3 +420,29 @@ Reverses Addendum 2 § L's "optional follow-up". `.bkit/stats.jsonl` and `.bkit/
 ### S. Bootstrap seed — the on-disk scan runs ONCE, not per close
 
 With the board projecting purely from the ledger, a repo adopting this feature has in-flight work that has no ledger rows yet, and it would stay invisible until each FID next closes a phase. So the on-disk scan (`docs/plans/**` artifacts + folded per-FID `status.jsonl`) is retained but repurposed: it **seeds** the ledger once, at migration/first bootstrap, writing one row per in-flight FID at its detected status. After that the board never re-derives from disk — every subsequent row comes from a phase close.
+
+## Addendum 4 — Post-#384 ship-surface re-anchor (2026-07-29)
+
+This design was written against `dev` before #384 landed. Three body claims about the shipped surface are now factually wrong; the sections below supersede them. Verified against `dev` at `e14fe9f4`.
+
+### T. Ship stages via `BOOK_ROOT` + `BOOK_PATHS` — the scoped `git add -- docs/` NO LONGER EXISTS
+
+**Supersedes every body claim that "ship already captures `docs/roadmap.md` via a scoped `git add -- docs/`"** (§ Key Edge Cases, § Components 3/4, § Architecture, § Decisions, § Risks, WS-2, WS-3). #384 replaced that idiom outright:
+
+- **`BOOK_ROOT`** (`bkit-ship.md` Step 1, line ~171) is the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` -> `$REPO_ROOT` (dev tree); `false` -> the current working-branch tree (#341 shape A). Roadmap ledger + board writes at ship MUST resolve under `$BOOK_ROOT`, exactly like `status.jsonl` — never a bare relative path.
+- **`BOOK_PATHS`** (line ~187) is a FROZEN path-scoped staging allow-list; the Close step stages `git -C "$WT" add $BOOK_PATHS` (line ~1257). Line 28 of the workflow bans both `-A` and blanket `docs/` staging. The list today contains `docs/completed.md`.
+- **Consequence for #380:** deleting `completed.md` without editing `BOOK_PATHS` leaves ship staging a dead path AND never staging `docs/roadmap.jsonl` / `docs/roadmap.md` — the `SHIPPED` row written at Step 10 is never committed, while the verdict reader (working tree) still passes green. Silent loss of every shipped FID. `BOOK_PATHS` MUST swap `docs/completed.md` -> `docs/roadmap.jsonl` + `docs/roadmap.md`.
+- **`.bkit/src/bkit-ship-invariants.test.ts`** publishes that allow-list as `BOOK_PATHS_ALLOW_LIST` (a deliberately frozen #384 invariant, currently containing `docs/completed.md`) plus negative assertions banning `-A` / bare `docs/`. It must be updated in the SAME change, and the negative assertions must stay intact — re-introducing blanket `docs/` staging to capture the roadmap files is a regression of `fd6180c0`, not a fix.
+
+### U. design/plan carry TWO STRAY guards, one per runtime mode — both must widen
+
+**Supersedes the body's "the STRAY-file guard allowlist ... lives ONLY in `bkit-design.md` and `bkit-plan.md`; those two must widen it"** — correct about which workflows, wrong about the count. Each of those two workflows has the guard TWICE, once per runtime shape:
+
+- `RUNTIME_DEVPUSHES=true` (dev path): `bkit-design.md:793`, `bkit-plan.md:854` — checks `git diff --cached --name-only` after the `-X ours` squash.
+- `RUNTIME_DEVPUSHES=false` (PR path, #341 shape A): `bkit-design.md:827`, `bkit-plan.md:888` — checks `git diff --name-only "origin/dev...{BRANCH}"`, and its allowlist is narrower (no `stats.jsonl`).
+
+Widening only the first aborts every close in PR mode with `design close-workflow diff carries non-doc files: docs/roadmap.jsonl`. Both guards in both workflows widen to accept `^docs/roadmap\.md$` and `^docs/roadmap\.jsonl$` — four edits, not two. Correspondingly, "regenerate the board on `dev`" holds only on the dev path; in PR mode the close writes on the working branch and the row reaches `dev` through the squash PR merge.
+
+### V. Cadence body text is superseded by § Q
+
+**Supersedes § Success Criteria 4 (corrected in place), § Components 7, § Architecture "Cadence flow", and § Decisions** — all of which describe counting persisted ship-close `outcome` rows in `.bkit/stats.jsonl` with `N`=5 and staleness measured from the `roadmap-analysis` header stamp. § Q is authoritative: count DISTINCT `BUILT` FIDs in `docs/roadmap.jsonl` since the last `ROADMAP_CADENCE_FIRE` row, `N`=10, staleness 90 days from that same fire. § R forbids FIDs in `stats.jsonl`, so the `outcome`-row count cannot be per-FID and is not usable as the cadence source.

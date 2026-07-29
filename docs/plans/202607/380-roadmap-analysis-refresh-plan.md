@@ -9,14 +9,14 @@ Verdict: PASS
 # Constant roadmap analysis refresh (#380) Implementation Plan — Master Index (split)
 
 > [!IMPORTANT]
-> **This master plan was SPLIT for session/token budget.** Its `Agent Execution Runbook` (15 tasks + 5 mandatory Testing/Documentation tasks), its four 🔒 Gates, its Derived Test Matrix (22 rows), and its Verification Plan now live in three self-contained sub-plans. Execute them **in order 1 → 2 → 3**. This file retains only the shared context/goals/patterns and the sub-plan index — do NOT execute tasks from here.
+> **This master plan was SPLIT for session/token budget.** Its `Agent Execution Runbook` (15 tasks + 5 mandatory Testing/Documentation tasks), its four 🔒 Gates, its Derived Test Matrix (26 rows), and its Verification Plan now live in three self-contained sub-plans. Execute them **in order 1 → 2 → 3**. This file retains only the shared context/goals/patterns and the sub-plan index — do NOT execute tasks from here.
 
 ## Sub-Plan Index
 
 <!-- prettier-ignore -->
 | Order | Sub-plan | Scope (WS) | Tasks | Gates | Derived Test Matrix rows |
 | --- | --- | --- | --- | --- | --- |
-| 1 | [380-roadmap-analysis-refresh-plan-1.md](./380-roadmap-analysis-refresh-plan-1.md) | Foundation + Mechanical tier (WS-1 + WS-2) | Tasks 1–7 | Gate 1 (Prerequisites) | 1–11, 19–22 |
+| 1 | [380-roadmap-analysis-refresh-plan-1.md](./380-roadmap-analysis-refresh-plan-1.md) | Foundation + Mechanical tier (WS-1 + WS-2) | Tasks 1–7 | Gate 1 (Prerequisites) | 1–11, 19–26 |
 | 2 | [380-roadmap-analysis-refresh-plan-2.md](./380-roadmap-analysis-refresh-plan-2.md) | Analysis + Cadence/Sync/Reconcile (WS-3 + WS-4) | Tasks 8–12 | — | 12–16 |
 | 3 | [380-roadmap-analysis-refresh-plan-3.md](./380-roadmap-analysis-refresh-plan-3.md) | Utility + Cross-provider/docs + Verification (WS-5 + WS-6) | Tasks 13–15 + Mandatory Testing/Documentation tasks | Gate 2 (Code Impl), Gate 3 (Testing/Docs), Gate 4 (Automated Verification) + Manual Verification | 17–18 |
 
@@ -49,13 +49,15 @@ The canonical design (`docs/plans/202607/380-roadmap-analysis-refresh-design.md`
 
 - **On-disk-first, tracker-optional sensing** — the board builds from `docs/plans/**` artifacts + folded `status.jsonl` + `deferrals`/`failures.jsonl` + a consumer backlog region, and works under `tracker: none`; a `list_issues` MCP read is additive only when a tracker is wired.
 - **Canonical-home inversion** — `docs/roadmap.md` is now the **canonical home for issue state** (phase-sectioned board Backlog → Design → Plan → Build → Debug → Ship); the tracker is a downstream mirror kept in sync from roadmap.md.
-- **Directive 1** — status region is a per-FID **UPSERT/merge keyed on FID**, never a blind full-regenerate (build/debug rows are authored on `dev` but their `status.jsonl` lives on `feat/{FID}` and are not re-derivable from `dev`). → sub-plan 1 (Tasks 3/6/7).
+- **Directive 1 — VOID (Addendum 3 § O).** It required a per-FID UPSERT because build/debug rows were not re-derivable from `dev`; the ledger removes that asymmetry, so the status region is a **full regenerate from `docs/roadmap.jsonl`**. → sub-plan 1 (Task 3 builds the projection).
 - **Directive 2** — `docs/completed.md` → `docs/roadmap.jsonl` migrates atomically across ALL touchpoints, via the existing parity-gated `bkit telemetry migrate` (which DELETES the `.md`) plus the bootstrap seed. → sub-plan 1 (Tasks 1/2/5).
 
 > **Design Addendum 3 (owner, 2026-07-27) supersedes Directives 1 and 4.** `docs/roadmap.jsonl` (`kind: "feature"`, six-state ladder) is the canonical state, appended at all five phase closes; `docs/roadmap.md` is a pure projection, fully regenerated from it. The per-FID upsert (Directive 1) and the reconcile/recovery pass (Directive 4) are VOID — the latter survives only as a drift check. Read design § N–S before executing any sub-plan.
+>
+> **Design Addendum 4 (2026-07-29) re-anchors the ship surface on post-#384 `dev`.** Three things the original plan asserted about the shipped surface are no longer true and are corrected across all three sub-plans: (§ T) ship stages via the FROZEN `BOOK_PATHS` allow-list under `$BOOK_ROOT` — the scoped `git add -- docs/` no longer exists, `BOOK_PATHS` must swap `docs/completed.md` for the two roadmap paths or the ship-close row never commits, and `.bkit/src/bkit-ship-invariants.test.ts` publishes that list as a frozen invariant; (§ U) design/plan each carry the STRAY guard TWICE (dev path AND `RUNTIME_DEVPUSHES=false` PR path) — all four widen, or every PR-mode close aborts; (§ V) the cadence body text in the design is superseded by § Q (distinct `BUILT` FIDs from the ledger since the last fire, 10/90 — never `stats.jsonl` `outcome` rows). Read § T–V before executing sub-plan 1 or 2.
 
 - **Directive 3** — reverse tracker-label sync (roadmap → tracker) is orchestrator-mediated, settled-drift-guarded, MCP-only, best-effort. → sub-plan 2 (Task 11).
-- **Directive 4** — a canonical reconciliation/recovery pass diffs live `feat/*` (+ open issues when wired) against the board to re-add lost in-flight rows. → sub-plan 2 (Task 12).
+- **Directive 4 — VOID as a recovery path (Addendum 3 § O).** A lost/corrupted board is rebuilt by re-running the fold. What survives is a smaller drift CHECK: warn when a live `feat/*` has NO ledger row (a close that never wrote); it never mutates the board. → sub-plan 2 (Task 12, rescoped).
 - **Directive 5** — build/debug dev-write is fail-open and a **fourth** distinct staging shape; the per-shape CI/bats assertion must cover it. → sub-plan 1 (Task 7); deferral closure in sub-plan 3 (Task 14).
 
 > **Directive ↔ design cross-map** (plan directive = design `Re-review findings` #): Directive 1 = re-review #1 (per-FID upsert); Directive 2 = re-review #3 (`docs/roadmap.jsonl` migration + `completed.md` deletion); Directive 3 = re-review #4 (reverse tracker sync); Directive 4 = re-review #2 (reconcile/recovery); Directive 5 = re-review #5 (build/debug 4th staging shape). All five are present + tasked; the plan numbering is not the design's re-review order.
@@ -82,11 +84,11 @@ The three 👤 human-review sections (**Acceptance Scenario**, **Breaking Change
 Chosen (carried into the sub-plans):
 
 - **Two-tier, two-marker-block generated artifact** inside one consumer-owned file — the deterministic status writer and the opus analysis writer own physically-separate marker regions; the Backlog lives below both markers so it is never regenerated.
-- **Per-FID UPSERT** for the status region (Directive 1) — NOT a blind full-regenerate; keeps `-X ours` a non-event for the writer's own row.
+- **Full regenerate from `docs/roadmap.jsonl`** for the status region (Addendum 3 § O; the per-FID upsert is VOID) — every close appends a `merge=union` row that reaches `dev`, so `-X ours` on the board is a non-event and the board needs no upsert, no dedupe invariant, and no recovery pass.
 - **On-disk-first, tracker-additive** sensing — the board builds under `tracker: none`; `list_issues` enriches only when wired (never `search_issues` — silently returns 0 on private repos).
 - **`docs/roadmap.jsonl` as the SOLE feature record** (Directive 2 + design Addenda 2 § H/I and 3 § N) — `completed.md` DELETED, row = a `deferral`/`failure` row minus `severity` with a six-state ladder, written at every phase close, content migrated by the existing parity-gated `bkit telemetry migrate`.
 
-Rejected paths: blind full-regenerate; persisted `roadmap.jsonl` event log (deferred to #260); sed-edited single unstructured file; tracker `list_issues` as required/primary source; folding analysis into `@bkit-ship-update-docs`; `search_issues` for the tracker read.
+Rejected paths: per-FID upsert of the board (VOID with Directive 1); sed-edited single unstructured file; tracker `list_issues` as required/primary source; folding analysis into `@bkit-ship-update-docs`; `search_issues` for the tracker read; counting the cadence off `stats.jsonl` `outcome` rows (needs a FID in a harvested ledger — § R); re-widening ship staging to blanket `docs/` or `-A` (banned by #384 — Addendum 4 § T).
 
 Future phases: promote the fold's frontier snapshot to #260's tick-step-1; when #260 needs durable cross-tick history, persist the snapshot (deferred).
 
