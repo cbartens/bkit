@@ -91,6 +91,10 @@ case "$URL" in
     # Strip any trailing &per_page=N etc. (gh adds these; tests don't need them
     # but the gate may pass them).
     SHA="${SHA%%&*}"
+    # Sanitize — SHAs are controlled fixture names but assert the charset so a
+    # copy-paste of this dispatch pattern into production code cannot
+    # path-traverse out of RUNS_DIR via a `../`-laden SHA.
+    [[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "gh-fake: unsanitized SHA '$SHA' rejected (expected [A-Za-z0-9._-]+)" >&2; exit 1; }
     F="$RUNS_DIR/$SHA.json"
     if [ -f "$F" ]; then
       cat "$F"

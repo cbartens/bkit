@@ -139,18 +139,25 @@ print_refusal_context() {
 # Any other value (empty, a different SHA) is ignored — the refusal stands.
 maybe_override() {
   if [ -n "$OVERRIDE_SHA" ] && [ "$OVERRIDE_SHA" = "$HEAD_SHA" ]; then
-    # Best-effort audit row — override is a caller assertion, made visible.
-    # NOTE: avoid a brace-laden default inside ${VAR:-default}; bash mis-parses
-    # the inner `{YYYYMM}`/`{FID}` brace groups and concatenates the literal
-    # default after the variable value.
-    local status="$STATUS_PATH"
-    if [ -z "$status" ]; then
-      status="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-    fi
+    # ${STATUS_PATH:-} is safe under `set -u` (default empty). When empty the
+    # gate can no longer fall back to a literal-brace default path — the inner
+    # `{YYYYMM}`/`{FID}` groups never expand (the comment above flagged this).
+    # The caller (workflow Step 6) exports STATUS_PATH before invoking the gate;
+    # the stderr fallback below keeps the override visible even if it is unset
+    # or unwritable, so the documented rollback grep never misses it.
+    local status="${STATUS_PATH:-}"
     if command -v jq >/dev/null 2>&1; then
-      jq -nc --arg t "$(date -u +%FT%TZ)" --arg sha "$HEAD_SHA" \
-        '{type:"ship-gate-override", at:$t, head:$sha, assertedBy:"bkit-ship-gate.sh"}' \
-        >> "$status" 2>/dev/null || true
+      local row
+      row=$(jq -nc --arg t "$(date -u +%FT%TZ)" --arg sha "$HEAD_SHA" \
+        '{type:"ship-gate-override", at:$t, head:$sha, assertedBy:"bkit-ship-gate.sh"}') || row=""
+      if [ -n "$status" ] && printf '%s\n' "$row" >> "$status" 2>/dev/null; then
+        : # audit row landed in the canonical status.jsonl
+      else
+        # NEVER invisible: STATUS_PATH unset/unwritable → emit to stderr so the
+        # documented rollback grep (deployments.md § Ship gate) still surfaces it.
+        err "override audit row (STATUS_PATH unset/unwritable: '${status:-<unset>}'), emitting to stderr:"
+        printf '%s\n' "$row" >&2
+      fi
     fi
     if [ "$EXPLAIN" = "1" ]; then
       printf '[bkit-ship-gate] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)\n' "$HEAD_SHA"
@@ -172,7 +179,7 @@ refuse() {
 # ---------------------------------------------------------------------------
 
 RUNS_JSON=""
-if ! RUNS_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?head_sha=$HEAD_SHA" 2>&1); then
+if ! RUNS_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?head_sha=$HEAD_SHA"); then
   # API error — sample rate_limit to shape the code-20 message.
   err "workflow runs query failed for $REPO/$WORKFLOW at head $HEAD_SHA"
   if command -v gh >/dev/null 2>&1; then
@@ -280,7 +287,7 @@ esac
 # ---------------------------------------------------------------------------
 
 JOBS_JSON=""
-if ! JOBS_JSON=$(gh api "/repos/$REPO/actions/runs/$SELECTED_ID/jobs" --paginate 2>&1); then
+if ! JOBS_JSON=$(gh api "/repos/$REPO/actions/runs/$SELECTED_ID/jobs" --paginate); then
   err "jobs query failed for run $SELECTED_ID — API error (distinct from 'no capstone')"
   if command -v gh >/dev/null 2>&1; then
     RATELIMIT=$(gh api rate_limit 2>/dev/null || printf '')
