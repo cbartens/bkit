@@ -937,10 +937,10 @@ Issue state semantics (Linear "In Progress" / "In Review" / "Done"; GitHub `open
 | --- | --- |
 | `issue-update-phase` | Step 1 of every phase. Sets phase label, tracker-specific "active" state. |
 | `issue-update-review` | Close Workflow of `/bkit-design`, `/bkit-plan`, `/bkit-build`, `/bkit-debug`. Hand-off state (Linear "In Review"; GitHub no-op — phase label carries signal). |
-| `issue-update-merged` | `/bkit-ship` Step 13. Terminal close (Linear "Done"; GitHub `state: closed`). |
+| `issue-update-merged` | `/bkit-ship` Step 13. Ship terminal — drop phase labels, add `bkit:merged`; Linear "In Review", GitHub left **open**. bkit never closes / never sets Done — a human closes on acceptance (merge != acceptance). |
 | `issue-update-failed` | Failure Path. Adds `bkit:failed` additive label. |
 | `issue-update-debug` | `/bkit-debug` Step 1. Adds `bkit:debug` additive label. |
-| `issue-update-status` | Step 1 (design/plan/build/debug/ship) → "In progress"; phase Close (design/plan/build/debug) → "In review"; `/bkit-ship` Step 13 → "Done". GitHub Projects v2 board (`bkit.githubProject`; skipped if unset/absent). Linear no-op (issue state already carries it). |
+| `issue-update-status` | Step 1 (design/plan/build/debug/ship) → "In progress"; phase Close (design/plan/build/debug) → "In review"; `/bkit-ship` Step 13 → "In review" (never "Done" — the board mirrors the issue, which stays open for human close). GitHub Projects v2 board (`bkit.githubProject`; skipped if unset/absent). Linear no-op (issue state already carries it). |
 
 ### Comment lifecycle
 
