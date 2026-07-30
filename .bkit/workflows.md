@@ -1069,9 +1069,11 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 
 **Per-site AUTO_ROUTE sourcing:**
 
-- **Build Step 17:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from in-block `LABELS` derivation. Assert-equal trivially satisfied; line stays for symmetry.
-- **Debug LOCAL Step 10 sub-step 9:** in-block `AUTO_ROUTE_SUFFIX` from `BKIT_AUTO_ROUTE_FILE` (read+`rm` before create-pr; var stays in scope for gate after push). Do NOT reorder `rm` or re-read file.
-- **Debug PR Step 10 sub-step 3:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from `LABELS` at sub-step 3 entry.
+Every site derives `AUTO_ROUTE_SUFFIX` with a `gh issue view {ISSUE_ID} … | grep -qxF 'bkit:auto'` re-read **in the same bash fence that consumes it**. Never carry it across a fence or step: `{LABELS}` is an MCP-derived template value, is never assigned as a shell variable, and no shell state (nor a `mktemp` path published via `$GITHUB_ENV`) survives a Bash-tool-call boundary — see `docs/knowledge.jsonl` key `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`.
+
+- **Build Step 17:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from the in-block derivation. Assert-equal trivially satisfied; line stays for symmetry.
+- **Debug LOCAL Step 10 sub-step 9:** in-block `AUTO_ROUTE_SUFFIX`, derived immediately before create-pr; var stays in scope for the gate after push.
+- **Debug PR Step 10 sub-step 3:** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` from the in-block derivation at sub-step 3 entry.
 
 **Re-trigger commit:** `chore({FID}): re-trigger${RETRIGGER_SUFFIX}` — opted-in issues carry `bkit [auto route]`. § `bkit [auto route]` Marker Propagation applies.
 
