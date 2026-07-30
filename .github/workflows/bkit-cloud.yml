@@ -11,9 +11,15 @@ name: bkit-cloud
 #   Both can run on one event (additive); a missing secret makes that job a no-op
 #   (near-instant exit, zero billable runner minutes).
 #
-# Phase 1 wires two trigger surfaces:
+# Phase 1 wires three trigger surfaces:
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
 #     (preserves the previous bkit-ci-router behaviour exactly).
+#   - workflow_run (CI completion on fix/**): success -> no-op, failure -> debug
+#     (newly folded, failure side only — /bkit-ship Step 2 has feat/{FID} worktree
+#     arms only, so a fix/** ship dispatch cannot merge; capped like dev).
+#   - workflow_run (CI completion on dev): success -> no-op (regression check passed),
+#     failure -> /bkit-debug {FID} (FID recovered from squash-merge commit scope;
+#     loop-bounded by MAX_DEV_DISPATCH_ATTEMPTS). [skip ci] close commits never trigger CI.
 #   - workflow_dispatch: pick ANY phase (ship|debug|design|plan|build) for an issue.
 #     design/plan/build are smoke-test entry points here until phase 2 wires tracker
 #     webhooks (Linear bridge + native GitHub `issues: labeled`).
@@ -28,7 +34,7 @@ name: bkit-cloud
 on:
   workflow_run:
     workflows: [CI]
-    branches: ['feat/**']
+    branches: ['feat/**', 'fix/**', 'dev']
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -71,7 +77,20 @@ concurrency:
   # auto-ship it triggers are handled by the orchestrator stale-run guard + status.json
   # lock (not this concurrency key).
   group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  # dev: queue, not cancel. Cancelling an in-flight /bkit-debug mid-flight risks
+  # leaving status.jsonl / a worktree lock in an inconsistent state. With
+  # cancel-in-progress: false, GHA queues at most one pending run per group (older
+  # pendings are cancelled as newer ones arrive); the queued run re-evaluates the
+  # dispatch cap at its ctx step when it starts — the operator does not need to
+  # manually re-trigger for the SAME FID. feat/**/fix/** keep true (latest-wins,
+  # current behaviour). #363. NOTE (#363 M6): `bkit-auto-dev` is ONE group shared
+  # by ALL FIDs (the group cannot key on FID — it is evaluated from trigger-
+  # payload context alone, before the ctx step derives the FID). If two DIFFERENT
+  # FIDs' dev CI runs fail near-simultaneously, GHA's queue-collapse keeps only
+  # the newest pending — an older, different FID's failure can be dropped rather
+  # than queued. The ctx step's stale-run guard records a `dev-dispatch-dropped`
+  # status.jsonl row + `::warning::` when this happens, for operator review.
+  cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -90,8 +109,10 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
-      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      github.event.workflow_run.head_repository.full_name == github.repository
+      && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
+      && !(github.event.workflow_run.head_branch == 'dev' && github.event.workflow_run.conclusion == 'success')
       )
     # bkit:end auto-route-gate
     # runs-on bkit-substituted from bkit.runners.bkitCloud (default ubuntu-latest).
@@ -165,6 +186,8 @@ jobs:
           IN_ISSUE: ${{ inputs.issue }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -173,43 +196,329 @@ jobs:
             ARG="$IN_ISSUE"
             FID="$IN_ISSUE"
           else
-            # CI-driven: success -> ship, failure -> debug; route by the open PR.
+            # CI-driven: success -> ship, failure -> debug; route by branch + conclusion.
             case "$CONCLUSION" in
               success) PHASE=ship ;;
               failure) PHASE=debug ;;
               *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
             esac
-            PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
-            if [ -z "$PR_NUMBER" ]; then
-              echo "::notice::No open PR for branch $BRANCH — no-op exit."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            ARG="$PR_NUMBER"
 
             # bkit:start shared-deriv
-            # SHARED-DERIV: derive FID + ISSUE from PR body metadata (primary) or branch (fallback).
-            # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every bkit-build PR body.
-            PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-            ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
-            FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
-            if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
-              # FALLBACK: extract FID from branch (feat/{FID} or feat/{FID}-slug).
-              FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
-              ISSUE="$FID"
-            fi
-            if [ -z "$FID" ] || [ -z "$ISSUE" ]; then
-              echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+            # SHARED-DERIV: FID/ISSUE recovery + dispatch-cap machinery for all
+            # CI-driven trigger surfaces (feat/** pre-merge, fix/** debug-fix,
+            # dev post-merge). #363.
 
-            # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
-            ISSUE_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
-            if ! echo "$ISSUE_LABELS" | grep -q 'bkit:auto'; then
-              echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # bkit_dev_dispatch_guard <FID> <HEAD_SHA> — shared cap-check +
+            # counter-write + fail-closed-verify for the two post-feat/** debug
+            # surfaces (dev CI failure, fix/** CI failure). One post-feat/**
+            # debug budget per FID however the failure surfaced (#363 P3).
+            # Returns 1 (caller must skip) once the FID has MAX_DEV_DISPATCH_
+            # ATTEMPTS distinct failed-CI SHAs recorded, or if the counter row
+            # cannot be durably landed on origin/dev (fail-closed — #363 P6: a
+            # rejected push is NOT assumed to be the benign dual-job race; ANY
+            # non-fast-forward leaves the row nowhere durable, so retry once
+            # against a re-fetched dev and then VERIFY landing before
+            # proceeding). Returns 0 to proceed to dispatch.
+            bkit_dev_dispatch_guard() {
+              local guard_fid="$1" guard_head_sha="$2"
+              # #363 H1: assert the FID against the same slug allowlist the dev arm
+              # already enforces BEFORE it's used to build any path (find -path /
+              # mkdir -p / git commit -m). This is the sole gate for the fix/**-
+              # branch fallback (never asserted before reaching here) and a
+              # defence-in-depth re-check for the PR-body marker path (bkit:fid=
+              # <anything up to whitespace/'>'> admits '/', '.', '..').
+              if ! [[ "$guard_fid" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
+                return 1
+              fi
+              # #363 F10: the caller invokes this function as `... || { skip }`,
+              # which suppresses `set -e` for the whole body — so a failed
+              # source (stale `bkit install`, partial checkout, renamed script)
+              # would fall through to `set -u` killing the entire step on an
+              # unbound MAX_DEV_DISPATCH_ATTEMPTS, making the designed
+              # `return 1` no-op unreachable. Fail closed explicitly instead.
+              # shellcheck source=/dev/null
+              if ! . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"; then
+                echo "::notice::counter-bus config unavailable — refusing to dispatch uncounted (fail-closed)."
+                return 1
+              fi
+              # NB: an explicit test, not `${VAR:?}` — the `:?` expansion exits
+              # the whole shell even from inside a `|| {}`-guarded function,
+              # reproducing the very abort this block exists to prevent.
+              if [ -z "${MAX_DEV_DISPATCH_ATTEMPTS:-}" ]; then
+                echo "::notice::counter-bus config defined no MAX_DEV_DISPATCH_ATTEMPTS — refusing to dispatch uncounted (fail-closed)."
+                return 1
+              fi
+              local status_dir status_file dev_count parent_sha landed
+              # #363 F9: `sort` makes the month-bucket choice deterministic. An
+              # unsorted `find` takes readdir order, so a FID whose logs span
+              # two YYYYMM buckets could read the cap counter from one file and
+              # write it to another across cycles — silently unbounding it.
+              status_dir=$(find docs/plans -mindepth 3 -maxdepth 3 -type d -path "docs/plans/*/logs/$guard_fid" 2>/dev/null | sort | head -1 || true)
+              [ -n "$status_dir" ] && status_dir="${status_dir}/"
+              if [ -z "$status_dir" ]; then
+                status_dir="docs/plans/$(date -u +%Y%m)/logs/$guard_fid/"
+              fi
+              mkdir -p "$status_dir"
+              status_file="${status_dir}status.jsonl"
+              dev_count=0
+              # #363 M1: distinguish "no rows" from "cannot parse" — a truncated
+              # line, stray non-JSON row, or merge=union conflict artefact in the
+              # shared status.jsonl must NOT silently degrade to dev_count=0
+              # (which would defeat the cap entirely, unbounded). Only an absent
+              # file is a legitimate zero.
+              if [ -f "$status_file" ]; then
+                if ! dev_count=$(jq -s --arg f "$guard_fid" \
+                  '[.[] | select(.type=="dev-dispatch" and .fid==$f) | .headSha] | unique | length' \
+                  "$status_file" 2>/dev/null); then
+                  echo "::notice::$status_file is unparseable — refusing to dispatch for $guard_fid uncounted (fail-closed)."
+                  return 1
+                fi
+              fi
+              if [ "$dev_count" -ge "$MAX_DEV_DISPATCH_ATTEMPTS" ]; then
+                echo "::notice::FID $guard_fid exhausted $MAX_DEV_DISPATCH_ATTEMPTS dev-triggered debug dispatches — operator review required (delete dev-dispatch rows in status.jsonl to reset)."
+                return 1
+              fi
+              parent_sha=$(git -C "$GITHUB_WORKSPACE" rev-parse origin/dev 2>/dev/null || echo "")
+              jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$guard_fid" --arg h "$guard_head_sha" --arg p "$parent_sha" \
+                '{type:"dev-dispatch", workflow:"auto", at:$t, fid:$f, headSha:$h, parentSha:$p}' \
+                >> "$status_file"
+              git -C "$GITHUB_WORKSPACE" add -- "$status_file"
+              git -C "$GITHUB_WORKSPACE" commit -m "docs($guard_fid): dev-dispatch telemetry [skip ci]" -- "$status_file"
+              if ! git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null; then
+                git -C "$GITHUB_WORKSPACE" fetch origin dev
+                git -C "$GITHUB_WORKSPACE" rebase origin/dev || { git -C "$GITHUB_WORKSPACE" rebase --abort || true; }
+                git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null || true
+              fi
+              git -C "$GITHUB_WORKSPACE" fetch origin dev
+              # NOTE: `git show` is wrapped in its own `|| true` so a missing file
+              # (row never landed) does not trip pipefail across the `| jq` stage —
+              # otherwise a failing first stage combined with a succeeding jq (which
+              # legitimately prints "0" for zero matches) makes the whole pipeline
+              # report failure, firing the `|| echo 0` fallback a SECOND time and
+              # corrupting $landed into a two-line value that silently breaks the
+              # `-lt` comparison below (bypassing the fail-closed check entirely).
+              landed=$( (git -C "$GITHUB_WORKSPACE" show "origin/dev:${status_file}" 2>/dev/null || true) \
+                | jq -s --arg f "$guard_fid" --arg h "$guard_head_sha" \
+                    '[.[] | select(.type=="dev-dispatch" and .fid==$f and .headSha==$h)] | length' 2>/dev/null || echo 0)
+              if [ "${landed:-0}" -lt 1 ]; then
+                echo "::notice::dev-dispatch row for $guard_fid @ $guard_head_sha is not on origin/dev after retry — refusing to dispatch uncounted (fail-closed). Resolve the dev push contention and re-run via workflow_dispatch."
+                return 1
+              fi
+              return 0
+            }
+
+            if [ "$BRANCH" = "dev" ]; then
+              # Post-merge dev CI — no open PR. Recover FID from squash-merge commit
+              # scope. dev success = regression check passed = no-op (the merge
+              # already happened).
+              if [ "$PHASE" = "ship" ]; then
+                echo "::notice::dev CI passed — post-merge regression check OK, no-op exit."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # PHASE=debug below.
+              # Primary: parse FID from commit scope: feat(363-widen-bkit-cloud-trigger): ...
+              # Shape-tolerant (#363 P5/L3): the regex accepts BOTH GitHub
+              # (363-slug) and Linear (bar-123-slug) FID SHAPES, mirroring the
+              # alternation the feat/** fallback below already uses, so a
+              # Linear-shaped FID is not rejected here on shape alone. This does
+              # NOT make the dev trigger functional for Linear-tracker consumers:
+              # this whole workflow's kill-switch (`gh issue view "$ISSUE"`,
+              # below) and permissions are GitHub-Issues-only — a Linear FID
+              # still no-ops at that check (empty labels -> bkit:auto absent).
+              # Kept for forward-compatibility with a future MCP-based kill-
+              # switch, not as a present end-to-end guarantee.
+              # #363 F8: `head -1` FIRST — head_commit.message is subject+body and
+              # grep's `^` anchors per line, so without it a squash body line
+              # (GitHub's default body is the list of source commit subjects)
+              # like "feat(999-other): ..." would win and key the cap counter,
+              # status path and /bkit-debug dispatch to an unrelated feature.
+              FID=$(printf '%s' "$COMMIT_MSG" | head -1 | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
+              if [ -z "$FID" ]; then
+                # Fallback: gh api merge-commit linked PR -> PR body bkit:fid marker.
+                # #363 F4: filter to same-repo MERGED PRs. This endpoint returns
+                # PRs *associated* with the commit, and for a non-default-branch
+                # commit (dev; bkit's default is main) that includes OPEN fork
+                # PRs branched at this SHA. The job-level head_repository guard
+                # gates the trigger, not this outbound lookup, so an unfiltered
+                # `.[0]` lets an outsider's PR body choose the FID this trusted
+                # job dispatches against. The legitimate feature PR is merged
+                # and same-repo by construction.
+                # NB: `env.GITHUB_REPOSITORY`, not a shell-interpolated $r —
+                # `gh api` has no `--arg` (that is jq's own flag), and splicing
+                # the value into the filter text would be injectable.
+                PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+                  --jq '[.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY and .merged_at != null)] | .[0].body // empty' 2>/dev/null || echo "")
+                FID=$(printf '%s' "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+              fi
+              if [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # on the fix/** arm this runs BEFORE the slug allowlist, so a
+              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # pipefail propagates grep's exit 1, and the step dies red
+              # instead of reaching the designed no-op exit just below.
+              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              ARG="$FID"
+              # Kill switch: re-check bkit:auto on the issue (live revocation).
+              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # over a joined list would also match `bkit:auto-disabled` /
+              # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
+              # an operator who believes such a label revokes automation.
+              # #363 F7: this MUST precede the stale-run guard below. That guard
+              # mkdir -p's, commits and pushes a telemetry row to dev before
+              # exiting, so with the old ordering an operator who removed
+              # bkit:auto to halt a misbehaving loop still got uncapped
+              # bkit-auto[bot] commits pushed to the integration branch on every
+              # subsequent red dev CI. The check needs nothing the guard sets.
+              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
+                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # Stale-run guard (Option A): HEAD_SHA is current iff it is the headSha
+              # of the most recent COMPLETED CI run on dev. Close commits carry
+              # [skip ci] so they never appear in gh run list; only feature/fix
+              # commits do — the most-recent-completed-run head is exactly the
+              # staleness signal. (A git rev-parse origin/dev comparison is
+              # unsound: /bkit-ship pushes a [skip ci] close commit to dev during
+              # the dev CI run, so dev's tip is the close commit by the time the
+              # cloud workflow boots.) --workflow ci.yml (filename), not `CI`
+              # (name) — the filename is fixed by `bkit install`, the display
+              # name is consumer-editable free text.
+              LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
+                --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
+              # #363 L4: an empty LATEST_CI_SHA silently disables the staleness
+              # check (deliberate fail-open — better to dispatch than to
+              # silently swallow the feature on a transient API hiccup). But a
+              # PERMANENT misconfiguration (the consumer's CI workflow file is
+              # not literally ci.yml) is indistinguishable from a transient one
+              # unless flagged — warn loudly so it surfaces instead of running
+              # guard-less for months.
+              if [ -z "$LATEST_CI_SHA" ]; then
+                echo "::warning::gh run list --branch dev --workflow ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named ci.yml (\`gh workflow view ci.yml\`)."
+              fi
+              if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
+                # #363 M6: `bkit-auto-dev` is a SINGLE concurrency group shared by
+                # EVERY FID (the group cannot key on FID — GHA evaluates
+                # concurrency.group from trigger-payload context only, before the
+                # FID is known). If a DIFFERENT FID's dev CI failure superseded
+                # this run via GHA's queue-collapse (cancel-in-progress: false
+                # keeps at most one pending run per group), this FID's post-merge
+                # failure is dropped here — surface it where it cannot be lost.
+                # #363 F6: this used to commit a status.jsonl row and
+                # `git push origin dev || true`. This branch is only reached
+                # because dev ALREADY advanced, so that push was usually a
+                # non-fast-forward and was silently discarded — the row went
+                # missing in exactly the scenario it exists to record, while
+                # the warning below told the operator to go read it. The run
+                # summary is written to the run itself and cannot race.
+                DROP_ROW=$(jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$FID" --arg h "$HEAD_SHA" --arg latest "$LATEST_CI_SHA" \
+                  '{type:"dev-dispatch-dropped", workflow:"auto", at:$t, fid:$f, headSha:$h, latestSha:$latest}')
+                {
+                  echo "### bkit dev-dispatch dropped"
+                  echo ""
+                  echo "FID \`$FID\` had a post-merge \`dev\` CI failure that was superseded before dispatch."
+                  echo ""
+                  echo '```json'
+                  echo "$DROP_ROW"
+                  echo '```'
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+                echo "::warning::Stale dev CI (head_sha=$HEAD_SHA, latest completed dev CI head=$LATEST_CI_SHA) for FID $FID — no-op exit. This FID's post-merge CI failure may have been superseded by a DIFFERENT FID's dev push under the shared bkit-auto-dev concurrency group; see this run's job summary (dev-dispatch-dropped) if this FID does not otherwise recover."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # Loop cap + counter write (fail-closed) — shared with fix/** below.
+              bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+            else
+              # #363 C1: fix/** CI success has no ship counterpart yet — /bkit-ship
+              # Step 2's worktree logic only has feat/{FID} arms, so a fix/{FID}
+              # ship dispatch would create an EMPTY feat/{FID} off dev (none of the
+              # fix commits), find no matching PR, and hit the Failure Path on an
+              # actually-green fix PR — worse than the pre-#363 silence. No-op
+              # until bkit-ship is branch-prefix aware.
+              case "$BRANCH" in
+                fix/*)
+                  if [ "$PHASE" = "ship" ]; then
+                    echo "::notice::fix/** CI passed — ship not wired for fix branches yet, no-op exit."
+                    echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+                  fi
+                  ;;
+              esac
+
+              # Existing feat/** / fix/** path (PR-backed FID recovery).
+              PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
+              if [ -z "$PR_NUMBER" ]; then
+                echo "::notice::No open PR for branch $BRANCH — no-op exit."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ARG="$PR_NUMBER"
+
+              # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every
+              # bkit-build PR body. #363 H1: also assert the marker-derived FID
+              # against the slug allowlist here — bkit:fid=[^[:space:]>]+ admits
+              # '/', '.', '..' and glob metacharacters, so an unvalidated match
+              # falls through to path construction (find -path / mkdir -p / git
+              # commit) in bkit_dev_dispatch_guard below. A mismatch falls through
+              # to the branch fallback exactly like an empty/missing marker.
+              PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
+              ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
+              FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+              if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                # FALLBACK: extract FID from branch (feat/{FID} or fix/{FID}). #363
+                # P2: strip fix/ as well as feat/ — bkit-debug's fix PR body
+                # carries NO bkit:fid= marker, so fix/** ALWAYS lands here.
+                # #363 H1: keep the FULL slug (do NOT collapse to the leading
+                # numeric/alpha id) — a truncated FID (e.g. '363' instead of
+                # '363-widen-bkit-cloud-trigger') would count against a DIFFERENT
+                # status.jsonl/status_dir key than the dev-path FID, breaking the
+                # "one shared budget per FID" invariant and orphaning a
+                # docs/plans/{YYYYMM}/logs/{truncated}/ directory. ISSUE (short
+                # numeric/alpha prefix, used only for `gh issue view`) is derived
+                # FROM the full FID, not the other way round. NOTE the '#' sed
+                # delimiter: with '|' the alternation would need escaping and is
+                # ambiguous under -E.
+                FID=$(echo "$BRANCH" | sed -E 's#^(feat|fix)/##')
+                # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # on the fix/** arm this runs BEFORE the slug allowlist, so a
+              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # pipefail propagates grep's exit 1, and the step dies red
+              # instead of reaching the designed no-op exit just below.
+              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              fi
+              if [ -z "$FID" ] || [ -z "$ISSUE" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
+              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # over a joined list would also match `bkit:auto-disabled` /
+              # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
+              # an operator who believes such a label revokes automation.
+              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
+                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              # #363 P3 — bound the fix/** debug loop. A fix/** CI FAILURE
+              # dispatches /bkit-debug, whose fix push re-reds CI, which
+              # dispatches again: the same cross-session loop
+              # MAX_DEV_DISPATCH_ATTEMPTS exists to bound, on a surface this
+              # plan newly opens. The counter is keyed on the FID (shared with
+              # the dev path). feat/** is deliberately NOT capped: pre-merge,
+              # PR-scoped, already bounded by the in-session
+              # MAX_DEBUG_ATTEMPT / MAX_NORMAL_ATTEMPT counters.
+              case "$BRANCH" in
+                fix/*)
+                  if [ "$PHASE" = "debug" ]; then
+                    bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+                  fi
+                  ;;
+              esac
             fi
             # bkit:end shared-deriv
           fi
@@ -255,8 +564,10 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch'
       || (
-      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      github.event.workflow_run.head_repository.full_name == github.repository
+      && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
       && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
+      && !(github.event.workflow_run.head_branch == 'dev' && github.event.workflow_run.conclusion == 'success')
       )
     # bkit:end auto-route-gate
     # runs-on bkit-substituted from bkit.runners.bkitCloud (default ubuntu-latest).
@@ -302,6 +613,8 @@ jobs:
           IN_ISSUE: ${{ inputs.issue }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -314,32 +627,235 @@ jobs:
               failure) PHASE=debug ;;
               *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
             esac
-            PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
-            if [ -z "$PR_NUMBER" ]; then
-              echo "::notice::No open PR for branch $BRANCH — no-op exit."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            ARG="$PR_NUMBER"
 
             # bkit:start shared-deriv
-            PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-            ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
-            FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
-            if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
-              FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
-              ISSUE="$FID"
-            fi
-            if [ -z "$FID" ] || [ -z "$ISSUE" ]; then
-              echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            ISSUE_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
-            if ! echo "$ISSUE_LABELS" | grep -q 'bkit:auto'; then
-              echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # #363: FID/ISSUE recovery + dispatch-cap machinery for all CI-driven
+            # trigger surfaces (feat/**, fix/**, dev). See the claude job's ctx
+            # step for the fully-commented version of this block — identical logic.
+            bkit_dev_dispatch_guard() {
+              local guard_fid="$1" guard_head_sha="$2"
+              # #363 H1: assert the FID against the same slug allowlist the dev arm
+              # already enforces BEFORE it's used to build any path (find -path /
+              # mkdir -p / git commit -m). This is the sole gate for the fix/**-
+              # branch fallback (never asserted before reaching here) and a
+              # defence-in-depth re-check for the PR-body marker path (bkit:fid=
+              # <anything up to whitespace/'>'> admits '/', '.', '..').
+              if ! [[ "$guard_fid" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
+                return 1
+              fi
+              # #363 F10: the caller invokes this function as `... || { skip }`,
+              # which suppresses `set -e` for the whole body — so a failed
+              # source (stale `bkit install`, partial checkout, renamed script)
+              # would fall through to `set -u` killing the entire step on an
+              # unbound MAX_DEV_DISPATCH_ATTEMPTS, making the designed
+              # `return 1` no-op unreachable. Fail closed explicitly instead.
+              # shellcheck source=/dev/null
+              if ! . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"; then
+                echo "::notice::counter-bus config unavailable — refusing to dispatch uncounted (fail-closed)."
+                return 1
+              fi
+              # NB: an explicit test, not `${VAR:?}` — the `:?` expansion exits
+              # the whole shell even from inside a `|| {}`-guarded function,
+              # reproducing the very abort this block exists to prevent.
+              if [ -z "${MAX_DEV_DISPATCH_ATTEMPTS:-}" ]; then
+                echo "::notice::counter-bus config defined no MAX_DEV_DISPATCH_ATTEMPTS — refusing to dispatch uncounted (fail-closed)."
+                return 1
+              fi
+              local status_dir status_file dev_count parent_sha landed
+              # #363 F9: `sort` makes the month-bucket choice deterministic. An
+              # unsorted `find` takes readdir order, so a FID whose logs span
+              # two YYYYMM buckets could read the cap counter from one file and
+              # write it to another across cycles — silently unbounding it.
+              status_dir=$(find docs/plans -mindepth 3 -maxdepth 3 -type d -path "docs/plans/*/logs/$guard_fid" 2>/dev/null | sort | head -1 || true)
+              [ -n "$status_dir" ] && status_dir="${status_dir}/"
+              if [ -z "$status_dir" ]; then
+                status_dir="docs/plans/$(date -u +%Y%m)/logs/$guard_fid/"
+              fi
+              mkdir -p "$status_dir"
+              status_file="${status_dir}status.jsonl"
+              dev_count=0
+              # #363 M1: distinguish "no rows" from "cannot parse" — a truncated
+              # line, stray non-JSON row, or merge=union conflict artefact in the
+              # shared status.jsonl must NOT silently degrade to dev_count=0
+              # (which would defeat the cap entirely, unbounded). Only an absent
+              # file is a legitimate zero.
+              if [ -f "$status_file" ]; then
+                if ! dev_count=$(jq -s --arg f "$guard_fid" \
+                  '[.[] | select(.type=="dev-dispatch" and .fid==$f) | .headSha] | unique | length' \
+                  "$status_file" 2>/dev/null); then
+                  echo "::notice::$status_file is unparseable — refusing to dispatch for $guard_fid uncounted (fail-closed)."
+                  return 1
+                fi
+              fi
+              if [ "$dev_count" -ge "$MAX_DEV_DISPATCH_ATTEMPTS" ]; then
+                echo "::notice::FID $guard_fid exhausted $MAX_DEV_DISPATCH_ATTEMPTS dev-triggered debug dispatches — operator review required (delete dev-dispatch rows in status.jsonl to reset)."
+                return 1
+              fi
+              parent_sha=$(git -C "$GITHUB_WORKSPACE" rev-parse origin/dev 2>/dev/null || echo "")
+              jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$guard_fid" --arg h "$guard_head_sha" --arg p "$parent_sha" \
+                '{type:"dev-dispatch", workflow:"auto", at:$t, fid:$f, headSha:$h, parentSha:$p}' \
+                >> "$status_file"
+              git -C "$GITHUB_WORKSPACE" add -- "$status_file"
+              git -C "$GITHUB_WORKSPACE" commit -m "docs($guard_fid): dev-dispatch telemetry [skip ci]" -- "$status_file"
+              if ! git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null; then
+                git -C "$GITHUB_WORKSPACE" fetch origin dev
+                git -C "$GITHUB_WORKSPACE" rebase origin/dev || { git -C "$GITHUB_WORKSPACE" rebase --abort || true; }
+                git -C "$GITHUB_WORKSPACE" push origin dev 2>/dev/null || true
+              fi
+              git -C "$GITHUB_WORKSPACE" fetch origin dev
+              # See the claude job's ctx step for why `git show` needs its own `|| true`
+              # (pipefail + a legitimately-zero jq result otherwise corrupts $landed).
+              landed=$( (git -C "$GITHUB_WORKSPACE" show "origin/dev:${status_file}" 2>/dev/null || true) \
+                | jq -s --arg f "$guard_fid" --arg h "$guard_head_sha" \
+                    '[.[] | select(.type=="dev-dispatch" and .fid==$f and .headSha==$h)] | length' 2>/dev/null || echo 0)
+              if [ "${landed:-0}" -lt 1 ]; then
+                echo "::notice::dev-dispatch row for $guard_fid @ $guard_head_sha is not on origin/dev after retry — refusing to dispatch uncounted (fail-closed). Resolve the dev push contention and re-run via workflow_dispatch."
+                return 1
+              fi
+              return 0
+            }
+
+            if [ "$BRANCH" = "dev" ]; then
+              if [ "$PHASE" = "ship" ]; then
+                echo "::notice::dev CI passed — post-merge regression check OK, no-op exit."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # #363 F8: `head -1` FIRST — head_commit.message is subject+body and
+              # grep's `^` anchors per line, so without it a squash body line
+              # (GitHub's default body is the list of source commit subjects)
+              # like "feat(999-other): ..." would win and key the cap counter,
+              # status path and /bkit-debug dispatch to an unrelated feature.
+              FID=$(printf '%s' "$COMMIT_MSG" | head -1 | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
+              if [ -z "$FID" ]; then
+                # #363 F4: same-repo MERGED PRs only — see the claude job for the
+                # full rationale (this endpoint also returns OPEN fork PRs).
+                PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+                  --jq '[.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY and .merged_at != null)] | .[0].body // empty' 2>/dev/null || echo "")
+                FID=$(printf '%s' "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+              fi
+              if [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # on the fix/** arm this runs BEFORE the slug allowlist, so a
+              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # pipefail propagates grep's exit 1, and the step dies red
+              # instead of reaching the designed no-op exit just below.
+              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              ARG="$FID"
+              # Kill switch: re-check bkit:auto (live revocation). #363 F7: MUST
+              # precede the stale-run guard below — that guard writes telemetry
+              # and exits, so a later check let a revoked FID keep producing
+              # side effects. See the claude job for the full rationale.
+              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
+                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
+                --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
+              # #363 L4: an empty LATEST_CI_SHA silently disables the staleness
+              # check (deliberate fail-open — better to dispatch than to
+              # silently swallow the feature on a transient API hiccup). But a
+              # PERMANENT misconfiguration (the consumer's CI workflow file is
+              # not literally ci.yml) is indistinguishable from a transient one
+              # unless flagged — warn loudly so it surfaces instead of running
+              # guard-less for months.
+              if [ -z "$LATEST_CI_SHA" ]; then
+                echo "::warning::gh run list --branch dev --workflow ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named ci.yml (\`gh workflow view ci.yml\`)."
+              fi
+              if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
+                # #363 M6: `bkit-auto-dev` is a SINGLE concurrency group shared by
+                # EVERY FID (the group cannot key on FID — GHA evaluates
+                # concurrency.group from trigger-payload context only, before the
+                # FID is known). If a DIFFERENT FID's dev CI failure superseded
+                # this run via GHA's queue-collapse (cancel-in-progress: false
+                # keeps at most one pending run per group), this FID's post-merge
+                # failure is dropped here — surface it where it cannot be lost.
+                # #363 F6: this used to commit a status.jsonl row and
+                # `git push origin dev || true`. This branch is only reached
+                # because dev ALREADY advanced, so that push was usually a
+                # non-fast-forward and was silently discarded — the row went
+                # missing in exactly the scenario it exists to record, while
+                # the warning below told the operator to go read it. The run
+                # summary is written to the run itself and cannot race.
+                DROP_ROW=$(jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$FID" --arg h "$HEAD_SHA" --arg latest "$LATEST_CI_SHA" \
+                  '{type:"dev-dispatch-dropped", workflow:"auto", at:$t, fid:$f, headSha:$h, latestSha:$latest}')
+                {
+                  echo "### bkit dev-dispatch dropped"
+                  echo ""
+                  echo "FID \`$FID\` had a post-merge \`dev\` CI failure that was superseded before dispatch."
+                  echo ""
+                  echo '```json'
+                  echo "$DROP_ROW"
+                  echo '```'
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+                echo "::warning::Stale dev CI (head_sha=$HEAD_SHA, latest completed dev CI head=$LATEST_CI_SHA) for FID $FID — no-op exit. This FID's post-merge CI failure may have been superseded by a DIFFERENT FID's dev push under the shared bkit-auto-dev concurrency group; see this run's job summary (dev-dispatch-dropped) if this FID does not otherwise recover."
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+              fi
+              bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+            else
+              # #363 C1: fix/** CI success has no ship counterpart yet — see the
+              # claude job's ctx step for the fully-commented rationale. No-op
+              # until bkit-ship is branch-prefix aware.
+              case "$BRANCH" in
+                fix/*)
+                  if [ "$PHASE" = "ship" ]; then
+                    echo "::notice::fix/** CI passed — ship not wired for fix branches yet, no-op exit."
+                    echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+                  fi
+                  ;;
+              esac
+              PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
+              if [ -z "$PR_NUMBER" ]; then
+                echo "::notice::No open PR for branch $BRANCH — no-op exit."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              ARG="$PR_NUMBER"
+              PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
+              ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
+              FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+              # #363 H1: assert the marker-derived FID before use too — see the
+              # claude job's ctx step for the fully-commented rationale.
+              if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                # #363 P2: strip fix/ as well as feat/ — bkit-debug's fix PR body
+                # carries no bkit:fid= marker, so fix/** always lands here.
+                # #363 H1: keep the FULL slug (do not truncate to the leading id) —
+                # a truncated FID would count against a different status.jsonl key
+                # than the dev-path FID, breaking the shared-budget invariant.
+                FID=$(echo "$BRANCH" | sed -E 's#^(feat|fix)/##')
+                # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # on the fix/** arm this runs BEFORE the slug allowlist, so a
+              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # pipefail propagates grep's exit 1, and the step dies red
+              # instead of reaching the designed no-op exit just below.
+              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              fi
+              if [ -z "$FID" ] || [ -z "$ISSUE" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # over a joined list would also match `bkit:auto-disabled` /
+              # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
+              # an operator who believes such a label revokes automation.
+              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
+                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              # #363 P3 — bound the fix/** debug loop (shared FID budget with dev).
+              # feat/** deliberately NOT capped (pre-merge, in-session-bounded).
+              case "$BRANCH" in
+                fix/*)
+                  if [ "$PHASE" = "debug" ]; then
+                    bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+                  fi
+                  ;;
+              esac
             fi
             # bkit:end shared-deriv
           fi

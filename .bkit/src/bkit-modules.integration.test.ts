@@ -1189,7 +1189,10 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
     expect(out).toContain("github.event_name == 'workflow_dispatch'");
     // The if: uses || so dispatch path short-circuits the marker check.
-    expect(out).toMatch(/workflow_dispatch[\s\S]{0,200}bkit \[auto route\]/);
+    // #363 M3/M4 widened the auto-route-gate if: with a same-repo (fork-origin
+    // guard) predicate and a dev-success early-exit clause, pushing the marker
+    // literal further from 'workflow_dispatch' — window widened accordingly.
+    expect(out).toMatch(/workflow_dispatch[\s\S]{0,400}bkit \[auto route\]/);
   });
 
   it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
@@ -1200,7 +1203,16 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
     expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
     // SHARED-DERIV fallback must set ISSUE from FID (branch-derived numeric id).
-    expect(out).toContain('ISSUE="$FID"');
+    // #363 H1: the fallback keeps FID as the FULL slug (shared status.jsonl key
+    // with the dev path) and derives the short ISSUE prefix FROM it, rather
+    // than the pre-H1 `ISSUE="$FID"` (which relied on FID already being
+    // truncated to the numeric/alpha id — the bug H1 fixed).
+    // #363 F3: `|| true` is required — on the fix/** arm this runs before the
+    // slug allowlist, so a non-FID branch yields no grep match and pipefail
+    // would kill the step instead of reaching the fail-safe no-op.
+    expect(out).toContain(
+      "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
+    );
     // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
     // Verify no separate re-derivation of ISSUE appears outside the shared-deriv block.
     const sharedDerivStart = out.indexOf("# bkit:start shared-deriv");

@@ -82,7 +82,29 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    **If** exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
-5. **If** `MODE` = CI → set `PR_NUMBER="$ARG"`.
+5. **If** `MODE` = CI, discriminate on `{ARG}` shape — numeric = PR number, else FID slug. Assert the slug allowlist BEFORE `FID` is used:
+   ```bash
+   if [[ "$ARG" =~ ^[0-9]+$ ]]; then
+     PR_NUMBER="$ARG"
+   else
+     MODE=CI_DEV
+     FID="$ARG"
+     if ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+       echo "Invalid CI_DEV FID: $FID" >&2; exit 1
+     fi
+     ISSUE_ID=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
+     BRANCH=dev
+     HEAD_SHA=$(git rev-parse origin/dev 2>/dev/null || echo "")
+     PR_URL=""
+     RUN_ID=""
+   fi
+   printf 'MODE=%s PR_NUMBER=%s FID=%s ISSUE_ID=%s BRANCH=%s HEAD_SHA=%s\n' \
+     "$MODE" "${PR_NUMBER:-}" "${FID:-}" "${ISSUE_ID:-}" "${BRANCH:-}" "${HEAD_SHA:-}"
+   ```
+   **If** exit branch fires → **Failure Path**.
+   Route:
+   - **If** `MODE` = CI_DEV → assert `FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA` non-empty, then step 11. **Else** → **Failure Path**.
+   - **Else** → step 6.
 6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
 7. **If** `PR_STATE` != OPEN → **Failure Path**.
 8. Resolve CI run id that triggered the workflow:
@@ -115,7 +137,15 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    Assert `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`.
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
      <!-- bkit:tracker false end -->
-10. **Fallback (marker absent or malformed).** **If** `BRANCH` does NOT start with `feat/` → **Failure Path**. **Else** → `FID="${BRANCH#feat/}"`. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — step 11 keys EVERY tracker call on `{ISSUE_ID}` and asserts it non-empty, so a fallback that resolves only `{FID}` can never complete and always ends at **Failure Path**:
+10. **Fallback (marker absent or malformed).**
+    ```bash
+    case "$BRANCH" in
+      feat/*) FID="${BRANCH#feat/}" ;;
+      fix/*)  FID="${BRANCH#fix/}" ;;
+      *) FID="" ;;
+    esac
+    ```
+    **If** `BRANCH` starts with neither `feat/` nor `fix/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — MUST resolve, step 11 keys every tracker call on it:
      <!-- bkit:tracker github start -->
     `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
      <!-- bkit:tracker github end -->
@@ -132,7 +162,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
     `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker true start -->
-    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links):
+    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch / PR / run links; `MODE` = CI_DEV omits the PR line when `PR_URL` is empty and the run line when `RUN_ID` is empty):
     ```comment
     ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
@@ -148,6 +178,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
 - [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
 - [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
+- [ ] CI_DEV placeholders slug-asserted and non-empty (`FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA`, if `MODE` = CI_DEV)
 
 <!-- bkit:tracker true start -->
 

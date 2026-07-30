@@ -485,9 +485,11 @@ describe("intentional-non-push rationale documented in workflows.md, not inline 
     "written to the LOCAL status.jsonl ledger only and is deliberately";
 
   it("workflows.md CI-Dispatch Gate section carries the LOCAL-only intentional non-push doctrine", () => {
-    // Doctrine paragraph must mention: LOCAL-only, intentional non-push, and KN-11.
+    // Doctrine paragraph must state: LOCAL-only, intentional non-push, and the
+    // failure it prevents. Assert the MECHANISM, never a ledger key — shipped
+    // docs carry no internal identifiers (bkit-shipped-docs-refs.test.ts).
     expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
-    expect(workflowsMd).toContain("KN-11");
+    expect(workflowsMd).toMatch(/\[skip ci\][^.]*empt(?:y|ies)[^.]*rollup/i);
     // Must explicitly forbid the rejected fix.
     // Wording compressed on current `dev`; keep the forbid-the-rejected-fix lock-in.
     expect(workflowsMd).toContain('Do NOT "fix" with post-gate commit+push');

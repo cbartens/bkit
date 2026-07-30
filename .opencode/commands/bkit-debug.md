@@ -943,10 +943,7 @@ $ARGUMENTS
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
    AUTO_ROUTE_SUFFIX=""
-   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   BKIT_AUTO_ROUTE_FILE=$(mktemp)
-   printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
-   echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
+   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    . "$REPO_ROOT/.bkit/scripts/bkit-status-route.sh"
    WT=$(git rev-parse --show-toplevel)
@@ -1106,12 +1103,7 @@ $ARGUMENTS
    PARENT_SHA=$(git rev-parse HEAD)
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    AUTO_ROUTE_SUFFIX=""
-   if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
-     AUTO_ROUTE_SUFFIX=$(cat "$BKIT_AUTO_ROUTE_FILE")
-     rm -f "$BKIT_AUTO_ROUTE_FILE"
-   else
-     echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   fi
+   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    LOCAL_MODE_AUTO_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && LOCAL_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}${LOCAL_MODE_AUTO_SUFFIX}"
    HEAD_MSG=$(git log -1 --pretty=%B)

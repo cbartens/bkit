@@ -6,6 +6,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - One row per line. NEVER edit or reorder a prior LINE — row STATE changes via same-`key` append (§ Updating a Row).
 > - Before append: read file. Skip ONLY if identity-matching row exists AND nothing changed — changed field = update, NOT duplicate.
@@ -59,7 +60,7 @@ One file per `kind`; writers:
 | Kind | Fields (beyond envelope) |
 | --- | --- |
 | `counter` | `counterName`, `counterValue:number`, `counterSource:"model-self-report"\|"shell-bus"`, `parentSha`. |
-| `outcome` | `parentSha?` (run anchor), `prNumber:number?` (ship-only), `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `correctiveCommits:number?`, `reviewIterations:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at close, folded — not lines; per-cycle is the delta against the previous `outcome` row), `frictionAdded:number?`, `deferralsAdded:number?`, `failuresAdded:number?` (per-run deltas — rows THIS run added to each ledger, counted from `workflow`+`ts>=`workflow-started), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in per #312/#313). |
+| `outcome` | `parentSha?` (run anchor), `prNumber:number?` (ship-only), `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `correctiveCommits:number?`, `reviewIterations:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at close, folded — not lines; per-cycle is the delta against the previous `outcome` row), `frictionAdded:number?`, `deferralsAdded:number?`, `failuresAdded:number?` (per-run deltas — rows THIS run added to each ledger, counted from `workflow`+`ts>=`workflow-started), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
 | `friction` | `key`, `category` (§ Categories), `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row), `confidence?:number`, `lastConfirmed?:number`, `recurrenceCount?:number`. |
 | `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
@@ -426,6 +427,6 @@ Row-update lifecycle — `pnpm-tag-drop-readme-note` deferral: three appends rai
 <!-- prettier-ignore -->
 ```jsonl
 { "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
-{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "#268", "README.md"] }
-{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "#268", "PR-412", "e93da12"] }
+{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "README.md"] }
+{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "PR-412", "e93da12"] }
 ```
