@@ -182,6 +182,44 @@ const CLAUDE_MANIFEST = [
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
 ];
+// ---------------------------------------------------------------------------
+// lint:prose — the managed prose-gate script (single source of truth)
+//
+// Declared here (pure data, no cycle) because THREE surfaces must carry the
+// identical string or the gate silently degrades:
+//   - this manifest's packageJsonKeys default (what install seeds, what the
+//     uninstall stripper byte-compares to decide "still ours?")
+//   - runLintModule's ensurePackageJsonScripts call (bkit-modules.ts)
+//   - the F9 advisory remedy text (bkit-preflight.ts)
+//
+// F9 (BAR-138) contract, preserved: symmetric soft-skip — never hard-fail a
+// consumer's commit because the vale binary is absent. What CHANGED: a missing
+// `.vale/styles/write-good` is no longer treated the same as a missing binary.
+// The styles dir is gitignored, so it is absent in every fresh checkout AND in
+// every `git worktree add` — which meant the pre-commit prose gate silently
+// self-disabled in worktrees while still reporting success. Now that case
+// self-heals (copy from the main worktree via --git-common-dir, zero network;
+// `vale sync` as fallback) and, if self-heal fails with vale present, says so
+// LOUDLY on stderr instead of emitting one quiet line nobody reads.
+//
+// Shell constraints: no single quotes anywhere in the body (it is wrapped in
+// `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
+// would command-substitute).
+export const LINT_PROSE_SCRIPT = 'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
+// Prior bkit-shipped lint:prose defaults, newest first.
+//
+// Why this list exists: `ensurePackageJsonScripts` is add-if-missing — it NEVER
+// overwrites an existing script — so changing LINT_PROSE_SCRIPT above reaches
+// new consumers only. An existing consumer would keep the silently-self-disabling
+// version forever. Any value byte-matching an entry here is provably bkit's own
+// (never consumer-authored), so install/upgrade may safely replace it, and the
+// uninstall stripper may safely reclaim it. A value matching NEITHER the current
+// default NOR a legacy entry is consumer-customised and is left strictly alone.
+//
+// Append the outgoing string here whenever LINT_PROSE_SCRIPT changes.
+export const LEGACY_LINT_PROSE_SCRIPTS = [
+    'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+];
 const CURSOR_MANIFEST = [
     { path: ".cursor/hooks.json", format: "json", module: "cursor" },
     { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
@@ -354,7 +392,7 @@ const LINT_MANIFEST = [
                 // typecheck moved here from the (now agnostic) ci module — it is TS-exclusive (#265).
                 typecheck: "tsc --noEmit",
                 "format:check": "prettier --check .",
-                "lint:prose": 'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+                "lint:prose": LINT_PROSE_SCRIPT,
                 "lint:slop": "slop-scan scan .",
                 "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
             },

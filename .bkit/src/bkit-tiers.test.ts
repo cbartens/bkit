@@ -404,6 +404,66 @@ describe("ensurePackageJsonScripts", () => {
     expect(pkg.scripts).toBeUndefined(); // dryRun did NOT write
   });
 
+  // legacyValues — re-point a superseded bkit default without ever touching a
+  // consumer-authored value. Without this, correcting a shipped script default
+  // reaches new consumers ONLY (add-if-missing never overwrites), which is how
+  // the lint:prose worktree hole would have persisted on every existing install.
+  it("replaces a value byte-matching a legacy bkit default", () => {
+    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
+      "lint:prose": ["old-bkit-default"],
+    });
+    expect(result.replaced).toEqual(["lint:prose"]);
+    expect(result.preserved).toEqual([]);
+    expect(result.added).toEqual([]);
+    expect(readPkg().scripts?.["lint:prose"]).toBe("new-bkit-default");
+    expect(ws.writes).toHaveLength(1);
+  });
+
+  it("preserves a consumer-customised value that matches no legacy default", () => {
+    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "my-own-linter" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
+      "lint:prose": ["old-bkit-default"],
+    });
+    expect(result.preserved).toEqual(["lint:prose"]);
+    expect(result.replaced).toEqual([]);
+    expect(readPkg().scripts?.["lint:prose"]).toBe("my-own-linter");
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("treats a value already at the current default as preserved, not replaced", () => {
+    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "new-bkit-default" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
+      "lint:prose": ["old-bkit-default"],
+    });
+    expect(result.preserved).toEqual(["lint:prose"]);
+    expect(result.replaced).toEqual([]);
+    expect(ws.writes).toHaveLength(0); // idempotent — no rewrite on re-run
+  });
+
+  it("dryRun=true records a legacy replacement without writing it", () => {
+    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, true, ws, {
+      "lint:prose": ["old-bkit-default"],
+    });
+    expect(result.replaced).toEqual(["lint:prose"]);
+    expect(ws.writes).toHaveLength(1); // surfaces as drift in `bkit check`
+    expect(readPkg().scripts?.["lint:prose"]).toBe("old-bkit-default");
+  });
+
+  it("omitting legacyValues keeps the historical preserve-always behaviour", () => {
+    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws);
+    expect(result.preserved).toEqual(["lint:prose"]);
+    expect(result.replaced).toEqual([]);
+    expect(readPkg().scripts?.["lint:prose"]).toBe("old-bkit-default");
+  });
+
   it("preserves 4-space indent style of original package.json", () => {
     fs.writeFileSync(
       "package.json",

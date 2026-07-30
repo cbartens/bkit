@@ -761,7 +761,7 @@ export function detectValePackageNotSynced(cwd) {
         id: "vale-package-not-synced",
         severity: "advisory",
         detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. The lint:prose script soft-skips when write-good is absent, but prose linting won't work until synced.",
+        action: "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and warns loudly on stderr if it cannot — but until the package is present, prose linting does not run.",
     };
 }
 /**

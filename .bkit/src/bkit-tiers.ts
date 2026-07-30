@@ -631,7 +631,14 @@ export function writeTier3(
 //   - script key absent     → add with default value (recorded as one update)
 //   - script key exists     → preserve consumer value (never overwrite)
 //
-// One WriteSet entry per call when any script was added. Drift (missing keys)
+// `legacyValues` narrows that last rule WITHOUT weakening consumer ownership:
+// a key whose current value byte-matches a listed PRIOR bkit default is provably
+// bkit's own (never consumer-authored), so it is re-pointed at the new default
+// rather than preserved. Without this, correcting a shipped script default is a
+// no-op for every consumer who already installed it. Anything matching neither
+// the new default nor a legacy value is consumer-customised and left untouched.
+//
+// One WriteSet entry per call when any script was added or replaced. Drift
 // surfaces in `bkit check` because `dryRun=true` still pushes to ws.writes.
 // ---------------------------------------------------------------------------
 
@@ -639,26 +646,42 @@ export function ensurePackageJsonScripts(
   scripts: Record<string, string>,
   dryRun: boolean,
   ws: WriteSet,
-): { added: string[]; preserved: string[]; missingPkg: boolean; malformed: boolean } {
+  legacyValues: Record<string, readonly string[]> = {},
+): {
+  added: string[];
+  preserved: string[];
+  replaced: string[];
+  missingPkg: boolean;
+  malformed: boolean;
+} {
   const pkgPath = "package.json";
   if (!fs.existsSync(pkgPath)) {
-    return { added: [], preserved: [], missingPkg: true, malformed: false };
+    return { added: [], preserved: [], replaced: [], missingPkg: true, malformed: false };
   }
   const raw = fs.readFileSync(pkgPath, "utf-8");
   let pkg: Record<string, unknown>;
   try {
     pkg = JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    return { added: [], preserved: [], missingPkg: false, malformed: true };
+    return { added: [], preserved: [], replaced: [], missingPkg: false, malformed: true };
   }
 
   let pkgScripts = (pkg.scripts as Record<string, string> | undefined) ?? undefined;
   const added: string[] = [];
   const preserved: string[] = [];
+  const replaced: string[] = [];
 
   for (const [name, value] of Object.entries(scripts)) {
     if (pkgScripts && Object.prototype.hasOwnProperty.call(pkgScripts, name)) {
-      preserved.push(name);
+      // Superseded bkit default → re-point at the current one. Byte-match against
+      // the known-prior list is what proves the value is bkit's and not the
+      // consumer's; anything else is theirs and stays.
+      if (pkgScripts[name] !== value && (legacyValues[name] ?? []).includes(pkgScripts[name])) {
+        pkgScripts[name] = value;
+        replaced.push(name);
+      } else {
+        preserved.push(name);
+      }
     } else {
       if (!pkgScripts) {
         pkgScripts = {};
@@ -669,7 +692,7 @@ export function ensurePackageJsonScripts(
     }
   }
 
-  if (added.length > 0) {
+  if (added.length > 0 || replaced.length > 0) {
     ws.writes.push({ path: pkgPath, action: "update" });
     if (!dryRun) {
       // Preserve indent style and trailing newline of the original file.
@@ -679,7 +702,7 @@ export function ensurePackageJsonScripts(
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
     }
   }
-  return { added, preserved, missingPkg: false, malformed: false };
+  return { added, preserved, replaced, missingPkg: false, malformed: false };
 }
 
 // ---------------------------------------------------------------------------

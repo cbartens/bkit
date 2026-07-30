@@ -44,6 +44,7 @@ import {
   writeNetworkAllowlistArtifact,
 } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
+import { repointLegacyLintProse } from "./bkit-package-json.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
   runPostInstallCheck,
@@ -2505,6 +2506,14 @@ async function main() {
     // canonicalHashes refresh (so the moved config.md/observability.md are re-hashed → drift-clean).
     const migratedDebugFetch = migrateDebugFetchToConfig(process.cwd(), upgradeFlags.dryRun);
     if (migratedDebugFetch) console.log(`${LOG_PREFIX} ${migratedDebugFetch}`);
+
+    // Same both-engines requirement as the debug-fetch migration above: install
+    // re-points a superseded lint:prose via runLintModule, but upgrade never
+    // touches package.json scripts — and `bkit upgrade --latest` is the path the
+    // README tells consumers to use. Replace-only, so a consumer without the lint
+    // module is untouched.
+    const repointedLintProse = repointLegacyLintProse(process.cwd(), upgradeFlags.dryRun);
+    if (repointedLintProse) console.log(`${LOG_PREFIX} ${repointedLintProse}`);
 
     // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host

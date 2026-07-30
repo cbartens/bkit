@@ -12,7 +12,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
@@ -2274,19 +2274,24 @@ export function runLintModule(ctx) {
     const lintScripts = ensurePackageJsonScripts({
         typecheck: typecheckDefault,
         "format:check": "prettier --check .",
-        "lint:prose": 
-        // F9 (BAR-138): symmetric soft-skip — protect against missing vale
-        // binary AND missing referenced packages (e.g. write-good not synced
-        // after .vale.ini was rewritten or after a clean checkout). Hard-failing
-        // on a missing package would break local commits via the pre-commit
-        // hook with no actionable signal.
-        'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+        // F9 (BAR-138) soft-skip + worktree self-heal. Single source of truth in
+        // bkit-manifest.ts — the manifest default, this call, and the F9 advisory
+        // remedy MUST stay byte-identical or the uninstall stripper stops
+        // recognising the script as bkit-managed.
+        "lint:prose": LINT_PROSE_SCRIPT,
         "lint:slop": "slop-scan scan .",
         // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
         "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
-    }, dryRun, ws);
+    }, dryRun, ws, 
+    // Re-point a superseded bkit lint:prose at the current one. add-if-missing
+    // alone would leave every existing consumer on the version that silently
+    // self-disables in worktrees and fresh checkouts.
+    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS });
     if (lintScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
+    }
+    if (lintScripts.replaced.length > 0) {
+        console.log(`${logPrefix} ${tag}lint: package.json scripts updated from a superseded bkit default [${lintScripts.replaced.join(", ")}]`);
     }
     if (lintScripts.missingPkg) {
         advisories.push({

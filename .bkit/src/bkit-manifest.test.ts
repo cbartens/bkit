@@ -15,6 +15,8 @@ import {
   parseRenovateRunner,
   RENOVATE_RUNNERS,
   DEFAULT_RENOVATE_RUNNER,
+  LINT_PROSE_SCRIPT,
+  LEGACY_LINT_PROSE_SCRIPTS,
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
@@ -617,6 +619,78 @@ describe("getManagedPackageJsonKeys", () => {
     for (const s of expected) {
       expect(Object.keys(scripts)).toContain(s);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LINT_PROSE_SCRIPT — shipped prose-gate contract
+//
+// This script runs in every consumer's pre-commit hook, so a quoting slip or a
+// dropped guard degrades the gate silently rather than loudly. These assert the
+// invariants that make it safe to embed and safe to trust.
+// ---------------------------------------------------------------------------
+
+describe("LINT_PROSE_SCRIPT", () => {
+  const body = LINT_PROSE_SCRIPT.replace(/^bash -c '/, "").replace(/'$/, "");
+
+  it("is wrapped in bash -c with no single quotes in the body", () => {
+    // An inner single quote would terminate the `bash -c '...'` wrapper early and
+    // mangle the rest of the script into stray shell words.
+    expect(LINT_PROSE_SCRIPT.startsWith("bash -c '")).toBe(true);
+    expect(LINT_PROSE_SCRIPT.endsWith("'")).toBe(true);
+    expect(body).not.toContain("'");
+  });
+
+  it("contains no backticks", () => {
+    // The old default put `vale sync` in backticks inside a DOUBLE-quoted echo,
+    // where a backtick command-substitutes instead of printing.
+    expect(body).not.toContain("`");
+  });
+
+  it("carries the F9 guard substring that bkit-preflight.ts greps for", () => {
+    // detectLintProseF9Vulnerable does a literal substring match; losing this
+    // exact form would make bkit advise consumers to "fix" the correct script.
+    expect(LINT_PROSE_SCRIPT).toContain("[ -d .vale/styles/write-good ]");
+  });
+
+  it("soft-skips instead of failing when the vale binary is absent", () => {
+    expect(body).toContain("command -v vale");
+    expect(body).toContain("vale not installed");
+  });
+
+  it("self-heals a missing write-good from the main worktree before falling back to sync", () => {
+    // The worktree hole: .vale/styles/write-good is gitignored, so it is absent in
+    // every fresh checkout and every `git worktree add`. --git-common-dir resolves
+    // the main worktree from inside a linked one, making this a zero-network copy.
+    expect(body).toContain("git rev-parse --git-common-dir");
+    expect(body).toContain("cp -R");
+    expect(body).toContain("vale sync");
+    expect(body.indexOf("git rev-parse --git-common-dir")).toBeLessThan(body.indexOf("vale sync"));
+  });
+
+  it("announces loudly on stderr when vale is present but self-heal failed", () => {
+    // The whole point of the change: this case used to emit one quiet line and
+    // exit 0, so a worktree commit bypassed prose linting and still looked green.
+    expect(body).toContain("PROSE LINT SKIPPED");
+    expect(body).toContain(">&2");
+  });
+
+  it("is not itself listed as a legacy value", () => {
+    expect(LEGACY_LINT_PROSE_SCRIPTS).not.toContain(LINT_PROSE_SCRIPT);
+  });
+
+  it("lists the previous shipped default as legacy so existing installs get re-pointed", () => {
+    expect(LEGACY_LINT_PROSE_SCRIPTS.length).toBeGreaterThan(0);
+    // The pre-fix default, verbatim — the value on every consumer that installed
+    // before this change. Must byte-match or those installs are never corrected.
+    expect(LEGACY_LINT_PROSE_SCRIPTS).toContain(
+      'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+    );
+  });
+
+  it("is the exact value the lint module seeds into package.json", () => {
+    const { scripts } = getManagedPackageJsonKeys(["lint"]);
+    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
   });
 });
 

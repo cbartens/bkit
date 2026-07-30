@@ -7,6 +7,8 @@
 //   extractManagedBlock   — from bkit-install.ts (marker block extraction)
 //   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
 //   parseIssueTracker     — from bkit-manifest.ts (pure data, no cycle)
+//   LINT_PROSE_SCRIPT     — from bkit-manifest.ts (pure data, no cycle) — the F9
+//                           remedy text must quote the SAME string install seeds
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,7 +18,12 @@ import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock, type JsonValue } from "./bkit-tiers.js";
 import { extractNamedBlocks } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
-import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
+import {
+  parseIssueTracker,
+  DEFAULT_ISSUE_TRACKER,
+  LINT_PROSE_SCRIPT,
+  type IssueTracker,
+} from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -157,8 +164,7 @@ export function detectLintProseF9Vulnerable(cwd: string): PreflightFinding | nul
     severity: "advisory",
     detect:
       "package.json#scripts.lint:prose exists but lacks the `[ -d .vale/styles/write-good ]` guard (F9 — BAR-138).",
-    action:
-      'Update lint:prose to the guarded form: `bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'`',
+    action: `Update lint:prose to the guarded form: ${LINT_PROSE_SCRIPT}`,
   };
 }
 

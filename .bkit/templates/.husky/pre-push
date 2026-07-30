@@ -55,7 +55,8 @@ else
 fi
 
 # Prose + the enforcing slop gate run here too, so pre-push is a full deterministic mirror
-# of CI. prose = vale (guard-skips if vale/write-good absent — install to enforce locally);
+# of CI. prose = vale (skips only if the vale binary is absent — install to enforce locally;
+# a missing .vale/styles/write-good self-heals from the main worktree or vale sync);
 # slop:delta fails ONLY on findings this push ADDS or WORSENS vs origin/<default>, never the
 # pre-existing baseline. Both are safe on revert pushes (md prose is unaffected by deleted
 # code; removals show as 'resolved', never 'added').
