@@ -460,68 +460,59 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
 // #363 build-challenge H2 regression — the `AUTO_ROUTE_SUFFIX` handoff
 // ---------------------------------------------------------------------------
 //
-// H2 (HIGH): the FIRST attempt at threading `bkit [auto route]` onto the
-// squash-merge `--subject` read `${LABELS:-}` directly inside the Step 5
-// merge Bash block. `{LABELS}` is an MCP-derived value captured at Step 1,
-// several separate Bash-tool-call boundaries earlier — shell state does not
-// survive across those boundaries, so `${LABELS:-}` always expanded empty at
-// Step 5, `AUTO_ROUTE_SUFFIX` was always "", and the squash-merge commit
-// NEVER carried the marker. That is the entire mechanism #363 depends on to
-// admit a post-merge `dev` CI run through bkit-cloud.yml's free-tier gate —
-// the feature would have shipped silently inert. Fixed by materialising
-// `AUTO_ROUTE_SUFFIX` into a `BKIT_AUTO_ROUTE_FILE` handoff (via
-// `$GITHUB_ENV`) immediately adjacent to the Step 1 `{LABELS}` read, mirroring
-// `bkit-build.md:1261` / `bkit-debug.md:1258-1262`, and reading it back at
-// Step 5 with a same-block `{LABELS}` re-check only as a fallback.
-describe("bkit-ship.md — #363 build-challenge H2 regression: AUTO_ROUTE_SUFFIX handoff survives the Step1->Step5 boundary", () => {
-  it("Step 1 materialises AUTO_ROUTE_SUFFIX into BKIT_AUTO_ROUTE_FILE adjacent to the {LABELS} read (not deferred)", () => {
+// H2 (HIGH): threading `bkit [auto route]` onto the squash-merge `--subject`
+// originally read `${LABELS:-}` inside the Step 5 merge Bash block. `{LABELS}`
+// is an MCP-derived TEMPLATE value — it is never assigned as a shell variable
+// anywhere in `.bkit/`, so `${LABELS:-}` expanded empty in every runtime,
+// `AUTO_ROUTE_SUFFIX` was always "", and the squash-merge commit NEVER carried
+// the marker. That is the entire mechanism #363 depends on to admit a
+// post-merge `dev` CI run through bkit-cloud.yml's free-tier gate — the
+// feature would have shipped silently inert.
+//
+// The first repair attempt (a `mktemp` + `$GITHUB_ENV` handoff written next to
+// the Step 1 read) did NOT fix it: `$GITHUB_ENV` is applied by the Actions
+// runner only BETWEEN workflow steps, and every agent Bash tool call in a
+// cloud dispatch runs inside the single `claude-code-action` step, so the
+// variable never reappeared at Step 5. The tests that guarded it asserted only
+// that the handoff TEXT was present, so they passed on a wholly inert
+// mechanism.
+//
+// Fixed by removing cross-call state entirely: Step 5 re-derives the label
+// from the tracker in the SAME fence that consumes it
+// (docs/knowledge.jsonl, key
+// `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`,
+// idiom 1). These assertions are shape-level guards only — the behavioural
+// proof (execute the fence against a `gh` stub, assert the rendered
+// `--subject`) lives in bkit-auto-route-marker.integration.test.ts.
+describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route marker is derived where it is used", () => {
+  it("no cross-Bash-tool-call handoff survives anywhere in the workflow", () => {
     const ship = readShip();
-    // The Step 1 handoff-write block, keyed on its own unique anchor text.
-    const idx = ship.indexOf(
-      'echo "${LABELS:-}" | grep -q \'bkit:auto\' && AUTO_ROUTE_SUFFIX=" bkit [auto route]"',
+    // $GITHUB_ENV does not bridge Bash tool calls inside one Action step, and
+    // a mktemp path published through it is the exact idiom that shipped inert.
+    expect(ship).not.toContain("BKIT_AUTO_ROUTE_FILE");
+    expect(ship).not.toMatch(/>>\s*"\$GITHUB_ENV"/);
+  });
+
+  it("the marker is never derived from the dead ${LABELS:-} shell read", () => {
+    const ship = readShip();
+    // Prose may *explain* the trap; no executable fence may re-introduce it.
+    const fences = ship.match(/```bash\n([\s\S]*?)```/g) ?? [];
+    const offenders = fences.filter((f) =>
+      /^\s*[^#\n]*\$\{LABELS:-\}/m.test(f.replace(/```bash\n|```/g, "")),
     );
-    expect(idx, "Step 1 AUTO_ROUTE_SUFFIX derivation not found").toBeGreaterThan(-1);
-    const window = ship.slice(idx, idx + 400);
-    // Must write the derived value to a temp file...
-    expect(window).toMatch(/BKIT_AUTO_ROUTE_FILE=\$\(mktemp\)/);
-    expect(window).toMatch(/printf\s+'%s'\s+"\$AUTO_ROUTE_SUFFIX"\s+>\s+"\$BKIT_AUTO_ROUTE_FILE"/);
-    // ...and export the path via GITHUB_ENV so it survives into the later
-    // Step 5 Bash-tool-call (a NEW shell — plain env/shell vars do not
-    // survive that boundary, only $GITHUB_ENV-persisted ones do).
-    expect(window).toMatch(/>>\s*"\$GITHUB_ENV"/);
+    expect(offenders, "a fenced block still reads ${LABELS:-}").toEqual([]);
   });
 
-  it("Step 5 reads AUTO_ROUTE_SUFFIX from BKIT_AUTO_ROUTE_FILE (not a bare ${LABELS:-} re-read as primary)", () => {
-    const ship = readShip();
-    const subjectIdx = ship.indexOf('--subject "$(gh pr view {PR_NUMBER}');
-    expect(subjectIdx, "squash --subject line not found").toBeGreaterThan(-1);
-    const window = ship.slice(Math.max(0, subjectIdx - 600), subjectIdx + 120);
-    // The suffix must actually be threaded onto the squash subject.
-    expect(window).toContain("${AUTO_ROUTE_SUFFIX}");
-    // PRIMARY path: read the handoff file written at Step 1.
-    expect(window).toMatch(/if\s+\[\s+-n\s+"\$\{BKIT_AUTO_ROUTE_FILE:-\}"\s+\]/);
-    expect(window).toMatch(/AUTO_ROUTE_SUFFIX=\$\(cat\s+"\$BKIT_AUTO_ROUTE_FILE"\)/);
-    // FALLBACK only: a same-block {LABELS} re-check, gated behind the
-    // handoff-file-missing branch (an `else`), never as the sole source.
-    const elseIdx = window.indexOf("else");
-    const fallbackReadIdx = window.indexOf('echo "${LABELS:-}"');
-    expect(elseIdx, "fallback else branch not found").toBeGreaterThan(-1);
-    expect(fallbackReadIdx).toBeGreaterThan(elseIdx);
-  });
-
-  it("the squash --subject is built in the SAME fenced block that derives AUTO_ROUTE_SUFFIX (no cross-block var reuse)", () => {
+  it("Step 5 derives AUTO_ROUTE_SUFFIX from the tracker, exact-matched, in the subject's own fence", () => {
     const ship = readShip();
     const lines = ship.split("\n");
     let inFence = false;
-    let fenceStart = -1;
     let fenceLines: string[] = [];
     let target: string[] | undefined;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const line of lines) {
       if (/^\s*```/.test(line)) {
         if (!inFence) {
           inFence = true;
-          fenceStart = i;
           fenceLines = [];
         } else {
           inFence = false;
@@ -533,13 +524,15 @@ describe("bkit-ship.md — #363 build-challenge H2 regression: AUTO_ROUTE_SUFFIX
       }
       if (inFence) fenceLines.push(line);
     }
-    expect(fenceStart, "fence containing --subject...AUTO_ROUTE_SUFFIX not found").toBeGreaterThan(
-      -1,
-    );
-    expect(
-      target,
-      "no single fenced block derives AND consumes AUTO_ROUTE_SUFFIX together",
-    ).toBeDefined();
-    expect(target!.join("\n")).toMatch(/AUTO_ROUTE_SUFFIX=""/);
+    expect(target, "no single fenced block derives AND consumes AUTO_ROUTE_SUFFIX").toBeDefined();
+    const block = target!.join("\n");
+    // Initialised empty (fail-safe), then re-derived from the tracker here.
+    expect(block).toMatch(/AUTO_ROUTE_SUFFIX=""/);
+    expect(block).toMatch(/gh issue view \{ISSUE_ID\} --json labels --jq '\.labels\[\]\.name'/);
+    // -qxF: whole-line fixed match, so `bkit:auto-paused` / `no-bkit:auto`
+    // cannot arm the route (mirrors bkit-cloud.yml's kill switch).
+    expect(block).toMatch(/grep -qxF 'bkit:auto'/);
+    // ...and the suffix actually reaches the squash subject.
+    expect(block).toContain("${AUTO_ROUTE_SUFFIX}");
   });
 });

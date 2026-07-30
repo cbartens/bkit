@@ -182,11 +182,14 @@ interface RunResult {
   stdout: string;
   stderr: string;
   outputs: Record<string, string>;
+  summary: string;
 }
 
 function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
   const outputFile = path.join(fixture.workspaceDir, `.gh-output-${Math.random()}`);
+  const summaryFile = path.join(fixture.workspaceDir, `.gh-summary-${Math.random()}`);
   fs.writeFileSync(outputFile, "");
+  fs.writeFileSync(summaryFile, "");
   const res = spawnSync("bash", ["-c", CTX_SCRIPT], {
     cwd: fixture.workspaceDir,
     encoding: "utf8",
@@ -194,12 +197,14 @@ function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
       ...process.env,
       PATH: `${fixture.stubBinDir}:${process.env.PATH}`,
       GITHUB_OUTPUT: outputFile,
+      GITHUB_STEP_SUMMARY: summaryFile,
       GITHUB_WORKSPACE: fixture.workspaceDir,
       GITHUB_REPOSITORY: "owner/repo",
       GH_TOKEN: "dummy",
       ...env,
     },
   });
+  const summary = fs.existsSync(summaryFile) ? fs.readFileSync(summaryFile, "utf8") : "";
   const raw = fs.existsSync(outputFile) ? fs.readFileSync(outputFile, "utf8") : "";
   const outputs: Record<string, string> = {};
   for (const line of raw.split("\n")) {
@@ -207,7 +212,13 @@ function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
     if (eq === -1) continue;
     outputs[line.slice(0, eq)] = line.slice(eq + 1);
   }
-  return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "", outputs };
+  return {
+    status: res.status,
+    stdout: res.stdout ?? "",
+    stderr: res.stderr ?? "",
+    outputs,
+    summary,
+  };
 }
 
 function seedDevDispatchRows(workspaceDir: string, fid: string, headShas: string[]): void {
@@ -418,6 +429,31 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       );
     });
 
+    // #363 F3 — the fix/** arm derives ISSUE from FID BEFORE the slug
+    // allowlist runs, so a branch with no numeric/alpha id yields no grep
+    // match. Without `|| true`, pipefail propagates exit 1 under
+    // `set -euo pipefail` and the step dies red instead of reaching the
+    // fail-safe no-op three lines below — training operators to ignore red
+    // bkit-cloud runs. Reachable on any Renovate/hotfix/hand-named branch.
+    it.each([["feat/add-oauth"], ["fix/hotfix-login"], ["fix/renovate-bump"]])(
+      "F3: a non-FID-shaped branch (%s) no-ops cleanly instead of aborting the step",
+      (branch) => {
+        const result = runCtxStep(fixture, {
+          EVENT: "workflow_run",
+          CONCLUSION: "failure",
+          BRANCH: branch,
+          COMMIT_MSG: "chore: something unconventional",
+          HEAD_SHA: "no-fid-sha",
+          STUB_PR_NUMBER: "88",
+          STUB_PR_BODY: "", // no bkit:issue= / bkit:fid= markers
+          STUB_ISSUE_LABELS: "bkit:auto",
+        });
+        expect(result.status, `step aborted: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip).toBe("true");
+        expect(result.stdout).toContain("Cannot derive FID/ISSUE for branch");
+      },
+    );
+
     it("T15: fix/** failure loop is capped, sharing ONE budget with the dev path for the same FID", () => {
       // Pre-existing rows written by the DEV surface for this FID.
       seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
@@ -544,13 +580,62 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
     expect(result.outputs.skip).toBe("true");
     expect(result.stdout).toContain("Stale dev CI");
-    // M6 remediation: a stale run records a best-effort dev-dispatch-dropped
-    // telemetry row (informational, not a counted dev-dispatch cycle) so an
-    // operator can find a possibly-superseded FID instead of it vanishing.
-    const rows = readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger") as Array<{
-      type: string;
-    }>;
-    expect(rows).toHaveLength(1);
-    expect(rows[0].type).toBe("dev-dispatch-dropped");
+    // #363 F6: the dev-dispatch-dropped row goes to the RUN SUMMARY, not a
+    // committed status.jsonl. This branch is only reached because dev already
+    // advanced, so the old `git push origin dev || true` was usually a
+    // non-fast-forward and silently dropped the row in exactly the scenario it
+    // records — while the warning told the operator to go read it.
+    const dropped = JSON.parse(
+      /^\{"type":"dev-dispatch-dropped".*$/m.exec(result.summary)?.[0] ?? "null",
+    ) as { type: string; fid: string; headSha: string; latestSha: string } | null;
+    expect(dropped, `no drop row in run summary:\n${result.summary}`).not.toBeNull();
+    expect(dropped!.fid).toBe("363-widen-bkit-cloud-trigger");
+    expect(dropped!.headSha).toBe("stale-sha");
+    expect(dropped!.latestSha).toBe("newer-sha");
+    // ...and nothing is written to the repo on this path.
+    expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // #363 F7 — the kill switch must precede the stale-run guard, so revoking
+  // bkit:auto stops ALL side effects, not just the dispatch.
+  // -------------------------------------------------------------------------
+  it("kill switch precedes the stale-run guard: a revoked FID writes no drop telemetry", () => {
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#507) bkit [auto route]",
+      HEAD_SHA: "stale-sha",
+      STUB_LATEST_CI_SHA: "newer-sha", // would trip the stale-run guard...
+      STUB_ISSUE_LABELS: "bkit:ship", // ...but bkit:auto is gone, so we never get there
+    });
+    expect(result.outputs.skip).toBe("true");
+    expect(result.stdout).toContain("no longer carries bkit:auto");
+    expect(result.stdout).not.toContain("Stale dev CI");
+    expect(result.summary).not.toContain("dev-dispatch-dropped");
+    expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // #363 F8 — head_commit.message is subject+body; grep's `^` anchors per
+  // line, so a scoped line in the squash body must not win over the subject.
+  // -------------------------------------------------------------------------
+  it("FID recovery reads the commit SUBJECT, not a scoped line in the body", () => {
+    const result = runCtxStep(fixture, {
+      EVENT: "workflow_run",
+      CONCLUSION: "failure",
+      BRANCH: "dev",
+      // Subject carries no conventional scope; the body does (GitHub's default
+      // squash body is the list of source commit subjects).
+      COMMIT_MSG:
+        "Merge pull request #99 from someone/branch bkit [auto route]\n\nfeat(999-unrelated-feature): some commit\n",
+      HEAD_SHA: "sha-body-scope",
+      STUB_LATEST_CI_SHA: "sha-body-scope",
+      STUB_ISSUE_LABELS: "bkit:auto",
+    });
+    expect(result.outputs.skip).toBe("true");
+    expect(result.stdout).toContain("Cannot derive FID");
+    expect(result.outputs.arg ?? "").not.toContain("999-unrelated-feature");
   });
 });

@@ -1045,11 +1045,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Re-read labels → update status, write close telemetry, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
+   # Re-derived from the tracker in THIS fence: {LABELS} above is an MCP-derived
+   # template value, never a shell variable, so `${LABELS:-}` always expands empty
+   # (docs/knowledge.jsonl, key 363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary).
+   # Exact-match (-qxF) so bkit:auto-paused / no-bkit:auto do NOT arm the route.
    AUTO_ROUTE_SUFFIX=""
-   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   BKIT_AUTO_ROUTE_FILE=$(mktemp)
-   printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
-   echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
+   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    WT=$(git rev-parse --show-toplevel)
    STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -1097,13 +1098,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
+   # Re-derived in THIS fence — see Step 3; no shell state survives from there.
    AUTO_ROUTE_SUFFIX=""
-   if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
-     AUTO_ROUTE_SUFFIX=$(cat "$BKIT_AUTO_ROUTE_FILE")
-     rm -f "$BKIT_AUTO_ROUTE_FILE"
-   else
-     echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   fi
+   gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
    if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2

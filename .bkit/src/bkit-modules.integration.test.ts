@@ -1207,8 +1207,11 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     // with the dev path) and derives the short ISSUE prefix FROM it, rather
     // than the pre-H1 `ISSUE="$FID"` (which relied on FID already being
     // truncated to the numeric/alpha id — the bug H1 fixed).
+    // #363 F3: `|| true` is required — on the fix/** arm this runs before the
+    // slug allowlist, so a non-FID branch yields no grep match and pipefail
+    // would kill the step instead of reaching the fail-safe no-op.
     expect(out).toContain(
-      "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)",
+      "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
     );
     // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
     // Verify no separate re-derivation of ISSUE appears outside the shared-deriv block.
