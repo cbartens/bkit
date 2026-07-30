@@ -187,7 +187,7 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
-## Post-merge dev CI auto-routing (#363)
+## Post-merge dev CI auto-routing
 
 `bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**`, `fix/**`, AND `dev` CI completion (never `main`). The `dev` row:
 

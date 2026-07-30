@@ -11,7 +11,7 @@
     ".cursor/hooks/guardrails.cjs": "faed347831406f6b1f4f03df3357073fedb24e7612f347f5329787372b6a257f"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "495af22f846e50ad6d32d885698d0fc2fae68dedbee59d2d909833d4500f05a7",
+    "docs/deployments.md": "52444875e6ce780fbed2619f337f65b11962c0bec844b5bad7bf4f3906d1ed0f",
     "docs/testing.md": "96f1121d4de94b918e1565156c2050803b5fed309075e9acde307be0ee590d1f",
     ".claude/settings.json": "fd7c84e7ee0e75fe34db4dd49a8437ae76aba6a859d60e4a06fd255ddfae6e6c",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
@@ -46,7 +46,7 @@
     ".gitignore": "f9c1f4522004e8899b6932142d385a9ae87d18b49da39e9e7fdd03355f3196d6",
     ".cursor/mcp.json": "dd07b8eb46eff755655fff7b114d4347487764fa7a6894caaa635eba4dc5b2f5",
     ".envrc": "d2c6438e118864fc7b1c726c58cb9912c2d1474b64108bca7404aeb937d0743b",
-    "docs/security.md": "05fcbaec3dde19122c150a24c0a341e031f3cee0b1c572a5f54fa2d8f33ef8df",
+    "docs/security.md": "91e7c20b3129e96b8f6240201238b2e9d23db734f07bfa9f80c21c60c86a18d6",
     ".github/renovate.json5": "5d248e5945c9b4ddfb1860c2e204320797345ef81394825b03b2ca7fadad91ab",
     ".mcp.json": "1aea759cf1f261b8e340f6f34bd3c561e8c5283235a63fede0b177703877c66a",
     "docs/architecture.md": "dca80a3487c92369a1d06375b01882efd0aa00a15a44493791802507c8e370ea",
