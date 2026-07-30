@@ -6,6 +6,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent + maintainer readers.
+> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Claude env config → Claude app; Cursor → `.cursor/` in-repo. Both have in-repo SessionStart guard.
 > - Update when either cloud's pre-installed toolchain or default allowlist changes. Sources: `code.claude.com/docs/en/claude-code-on-the-web` + `cursor.com/docs/cloud-agent/setup`.
 
@@ -150,7 +151,7 @@ Use **fine-grained** PAT scoped to target repo (or each consumer repo, comma-sep
 | Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.githubProject`) — org-owned boards only; see note |
 | Metadata | Read | mandatory, auto-included |
 
-`gh` does **not** read `GH_BKIT_TOKEN` — pipe once after session start: `printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token` (e.g. in `.claude/hooks/cloud-bootstrap.sh`). Locally, `gh auth login` and leave `GH_TOKEN` unset so keyring not overridden (#287).
+`gh` does **not** read `GH_BKIT_TOKEN` — pipe once after session start: `printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token` (e.g. in `.claude/hooks/cloud-bootstrap.sh`). Locally, `gh auth login` and leave `GH_TOKEN` unset so keyring not overridden.
 
 > **Projects v2 board sync (`bkit.githubProject`):** **Projects** permission is **Organization** permission (table row above) — appears only when token **resource owner is the org**, _not_ personal account; org may require token **approved**. Under token UI **Organizations** tab, not Repository permissions; governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards unreachable by fine-grained PATs — see below.
 
@@ -458,21 +459,6 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 - **GitHub App vs `/web-setup` (Claude).** Auto-fix PRs require GitHub App. `/web-setup` (sync `gh` token to Claude account) enough for clone + push, not auto-fix.
 - **IP allowlists** on org GitHub / Anthropic accounts block cloud sessions — contact support to exempt managed infra.
 - **pnpm `.npmrc` substitution.** Use `${VAR}` only, never `${VAR:-default}` — pnpm does not parse POSIX fallback and sends no auth → 401 on `@cbartens/bkit`. Both clouds equally.
-
-# Decision log
-
-## opencode provider host
-
-**Superseded premise:** Original SP5 out-of-scope note classified opencode as separate file (`opencode-cloud.yml`) or separate CLI flag path. opencode host was "phase 2 post-PR" addition.
-
-**Decision: additive / unified-file.** Claude + opencode CI dispatch jobs in single `bkit-cloud.yml`. Independently runtime-gated on own secret (`ANTHROPIC_API_KEY` claude, `OPENCODE_PROVIDER_KEY` opencode) — one secret → one job. Both coexist by setting both secrets.
-
-**Rationale:**
-
-- One file = one Renovate `ignorePaths` entry, one audit surface, one template write.
-- Runtime-gated jobs idempotent — second job no-op until consumer adds secret.
-- opencode job dispatches via `opencode run "/bkit-auto $PHASE $ARG"` (headless; no comment event). Provider model/config in `.opencode/opencode.json` (committed, from `bkit install --opencode=<provider>`). Single `OPENCODE_PROVIDER_KEY` fanned out to all known provider env var names so config `${VAR}` resolves regardless of provider.
-- Cloud workflow rename (previous name → `bkit-cloud.yml`) only consumer-visible breaking change; upgrade path removes old file automatically.
 
 # Sources
 

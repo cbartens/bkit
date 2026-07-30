@@ -76,7 +76,7 @@ execSync(`vercel env ls ${env}`); // PROHIBITED
 
 `execSync` permitted ONLY with constant, fully-literal command string. Prefer non-throwing `spawnSync` when non-zero exit is expected — try/catch-default-return reads as error-obscuring catch to `slop:delta`.
 
-Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at runtime). See `docs/knowledge.jsonl` KN-6.
+Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at runtime). See `docs/knowledge.jsonl`.
 
 GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) → `run:` body ONLY via `env:` (runtime expansion), never inlined into `${{ }}` — see `docs/deployments.md` § `bkit-cloud.yml`.
 

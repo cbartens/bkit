@@ -6,6 +6,7 @@
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent readers only.
+> - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
 > - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - One row per concern. Update when an IDE adds/changes a feature.
@@ -135,9 +136,9 @@ Tier guidance:
 Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (agent-specific API key — general keys can HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor models churn.** API currently **no Sonnet** — former `claude-4.6-sonnet-thinking` pin gone; build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) offered but not adopted as default.
 
 > [!NOTE]
-> **Native-default Cursor pins (#205).** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
+> **Native-default Cursor pins.** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
 >
-> **Opus 5 bump (2026-07-25).** Anthropic released Claude Opus 5 (`claude-opus-5`) 2026-07-24 — same price as Opus 4.8 ($5/$25 per MTok), AA leaderboard ranks it #1 overall (max effort, score 61) ahead of Fable 5 (60), and it tops LiveBench Agentic Coding at **65.2** — also ahead of Fable 5 (62.2, at 1.7x the cost per task). Cursor `/v0/models` lists `claude-opus-5-thinking-high` / `-fast`, confirmed live same day — **Claude host pins bumped; Cursor defaults moved off API pool** (native-only policy above). (#205)
+> **Claude opus tier pins `claude-opus-5`.** $5/$25 per MTok, AA leaderboard #1 overall (max effort, score 61) ahead of Fable 5 (60), and top of LiveBench Agentic Coding at **65.2** — also ahead of Fable 5 (62.2, at 1.7x the cost per task). Cursor's `/v0/models` catalog lists `claude-opus-5-thinking-high` / `-fast`, but Cursor defaults stay on native models per the native-only policy above.
 
 ### Per-subagent model assignment
 
@@ -286,7 +287,7 @@ Both hosts: same `mcpServers` shape; files differ:
 
 Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers": { "Authorization": "Bearer ${GH_BKIT_TOKEN}" }`. `${GH_BKIT_TOKEN}` at session start — must be in shell (local) or dashboard env (cloud). See `.bkit/cloud.md` § MCP issue-tracker integration for full JSON.
 
-**Tracker switch seed-only, not rewrite.** `.mcp.json` / `.cursor/mcp.json` Tier-3 seed-or-print: bkit writes tracker-filtered content only when absent. Existing file never overwritten — tracker switch (e.g. `--tracker=linear` → `--tracker=github`) leaves old entry. Advisories: `mcp-missing-server-<name>` (file lacks needed server), `mcp-extra-server-<name>` (bkit-managed server tracker no longer uses). Consumer-added MCP servers never flagged.
+**Tracker switch seed-only, not rewrite.** `.mcp.json` / `.cursor/mcp.json` Tier-3 seed-or-print: bkit writes tracker-filtered content only when absent. Existing file never overwritten — tracker switch (e.g. `--tracker=linear` → `--tracker=github`) leaves old entry. Advisories: `mcp-missing-server-<name>` (file lacks needed server), `mcp-extra-server-<name>` (bkit-managed server the configured tracker does not use). Consumer-added MCP servers never flagged.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored for server defs — only `.mcp.json` (project) or `claude mcp add` (user) take effect. Tool-permission `allow` (`mcp__github__*`) remain in settings.
 
@@ -329,7 +330,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 | Cursor | `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns — currently NO Sonnet (Fable 5 + Opus 4.7/4.8 + GPT-5.x + Grok 4.5 + composer-2.5). |
 | ollama-local | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
 | NVIDIA NIM | `curl https://integrate.api.nvidia.com/v1/models -H "Authorization: Bearer $NVIDIA_API_KEY"` | Hosted; catalog changes; verify before pinning. |
-| Groq | `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` | Hosted; small catalog. Coding/tool-calling set: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `llama-3.3-70b-versatile` (no Kimi / Qwen3-Coder-480B; `qwen3-32b` was removed). Confirm tool-calling per model. |
+| Groq | `curl https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"` | Hosted; small catalog. Coding/tool-calling set: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.6-27b`, `llama-3.3-70b-versatile` (no Kimi / Qwen3-Coder-480B, no `qwen3-32b`). Confirm tool-calling per model. |
 | Cerebras | `curl https://api.cerebras.ai/v1/models -H "Authorization: Bearer $CEREBRAS_API_KEY"` | Hosted; tiny catalog: only `zai-glm-4.7` + `gpt-oss-120b`. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models` | **Public — no key.** Aggregator; `vendor/model` slugs (`:free` variants exist). Filter for tool-calling + coding models before pinning. |
 | Ollama (Cloud) | `curl https://ollama.com/v1/models -H "Authorization: Bearer $OLLAMA_API_KEY"` | Hosted Ollama; cloud-tagged models (e.g. `qwen3.5:397b`, `kimi-k2.7-code`). Distinct from `ollama-local`. |
@@ -347,7 +348,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **opencode-zen / opencode-go — two OpenCode built-in providers.** Both emit minimal `provider.<id>` with only `options.apiKey: "{env:OPENCODE_API_KEY}"` (no npm driver, no baseURL). OpenCode resolves from models.dev — Go Qwen/MiniMax use Anthropic `/messages`, not openai-compatible `/chat/completions`. Zen keyed `opencode`; Go `opencode-go`. `bkit install --opencode=opencode-zen` (or `=opencode-go`) → `bkit.opencodeProvider` in `package.json`; legacy `opencode` → `opencode-zen` via `OPENCODE_PROVIDER_ALIASES`. Reinstall **replaces** seeded block (heals hijacked npm/baseURL). Set `OPENCODE_API_KEY` in `.bkit/.env` (<https://opencode.ai/auth>). Columns from **models.dev**.
 
-**All ten providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin** (#205). A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores of the Claude models bkit pins per tier. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
+**All ten providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores of the Claude models bkit pins per tier. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
 
 ### Agentic-coding parity board
 

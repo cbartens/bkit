@@ -19,7 +19,7 @@
 
 CI runs tiers through bkit scaffold — **one parallel lane (job) per tier**, not steps in one job (step-by-step: `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape: `deployments.md` § Run-level decision matrix).
 
-Graph **flat and wide** for static/unit/build/integration: scope fans out; capstone joins. **One exception (#385):** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane (ordering) — never gate live behind static/unit/build/e2e:
+Graph **flat and wide** for static/unit/build/integration: scope fans out; capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane (ordering) — never gate live behind static/unit/build/e2e:
 
 ```
   bkit-tests-scope ─┬─ bkit-tests-static       ─┬─ bkit-tests-check
@@ -41,7 +41,7 @@ Graph **flat and wide** for static/unit/build/integration: scope fans out; capst
 Adopt only lanes your repo has. Add lane the moment its tier exists — tier with no lane = tier nothing gates.
 
 - **`bkit-tests-scope`** (always-on) computes `run_level` (+ optional `run_migration`) + emits `bkit-test-plan` contract — _what should run_.
-- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration` (#385).
+- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration`.
 - **`bkit-tests-migration`** (optional; DB repos) — always-on ordering + provisioning lane: (1) fresh-DB replay + seed assert (plan-/path-gated per-step); (2) on every push to `dev`/`main`, remote `db push --linked --include-all` (un-gated by `run_migration` — self-heals a remote left behind). No job-level `if:` — e2e/live `needs:` it; a skip would cascade. Capstone asserts `success` whenever scope succeeded. See § Provision backing services fresh.
 - **`bkit-tests-live`** runs `@live` tier against deployed URL (`run_live`; drop job if no deploy). `needs:` planner + **migration** (when that lane owns remote push) — do **not** gate behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing: `@live` push-only, post-merge, PR-validated; non-compiling tree reds via own build).
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
@@ -57,7 +57,7 @@ Every lane must **declare** what it may reach; declaration enforced by lane env 
 | `bkit-tests-unit` | none — **mocked** | none | none |
 | `bkit-tests-build` | none | none | none |
 | `bkit-tests-integration` | none — **mocked** | **ephemeral, CI-local, fresh each run** | none |
-| `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** (plan-/path-gated) + **shared remote push** on every `dev`/`main` push (#385) | none |
+| `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** (plan-/path-gated) + **shared remote push** on every `dev`/`main` push | none |
 | `bkit-tests-e2e` | none — **mocked** | ephemeral **local** (PR) / the migrated shared one (push) | preview / deployed URL |
 | `bkit-tests-live` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
 
@@ -161,7 +161,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Migration-replay + seed (the fresh-DB gate)
 
-- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migration` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step (`deployments.md` § Applying migrations at deploy time) — that remote push also lives in the **same** always-on lane (#385), after the replay, so a from-empty failure never reaches shared remote.
+- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migration` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step (`deployments.md` § Applying migrations at deploy time) — that remote push also lives in the **same** always-on lane, after the replay, so a from-empty failure never reaches shared remote.
 - **Assert the seed actually loaded** — check a known row exists. A reset / replay can exit 0 while a conditional insert silently no-ops or the seed aborts mid-file; a green replay is not proof the fixture is present (the seed analog of the hollow-boundary rule).
 - Generate the seed from a **single deterministic source** — a pure data definition with no wall-clock `now()`, no random values, explicit IDs / enums so triggers don't randomise it — and regenerate the checked-in seed file from it. Two hand-maintained copies drift.
 - **Replay-from-empty, not reused-volume.** A bare "start the local stack" can reuse a stale data volume and silently skip newer migrations — it is **not** a freshness proof; only a reset / replay from empty is.
@@ -286,7 +286,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 2. **Smoke spawn** — `bkit install --claude --cursor --tooling` on scratch consumer (`os.tmpdir()`, exit 0). `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
 4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`). v0.7.0+.
-5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer (KN-12). v0.9.0+.
+5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer. v0.9.0+.
 
 ## Heavy-customised consumer fixture
 
@@ -298,7 +298,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 
 When adding bkit-managed file types or scope keys, extend fixture — single source of truth for real consumer surface; do not mock.
 
-## Counter derivation test coverage (#58)
+## Counter derivation test coverage
 
 `*_ATTEMPT` counters **derived** from `status.jsonl` at use — never carried across Bash calls (§ Attempt counters, `.bkit/workflows.md`). Shell state does not persist between fenced blocks → value crosses only via `status.jsonl`.
 
@@ -334,7 +334,7 @@ Each of the five phase workflows' Step 2 (Worktree Setup) now also emits the dur
 | `.bkit/src/bkit-template-no-userpath.test.ts` | Unit | No leaked `/Users/<name>`\|`/home/<name>` absolute path in the shipped plan template or its repo copy (D20) |
 | `.bkit/src/bkit-runtime-prose-audit.test.ts` | Unit | Every `RUNTIME_*` flag has >=1 reader in `.bkit/workflows/`; `CAN_SLEEP` absent; every foreground CI-wait `sleep` sits inside `bkit_wait_ci` (never a raw call-site `sleep`); every OTHER raw `sleep` is an explicitly-catalogued `dev`-lock retry/backoff — presence, not behaviour |
 
-## Ship merge-gate + bookkeeping test coverage (#384)
+## Ship merge-gate + bookkeeping test coverage
 
 `#384` ships the ship gate + bookkeeping rework as a **tiered carrier**: the rule whose failure is unrecoverable is an executable `.bkit/scripts/bkit-ship-gate.sh` (Tier 1, bats); the prose invariants are enforced by a vitest markdown-invariant test (Tier 2); the status.jsonl step-set hole detector is a fail-open advisory (Tier 3). The three tiers trade confidence for cost: the merge gate is a gate (a wrong merge is unrecoverable); the prose invariants are a hard CI gate (a regression is a one-line fix); the hole detector is advisory (a noisy day-one gate on a 25–65% holey corpus is muted within a week — decision `384-tier3-promotion`).
 
@@ -377,7 +377,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
 | `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
 
-## Compliance grader test coverage (#234 WS-2)
+## Compliance grader test coverage
 
 **Boundary: git diff** — `bkit-comply.integration.test.ts` uses temp git repo + real `git diff parentSha..HEAD`; no mocks at boundary. Canonical pattern for git-diff validation.
 
@@ -458,7 +458,7 @@ expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).to
 
 Assert ≥1 positive signal (`[bkit-install]` prefix, exit 0 with reason, or file exists) — else binary-not-found exit 1 passes vacuously.
 
-## Filesystem consumer-repo boundary pattern (#234 WS-4, amended #343)
+## Filesystem consumer-repo boundary pattern
 
 Harvest boundary tests: real `os.tmpdir()`, `fs.stat`/`fs.readFileSync` ground truth — NO mocks.
 
@@ -470,7 +470,7 @@ Harvest boundary tests: real `os.tmpdir()`, `fs.stat`/`fs.readFileSync` ground t
 6. `fileUnchanged(before, after)` — content + size byte-identical.
 7. `harvest/stats.jsonl` gained expected rows.
 
-**Per-file invariant (#343).** `stats.jsonl` copy-only → step 6 MUST pass. `friction.jsonl` MOVE → prune after store; `fileUnchanged` false by design.
+**Per-file invariant.** `stats.jsonl` copy-only → step 6 MUST pass. `friction.jsonl` MOVE → prune after store; `fileUnchanged` false by design.
 
 Pruning makes store sole copy until commit — property-test destructive half: store accumulates, malformed never pruned, absent rows left. See `bkit-harvest.integration.test.ts`.
 
@@ -494,7 +494,7 @@ Any read-only filesystem invariant: step 6 = `fileUnchanged` (not mtime). `after
 
 Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static and test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.
 
-## Packed-tarball migration validation pattern (#234 WS-5)
+## Packed-tarball migration validation pattern
 
 Validating `bkit telemetry migrate` via a packed tarball in a clean consumer dir (the "dogfood via packed tarball" pattern from MEMORY):
 
