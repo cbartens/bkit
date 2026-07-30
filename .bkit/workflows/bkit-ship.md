@@ -25,7 +25,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded `$BOOK_ROOT/.../status.jsonl`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap` that removes `.dev.lock` on `EXIT`.
-> - **Status branch:** All steps write `$BOOK_ROOT/.../status.jsonl` (bookkeeping never rides the branch — #384). `BOOK_ROOT` resolves the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` → `$REPO_ROOT` (dev tree); `RUNTIME_DEVPUSHES=false` → current working branch tree (bookkeeping lands with the phase-close PR per #341 shape A). Staging is path-scoped via `BOOK_PATHS` (frozen allow-list: 9 book paths + any present host skill mirror); NEVER stage all files (the `-A` flag) or blanket `docs/`. `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
+> - **Status branch:** All steps write `$BOOK_ROOT/.../status.jsonl` (bookkeeping never rides the branch — #384). `BOOK_ROOT` resolves the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` → `$REPO_ROOT` (dev tree); `RUNTIME_DEVPUSHES=false` → current working branch tree (bookkeeping lands with the phase-close PR per #341 shape A). Staging is path-scoped via `BOOK_PATHS` (frozen allow-list: 10 book paths + any present host skill mirror); NEVER stage all files (the `-A` flag) or blanket `docs/`. `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -182,9 +182,10 @@ description: "Ship Feature — Autonomous merge and archive"
    #   docs/knowledge.jsonl
    #   docs/decisions.jsonl
    #   .bkit/friction.jsonl
+   #   .bkit/stats.jsonl
    #   .agents/skills
    #   skills-lock.json
-   BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .agents/skills skills-lock.json"
+   BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
    # Host skill mirrors — `npx skills remove` (Step 11) deletes these alongside
    # .agents/skills/<name>, so they must be stageable or the deletions leak into
    # the working tree. Appended only when present on disk OR tracked in the

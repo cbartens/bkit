@@ -68,7 +68,7 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// FROZEN — BOOK_PATHS 8-path staging allow-list
+// FROZEN — BOOK_PATHS staging allow-list
 // ---------------------------------------------------------------------------
 //
 // Verbatim from the design (§ `BOOK_ROOT` / `BOOK_PATHS`). Every `git add` in
@@ -83,6 +83,11 @@ export const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   "docs/knowledge.jsonl",
   "docs/decisions.jsonl",
   ".bkit/friction.jsonl",
+  // Close telemetry — the close step appends compliance/counter/outcome rows to
+  // .bkit/stats.jsonl BEFORE the close commit, so an allow-list without it wrote
+  // them and never staged them (they stranded dirty after every ship). Pairs with
+  // .bkit/friction.jsonl; same ledger pair as the pre-worktree allow-list.
+  ".bkit/stats.jsonl",
   ".agents/skills",
   "skills-lock.json",
   // Host skill mirrors — `npx skills remove` in Step 11 deletes these alongside
@@ -168,7 +173,7 @@ describe("bkit-ship.md — BOOK_ROOT / BOOK_PATHS named conventions", () => {
     expect(ship).toMatch(/BOOK_PATHS/);
   });
 
-  it("BOOK_PATHS resolves to the frozen 8-path allow-list (positive presence)", () => {
+  it("BOOK_PATHS resolves to the frozen allow-list (positive presence)", () => {
     const ship = readShip();
     // Every path in the design's frozen list must appear. RED on current prose
     // because none of these literal paths are gathered under a BOOK_PATHS

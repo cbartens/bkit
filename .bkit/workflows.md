@@ -760,14 +760,14 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 ### `/bkit-ship` — 13 steps
 
-**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `BOOK_PATHS` (frozen 8-path allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
+**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `BOOK_PATHS` (frozen 10-path allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
 
 **Tier-1 carrier:** `bkit-ship-gate.sh` + `bkit-ship-timeouts.sh` (byte-identical pair in `.bkit/scripts/` + `.bkit/templates/.bkit/scripts/`). **Tier-2 carrier:** `bkit-ship-invariants.test.ts` (14 assertions: no `git add -A`, `BOOK_PATHS` staging, `BOOK_ROOT` status writes, `--match-head-commit`, canonical 14 step keys, `.dev.lock`/trap/EXIT, `.deferred-blocked` writer under `BOOK_ROOT`). **Tier-3 carrier:** detector corpus (Sub-plan 3).
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional) + `BOOK_PATHS` (frozen 8-path allow-list); create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
+| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional) + `BOOK_PATHS` (frozen 10-path allow-list); create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
 | 2 — Verify PR (Worktree Setup + Regression Guard) | — | Read PR head SHA (`ENTRY_HEAD`), mergeable state. Regression guard: no CI run for PR HEAD → FAIL; else assert prior failed steps now pass. Branch eligibility check. Resolve `PR_NUMBER`. Init `MERGE_ATTEMPT` = 0. Write ownership marker to outbox. |
 | 3 — Base Check | — | `git merge-base --is-ancestor origin/dev origin/feat/{FID}`: ancestor → Path A → Step 6; not ancestor → Path B → Step 4. |
 | 4 — Integrate (Path B only) | `@bkit-ship-conflict-resolve` _(B2 only)_ | B1 mergeable: `gh pr update-branch` → Step 5. B2 conflicting: worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease` → Step 5. Non-mechanical: handover. |
@@ -1197,7 +1197,7 @@ fi
 
 Carries workflow log + friction rows into new worktree branch. `/bkit-ship` appends ` bkit [skip ci]`; `/bkit-debug` Step 2 omits primitive — branches `origin/dev` for hotfix isolation.
 
-Allow-list, never deny-list: deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. Close on main (`design`/`plan`/`ship`) and `/bkit-ship` Step 6 pre-merge use the same pathspec: `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl`.
+Allow-list, never deny-list: deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. Close on main (`design`/`plan`) and `/bkit-ship` Step 6 pre-merge use the pathspec `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl`; `/bkit-ship` close stages via `BOOK_PATHS` (§ `/bkit-ship`), which carries the same ledger pair.
 
 ## File path conventions
 
@@ -1272,7 +1272,7 @@ Orchestrator behavior:
   - `STATS="$WT/.bkit/stats.jsonl"` · `FRICTION="$WT/.bkit/friction.jsonl"`
   - `docs/{deferrals,failures,knowledge,decisions}.jsonl` → `"$WT/docs/…"`. NEVER mix `$REPO_ROOT` and `show-toplevel` for the same ledger in one block.
 - **Friction/stats:** append to `$FRICTION` / `$STATS` at close; stage into the close commit that pushes (never leave dirty after push).
-- **Close commit pathspec (design/plan/ship on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
+- **Close commit pathspec (design/plan on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Ship: `BOOK_PATHS` on add+commit, carrying the same ledger pair. Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
 - **Tracker comment:** summary-only (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
 - **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
