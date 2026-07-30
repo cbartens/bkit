@@ -575,7 +575,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
-5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread `AUTO_ROUTE_SUFFIX` onto the squash `--subject` when the issue carries `bkit:auto` — re-read the label from the tracker in the SAME fence that consumes it, NEVER carried forward from Step 1's `{LABELS}`; exact-match only:
+5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Re-read `bkit:auto` from the tracker (exact-match) and thread `AUTO_ROUTE_SUFFIX` onto the squash `--subject` in one block — NEVER carried forward from Step 1's `{LABELS}`:
    ```bash
    AUTO_ROUTE_SUFFIX=""
    gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
