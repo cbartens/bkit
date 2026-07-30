@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
@@ -204,7 +204,6 @@
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:ship"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   Do NOT try to carry the `bkit [auto route]` squash-marker decision forward from here — Step 5 re-derives it inside its own merge fence from the tracker (see Step 5). A bash variable, a `mktemp` handoff path, or a `$GITHUB_ENV` line written here is always gone by then: `$GITHUB_ENV` is applied by the Actions runner only _between_ workflow steps, and every agent Bash tool call in a cloud dispatch runs inside the one `claude-code-action` step (`docs/knowledge.jsonl`, key `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`).
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -573,16 +572,8 @@
    ```
    - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) → **Step 5** (re-validate / poll — CI still running or head moved).
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
-5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread the `bkit [auto route]` marker onto the squash `--subject` when the issue carries `bkit:auto`: the squash-merge commit is what actually lands on `dev`, and `bkit-cloud.yml`'s free-tier gate (#363) reads `head_commit.message` on that commit to admit the post-merge `dev` CI trigger. The label is re-read from the tracker HERE, in the same bash fence that uses it — never carried forward from Step 1's `{LABELS}`, which is an MCP-derived template value that was never a shell variable and does not survive a tool-call boundary regardless (`docs/knowledge.jsonl`, key `363-workflow-md-shell-var-does-not-survive-bash-tool-call-boundary`, idiom 1):
+5. Merge with empty body and `--match-head-commit` (server refuses if head moved). Thread `AUTO_ROUTE_SUFFIX` onto the squash `--subject` when the issue carries `bkit:auto` — re-read the label from the tracker in the SAME fence that consumes it, NEVER carried forward from Step 1's `{LABELS}`; exact-match only:
    ```bash
-   # Marker admits the squash-merge SHA to bkit-cloud.yml's dev/fix trigger (#363);
-   # any resulting cross-session /bkit-debug dispatch loop is capped by
-   # MAX_DEV_DISPATCH_ATTEMPTS in bkit-counter-bus-config.sh.
-   # Exact-match (-qxF, one label per line) so bkit:auto-paused / no-bkit:auto do
-   # NOT arm the route — same idiom as bkit-cloud.yml's kill switch, which is the
-   # only consumer of this marker. Non-GitHub trackers and `bkit:tracker false`
-   # leave {ISSUE_ID} unresolvable, the lookup fails closed, and the subject is
-   # unchanged — correct, since that same kill switch could not gate them either.
    AUTO_ROUTE_SUFFIX=""
    gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
    if [ "$(gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null)" != "MERGED" ]; then
@@ -591,7 +582,6 @@
        --body ""
    fi
    ```
-   The marker becomes permanent `dev` history (accepted — inherent to reading `head_commit.message`; do not "clean it up" later). When the lookup returns no exact `bkit:auto` line — label absent, revoked since Step 1, or no GitHub issue to read — `AUTO_ROUTE_SUFFIX` stays empty and the subject is unchanged.
 6. `gh pr view {PR_NUMBER} --json state` → extract `state`.
 7. Decide `MERGE_VERDICT`:
    - **If** `state` = MERGED → `MERGE_VERDICT` = PASS; `MERGE_FAILURES` = 0.

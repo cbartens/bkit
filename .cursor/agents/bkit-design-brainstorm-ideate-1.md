@@ -9,7 +9,7 @@ tools:
   - Glob
   - Write
 ---
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 **Scope:** As specified by input and Read / Update / Create section.

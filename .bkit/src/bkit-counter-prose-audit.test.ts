@@ -212,8 +212,14 @@ describe("WS3-T3: bkit-counter-bus-config.sh — all MAX_* constants are defined
 // #58 T5.2 — no-dead-constant rule
 //
 // Every MAX_* constant defined in bkit-counter-bus-config.sh must be
-// REFERENCED (>=1 time, inside a fenced shell block) somewhere across the
-// workflow corpus. Enumerated dynamically from the config file — replaces
+// REFERENCED (>=1 time, in executable shell) somewhere across the workflow
+// corpus or the shell-enforcement surfaces that consume a cap directly
+// (`bkit-cloud.yml` gates dev-triggered dispatch in its own `run:` shell).
+// Comment lines never count on either surface: MAX_DEV_DISPATCH_ATTEMPTS was
+// enforced only in bkit-cloud.yml and named in the workflow corpus solely by
+// a rationale comment in bkit-ship.md, so deleting that comment (workflow
+// files carry no rationale) turned the rule red on a cap that was never dead.
+// Enumerated dynamically from the config file — replaces
 // the hardcoded EXPECTED_CONSTANTS list above, which named 6 of the 7 real
 // constants and silently omitted MAX_CHALLENGE_REMEDIATE_ATTEMPT (the dead
 // one — #58 Breaking Changes item 6).
@@ -238,18 +244,41 @@ describe("#58 T5.2: no MAX_* constant is left unreferenced (dead) in the workflo
   const configContent = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
   const constants = Array.from(configContent.matchAll(/^(MAX_\w+)=\d/gm)).map((m) => m[1]);
 
-  /** Count references to `name` inside FENCED blocks only, across all workflow files. */
+  /**
+   * Shell surfaces outside the markdown corpus that enforce a cap directly.
+   * `bkit-cloud.yml` is the cloud router: it gates dev-triggered dispatch in
+   * its own `run:` shell, so a cap consumed only there is live, not dead.
+   */
+  const SHELL_ENFORCEMENT_FILES = [
+    ".github/workflows/bkit-cloud.yml",
+    ".bkit/templates/.github/workflows/bkit-cloud.yml",
+  ];
+
+  /** Drop comment-only lines — a cap named solely in a comment enforces nothing. */
+  function executableLines(block: string): string {
+    return block
+      .split("\n")
+      .filter((l) => !/^\s*#/.test(l))
+      .join("\n");
+  }
+
+  /**
+   * Count references to `name` in executable shell — markdown fences across the
+   * workflow corpus, plus the shell-enforcement surfaces above.
+   */
   function fencedReferenceCount(name: string): number {
     let count = 0;
+    const tally = (block: string) => {
+      const body = executableLines(block);
+      count += (body.match(new RegExp(`\\b${name}\\b`, "g")) ?? []).length;
+    };
     for (const wf of WORKFLOW_FILES) {
       const content = readWorkflow(wf);
       if (!content) continue;
       const fencedBlockRe = /(`{3,})[\w]*\n([\s\S]*?)\1/g;
-      for (const m of content.matchAll(fencedBlockRe)) {
-        const re = new RegExp(`\\b${name}\\b`);
-        if (re.test(m[2])) count += (m[2].match(new RegExp(`\\b${name}\\b`, "g")) ?? []).length;
-      }
+      for (const m of content.matchAll(fencedBlockRe)) tally(m[2]);
     }
+    for (const shellFile of SHELL_ENFORCEMENT_FILES) tally(readWorkflow(shellFile));
     return count;
   }
 

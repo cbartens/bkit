@@ -11,7 +11,7 @@ tools:
   edit: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 **Scope:** As specified by input or session prompt.

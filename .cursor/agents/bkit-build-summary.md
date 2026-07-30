@@ -8,7 +8,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a completed build cycle for shippability.
 **Scope:** As specified by input and Read / Update / Create section.

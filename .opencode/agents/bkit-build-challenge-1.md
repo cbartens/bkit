@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: max
 ---
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 **Scope:** As specified by input and Read / Update / Create section.

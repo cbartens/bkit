@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Auto
 
@@ -64,68 +64,55 @@
    **If** exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
-5. **If** `MODE` = CI, discriminate on `{ARG}` shape:
+5. **If** `MODE` = CI, discriminate on `{ARG}` shape — numeric = PR number, else FID slug. Assert the slug allowlist BEFORE `FID` is used:
    ```bash
    if [[ "$ARG" =~ ^[0-9]+$ ]]; then
-     PR_NUMBER="$ARG"      # CI mode — ARG is a numeric PR number.
+     PR_NUMBER="$ARG"
    else
-     # CI_DEV mode — ARG is a FID slug (e.g. 363-widen-bkit-cloud-trigger).
-     # Dev-triggered dispatch from bkit-cloud.yml's post-merge `dev` CI-failure
-     # route (#363) — the feature PR already squash-merged, so there is no
-     # open PR to look up. Derive the six vars steps 6-10 would otherwise
-     # resolve, directly.
      MODE=CI_DEV
      FID="$ARG"
-     # #363 M2: assert the slug allowlist BEFORE FID is used — every other FID
-     # resolution site in this file does (step 9 marker path, step 10
-     # branch-derive). FID flows into docs/plans/{YYYYMM}/logs/{FID}/,
-     # .worktrees/{FID}, and the /bkit-debug {FID} dispatch; the cloud-side
-     # ARG guard (bkit-cloud.yml) permits '.' and '/' so it cannot be relied
-     # on alone.
      if ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
        echo "Invalid CI_DEV FID: $FID" >&2; exit 1
      fi
      ISSUE_ID=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
      BRANCH=dev
      HEAD_SHA=$(git rev-parse origin/dev 2>/dev/null || echo "")
-     PR_STATE=MERGED       # semantic: the feature PR was already merged
-     # #363 M5: leave PR_NUMBER unset and PR_URL empty (not a "(merged)"
-     # sentinel) — step 11's {BODY} template renders a
-     # [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL}) line unconditionally;
-     # rendering it with an empty PR_NUMBER produces a broken link, and an
-     # empty-string PR_URL is what makes the "omit for CI_DEV" assert
-     # unambiguous (`[ -n "$PR_URL" ]`, same idiom as the RUN_ID omit).
      PR_URL=""
-     RUN_ID=""             # no open-PR run to link; step 11 omits the actions link
+     RUN_ID=""
    fi
+   printf 'MODE=%s PR_NUMBER=%s FID=%s ISSUE_ID=%s BRANCH=%s HEAD_SHA=%s\n' \
+     "$MODE" "${PR_NUMBER:-}" "${FID:-}" "${ISSUE_ID:-}" "${BRANCH:-}" "${HEAD_SHA:-}"
    ```
-   Assert `ISSUE_ID` non-empty. **Else** → **Failure Path**. **If** `MODE` = CI_DEV → skip steps 6-10, go to step 11.
-6. **(`MODE` = CI only — CI_DEV already has all six vars from step 5.)** `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
-7. **(`MODE` = CI only.)** **If** `PR_STATE` != OPEN → **Failure Path**.
-8. **(`MODE` = CI only.)** Resolve CI run id that triggered the workflow:
+   **If** exit branch fires → **Failure Path**.
+   Route:
+   - **If** `MODE` = CI_DEV → assert `FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA` non-empty, then step 11. **Else** → **Failure Path**.
+   - **Else** → step 6.
+6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
+7. **If** `PR_STATE` != OPEN → **Failure Path**.
+8. Resolve CI run id that triggered the workflow:
    ```bash
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
-9. **(`MODE` = CI only.)** Extract `ISSUE_ID` and `FID` from PR body metadata — marker first, branch name only as fallback:
+9. Extract `ISSUE_ID` and `FID` from PR body metadata — marker first, branch name only as fallback:
      Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` and `FID`:
    ```html
    <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
    ```
    Assert `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`.
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
-10. **(`MODE` = CI only.)** **Fallback (marker absent or malformed).**
+10. **Fallback (marker absent or malformed).**
     ```bash
     case "$BRANCH" in
       feat/*) FID="${BRANCH#feat/}" ;;
-      fix/*)  FID="${BRANCH#fix/}" ;;   # #363 — fix/** folded into the cloud-auto surface
+      fix/*)  FID="${BRANCH#fix/}" ;;
       *) FID="" ;;
     esac
     ```
-    **If** `BRANCH` starts with neither `feat/` nor `fix/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — step 11 keys EVERY tracker call on `{ISSUE_ID}` and asserts it non-empty, so a fallback that resolves only `{FID}` can never complete and always ends at **Failure Path**:
+    **If** `BRANCH` starts with neither `feat/` nor `fix/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — MUST resolve, step 11 keys every tracker call on it:
      `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links; `MODE` = CI_DEV has no `PR_NUMBER`/`PR_URL` and no `RUN_ID` — omit the PR line and the run line only, e.g. via `[ -n "$PR_URL" ]` and `[ -n "$RUN_ID" ]` respectively — #363 M5):
+    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch / PR / run links; `MODE` = CI_DEV omits the PR line when `PR_URL` is empty and the run line when `RUN_ID` is empty):
     ```comment
     ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
@@ -140,7 +127,7 @@
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
 - [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
 - [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
-- [ ] CI_DEV placeholders slug-asserted (`FID` matches `^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$`) and non-empty (`FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA`, if `MODE` = CI_DEV)
+- [ ] CI_DEV placeholders slug-asserted and non-empty (`FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA`, if `MODE` = CI_DEV)
 
 
 - [ ] Issue comment attempted (`Step 1` section)

@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.11.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer auditing plan task dependency correctness and design-coverage.
 **Scope:** As specified by input and Read / Update / Create section.
