@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@b76a0776ae74036e77cd11018083743453d7ad35 # v1
+        uses: anthropics/claude-code-action@86180fa9e4d311eed10c9cc49854c53dab5d517a # v1
         with:
           # Auth: claude_code_oauth_token (Claude-subscription OAuth, App-generated workflow).
           # DECISION-A: this path MUST NOT use ANTHROPIC_API_KEY. bkit-cloud.yml uses ANTHROPIC_API_KEY+OIDC.
