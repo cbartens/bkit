@@ -42,10 +42,15 @@ tmp/**
 
 # <!-- bkit:start -->
 
-# bkit workflows
+# bkit workflows — worktrees, plan logs, and run-scoped routing sentinels.
+# The sentinels (.deferred-blocked, .rebase-failed) are written mid-run, read
+# by the same run's Failure Path, and cleared by the next run's Step 1: never
+# bookkeeping, so path-scoped staging must not carry them into a commit.
 .worktrees/
 docs/plans/*/logs/**/raw/
 docs/plans/*/logs/**/.lock
+docs/plans/*/logs/**/.deferred-blocked
+docs/plans/*/logs/**/.rebase-failed
 
 # bkit workflows — repo-global dev critical-section lock (cross-FID)
 .bkit/.dev.lock

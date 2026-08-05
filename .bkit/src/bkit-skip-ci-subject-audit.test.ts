@@ -103,11 +103,9 @@ const SKIP_CI_SUBJECTS: Array<{
     description: "debug abort",
     literal: "docs({FID}): debug aborted bkit [skip ci]",
   },
-  {
-    file: "bkit-ship.md",
-    description: "ship abort",
-    literal: "docs({FID}): ship aborted bkit [skip ci]",
-  },
+  // Ship has no separate abort subject: its Failure Path flushes ONE commit
+  // (#412), so the handover rides the `ship FAILED` commit rather than a second
+  // `ship aborted` push onto feat/{FID}.
   {
     file: "bkit-ship.md",
     description: "ship FAILED",
