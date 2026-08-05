@@ -6,9 +6,9 @@
  * 2. docs/knowledge.jsonl and docs/decisions.jsonl resolve merge=union (consumer-inherited, WS5-T1).
  * 3. An arbitrary unlisted .bkit/foo.jsonl does NOT resolve merge=union.
  * 4. An arbitrary unlisted docs/foo.jsonl does NOT resolve merge=union.
- * 5. The four bkit-repo merge=union lines sit BELOW the `# <!-- bkit:end -->` marker in root .gitattributes
- *    (structural check via byte-offset grep — NOT inside the managed block).
- * 6. The two consumer-inherited .jsonl lines (knowledge/decisions) sit INSIDE the managed block.
+ * 5. Every strictly append-only ledger's merge=union rule sits INSIDE the managed block,
+ *    so consumers inherit it from `bkit install` (structural check via byte-offset grep).
+ * 6. The drained ledger (.bkit/friction.jsonl) is a local opt-in BELOW the marker, never shipped.
  */
 
 import { execSync } from "node:child_process";
@@ -29,6 +29,8 @@ function gitCheckAttr(filePath: string): string {
 }
 
 describe("gitattributes — telemetry data files merge=union (boundary: git check-attr)", () => {
+  // Resolution is what matters here regardless of which side of the marker the
+  // rule lives on — friction resolves via this repo's local opt-in.
   const DATA_FILES = [
     ".bkit/stats.jsonl",
     ".bkit/friction.jsonl",
@@ -65,57 +67,66 @@ describe("gitattributes — consumer-inherited ledger JSONL files merge=union (W
   }
 });
 
-describe("gitattributes structural check — telemetry lines below bkit:end marker", () => {
-  it("four bkit-repo merge=union lines sit BELOW # <!-- bkit:end --> in root .gitattributes", () => {
-    const gitattributesPath = path.join(REPO_ROOT, ".gitattributes");
-    const content = fs.readFileSync(gitattributesPath, "utf-8");
+/**
+ * Structural half — WHICH SIDE of `# <!-- bkit:end -->` each rule sits on, which is
+ * what decides whether a consumer inherits it from `bkit install` or has to add it
+ * by hand.
+ *
+ * This block previously asserted the opposite: that `stats` / `deferrals` /
+ * `failures` sat BELOW the marker as bkit-repo-local lines. That was the workaround
+ * for the managed block not covering them, pinned as the expected shape — so the
+ * gap could not be noticed from a green suite. Every strictly append-only ledger is
+ * now shipped inside the block; only the drained one stays local.
+ */
+describe("gitattributes structural check — append-only ledgers ship, drained one is local", () => {
+  const gitattributes = (): string =>
+    fs.readFileSync(path.join(REPO_ROOT, ".gitattributes"), "utf-8");
 
-    const endMarkerIdx = content.indexOf("# <!-- bkit:end -->");
-    expect(endMarkerIdx, "# <!-- bkit:end --> marker must exist").toBeGreaterThan(-1);
+  /**
+   * Byte offset of the actual `<path> merge=union` RULE, not the first mention of
+   * the path — `.bkit/friction.jsonl` is named in the managed block's comment
+   * explaining why it is excluded, and a bare `indexOf` would match that.
+   */
+  const ruleIndex = (content: string, filePath: string): number => {
+    const escaped = filePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return content.search(new RegExp(`^${escaped}\\s+merge=union$`, "m"));
+  };
 
-    const DATA_LINES = [
-      ".bkit/stats.jsonl",
-      ".bkit/friction.jsonl",
-      "docs/deferrals.jsonl",
-      "docs/failures.jsonl",
-    ];
+  const markers = (content: string): { start: number; end: number } => {
+    const start = content.indexOf("# <!-- bkit:start -->");
+    const end = content.indexOf("# <!-- bkit:end -->");
+    expect(start, "# <!-- bkit:start --> marker must exist").toBeGreaterThan(-1);
+    expect(end, "# <!-- bkit:end --> marker must exist").toBeGreaterThan(start);
+    return { start, end };
+  };
 
-    for (const filePath of DATA_LINES) {
-      const lineIdx = content.indexOf(filePath);
-      expect(lineIdx, `${filePath} merge=union line must exist in .gitattributes`).toBeGreaterThan(
-        -1,
-      );
-      expect(
-        lineIdx,
-        `${filePath} merge=union line must be BELOW # <!-- bkit:end --> (not inside managed block)`,
-      ).toBeGreaterThan(endMarkerIdx);
-    }
-  });
+  const SHIPPED = [
+    "docs/knowledge.jsonl",
+    "docs/decisions.jsonl",
+    "docs/deferrals.jsonl",
+    "docs/failures.jsonl",
+    ".bkit/stats.jsonl",
+    "docs/completed.md",
+  ];
 
-  it("docs/knowledge.jsonl + docs/decisions.jsonl merge=union lines sit INSIDE the managed block", () => {
-    const gitattributesPath = path.join(REPO_ROOT, ".gitattributes");
-    const content = fs.readFileSync(gitattributesPath, "utf-8");
+  for (const filePath of SHIPPED) {
+    it(`${filePath} merge=union sits INSIDE the managed block (consumer-inherited)`, () => {
+      const content = gitattributes();
+      const { start, end } = markers(content);
+      const idx = ruleIndex(content, filePath);
+      expect(idx, `${filePath} merge=union rule must exist in .gitattributes`).toBeGreaterThan(-1);
+      expect(idx, `${filePath} must be inside the managed block`).toBeGreaterThan(start);
+      expect(idx, `${filePath} must be before bkit:end`).toBeLessThan(end);
+    });
+  }
 
-    const startMarkerIdx = content.indexOf("# <!-- bkit:start -->");
-    const endMarkerIdx = content.indexOf("# <!-- bkit:end -->");
-    expect(startMarkerIdx, "# <!-- bkit:start --> marker must exist").toBeGreaterThan(-1);
-    expect(endMarkerIdx, "# <!-- bkit:end --> marker must exist").toBeGreaterThan(startMarkerIdx);
-
-    const CONSUMER_JSONL_LINES = ["docs/knowledge.jsonl", "docs/decisions.jsonl"];
-
-    for (const filePath of CONSUMER_JSONL_LINES) {
-      const lineIdx = content.indexOf(filePath);
-      expect(lineIdx, `${filePath} merge=union line must exist in .gitattributes`).toBeGreaterThan(
-        -1,
-      );
-      expect(
-        lineIdx,
-        `${filePath} merge=union line must be INSIDE the managed block (consumer-inherited)`,
-      ).toBeGreaterThan(startMarkerIdx);
-      expect(
-        lineIdx,
-        `${filePath} merge=union line must be INSIDE the managed block (before bkit:end)`,
-      ).toBeLessThan(endMarkerIdx);
-    }
+  it(".bkit/friction.jsonl merge=union is a LOCAL opt-in below bkit:end, never shipped", () => {
+    // It is the drained ledger: union would resurrect rows `bkit harvest` removed,
+    // so bkit must not impose it on consumers. This repo accepts that trade-off.
+    const content = gitattributes();
+    const { end } = markers(content);
+    const idx = ruleIndex(content, ".bkit/friction.jsonl");
+    expect(idx, "friction merge=union rule must exist in this repo").toBeGreaterThan(-1);
+    expect(idx, "friction merge=union must sit BELOW bkit:end (not shipped)").toBeGreaterThan(end);
   });
 });

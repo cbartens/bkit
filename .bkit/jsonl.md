@@ -195,6 +195,13 @@ Fields that change after first write:
 
 **Update by APPENDING a new row with the SAME `key`, never by editing the old line.** `fold()` last-wins by `ts`; older rows = history. Recurrence = update.
 
+**Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger — merges concatenate, never conflict. Union keeps BOTH sides of a conflicting hunk: edit a line and the stale copy survives beside its replacement; `fold` last-wins by `ts` -> stale wins whenever its `ts` is later.
+
+- **NEVER edit or delete a line.** Correct via same-`key` append.
+- **NEVER write a future `ts`.** Outranks every later correction, permanently — row can never be superseded. Mint at write time (§ Write Idiom), never by hand.
+
+`.bkit/friction.jsonl` excluded — rows ARE removed from it (§ Friction Is a Drained Queue); union would resurrect a drain.
+
 Copy prior row, change deltas, append. Carry `key` verbatim — reworded `key` forks entry. Same `key` = one entry; `fold` returns last → "how long open" / "time to fix" from dated `ts`. § Examples: deferral raised → analysed → closed.
 
 **Triage** = sweep `docs/deferrals.jsonl` / `docs/failures.jsonl` for moved-on work → append same-`key` row with `status: "CLOSED"`, current `references` (PR, commit, closing issue), re-triaged `severity` if earned.
