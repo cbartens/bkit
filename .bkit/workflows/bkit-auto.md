@@ -150,7 +150,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
     `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
      <!-- bkit:tracker github end -->
      <!-- bkit:tracker linear start -->
-    `ISSUE_ID` = first two dash-segments of `{FID}`, uppercased (`bar-191-cloud-envs` → `BAR-191`). Assert `[[ "{ISSUE_ID}" =~ ^[A-Z]+-[0-9]+$ ]]`. **Else** → **Failure Path**.
+    `ISSUE_ID` = first two dash-segments of `{FID}`, uppercased (`abc-123-slug` → `ABC-123`). Assert `[[ "{ISSUE_ID}" =~ ^[A-Z]+-[0-9]+$ ]]`. **Else** → **Failure Path**.
      <!-- bkit:tracker linear end -->
      <!-- bkit:tracker false start -->
     No tracker wired — `ISSUE_ID` stays empty by design and step 11 is skipped.

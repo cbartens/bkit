@@ -84,3 +84,59 @@ describe("shipped docs carry no internal identifiers", () => {
     });
   }
 });
+
+/**
+ * The execution surfaces — `.bkit/workflows/*.md` and `.bkit/prompts/*.md` — are
+ * rendered into every consumer's host directories, so the same rule applies. They
+ * were outside the corpus above because neither is manifest-listed, which is how a
+ * tracker number and four step cross-references survived in `bkit-ship.md`.
+ *
+ * Scanned WITHOUT stripping fenced blocks: these files are mostly `bash` fences, and
+ * a shell comment inside one ships verbatim. Both patterns currently have zero hits
+ * fence-inclusive, so nothing legitimate needs an exemption.
+ */
+const EXECUTION_SURFACES = ["workflows", "prompts"].flatMap((dir) =>
+  fs
+    .readdirSync(path.join(REPO_ROOT, ".bkit", dir))
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => `.bkit/${dir}/${f}`),
+);
+
+/**
+ * A cross-reference to another step BY NUMBER. Steps get renumbered whenever one is
+ * inserted, so the reference silently starts pointing at the wrong step — and the
+ * orchestrator reads every step anyway, so it buys nothing. Name the step instead
+ * (`Close Workflow`, `**Failure Path**`).
+ *
+ * Deliberately narrow: only the parenthetical cross-ref form. In-list flow routing
+ * (`→ step 5`) is the established convention and stays.
+ */
+const STEP_CROSSREF = /\(Step [0-9]+\)/;
+
+/** Every line, fences included. */
+function allLines(rel: string, re: RegExp): string[] {
+  return fs
+    .readFileSync(path.join(REPO_ROOT, rel), "utf-8")
+    .split("\n")
+    .map((line, i) => ({ line, n: i + 1 }))
+    .filter(({ line }) => re.test(line))
+    .map(({ line, n }) => `${rel}:${n}: ${line.trim().slice(0, 120)}`);
+}
+
+describe("execution surfaces carry no internal identifiers or step cross-refs", () => {
+  it("enumerates workflows and prompts (not vacuous)", () => {
+    expect(EXECUTION_SURFACES).toContain(".bkit/workflows/bkit-ship.md");
+    expect(EXECUTION_SURFACES).toContain(".bkit/prompts/bkit-plan-generate.md");
+    expect(EXECUTION_SURFACES.length).toBeGreaterThan(20);
+  });
+
+  for (const rel of EXECUTION_SURFACES) {
+    it(`${rel} cites no tracker issue number, ledger key or finding label`, () => {
+      expect([...allLines(rel, ISSUE_REF), ...allLines(rel, INTERNAL_LABEL)]).toEqual([]);
+    });
+
+    it(`${rel} references no step by number`, () => {
+      expect(allLines(rel, STEP_CROSSREF)).toEqual([]);
+    });
+  }
+});

@@ -252,8 +252,7 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before ship" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    # BOOK_ROOT — the single tree every status/artifact write targets.
-   # RUNTIME_DEVPUSHES=true (worktree present, modes 1–2) → dev tree ($REPO_ROOT);
-   # RUNTIME_DEVPUSHES=false (mode 3, cloud) → current working branch tree (#341 shape A).
+   # RUNTIME_DEVPUSHES=true → dev tree ($REPO_ROOT); false → current branch tree.
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ -n "${RUNTIME_DEVPUSHES:-}" ] && [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT="$WT_TOP"
@@ -272,11 +271,8 @@ description: "Ship Feature — Autonomous merge and archive"
    #   .agents/skills
    #   skills-lock.json
    BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-   # Host skill mirrors — `npx skills remove` (Step 11) deletes these alongside
-   # .agents/skills/<name>, so they must be stageable or the deletions leak into
-   # the working tree. Appended only when present on disk OR tracked in the
-   # index: staging a pathspec that matches neither is a fatal error, and
-   # a claude-only consumer has no .cursor/.opencode mirror at all.
+   # Host skill mirrors — append ONLY when present on disk or tracked in the
+   # index; a pathspec matching neither is fatal.
    for d in .claude/skills .cursor/skills .opencode/skills; do
      if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
        BOOK_PATHS="$BOOK_PATHS $d"
@@ -406,7 +402,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
-**Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch (#384).
+**Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch.
 
 1. Create / resume worktree, or adopt current branch in place (NO rebase — Path A):
    ```bash
@@ -473,7 +469,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    **If** exit non-zero → **Failure Path**.
 7. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
-8. Update status (bookkeeping to `$BOOK_ROOT`, NO branch commit — #384):
+8. Update status (bookkeeping to `$BOOK_ROOT`, NO branch commit):
    ```bash
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -961,7 +957,7 @@ description: "Ship Feature — Autonomous merge and archive"
    bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
    bkit_runtime_assert_resolved || exit 2
    if [ "$RUNTIME_DEVPUSHES" != "true" ]; then
-     echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/sync; the merge already landed server-side (Step 6)" >&2
+     echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/sync; the merge already landed server-side" >&2
    else
      DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
      DEADLINE=$(( $(date +%s) + 600 ))
@@ -1116,12 +1112,6 @@ description: "Ship Feature — Autonomous merge and archive"
      grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
    done
    ```
-   `npx skills remove` deletes the host mirrors (`.claude/skills`, `.cursor/skills`,
-   `.opencode/skills`) alongside `.agents/skills/<name>`. Those mirror paths are in
-   `BOOK_PATHS` (Step 1) so the Close-step staging carries the deletions. Without
-   them the prune commit holds only `.agents/skills` + `skills-lock.json` and the
-   mirror deletions leak into the working tree, where the next unrelated staging
-   sweeps them into a foreign commit.
 2. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -1168,9 +1158,9 @@ description: "Ship Feature — Autonomous merge and archive"
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    # Outbox lives outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
-   # Ownership bit: written at worktree creation (Step 2) to the outbox AND the
-   # $BOOK_ROOT/.../status.jsonl row. Absent-default = "not mine" — never remove a worktree
-   # this run did not create (design/plan/build/debug conventions untouched).
+   # Ownership bit: written at worktree creation to the outbox AND the
+   # $BOOK_ROOT/.../status.jsonl row. Absent-default = "not mine" — NEVER remove a
+   # worktree this run did not create.
    if [ -d "$WORKTREE_PATH" ]; then
      if [ -f "$OUTBOX/.worktree-owned" ]; then
        git worktree remove "$WORKTREE_PATH" --force
