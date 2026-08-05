@@ -4,8 +4,13 @@ set -e
 # enforcing `slop:delta` gate. pre-commit stays fast: format staged + prose.
 pnpm lint-staged && pnpm lint:prose
 
-# bkit-repo only — block committing stale dist when `.bkit/src/*.ts` is staged.
-# Consumers don't compile TS and never run this gate.
-if git diff --cached --name-only --diff-filter=ACM | grep -q '^\.bkit/src/.*\.ts$'; then
+# bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
+# staged. Consumers don't compile TS and never run this gate.
+# Test files are excluded: they emit nothing into dist/, but check:dist rebuilds from
+# the WORKING TREE, so a test-only commit made while any source edit is still
+# uncommitted would fail on a diff it did not cause and cannot fix.
+if git diff --cached --name-only --diff-filter=ACM |
+  grep -v '\.test\.ts$' |
+  grep -q '^\.bkit/src/.*\.ts$'; then
   pnpm check:dist < /dev/null
 fi
