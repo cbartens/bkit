@@ -53,7 +53,7 @@ jobs:
       GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     # bkit:end verbose-ci-env
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
@@ -69,7 +69,7 @@ jobs:
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add \`with: version:\` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
       # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
@@ -292,7 +292,7 @@ jobs:
       VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history needed for E2E / supabase stubs when enabled.
           fetch-depth: 0
@@ -302,7 +302,7 @@ jobs:
         with:
           node-version: {{NODE_VERSION}}
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
       - name: Configure Verbose CI
@@ -490,7 +490,7 @@ jobs:
       #   A distinct name: keys each sticky comment so the two do not collide.
       # - name: Report Unit Coverage on PR
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: unit
       #     json-summary-path: coverage/unit/coverage-summary.json
@@ -500,7 +500,7 @@ jobs:
       # - name: Report Integration Coverage on PR
       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: integration
       #     json-summary-path: coverage/integration/coverage-summary.json
@@ -590,7 +590,7 @@ jobs:
       # - name: Report E2E Coverage on PR
       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: e2e
       #     json-summary-path: coverage/e2e/coverage-summary.json
@@ -628,7 +628,7 @@ jobs:
 #     if: github.event.workflow_run.conclusion == 'success'
 #     runs-on: ubuntu-latest
 #     steps:
-#       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #       - run: ./scripts/ci/smoke-test.sh
 
 # =============================================================================
