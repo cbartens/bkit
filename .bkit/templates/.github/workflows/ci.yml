@@ -795,6 +795,32 @@ jobs:
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
+# === DESIGN ASSERTIONS — deliberately NOT a lane (there is no bkit-tests-design job) ===
+#   NOT a bkit-stub: nothing here is meant to be enabled. Design is a DIMENSION across the lanes
+#   above — the lane axis is resource profile (ms file read vs booted app + browser), not subject
+#   matter, and design assertions span both. Route them into the tiers that already exist and leave
+#   this file's topology alone (a real consumer's full design-system rollout landed with ci.yml
+#   BYTE-UNCHANGED — no new job, no new browser project, project-ran guard arg count unchanged):
+#     token parity (docs/design.md vs stylesheet vars AND theme object, asserted INDEPENDENTLY so a
+#       red names its culprit), repo-wide raw-hex contract, component contract depth,
+#       design-source parity ....................................... -> bkit-tests-unit
+#     no-raw-hex / no-arbitrary-value lint rule (anchor on the CLASS
+#       boundary so `p-[3px]` reds but a legitimate substring does not)  -> bkit-tests-static
+#     computed style, measured geometry, touch-target size, a11y scan -> bkit-tests-e2e, as ORDINARY
+#       specs inside the EXISTING browser project, selected by PATH (a runner hard-errors on an
+#       unknown --project name); the a11y scanner is an imported helper, not a project fixture
+#     visual regression / screenshot baselines ....................... -> opt-in, not baseline
+#   Capstone needs: UNCHANGED. Because the assertions sit in lanes bkit-tests-check already gates,
+#   design is merge-blocking from the first PR that adds one — no advisory window to schedule.
+#   A `test:design` selector script carries ZERO routing power: title tag only, never a grepInvert
+#   entry or an execution gate, and pass-with-no-tests on every fan-out.
+#   CACHE: design tests read files OUTSIDE their own package (docs/design.md, the whole src tree),
+#   so put docs/design.md — plus any rendered style guide it is checked against — in the task
+#   runner's globalDependencies and mark test:design uncached; else a warm cache replays PASS
+#   against a reference the code now contradicts.
+#   Full doctrine: docs/testing.md § "Design assertions are a dimension, not a lane";
+#   the token table + its parsing contract: docs/design.md § "Machine-checked reference".
+#
 # === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
 # bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
 # step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra

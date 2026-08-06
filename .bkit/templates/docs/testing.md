@@ -106,6 +106,8 @@ Assign every behaviour its **lowest sufficient tier(s)** — the lowest tier tha
 | Crosses a LOCAL stateful boundary (own DB / own API, no 3rd party) | **Integration** vs a freshly-provisioned instance, no mocks at the boundary |
 | Crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model/LLM, payment, deployed schema, RLS/tenancy) | **@live (golden)** — reaches the real boundary, asserts a boundary-only signal |
 | User-visible UI flow / DOM state | **E2E** |
+| Design token value / reference-doc parity | **Unit** — reference doc vs each implementation, asserted independently (§ Design assertions) |
+| Rendered geometry, contrast, touch-target size | **E2E** — computed style + a11y scan in the existing browser project (§ Design assertions) |
 | New / changed migration or seed | **fresh-DB replay** (`bkit-tests-migration`) — replays from empty + the seed loads |
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
@@ -173,6 +175,28 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 - After deploy, run a **fast, dependency-light** probe of the live surface (a handful of health / route / contract checks, or a tiny tagged browser subset) — breadth ("is the app fundamentally up?"), not depth.
 - It is an **observability gate, not a merge gate**: own workflow, never in branch protection. Trigger plumbing (post-CI vs post-deploy) → `deployments.md` § Smoke trigger plumbing.
 - **Not:** a smoke suite wired into branch protection, or one so heavy it can't run on every deploy.
+
+## Design assertions are a dimension, not a lane
+
+**NEVER add a design lane.** The lane axis is **resource profile** (a millisecond file read vs a booted app + browser), not subject matter — design assertions span both. A `bkit-tests-design` job (or a design-only browser project) splits one concern across two profiles and buys nothing existing lanes don't provide. Fold each assertion into the tier that already fits it: CI topology, the capstone's `needs:`, the browser-project partition all stay **unchanged** (a real consumer's full design-system rollout landed with `ci.yml` byte-unchanged).
+
+<!-- prettier-ignore -->
+| Design assertion | Lane |
+| --- | --- |
+| Token parity — reference doc vs each implementation (stylesheet variables, theme object) | `bkit-tests-unit` |
+| Static guards — no raw hex, no arbitrary-value utility classes | `bkit-tests-static` (lint rule, anchored on the **class boundary** so `p-[3px]` reds but a legitimate substring does not) |
+| Repo-wide raw-hex contract (scans the source tree off disk, no I/O beyond the filesystem) | `bkit-tests-unit` |
+| Contract depth — component-level token / test-id / behaviour assertions | `bkit-tests-unit` |
+| Computed style + measured geometry (resolved pixels, touch-target size) | `bkit-tests-e2e` — ordinary specs in the **existing** browser project, selected by path |
+| Accessibility scan (contrast, target size) | `bkit-tests-e2e` — the scanner is an imported helper, not a project fixture |
+| Design-source parity (a rendered style guide vs the reference doc) | `bkit-tests-unit` |
+| Visual regression (screenshot baselines) | **opt-in, not baseline** (§ Optional hardening) — highest maintenance cost of the set |
+
+- **One reference, asserted independently.** The reference doc owns the token contract and its parsing rules (`design.md` § Machine-checked reference). What lanes care about: each implementation is its **own** test, so one red names its culprit.
+- **Merge-gated from day one — never an advisory window.** Assertions live inside lanes the capstone already gates, so a design red blocks merge on the first PR that adds one. No promotion step to schedule → no deferral row to forget.
+- **A group tag carries zero routing power.** Tag design tests in the test **title** (NEVER a filename convention) + add a `test:design` script for local iteration only. The tag MUST NEVER appear in an execution gate or inverse-grep filter — a test without it still runs in its normal lane. Keep the **standard filename** in a location the package's include glob already matches: a bespoke `*.design.test.ts` or an unreached dir runs in **zero** lanes — green everywhere, covering nothing (§ Validated means executed). Pass-with-no-tests is mandatory on every fan-out; each runner spells that flag differently, and a browser runner hard-errors on a path / project name matching nothing.
+- **Cache footgun — design tests read files outside their own package.** A token-parity test reads the reference doc; a raw-hex contract scans the source tree. Under a per-package-hash runner, editing the reference doc changes no package hash → a warm cache replays a **PASS against a reference the code now contradicts**. Put the reference doc (+ any rendered style guide) in the runner's **global dependencies** + mark the design-selection task **uncached**. Same trap class: a design run overwriting the machine-readable results file the executed-count gate consumes — re-run the full suite before trusting either.
+- **Keep the first honest reds.** A first real geometry / a11y sweep surfaces genuine defects (undersized controls, failing contrast). File as issues, allowlist behind a **named constant**, and ship the allowlist's **stale-entry check** in the same change — an allowlist that never rejects a fixed entry decays into a silent exemption. Enumerate sweep scope by **role and tag**, NEVER by test-id presence (library-generated markup escapes the gate by construction). Measure **every** theme before asserting any, or a light-theme red hides dark-theme offenders.
 
 ## Schema-invariant DB checks (RLS coverage, etc.)
 
