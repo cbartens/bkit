@@ -376,7 +376,7 @@ description: "Design Feature — Autonomous design phase"
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present — superseded design; context ONLY, do NOT revise or treat as constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Update status and commit:
@@ -748,7 +748,7 @@ description: "Design Feature — Autonomous design phase"
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. Copy final design to canonical bucket:
+1. Archive any superseded design and copy final design to canonical bucket:
    ```bash
    BUCKET_COUNT=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
    [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
@@ -757,6 +757,10 @@ description: "Design Feature — Autonomous design phase"
    DESIGN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
    CANONICAL="docs/plans/$YYYYMM/{FID}-design.md"
+   if [ -f "$CANONICAL" ] && ! cmp -s "$CANONICAL" "$DESIGN_FINAL"; then
+     mkdir -p "docs/plans/$YYYYMM/archive"
+     mv "$CANONICAL" "docs/plans/$YYYYMM/archive/$(date -u +%Y%m%dT%H%M%SZ)-{FID}-design.md"
+   fi
    cp "$DESIGN_FINAL" "$CANONICAL"
    [ -s "$CANONICAL" ] || { echo "Canonical empty: $CANONICAL" >&2; exit 1; }
    ```

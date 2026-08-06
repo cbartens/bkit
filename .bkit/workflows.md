@@ -459,6 +459,12 @@ Every transformation step writes ONE versioned file in `docs/plans/{YYYYMM}/logs
 
 **Close-workflow copy (plan + design only):** highest `v{N}` matching `logs/{FID}/{workflow}-v*.md` → copy verbatim to `{YYYYMM}/{FID}-{workflow}.md`. SPLIT: parent + each numbered sibling.
 
+**Superseded canonical → `archive/`:** close NEVER overwrites a canonical with content. Existing `{YYYYMM}/{FID}-{workflow}.md` → `mv` to `{YYYYMM}/archive/{TIMESTAMP}-{FID}-{workflow}.md` (`date -u +%Y%m%dT%H%M%SZ`) BEFORE the copy; skip when `cmp -s` matches. Plan moves the whole set — parent + every `{FID}-plan-N.md` — under ONE timestamp, so a re-run splitting into fewer children leaves no orphan. Sibling `archive/` dir, NOT a rename in place: `{FID}-plan-{TS}.md` matches the sub-plan count glob; archives flat in `logs/{FID}/` are swept by the ship doc-sync glob.
+
+**Re-run only, archived AT close:** an interrupted run resumes after last `DONE` and regenerates nothing. NEVER archive earlier — the superseded doc is live input to the generating agent, and a pre-close failure MUST leave the canonical intact.
+
+**Superseded doc → generating agent ONLY:** `@bkit-design-generate` / `@bkit-plan-generate` read `{YYYYMM}/{FID}-{workflow}.md` direct — context ONLY, never revised in place, never a constraint. NEVER via `{phase}-input.md`, which fans out to the sibling-blind ideate triplet (design) and the review triplet + summary (plan). A doc is superseded only because it was rejected, outdated or unbuildable → assume WRONG. One generator can weigh that; fault-finding reviewers read a deliberately fixed defect as a regression. What is worth keeping survives into `{workflow}-v1-draft.md` and reaches them there, in adopted form.
+
 ### Verdict Validation
 
 Verdict-bearing subagents MUST emit verdict header as first non-blank line, BEFORE other content. Orchestrator validates; re-issues on invalid.
@@ -669,13 +675,13 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Fetch `origin/dev`. Resolve / create `{ISSUE_ID}`, set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.jsonl` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, env files, `design-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). `pnpm install --frozen-lockfile`. |
 | 3 — Brainstorm & Ideate | `@bkit-design-brainstorm-ideate-1` ‖ `-2` ‖ `-3` (parallel triplet) | `design-input.md` | `design-brainstorm-ideate-1.md`, `-2.md`, `-3.md` | Pragmatic / optimal-tradeoff / risk-premortem lenses; effort-tier diversity (`high`/`medium`/`high`); sibling-blind. `BRAINSTORM_VERDICT` = worst of three. |
-| 4 — Generate Design | `@bkit-design-generate` | both brainstorms | `design-v1-draft.md` (versioned draft) | First write of deliverable design doc. |
+| 4 — Generate Design | `@bkit-design-generate` | all three brainstorms, `related-issues.md`, superseded `{YYYYMM}/{FID}-design.md` (if any) | `design-v1-draft.md` (versioned draft) | First write of deliverable design doc. Superseded design = context ONLY, never a constraint; supplied HERE only — NOT to the sibling-blind ideate triplet. |
 | 5 — Design Review | `@bkit-design-review-1` ‖ `@bkit-design-review-2` (parallel) | `design-v1-draft.md`, `design-input.md` | `design-review-1.md`, `design-review-2.md` (opinion-only logs) | Effort-tier diversity (high vs medium); sibling-blind. `REVIEW_VERDICT` = worst of two. `FAIL` → Failure Path. |
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 9 — Design Workstream Issues | — | `design-v3-organised.md` | milestone/project issues + block-by edges, `status.jsonl` | Read parent's milestone (GitHub) / project + project milestone (Linear); unset → Failure Path. Per `WS-N` block in `## Design Workstreams`: list existing milestone issues → existing match → sync comment (body untouched); else create issue assigned to that milestone/project (NOT a sub-issue) with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
-| 10 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3) | Copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. Final return displays `design-summary.md` verbatim. |
+| 10 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3), `{YYYYMM}/archive/` (superseded, re-run only) | Archive any existing canonical → copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. Final return displays `design-summary.md` verbatim. |
 
 **Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
@@ -689,8 +695,8 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
 | 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` (sub-issue case); **else** leave empty (standalone plan run on issue input alone). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + tracker issue description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. |
-| 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template). Writes `plan-generate.md` log + `docs/plans/{YYYYMM}/{FID}-plan.md`. |
+| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + tracker issue description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. Superseded plan is NOT appended here — it goes to Step 3 only. |
+| 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template), `plan-input.md`, superseded `{YYYYMM}/{FID}-plan.md` (if any). Superseded plan = context ONLY, never a constraint; supplied HERE only — NOT via `plan-input.md`, which the review triplet + summary also read. Writes `plan-generate.md` log + `docs/plans/{YYYYMM}/{FID}-plan.md`. |
 | 4 — Fetch Context | — | Related-issues tracker search (keyed on the generated plan's surfaces) + local `docs/{deferrals,failures}.jsonl` greps → `related-issues.md` (tracker-gated), `related-deferrals.md`, `related-failures.md` (each `None` when empty). Advisory context for review; never gates, never auto-expands scope. |
 | 5 — Review Plan | `@bkit-plan-review-1` ‖ `-2` ‖ `-3` (parallel triplet) | Reads plan + the three `related-*.md` context files. Tightness / dependency-correctness / regression-risk lenses. All three write critique logs. Missing or vague `**Done when:**` on any task → CRITICAL. |
 | 6 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. Preserves every task's `**Done when:**` line (may tighten, never remove/weaken). |
@@ -699,7 +705,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 9 — Check Complexity | `@bkit-plan-complexity-check` | `COMPLEXITY_VERDICT` ∈ {single, split}. |
 | 10 — Split Plan | `@bkit-plan-complexity-split` _(only if `split`)_ | Writes `{FID}-plan-N.md` sub-plans + `plan-split.md` log; self-verifies losslessness (`SPLIT_VERDICT` ∈ {PASS, FAIL}; `FAIL` → Failure Path). |
 | 11 — Summary | `@bkit-plan-summary` | Commit `chore({FID}): summary bkit [skip ci]` → push. |
-| 12 — Close Workflow | — | Sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 10). Set state `In Review`; phase label `Plan` persists. Final return displays `plan-summary.md` verbatim. |
+| 12 — Close Workflow | — | Archive any existing canonical → copy v4 → sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 10, except the archive moves the whole `{FID}-plan*.md` set under one timestamp). Set state `In Review`; phase label `Plan` persists. Final return displays `plan-summary.md` verbatim. |
 
 **Hard stop in Step 12 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
 
@@ -1213,6 +1219,7 @@ Allow-list, never deny-list: deny-list on main checkout = `git add -A` by anothe
 | Plan draft | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `{FID}-plan-N.md` if SPLIT) |
 | Plan active | `docs/plans/{YYYYMM}/{FID}-plan*.md` (moved here in `/bkit-build` Step 2) |
 | Plan completed | `docs/plans/{YYYYMM}/{FID}-plan*.md` (moved here in `/bkit-ship` Step 9) |
+| Superseded design / plan | `docs/plans/{YYYYMM}/archive/{TIMESTAMP}-{FID}-design.md`, `…-{FID}-plan*.md` (moved here by design / plan close on re-run; reachable by no workflow glob) |
 | Workflow logs | `docs/plans/{YYYYMM}/logs/{FID}/*.md` |
 | Workflow state | `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (on `feat/{FID}` for `design`/`plan`/`build`/`debug` + `ship` Steps 1-8, reaching `dev` via squash-merge; `cloud` writes none — stateless dispatcher; see § status.jsonl) |
 | Concurrency lock | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute, main repo working tree) |

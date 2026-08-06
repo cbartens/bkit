@@ -321,7 +321,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan; context ONLY, do NOT revise or treat as constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Update status and commit:
@@ -798,7 +798,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. Copy final plan to canonical bucket:
+1. Archive any superseded plan and copy final plan to canonical bucket:
    ```bash
    BUCKET_COUNT=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
    [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
@@ -807,6 +807,14 @@ description: "Plan Feature — Autonomous plan generation"
    PLAN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
    [ -z "$PLAN_FINAL" ] && { echo "No plan version found" >&2; exit 1; }
    mkdir -p "docs/plans/$YYYYMM"
+   if [ -f "docs/plans/$YYYYMM/{FID}-plan.md" ] && ! cmp -s "docs/plans/$YYYYMM/{FID}-plan.md" "$PLAN_FINAL"; then
+     TS=$(date -u +%Y%m%dT%H%M%SZ)
+     mkdir -p "docs/plans/$YYYYMM/archive"
+     for old in docs/plans/$YYYYMM/{FID}-plan.md docs/plans/$YYYYMM/{FID}-plan-[0-9]*.md; do
+       [ -f "$old" ] || continue
+       mv "$old" "docs/plans/$YYYYMM/archive/$TS-$(basename "$old")"
+     done
+   fi
    cp "$PLAN_FINAL" "docs/plans/$YYYYMM/{FID}-plan.md"
    for child in docs/plans/$YYYYMM/logs/{FID}/plan-v4-[0-9]*.md; do
      [ -f "$child" ] || continue
