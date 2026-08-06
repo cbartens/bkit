@@ -94,7 +94,10 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   YYYYMM=$(date +%Y%m)
+   BUCKET_COUNT=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
+   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
+   [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
@@ -122,7 +125,7 @@ description: "Design Feature — Autonomous design phase"
    fi
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
+   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
@@ -747,7 +750,10 @@ description: "Design Feature — Autonomous design phase"
 
 1. Copy final design to canonical bucket:
    ```bash
-   YYYYMM=$(date +%Y%m)
+   BUCKET_COUNT=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
+   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
+   YYYYMM=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
+   [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    DESIGN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
    CANONICAL="docs/plans/$YYYYMM/{FID}-design.md"
@@ -814,7 +820,7 @@ description: "Design Feature — Autonomous design phase"
      git add -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
      git commit --allow-empty -m "docs({FID}): design DONE bkit [skip ci]" -- docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl
      git push origin dev || { echo "dev push failed" >&2; exit 1; }
-     git show "dev:docs/plans/$(date +%Y%m)/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
+     git show "dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
      CLOSE_SHAPE="local"
      LANDED_SHA=$(git rev-parse HEAD)
      CLOSE_TRANSPORT="git"
@@ -837,7 +843,7 @@ description: "Design Feature — Autonomous design phase"
      [ "$MERGE_STATE" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED (state=$MERGE_STATE)" >&2; exit 1; }
      LANDED_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq .mergeCommit.oid)
      [ -n "$LANDED_SHA" ] || { echo "Could not resolve landed SHA for PR $PR_NUMBER" >&2; exit 1; }
-     git show "origin/dev:docs/plans/$(date +%Y%m)/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
+     git show "origin/dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
      CLOSE_SHAPE="pr"
      CLOSE_TRANSPORT="gh"
    fi

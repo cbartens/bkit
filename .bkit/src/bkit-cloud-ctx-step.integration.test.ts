@@ -239,15 +239,35 @@ function seedDevDispatchRows(workspaceDir: string, fid: string, headShas: string
   fs.writeFileSync(path.join(dir, "status.jsonl"), rows + "\n");
 }
 
-function readStatusRows(workspaceDir: string, fid: string): unknown[] {
-  const file = path.join(workspaceDir, "docs/plans/202607/logs", fid, "status.jsonl");
-  if (!fs.existsSync(file)) return [];
+/**
+ * Every `docs/plans/<YYYYMM>/logs/<fid>/` the ctx step could have used.
+ *
+ * NOT a hardcoded bucket: the step discovers an existing one and falls back to
+ * `date -u +%Y%m` when the FID has no logs yet, so an unseeded fixture writes to
+ * whatever month the suite runs in. Pinning `202607` made these assertions pass
+ * only while that was the current month — they broke at the 2026-08-01 rollover
+ * with no code change. Mirror the step's own discovery instead.
+ */
+function statusDirs(workspaceDir: string, fid: string): string[] {
+  const plans = path.join(workspaceDir, "docs/plans");
+  if (!fs.existsSync(plans)) return [];
   return fs
-    .readFileSync(file, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
+    .readdirSync(plans)
+    .map((bucket) => path.join(plans, bucket, "logs", fid))
+    .filter((dir) => fs.existsSync(dir));
+}
+
+function readStatusRows(workspaceDir: string, fid: string): unknown[] {
+  return statusDirs(workspaceDir, fid).flatMap((dir) => {
+    const file = path.join(dir, "status.jsonl");
+    if (!fs.existsSync(file)) return [];
+    return fs
+      .readFileSync(file, "utf8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as unknown);
+  });
 }
 
 describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", () => {
@@ -423,10 +443,9 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(rows).toHaveLength(1);
       expect(rows[0].fid).toBe("363-widen-bkit-cloud-trigger");
       expect(rows[0].headSha).toBe("fix-sha-2");
-      // The truncated-id directory (the pre-H1 bug) must NOT have been created.
-      expect(fs.existsSync(path.join(fixture.workspaceDir, "docs/plans/202607/logs/363"))).toBe(
-        false,
-      );
+      // The truncated-id directory (the pre-H1 bug) must NOT have been created
+      // in ANY month bucket.
+      expect(statusDirs(fixture.workspaceDir, "363")).toEqual([]);
     });
 
     // #363 F3 — the fix/** arm derives ISSUE from FID BEFORE the slug

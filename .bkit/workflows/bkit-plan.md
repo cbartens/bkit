@@ -94,6 +94,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   BUCKET_COUNT=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
+   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
@@ -123,7 +125,7 @@ description: "Plan Feature — Autonomous plan generation"
    fi
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
+   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
@@ -798,6 +800,8 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Copy final plan to canonical bucket:
    ```bash
+   BUCKET_COUNT=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
+   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
    YYYYMM=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    PLAN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
@@ -911,8 +915,8 @@ description: "Plan Feature — Autonomous plan generation"
    bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
    bkit_close_transport_row "$CLOSE_SHAPE" "$LANDED_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
    [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $LANDED_SHA inherited a CI-suppression token in its body" >&2; exit 1; }
-   git show "$CANONICAL_REF:docs/plans/$(date +%Y%m)/{FID}-plan.md" > /dev/null 2>&1 || { echo "Canonical plan missing on dev" >&2; exit 1; }
-   for SPLIT_FILE in $(git ls-tree -r --name-only "$LANDED_SHA" -- "docs/plans/$(date +%Y%m)/" | grep -E "{FID}-plan-[0-9]+\.md$" || true); do
+   git show "$CANONICAL_REF:docs/plans/{YYYYMM}/{FID}-plan.md" > /dev/null 2>&1 || { echo "Canonical plan missing on dev" >&2; exit 1; }
+   for SPLIT_FILE in $(git ls-tree -r --name-only "$LANDED_SHA" -- "docs/plans/{YYYYMM}/" | grep -E "{FID}-plan-[0-9]+\.md$" || true); do
      git show "$CANONICAL_REF:$SPLIT_FILE" > /dev/null 2>&1 || { echo "Canonical split plan missing on dev: $SPLIT_FILE" >&2; exit 1; }
    done
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
