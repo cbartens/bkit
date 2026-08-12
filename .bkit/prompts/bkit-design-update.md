@@ -47,20 +47,21 @@ maxTurns: 50
 5. Update **Create** — apply findings via `Edit` as content becomes available.
 6. Identify all CRITICAL items — MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
 7. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
-8. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
-   - `CONCERNS` = some OPTIONAL items skipped.
-   - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
-9. Re-read **Create** output → assert design structure intact. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
+8. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
+9. Update **Create** — set `Verdict` via `Edit`; mapping:
+   - PASS = all CRITICAL items applied; OPTIONAL items applied on merit.
+   - CONCERNS = some OPTIONAL items skipped.
+   - FAIL = findings contradictory and unresolvable, design unanimously rejected by all lenses.
+10. Re-read **Create** output → assert design structure intact. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 
-[Modified design body — verbatim copy of prior versioned design with CRITICAL and merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
+[Modified design body — verbatim copy of prior versioned design with CRITICAL items and OPTIONAL items judged on merit applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
 > ⛔ **STOP after updating design and producing output. Do NOT code, expand scope.**

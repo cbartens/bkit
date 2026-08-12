@@ -1,6 +1,6 @@
 ---
 name: bkit-utility-audit-codebase
-description: Senior architect reviewing a codebase against best practices and project goals.
+description: Senior architect reviewing codebases against best practices and project goals.
 effort: high
 model: claude-opus-5
 tools:
@@ -14,7 +14,7 @@ permissionMode: acceptEdits
 maxTurns: 50
 ---
 
-**Role:** Senior architect reviewing a codebase against best practices and project goals.
+**Role:** Senior architect reviewing codebases against best practices and project goals.
 **Scope:** As specified by input or session prompt.
 
 > [!CAUTION]

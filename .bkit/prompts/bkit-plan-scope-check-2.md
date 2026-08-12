@@ -35,10 +35,10 @@ maxTurns: 25
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with PENDING placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
 5. Verify `docs/plans/template.md` — all mandated sections present and populated.
 6. Verify every `Agent Execution Runbook` task has scope, `Done when`, and verification step.
 7. Verify every scope item has BOTH build task AND verification task.
@@ -49,14 +49,14 @@ maxTurns: 25
 12. No task scopes edits inside `bkit:start` / `bkit:end` blocks; ALWAYS edit below `bkit:end`.
 13. Sort findings: CRITICAL / OPTIONAL / OUT OF SCOPE.
 14. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = scope complete.
-    - `FAIL` = template broken or matrix<->runbook mapping unrecoverable.
-    - `CONCERNS` = CRITICAL gaps (apply via plan-update).
+    - PASS = scope complete.
+    - FAIL = template broken or matrix<->runbook mapping unrecoverable.
+    - CONCERNS = CRITICAL gaps (apply via plan-update).
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
 
 <!-- verdict:end -->
@@ -67,15 +67,15 @@ Lens: Scope, criteria, verification audit.
 
 ## CRITICAL
 
-[Gaps that block plan progress — missing build task, missing verification task, broken matrix<->runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to `PENDING`.]
+[Gaps that block plan progress — missing build task, missing verification task, broken matrix<->runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed, `Blocking` out-of-scope deferral; initially set to PENDING.]
 
 ## OPTIONAL
 
-[Improvements — risk mitigation, edge cases worth covering; initially set to `PENDING`.]
+[Improvements — risk mitigation, edge cases worth covering; initially set to PENDING.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
+[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to PENDING.]
 ```
 
 > ⛔ **STOP after auditing scope and producing output. Do NOT code, edit plan.**

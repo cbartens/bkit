@@ -15,7 +15,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
-> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 > - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
@@ -477,7 +477,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-review-3`, no inline work)
 - [ ] Artifacts written (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`, non-empty)
-- [ ] Verdict extracted and valid, failures extracted (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`; `REVIEW_FAILURES`)
+- [ ] `Verdict` extracted and valid, failures extracted (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`; `REVIEW_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`)
 - [ ] Workflow status updated (step `plan-review` recorded with `parentSha`, `verdict`)
 
@@ -524,7 +524,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
-- [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v2-reviewed.md`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 
@@ -575,7 +575,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagents invoked (`@bkit-plan-scope-check-1`, `@bkit-plan-scope-check-2`, no inline work)
 - [ ] Artifacts written (`plan-scope-check-1.md` and `plan-scope-check-2.md`, non-empty)
-- [ ] Verdict extracted and valid, failures extracted (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`; `SCOPE_FAILURES`)
+- [ ] `Verdict` extracted and valid, failures extracted (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`; `SCOPE_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
 - [ ] Workflow status updated (step `plan-scope-check` recorded with `parentSha`, `verdict`)
 
@@ -624,7 +624,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Scope expansions in `docs/deferrals.jsonl` (if any)
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
-- [ ] Verdict extracted and valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v3-checked.md`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 
@@ -670,7 +670,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
-- [ ] Verdict extracted and valid (`COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
+- [ ] `Verdict` extracted and valid (`COMPLEXITY_VERDICT` in `SINGLE|SPLIT`)
 - [ ] Workflow status updated (step `plan-complexity-check` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -723,7 +723,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
 - [ ] Artifact written (`plan-v4-split.md`, non-empty)
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
-- [ ] Verdict extracted and valid (`SPLIT_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SPLIT_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v4-split.md`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 
@@ -781,7 +781,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
 - [ ] Artifact written (`plan-summary.md`, non-empty)
-- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)

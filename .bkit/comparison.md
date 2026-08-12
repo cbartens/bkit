@@ -188,7 +188,7 @@ Output: PR to `dev`. Heaviest phase — most steps verify rather than produce. C
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Opus, high. Forbidden from reading its sibling. Parallel. |
 | `bkit-build-challenge-2` | Security | Same diff, security lens. Depth-sensitive (Opus on Claude). Parallel. |
-| `bkit-build-challenge-reconcile` | Merge findings | Unifies both challenges. Severity and verdict max-wins; downgrades need explicit justification. xhigh. |
+| `bkit-build-challenge-reconcile` | Merge findings | Unifies both challenges. `Severity` and verdict max-wins; downgrades need explicit justification. xhigh. |
 | `bkit-build-challenge-remediate` | Fixer (classify-gate) | Any architectural finding → FAIL (no silent fixes); else applies mechanical fixes and re-runs tests. |
 | `bkit-build-challenge-tests` | Test author | Adds edge-case tests for changed files; runs the test suite. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If tests fail) diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. xhigh. |
@@ -250,7 +250,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Pattern (Gulli) | bkit status | Where / note |
 | --- | --- | --- |
 | Prompt Chaining | Already does | Every workflow is prompt chaining at slash-command granularity. |
-| Routing | Already does | Verdict routing (PASS/CONCERNS/FAIL), strategy escalation, CI-router dispatch to ship vs debug. |
+| Routing | Already does | `Verdict` routing (PASS/CONCERNS/FAIL), strategy escalation, CI-router dispatch to ship vs debug. |
 | Parallelization | Already does | Parallel pairs and triplets, with a tighter constraint than the book: cross-tier model diversity and no sibling reads. |
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
@@ -296,7 +296,7 @@ Benchmark: `affaan-m/everything-claude-code` (ECC) — 63 agents, 251 skills, 79
 | ECC mechanism | bkit status | Where / note |
 | --- | --- | --- |
 | Prompt-chaining workflows | Already does | Slash-command step chains, one per phase. |
-| Verdict routing / classifier dispatch | Already does, stronger | PASS/CONCERNS/FAIL branching with max-wins reconcile. |
+| `Verdict` routing / classifier dispatch | Already does, stronger | PASS/CONCERNS/FAIL branching with max-wins reconcile. |
 | Parallel fan-out | Already does, stronger | Triplets and pairs with a circular-reasoning guard and cross-tier diversity; ECC's six-agent review has no independence guard. |
 | Producer-critic / reflection | Already does | execute → verify → remediate, bounded at three attempts. |
 | Critic tests the live running app | Partial | bkit verifies static artifacts and `Done when:` criteria, not a Playwright-driven live app. |

@@ -1,6 +1,6 @@
 ---
 name: bkit-ship-summary
-description: Senior reviewer evaluating a ship cycle for completion and follow-up needs.
+description: Senior reviewer evaluating ship cycles for completion and follow-up needs.
 effort: low
 model: claude-haiku-4-5-20251001
 tools:
@@ -11,7 +11,7 @@ permissionMode: acceptEdits
 maxTurns: 25
 ---
 
-**Role:** Senior reviewer evaluating a ship cycle for completion and follow-up needs.
+**Role:** Senior reviewer evaluating ship cycles for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
@@ -32,21 +32,21 @@ maxTurns: 25
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with PENDING placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = merged green, no retries.
-   - `FAIL` = merge blocked.
-   - `CONCERNS` = merge succeeded but follow-up needed (required merge retries, post-merge issues observable from CI logs / status.json).
+   - PASS = merged green, no retries.
+   - FAIL = merge blocked.
+   - CONCERNS = merge succeeded but follow-up needed (required merge retries, post-merge issues observable from CI logs / status.json).
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 
@@ -54,23 +54,23 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[Lines changed, files touched, key changes; initially set to `PENDING`.]
+[Summarise: lines changed, files touched, key changes; initially set to PENDING.]
 
 ## CI Status
 
-[Retries / what broke / fixed / link to failing runs. If green first attempt then `Green`; initially set to `PENDING`.]
+[Summarise: retries, what broke, what fixed it, link to failing runs. **If** green first attempt → `Green`; initially set to PENDING.]
 
 ## Action Items
 
-[Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). If pure clean ship then `None`; initially set to `PENDING`.]
+[List all items and summarise each: every specific follow-up for ship completion (post-merge monitoring, deferred deploy verifications, etc). **If** pure clean ship → `None`; initially set to PENDING.]
 
 ## Recommended Next Step
 
-[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS` / `CONCERNS` → no command (feature merged; note any post-merge monitoring); `FAIL` → fix merge blocker, then `/bkit-ship`. Emit `text` block: `<cmd> <ref>` if any (else `_No further bkit command — feature shipped._`), then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to `PENDING`.]
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). PASS / CONCERNS → no command (feature merged; note any post-merge monitoring); FAIL → fix merge blocker, then `/bkit-ship`. Emit `text` block: `<cmd> <ref>` if any (else `_No further bkit command — feature shipped._`), then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to PENDING.]
 
 ## Deferred & Out-of-Scope
 
-[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred, where declared, and blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
+[List all items and summarise each: every deferred item from deferred-sweep — `Blocking Deferrals`, `Exempt (out-of-scope)` and `Lazy (unjustified)`: what is deferred, where declared, and blocking / exempt / lazy. Lazy items are in-scope work that shipped unfinished — give each its bounded remediation so it can be picked up next cycle. **If** sweep recorded none → `None`; initially set to PENDING.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

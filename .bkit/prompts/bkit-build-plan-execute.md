@@ -37,7 +37,7 @@ maxTurns: 100
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with PENDING placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Read plan (`[x]` = done, `[ ]` = pending). Find first `[ ]` task, resume.
@@ -46,13 +46,13 @@ maxTurns: 100
 7. Implement sequentially — edit / create source per task → at every 🔒 Gate confirm conditions met → append log → proceed.
 8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck --filter='...[origin/dev]' --continue; else set -e; for s in typecheck format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local lint/typecheck MUST pass.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = every pending `[ ]` plan task has `DONE` log entry AND local lint/typecheck pass.
-   - `FAIL` = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint/typecheck fail.
+   - PASS = every pending `[ ]` plan task has `DONE` log entry AND local lint/typecheck pass.
+   - FAIL = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint/typecheck fail.
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 

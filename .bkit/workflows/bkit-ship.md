@@ -15,7 +15,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
-> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 > - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
@@ -693,7 +693,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] CI completed at current head (no timeout exhaustion)
 - [ ] Subagent invoked (`@bkit-ship-deferred-sweep`, no inline work)
 - [ ] Artifact written (`ship-deferred-sweep.md`, non-empty)
-- [ ] Verdict extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-deferred-sweep` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -824,7 +824,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Gate asserted at current head (`bkit-ship-gate.sh assert`, exit 0)
 - [ ] PR merge attempted with `--match-head-commit` (server refuses on head drift)
 - [ ] State extracted (`state`, MERGED or not)
-- [ ] Verdict extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
+- [ ] `Verdict` extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -874,7 +874,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
-- [ ] Verdict extracted and valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
 
@@ -900,7 +900,7 @@ description: "Ship Feature — Autonomous merge and archive"
    STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
    ```
 2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. `Strategy`: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
 3. Assert subagent Create file exists and is non-empty. **If** file empty → **Failure Path**.
@@ -935,7 +935,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
-- [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
+- [ ] `Verdict` extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
 
 <!-- bkit:tracker true start -->
@@ -1090,8 +1090,8 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
 - [ ] Artifact written (`ship-update-docs.md`, non-empty)
 - [ ] Artifact written (`ship-summary.md`, non-empty)
-- [ ] Verdict extracted and valid (`UPDATE_DOCS_VERDICT` in `PASS|FAIL`)
-- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`UPDATE_DOCS_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 
 <!-- bkit:tracker true start -->

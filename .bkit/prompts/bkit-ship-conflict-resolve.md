@@ -29,7 +29,7 @@ maxTurns: 100
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
+- **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit FAIL.
 - **Allowed resolutions:**
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
   - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
@@ -45,7 +45,7 @@ maxTurns: 100
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with PENDING placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** after each substep — append log at EOF via Bash `echo {log entry} >> {output}`.
@@ -55,8 +55,8 @@ maxTurns: 100
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 9. **If** `Verdict` != FAIL → verify `pnpm install --frozen-lockfile` and if defined `pnpm typecheck`. **If** `turbo.json` exists → `pnpm test --filter='...[origin/dev]'`. **Else** → `pnpm test` and if defined `pnpm build`. All MUST exit 0 → append log entry with exit codes. **If** any non-zero → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
-    - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for a non-mechanical reason; OR any verify command exited non-zero.
+    - PASS = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
+    - FAIL = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for non-mechanical reasons; OR any verify command exited non-zero.
 11. **If** `Verdict` = FAIL:
     - `git rebase --abort 2>/dev/null || true`.
     - Confirm working tree clean via `git status --short`.
@@ -66,7 +66,7 @@ maxTurns: 100
 **Output format:**
 
 ```markdown
-Verdict: PASS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 

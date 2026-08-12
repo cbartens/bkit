@@ -1,6 +1,6 @@
 ---
 name: bkit-debug-failure-soak
-description: Senior debug engineer soaking an unknown-cause runtime failure — one accumulating-context instrument-and-fix step per iteration.
+description: Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
 effort: xhigh
 model: claude-opus-5
 tools:
@@ -46,14 +46,14 @@ maxTurns: 100
 5. Verify `git grep '[DEBUG-OBSERVE]'` over source returns nothing.
 6. Append step to log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
 7. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = concrete fix evidence supports applied AND all local tests pass.
-   - `FAIL` = unable to instrument or remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
-   - `CONCERNS` = instrumentation or partial step applied; more iteration needed.
+   - PASS = concrete fix evidence supports applied AND all local tests pass.
+   - FAIL = unable to instrument or remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
+   - CONCERNS = instrumentation or partial step applied; more iteration needed.
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 <!-- verdict:end -->
 

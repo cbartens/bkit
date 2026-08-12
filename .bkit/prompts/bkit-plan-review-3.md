@@ -35,10 +35,10 @@ maxTurns: 50
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with PENDING placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md` and `docs/knowledge.jsonl`; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
+4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
    - Files/modules edited (direct).
    - Symbols exported/changed and their consumers (`grep` for callers).
@@ -50,18 +50,18 @@ maxTurns: 50
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → CRITICAL.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → CRITICAL.
    - Mock-only coverage: Tasks crossing external boundary (DB / API / model / network / migration) whose `Done when` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → CRITICAL.
-7. Design-coverage: If design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections identifying touched surfaces need plan tasks with regression-test coverage OR out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → CRITICAL. Respect declared sub-plan coverage scopes if produced.
+7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections identifying touched surfaces need plan tasks with regression-test coverage OR out-of-scope notes; declared non-goal excluded. Touched surfaces parked out of scope / missing → CRITICAL. Respect declared sub-plan coverage scopes if produced.
 8. Knowledge cross-reference: Search `docs/knowledge.jsonl` and `related-failures.md` for past regressions / known failures in touched surfaces. Plan tasks re-entering known-broken patterns, or touching surfaces with unacknowledged known failures / without acknowledging prior fixes → CRITICAL.
 9. Sort findings into standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = no CRITICAL items; surface touches contained or covered.
-    - `FAIL` = plan introduces regression vector with no mitigation (e.g. schema migration without ordering plan).
-    - `CONCERNS` = CRITICAL items flagged for orchestrator merge.
+    - PASS = no CRITICAL items; surface touches contained or covered.
+    - FAIL = plan introduces regression vector with no mitigation (e.g. schema migration without ordering plan).
+    - CONCERNS = CRITICAL items flagged for orchestrator merge.
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
 
 <!-- verdict:end -->
@@ -72,19 +72,19 @@ Lens: Regression risk, design-coverage.
 
 ## Surface-Area Map
 
-[Per task: files / symbols / schemas / endpoints touched, and their consumers; initially set to `PENDING`.]
+[Per task: files / symbols / schemas / endpoints touched, and their consumers; initially set to PENDING.]
 
 ## CRITICAL
 
-[Regression-risk gaps that block plan progress — uncovered high-risk surfaces, backwards-compat breaks without shims, missing migration ordering, design-coverage gaps for touched surfaces, re-entry into known-broken patterns; initially set to `PENDING`.]
+[Regression-risk gaps that block plan progress — uncovered high-risk surfaces, backwards-compat breaks without shims, missing migration ordering, design-coverage gaps for touched surfaces, re-entry into known-broken patterns; initially set to PENDING.]
 
 ## OPTIONAL
 
-[Improvements — additional regression-test coverage, defensive checks, monitoring for touched surfaces; initially set to `PENDING`.]
+[Improvements — additional regression-test coverage, defensive checks, monitoring for touched surfaces; initially set to PENDING.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
+[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to PENDING.]
 ```
 
 > ⛔ **STOP after reviewing plan and producing output. Do NOT code, edit plan.**

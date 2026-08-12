@@ -33,17 +33,17 @@ maxTurns: 50
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders per `docs/plans/template.md` sections.
+1. Initialise **Create** output stub with PENDING placeholders per `docs/plans/template.md` sections.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
-4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; if none → `None`.
+4. Update **Create** — replace each PENDING via `Edit` as content becomes available; **If** none → `None`.
 5. Populate template sections in following dependency order; do NOT change order, do NOT use document order. Follow ALL instruction in template and below; ALWAYS verify gates before proceeding. Leave human-confirmation boxes unchecked.
 6. Foundation — testable contract:
    - `Context & Goals`; populate `Related Issues` from references already present in input NOT fresh issue search. Do NOT expand scope.
-   - `Acceptance Scenario`; Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases. Expand on existing design if any, do NOT replace. Write BEFORE Derived Test Matrix.
-   - `Derived Test Matrix`; one row per testable behaviour from Acceptance Scenario; assign test tiers; all rows must have target files; no rows without behaviour.
+   - `Acceptance Scenario`; `Narrative`, `Success Criteria`, `Process Sketch`, `Concrete Example`, `Edge Cases`. Expand on existing design if any, do NOT replace. Write BEFORE `Derived Test Matrix`.
+   - `Derived Test Matrix`; one row per testable behaviour from `Acceptance Scenario`; assign test tiers; all rows must have target files; no rows without behaviour.
 7. Investigation & prerequisites:
-   - `Open Questions & Assumptions`; unknowns needing decisions and assumptions plan relies on.
+   - `Open Questions & Assumptions`; unknowns needing decisions and assumptions plan relies on. All open questions MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output; carry design options / recommendation forward where already answered. Assumptions stay plain bullets.
    - `Pre-Flight / Dependencies`; fill Core / Conditional content including existing-solution search;
 8. Design:
    - `Alternative Approaches & Recommendations`; chosen approach and rejected paths.

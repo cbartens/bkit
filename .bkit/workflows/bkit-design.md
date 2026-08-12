@@ -15,7 +15,7 @@ description: "Design Feature — Autonomous design phase"
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
-> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
 > - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
@@ -457,7 +457,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
 - [ ] Artifacts written (`design-review-1.md` and `design-review-2.md`, non-empty)
-- [ ] Verdict extracted and valid (`REVIEW_VERDICT` = worst-of-two; each review's `Verdict` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`REVIEW_VERDICT` = worst-of-two; each review's `Verdict` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`design-review-1.md` and `design-review-2.md`)
 - [ ] Routed correctly (FAIL → Failure Path; PASS/CONCERNS → Step 6)
 - [ ] Workflow status updated (step `design-review` recorded with `parentSha`, `verdict`)
@@ -505,7 +505,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagent invoked (`@bkit-design-update`, no inline work)
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
-- [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -552,7 +552,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
 - [ ] Artifact written (`design-v3-organised.md`, non-empty)
-- [ ] Verdict extracted and valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-organise` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -609,7 +609,7 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Design final resolved (`DESIGN_FINAL` = highest `design-v*.md`)
 - [ ] Subagent invoked (`@bkit-design-summary`, no inline work)
 - [ ] Artifact written (`design-summary.md`, non-empty)
-- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
 

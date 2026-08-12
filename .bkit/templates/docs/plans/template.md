@@ -39,10 +39,10 @@
 >
 > **You only need 👤-marked sections** (Acceptance Scenario, Breaking Changes, Open Questions & Assumptions). Agent handles rest.
 
-### Spec — what good looks like _(canonical; both design and plan phases follow this)_
+### Spec — what good looks like _(canonical for the plan phase)_
 
 > [!IMPORTANT]
-> Subagents (design synthesise, design summary, plan generate, plan review, plan summary) MUST follow this spec. No subagent restates rules; this section = single source of truth.
+> Subagents (plan generate, plan review, plan summary) MUST follow this spec. No plan subagent restates rules; this section = single source of truth for the plan.
 
 - **Narrative:** 1–2 sentences, user POV (not system POV). Describes what the user does and what they get back.
 - **Success Criteria:** <=5 bullets, each measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT implementation steps (e.g. "call API, render component"). If design doc lists fewer or more, prefer the smallest set that still proves the feature works.
@@ -153,9 +153,13 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 > [!CAUTION]
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 > Unknowns needing a decision, and assumptions this plan relies on. Each unresolved question is a risk — a wrong assumption breaks everything downstream. If none, write "None".
+> **Never a bare question.** Every open question carries 2-3 concrete options, a recommendation, and the default applied if nobody answers — a human confirming this section must be able to decide from what is on the page. _(Canonical shape for the plan.)_
 
 - **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
 - **Open question:** [decision needed] → [who / how to resolve]
+  - **Options:** A — [option, trade-off] · B — [option, trade-off] · C — [option, trade-off, optional]
+  - **Recommended:** [A] — [why, 1 line]
+  - **Default if unanswered:** [what the agent proceeds with]
 
 ### 👤 ✅ Human Confirmation
 

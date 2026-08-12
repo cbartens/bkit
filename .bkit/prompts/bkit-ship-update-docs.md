@@ -60,11 +60,11 @@ maxTurns: 50
 
 ## Pending Items
 
-[`{FID}` matches in `docs/deferrals.jsonl` for human review. If no matches then `None`]
+[`{FID}` matches in `docs/deferrals.jsonl` for human review. **If** no matches → `None`]
 
 ## Blockers
 
-[Per blocker: Id and reason. `FAIL` requires >=1 blocker. If no blockers then `None`]
+[Per blocker: Id and reason. FAIL requires >=1 blocker. **If** no blockers → `None`]
 ```
 
 > ⛔ **STOP after writing the sync report. Do NOT code, deploy.**
