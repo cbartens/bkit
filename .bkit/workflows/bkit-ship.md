@@ -17,7 +17,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
-> - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+> - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = NOT valid deferral → FINISH work.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
@@ -126,7 +126,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Read: `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
 6. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file missing or empty → log `ship-handover.md missing or empty — proceeding to flush without it` to stderr, set `{HANDOVER_OK}` = false, step 7. NEVER route to the **Failure Path**.
-7. Reconcile branch-side artifacts into `BOOK_ROOT`, then flush **one** commit and **one** push:
+7. Reconcile branch-side artifacts into `BOOK_ROOT`, then flush one commit and one push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    # Detect in-block; never inherit across a Bash-block boundary.
@@ -1106,12 +1106,13 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Run only if** `state` = MERGED.
 
-1. Prune feature-specific skills — uninstall any `.agents/skills/` skills not listed in `.agents/skills.md` via the CLI:
+1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md` via the CLI. Reconcile the **union** of on-disk directories and `skills-lock.json` keys: a directory removed out-of-band leaves a lock entry no directory scan can ever reach, so a disk-only loop strands it permanently. `npx skills remove` exits 0 and still drops the lock entry when the directory is already absent.
    ```bash
-   for skill_dir in .agents/skills/*/; do
-     [ -d "$skill_dir" ] || continue
-     skill=$(basename "$skill_dir")
-     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
+   { find .agents/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null
+     jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
+   } | sort -u | while read -r skill; do
+     [ -n "$skill" ] || continue
+     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
    done
    ```
 2. Update status (bookkeeping to `$BOOK_ROOT`):

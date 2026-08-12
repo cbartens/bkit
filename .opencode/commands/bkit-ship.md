@@ -19,9 +19,9 @@ $ARGUMENTS
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
-> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context and subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND rows to `.bkit/friction.jsonl` in `.bkit/jsonl.md` format → continue or escalate; logging does NOT replace **Failure Path**.
-> - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+> - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = NOT valid deferral → FINISH work.
 > - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
@@ -29,7 +29,7 @@ $ARGUMENTS
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded `$BOOK_ROOT/.../status.jsonl`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap` that removes `.dev.lock` on `EXIT`.
-> - **Status branch:** All steps write `$BOOK_ROOT/.../status.jsonl` (bookkeeping never rides the branch — #384). `BOOK_ROOT` resolves the single tree every status/artifact write targets: `RUNTIME_DEVPUSHES=true` → `$REPO_ROOT` (dev tree); `RUNTIME_DEVPUSHES=false` → current working branch tree (bookkeeping lands with the phase-close PR per #341 shape A). Staging is path-scoped via `BOOK_PATHS` (frozen allow-list: 10 book paths + any present host skill mirror); NEVER stage all files (the `-A` flag) or blanket `docs/`. `dev` commit and push ONCE per run: Close → `docs({FID}): ship DONE bkit [skip ci]`; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`.
+> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `BOOK_PATHS`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit and ONE push per run, both from one flush block — Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`. **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -50,21 +50,34 @@ $ARGUMENTS
 
 ## 🤖 Failure Path
 
-1. Update status, commit, and push:
+**Single-write contract:** every step before the flush creates no git object. NEVER route back to the **Failure Path** — log and continue to the flush.
+
+1. Abort any in-progress rebase, record the failure, release the lock — **state only, no `add` / `commit` / `push`**:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   # Detect in-block; never inherit across a Bash-block boundary.
+   if [ -f "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" ]; then
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh"
+     bkit_runtime_detect "$REPO_ROOT" "{FID}" || echo "[bkit-runtime] detect failed in Failure Path" >&2
+   else
+     echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2
+   fi
+   # Never bkit_runtime_assert_resolved here — its non-zero return routes to
+   # this path. Unresolved falls back to the least-capable value.
+   case "${RUNTIME_DEVPUSHES:-}" in
+     true | false) ;;
+     *) echo "[bkit-runtime] RUNTIME_DEVPUSHES unresolved — least-capable fallback (current branch, no dev push)" >&2; RUNTIME_DEVPUSHES=false; RUNTIME_WORKTREES=false ;;
+   esac
    # BOOK_ROOT — the single tree every status/artifact write targets.
-   # RUNTIME_DEVPUSHES=true (worktree present, modes 1–2) → dev tree ($REPO_ROOT);
-   # RUNTIME_DEVPUSHES=false (mode 3, cloud) → current working branch tree.
+   # RUNTIME_DEVPUSHES=true → dev tree ($REPO_ROOT); false → current branch tree.
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
-   if [ -n "${RUNTIME_DEVPUSHES:-}" ] && [ "$RUNTIME_DEVPUSHES" = "false" ]; then
+   if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT="$WT_TOP"
    else
      BOOK_ROOT="$REPO_ROOT"
    fi
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   # Abort any in-progress rebase BEFORE appending status — a mid-rebase abort
-   # discards writes that preceded it (Finding 4 / Comment 1 mechanism 2).
+   # Abort any in-progress rebase BEFORE appending status.
    if git rev-parse --git-path rebase-merge >/dev/null 2>&1 || git rev-parse --git-path rebase-apply >/dev/null 2>&1; then
      git rebase --abort
    fi
@@ -73,26 +86,7 @@ $ARGUMENTS
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    rm -f "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
-   # .deferred-blocked is NOT removed here — it is the sentinel the Failure Path
-   # step 4 reader checks to decide handover. Only Step 1 (workflow start) clears it.
-   DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
-   DEADLINE=$(( $(date +%s) + 60 ))
-   DEV_HELD=0
-   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-     if (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; then DEV_HELD=1; break; fi
-     DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
-     [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
-     sleep 5
-   done
-   if [ "$DEV_HELD" = 1 ]; then
-     trap 'rm -f "$DEVLOCK"' EXIT
-     git -C "$REPO_ROOT" pull --ff-only origin dev
-     git -C "$REPO_ROOT" add $BOOK_PATHS
-     git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" -- $BOOK_PATHS
-     git -C "$REPO_ROOT" push origin dev
-   else
-     echo "dev lock busy — ship FAILED status left uncommitted on dev; it rides along on the next dev push" >&2
-   fi
+   # Step 4 reads .deferred-blocked; only Step 1 clears it.
    ```
 2. Resolve merge state — `gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null` → `FAILED_STATE` (empty when `{PR_NUMBER}` unset).
    **Decide `{LABELS}`:**
@@ -107,24 +101,116 @@ $ARGUMENTS
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards, counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed **or** deferred-sweep block sentinel (`docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked`) previously existed → step 5. **Else** → step 12.
+4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards, counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed **or** deferred-sweep block sentinel (`docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked`) previously existed → set `{HANDOVER_OK}` = true, step 5. **Else** → set `{HANDOVER_OK}` = false, step 7.
 5. **Subagent:** Invoke `/bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md`.
-6. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-7. `git status --short` → remove unintended files.
-8. `git add $BOOK_PATHS`.
-9. `git commit -m "docs({FID}): ship aborted bkit [skip ci]" -- $BOOK_PATHS`.
-10. Assert `{BRANCH}` non-empty and push (force-with-lease on personal branch, plain on `dev` / `main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — **If** push fails → do NOT claim success on tracker.
-11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    `{BODY}` = fenced block below:
-    ```comment
-    ### Workflow Handover
-    [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md)
-    {FID-ship-handover.md content verbatim}
-    ```
-12. **STOP**, no further downstream steps.
+6. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file missing or empty → log `ship-handover.md missing or empty — proceeding to flush without it` to stderr, set `{HANDOVER_OK}` = false, step 7. NEVER route to the **Failure Path**.
+7. Reconcile branch-side artifacts into `BOOK_ROOT`, then flush one commit and one push:
+   ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   # Detect in-block; never inherit across a Bash-block boundary.
+   if [ -f "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" ]; then
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh"
+     bkit_runtime_detect "$REPO_ROOT" "{FID}" || echo "[bkit-runtime] detect failed in Failure Path" >&2
+   else
+     echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2
+   fi
+   case "${RUNTIME_DEVPUSHES:-}" in
+     true | false) ;;
+     *) echo "[bkit-runtime] RUNTIME_DEVPUSHES unresolved — least-capable fallback (current branch, no dev push)" >&2; RUNTIME_DEVPUSHES=false; RUNTIME_WORKTREES=false ;;
+   esac
+   WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
+   if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
+     BOOK_ROOT="$WT_TOP"
+   else
+     BOOK_ROOT="$REPO_ROOT"
+   fi
+   LOGDIR_REL="docs/plans/{YYYYMM}/logs/{FID}"
+   # BOOK_PATHS — re-derived here; Step 1 resolved it in another shell.
+   # Frozen staging allow-list (path-scoped; never -A).
+   BOOK_PATHS="$LOGDIR_REL/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+   for d in .claude/skills .cursor/skills .opencode/skills; do
+     if [ -e "$BOOK_ROOT/$d" ] || git -C "$BOOK_ROOT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
+       BOOK_PATHS="$BOOK_PATHS $d"
+     fi
+   done
+   [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage; bookkeeping left uncommitted in $BOOK_ROOT" >&2; exit 1; }
+   # Artifact reconciliation — WORKTREE_PATH is not BOOK_ROOT in mint mode and a
+   # failed ship never merges the branch.
+   # NEVER `${WORKTREE_PATH:-…/{FID}}` — a `}` inside the default closes the
+   # expansion early.
+   SRC_WT="${WORKTREE_PATH:-}"
+   [ -n "$SRC_WT" ] || SRC_WT="$REPO_ROOT/.worktrees/{FID}"
+   if [ -d "$SRC_WT/$LOGDIR_REL" ] && [ "$SRC_WT" != "$BOOK_ROOT" ]; then
+     mkdir -p "$BOOK_ROOT/$LOGDIR_REL"
+     for f in "$SRC_WT/$LOGDIR_REL"/*.md; do
+       [ -f "$f" ] || continue
+       [ -e "$BOOK_ROOT/$LOGDIR_REL/$(basename "$f")" ] || cp "$f" "$BOOK_ROOT/$LOGDIR_REL/"
+     done
+     # Ledgers are append-only NDJSON — union rows in, NEVER copy over.
+     for L in docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl; do
+       [ -f "$SRC_WT/$L" ] || continue
+       if [ -f "$BOOK_ROOT/$L" ]; then
+         NEW_ROWS=$(grep -F -x -v -f "$BOOK_ROOT/$L" "$SRC_WT/$L")
+         [ -n "$NEW_ROWS" ] && printf '%s\n' "$NEW_ROWS" >> "$BOOK_ROOT/$L"
+       else
+         cp "$SRC_WT/$L" "$BOOK_ROOT/$L"
+       fi
+     done
+   fi
+   FLUSH=1
+   if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
+     DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
+     DEADLINE=$(( $(date +%s) + 60 ))
+     DEV_HELD=0
+     while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+       if (set -C; printf '%s ship {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; then DEV_HELD=1; break; fi
+       DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
+       [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
+       sleep 5
+     done
+     if [ "$DEV_HELD" = 1 ]; then
+       trap 'rm -f "$DEVLOCK"' EXIT
+       git -C "$REPO_ROOT" checkout dev
+       [ "$(git -C "$REPO_ROOT" branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git -C "$REPO_ROOT" branch --show-current)') — aborting dev ops; FAILED bookkeeping left uncommitted in $BOOK_ROOT" >&2; exit 1; }
+       git -C "$REPO_ROOT" pull --ff-only origin dev
+       WT="$REPO_ROOT"
+       TARGET="dev"
+     else
+       echo "dev lock busy — ship FAILED bookkeeping left uncommitted in $BOOK_ROOT; it rides along on the next dev commit" >&2
+       FLUSH=0
+     fi
+   else
+     echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=${RUNTIME:-unresolved}) — no dev checkout/push; the FAILED record commits on the current branch" >&2
+     WT="$BOOK_ROOT"
+     TARGET=$(git -C "$WT" branch --show-current)
+   fi
+   # The ONE commit + the ONE push. Path-scoped, never -A, never force.
+   if [ "$FLUSH" = 1 ]; then
+     [ -n "$TARGET" ] || { echo "push target empty (detached HEAD?) — refusing to push; bookkeeping left uncommitted in $WT" >&2; exit 1; }
+     git -C "$WT" status --short
+     git -C "$WT" add $BOOK_PATHS
+     if git -C "$WT" diff --cached --quiet; then
+       echo "[bkit-ship] no bookkeeping delta to record — nothing committed, nothing pushed" >&2
+     else
+       git -C "$WT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" -- $BOOK_PATHS
+       git -C "$WT" push origin "$TARGET"
+     fi
+   fi
+   ```
+   **If** the push fails → do NOT claim success on tracker.
+8. **If** `{HANDOVER_OK}` = false → step 9. **Else**:
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{HANDOVER_REF}` = `dev` when `RUNTIME_DEVPUSHES` = true, else `{BRANCH}` — the ref step 7 actually pushed the artifact to.
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Workflow Handover
+   [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{HANDOVER_REF}/docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md)
+   {FID-ship-handover.md content verbatim}
+   ```
+9. **STOP**, no further downstream steps.
 
 ---
 
@@ -136,12 +222,13 @@ $ARGUMENTS
    ```bash
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   BUCKET_COUNT=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
+   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before ship" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    # BOOK_ROOT — the single tree every status/artifact write targets.
-   # RUNTIME_DEVPUSHES=true (worktree present, modes 1–2) → dev tree ($REPO_ROOT);
-   # RUNTIME_DEVPUSHES=false (mode 3, cloud) → current working branch tree (#341 shape A).
+   # RUNTIME_DEVPUSHES=true → dev tree ($REPO_ROOT); false → current branch tree.
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ -n "${RUNTIME_DEVPUSHES:-}" ] && [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT="$WT_TOP"
@@ -160,11 +247,8 @@ $ARGUMENTS
    #   .agents/skills
    #   skills-lock.json
    BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-   # Host skill mirrors — `npx skills remove` (Step 11) deletes these alongside
-   # .agents/skills/<name>, so they must be stageable or the deletions leak into
-   # the working tree. Appended only when present on disk OR tracked in the
-   # index: staging a pathspec that matches neither is a fatal error, and
-   # a claude-only consumer has no .cursor/.opencode mirror at all.
+   # Host skill mirrors — append ONLY when present on disk or tracked in the
+   # index; a pathspec matching neither is fatal.
    for d in .claude/skills .cursor/skills .opencode/skills; do
      if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
        BOOK_PATHS="$BOOK_PATHS $d"
@@ -204,7 +288,7 @@ $ARGUMENTS
    gh api /repos/{OWNER_REPO}/actions/permissions >/dev/null 2>&1 || echo "[bkit-ship] actions:write preflight — gh may lack dispatch permission" >&2
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
+   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
@@ -251,7 +335,7 @@ $ARGUMENTS
 
 ## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
-**Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch (#384).
+**Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch.
 
 1. Create / resume worktree, or adopt current branch in place (NO rebase — Path A):
    ```bash
@@ -318,7 +402,7 @@ $ARGUMENTS
    ```
    **If** exit non-zero → **Failure Path**.
 7. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
-8. Update status (bookkeeping to `$BOOK_ROOT`, NO branch commit — #384):
+8. Update status (bookkeeping to `$BOOK_ROOT`, NO branch commit):
    ```bash
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -402,12 +486,16 @@ $ARGUMENTS
    3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
    4. **If** `RESOLVE_VERDICT` = PASS → commit and push (B2 is the ONLY step that pushes to `feat/{FID}`):
       ```bash
-      # B2 stages ALL working-tree changes — resolved source files first
-      # (`-u`: modifications to tracked files = the conflict resolutions the
-      # subagent wrote), then the bookkeeping allow-list (the
-      # ship-conflict-resolve.md artifact lands under $BOOK_PATHS). This is
-      # the ONLY commit that pushes feat/{FID}; every change here is
-      # intentional by construction.
+      # BOOK_PATHS — re-derived here; Step 1 resolved it in another shell.
+      BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+      for d in .claude/skills .cursor/skills .opencode/skills; do
+        if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
+          BOOK_PATHS="$BOOK_PATHS $d"
+        fi
+      done
+      [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage" >&2; exit 1; }
+      # `-u` stages the subagent's conflict resolutions; BOOK_PATHS adds the
+      # bookkeeping allow-list. ONLY commit that pushes feat/{FID}.
       git add -u && git add $BOOK_PATHS
       git commit -m "chore({FID}): conflict-resolve bkit [skip ci]"
       git push --force-with-lease origin "feat/{FID}"
@@ -510,7 +598,7 @@ $ARGUMENTS
 - [ ] CI completed at current head (no timeout exhaustion)
 - [ ] Subagent invoked (`@bkit-ship-deferred-sweep`, no inline work)
 - [ ] Artifact written (`ship-deferred-sweep.md`, non-empty)
-- [ ] Verdict extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-deferred-sweep` recorded with `parentSha`, `verdict`)
 
 
@@ -632,7 +720,7 @@ $ARGUMENTS
 - [ ] Gate asserted at current head (`bkit-ship-gate.sh assert`, exit 0)
 - [ ] PR merge attempted with `--match-head-commit` (server refuses on head drift)
 - [ ] State extracted (`state`, MERGED or not)
-- [ ] Verdict extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
+- [ ] `Verdict` extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
 
 
@@ -673,7 +761,7 @@ $ARGUMENTS
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
-- [ ] Verdict extracted and valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
 
@@ -697,7 +785,7 @@ $ARGUMENTS
    STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
    ```
 2. **Subagent:** Invoke `/bkit-debug-failure-remediate` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. `Strategy`: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
 3. Assert subagent Create file exists and is non-empty. **If** file empty → **Failure Path**.
@@ -725,7 +813,7 @@ $ARGUMENTS
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
-- [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
+- [ ] `Verdict` extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
 
 
@@ -747,7 +835,7 @@ $ARGUMENTS
    bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
    bkit_runtime_assert_resolved || exit 2
    if [ "$RUNTIME_DEVPUSHES" != "true" ]; then
-     echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/sync; the merge already landed server-side (Step 6)" >&2
+     echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/sync; the merge already landed server-side" >&2
    else
      DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
      DEADLINE=$(( $(date +%s) + 600 ))
@@ -862,8 +950,8 @@ $ARGUMENTS
 - [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
 - [ ] Artifact written (`ship-update-docs.md`, non-empty)
 - [ ] Artifact written (`ship-summary.md`, non-empty)
-- [ ] Verdict extracted and valid (`UPDATE_DOCS_VERDICT` in `PASS|FAIL`)
-- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] `Verdict` extracted and valid (`UPDATE_DOCS_VERDICT` in `PASS|FAIL`)
+- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 
 
@@ -876,20 +964,15 @@ $ARGUMENTS
 
 **Run only if** `state` = MERGED.
 
-1. Prune feature-specific skills — uninstall any `.agents/skills/` skills not listed in `.agents/skills.md` via the CLI:
+1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md` via the CLI. Reconcile the **union** of on-disk directories and `skills-lock.json` keys: a directory removed out-of-band leaves a lock entry no directory scan can ever reach, so a disk-only loop strands it permanently. `npx skills remove` exits 0 and still drops the lock entry when the directory is already absent.
    ```bash
-   for skill_dir in .agents/skills/*/; do
-     [ -d "$skill_dir" ] || continue
-     skill=$(basename "$skill_dir")
-     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y
+   { find .agents/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null
+     jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
+   } | sort -u | while read -r skill; do
+     [ -n "$skill" ] || continue
+     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
    done
    ```
-   `npx skills remove` deletes the host mirrors (`.claude/skills`, `.cursor/skills`,
-   `.opencode/skills`) alongside `.agents/skills/<name>`. Those mirror paths are in
-   `BOOK_PATHS` (Step 1) so the Close-step staging carries the deletions. Without
-   them the prune commit holds only `.agents/skills` + `skills-lock.json` and the
-   mirror deletions leak into the working tree, where the next unrelated staging
-   sweeps them into a foreign commit.
 2. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -927,9 +1010,9 @@ $ARGUMENTS
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    # Outbox lives outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
-   # Ownership bit: written at worktree creation (Step 2) to the outbox AND the
-   # $BOOK_ROOT/.../status.jsonl row. Absent-default = "not mine" — never remove a worktree
-   # this run did not create (design/plan/build/debug conventions untouched).
+   # Ownership bit: written at worktree creation to the outbox AND the
+   # $BOOK_ROOT/.../status.jsonl row. Absent-default = "not mine" — NEVER remove a
+   # worktree this run did not create.
    if [ -d "$WORKTREE_PATH" ]; then
      if [ -f "$OUTBOX/.worktree-owned" ]; then
        git worktree remove "$WORKTREE_PATH" --force
@@ -1024,6 +1107,19 @@ $ARGUMENTS
      echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/push for the close-workflow status/telemetry tail; recorded on the current branch instead" >&2
      WT=$(git rev-parse --show-toplevel)
    fi
+   # BOOK_ROOT + BOOK_PATHS — re-derived here; Step 1 resolved them in another shell.
+   if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
+     BOOK_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
+   else
+     BOOK_ROOT="$REPO_ROOT"
+   fi
+   BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+   for d in .claude/skills .cursor/skills .opencode/skills; do
+     if [ -e "$WT/$d" ] || git -C "$WT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
+       BOOK_PATHS="$BOOK_PATHS $d"
+     fi
+   done
+   [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage" >&2; exit 1; }
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    STATS="$WT/.bkit/stats.jsonl"
    FRICTION="$WT/.bkit/friction.jsonl"
