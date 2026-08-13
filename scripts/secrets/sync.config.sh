@@ -22,7 +22,6 @@ PREVIEW_ENV_FILE=".bkit/.env"
 
 # The GitHub Actions secrets bkit's workflows consume:
 #   - ANTHROPIC_API_KEY       → claude.yml + bkit-cloud.yml (claude job)
-#   - LINEAR_API_KEY          → tracker/router workflows
 #   - GH_BKIT_TOKEN_INSTALL   → classic read:packages, for the cloud agent's `bkit install`
 #                               (@cbartens/bkit fetch); bkit's own ci.yml needs no token
 #   - GH_BKIT_TOKEN           → the general fine-grained WRITE token; self-hosted Renovate's
@@ -30,7 +29,6 @@ PREVIEW_ENV_FILE=".bkit/.env"
 #                               workflow SHAs) + the GitHub MCP server (#325 / DE-35)
 GITHUB_KEYS=(
   "ANTHROPIC_API_KEY"
-  "LINEAR_API_KEY"
   "GH_BKIT_TOKEN_INSTALL"
   "GH_BKIT_TOKEN"
 )
