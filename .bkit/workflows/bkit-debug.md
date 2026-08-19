@@ -446,10 +446,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      done
    fi
    echo "TEST_SCOPE=$TEST_SCOPE"
-   eval "$TEST_SCOPE"
+   TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
+   mkdir -p "$(dirname "$TEST_LOG")"
+   eval "$TEST_SCOPE" 2>&1 | tee "$TEST_LOG"
+   TEST_EXIT=${PIPESTATUS[0]}
+   echo "TEST_EXIT=$TEST_EXIT"
    ```
-3. Decide `TEST_VERDICT` and `TEST_FAILURES` from exit code:
-   - **If** all tests passed → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
+3. Decide `TEST_VERDICT` and `TEST_FAILURES` from `TEST_EXIT`:
+   - **If** `TEST_EXIT` = 0 → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
    - **Else** → `TEST_VERDICT` = FAIL, `TEST_FAILURES` = count of failing test suites (>=1).
 4. Extract `TEST_SCOPE` from run block `TEST_SCOPE=` line.
 5. Update status:
@@ -460,8 +464,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
    NORMAL_ATTEMPT=$(counter_next "$STATUS" debug debug-run-tests) || exit 2
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$NORMAL_ATTEMPT" --argjson f "$TEST_FAILURES" \
-     '{type:"step-done", workflow:"debug", step:"debug-run-tests", status:"DONE", verdict:$v, scope:$sc, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
+   [ -s "$REPO_ROOT/$TEST_LOG" ] && ARTS=$(jq -nc --arg f "$TEST_LOG" '[$f]') || ARTS='[]'
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$NORMAL_ATTEMPT" --argjson f "$TEST_FAILURES" --argjson arts "$ARTS" \
+     '{type:"step-done", workflow:"debug", step:"debug-run-tests", status:"DONE", verdict:$v, scope:$sc, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:$arts}' \
      >> "$STATUS"
    ```
 6. <!-- bkit:tracker github start -->
@@ -538,6 +545,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Test attempt derived (active run)
 - [ ] Tests executed (turbo path if `turbo.json`)
+- [ ] Artifact written (`debug-context-tests-local-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)
 - [ ] Workflow status updated (step `debug-run-tests` recorded with `parentSha`, `verdict`, `scope`)
@@ -554,137 +562,108 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `TEST_VERDICT` = FAIL.
 
-1. Discover CI run for branch and extract `RUN_SHA`:
-   ```bash
-   RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId,conclusion,headSha 2>/dev/null || echo "[]")
-   RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId // ""')
-   RUN_CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
-   RUN_SHA=$(echo "$RUN_JSON" | jq -r '.[0].headSha // ""')
-   ```
-2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch failed jobs / steps, error-annotation subset, and failed-step logs → **if** logs non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md`:
-   ````bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
-   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
-   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \
-     --jq '[.jobs[] | select(.conclusion=="failure") | {job: .name, steps: [.steps[] | select(.conclusion=="failure") | .name]}]' 2>/dev/null)
-   CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
-   [ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null)
-   ERR_SUBSET=$(printf '%s' "$CI_LOGS" | grep -E '##\[error\]|::error' 2>/dev/null)
-   if [ -n "$CI_LOGS" ]; then
-     {
-       printf '# CI failure (run %s, headSha %s, attempt %s)\n\n' "$RUN_ID" "${RUN_SHA:-unknown}" "${DEBUG_ATTEMPT}"
-       printf '## Failed jobs/steps\n```json\n%s\n```\n\n' "${FAILED_STEPS:-[]}"
-       [ -n "$ERR_SUBSET" ] && printf '## Error annotations\n```\n%s\n```\n\n' "$ERR_SUBSET"
-       printf '## Failed-step logs\n```\n%s\n```\n' "$CI_LOGS"
-     } > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md"
-   fi
-   ````
-3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md`:
-   ````bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
-   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
-   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   LAST_PASS_SHA=$(gh run list --branch dev --workflow ci.yml --status success --limit 5 --json headSha --jq '.[0].headSha // ""' 2>/dev/null)
-   if [ -n "$LAST_PASS_SHA" ]; then
-     DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
-     if [ -n "$DIFF_STAT" ]; then
-       {
-         printf '# Diff vs last-passing CI on dev (last-passing-sha: %s)\n\n' "$LAST_PASS_SHA"
-         printf '```\n%s\n```\n' "$DIFF_STAT"
-       } > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md"
-     fi
-   fi
-   ````
-4. **If** current run output captured → write local test output to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md`:
-   ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
-   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
-   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
-   [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
-   ```
-5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed, download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`. **If** `RUNTIME_GITHUBCLI` = false → `gh run download -n playwright-report` fallback is `actions_get` method `download_workflow_run_artifact`, else `get_job_logs` (`failed_only=true`):
-   ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
-   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
-   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
-   if [ "${E2E_FAILED:-0}" -gt 0 ]; then
-     E2E_DIR="docs/plans/{YYYYMM}/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
-     mkdir -p "$E2E_DIR"
-     gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
-     if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
-       E2E_LOG="docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md"
-       SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
-       {
-         echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
-         echo
-         echo "Scanned: ${SCAN_ROOT#$E2E_DIR/} (text files only; binary artifacts listed below)"
-         find "$SCAN_ROOT" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
-           rel="${f#$E2E_DIR/}"
-           printf '\n===== file: %s =====\n' "$rel"
-           cat "$f"
-           echo
-         done
-         printf '\n===== binary artifacts (not inlined; full tree under %s/) =====\n' "${E2E_DIR#docs/plans/logs/}"
-         find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
-       } > "$E2E_LOG"
-       [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
-     else
-       rmdir "$E2E_DIR" 2>/dev/null || true
-     fi
-   fi
-   ```
-6. List every `debug-fetch` block name after `<!-- bkit:end -->` in `.agents/config.md`:
+1. Enumerate every `debug-fetch` block after `<!-- bkit:end -->` in `.agents/config.md`, with its ordinal, context and name. `context=` absent => `runtime`:
    ```bash
    SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
-   FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
+   PARSE_MARKER='
+     /^<!-- debug-fetch:start/ {
+       idx++
+       line=$0
+       sub(/^<!-- debug-fetch:start[ \t]*/,"",line); sub(/[ \t]*-->$/,"",line)
+       context="runtime"; name=""
+       n=split(line, p, /[ \t]+/)
+       for (i=1;i<=n;i++) {
+         if (p[i] ~ /^context=/) { context=substr(p[i],9) } else if (p[i] != "") { name=p[i] }
+       }
+     }'
+   FETCH_BLOCKS=$(printf '%s\n' "$SECTION" | awk "$PARSE_MARKER"' /^<!-- debug-fetch:start/ { print idx "\t" context "\t" name }')
+   printf '%s\n' "$FETCH_BLOCKS"
    ```
-7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md`. Distinctly narrate each block outcome; ALWAYS note blocks with fetch issues to avoid downstream interpretation as clean run:
+2. Report context coverage BEFORE fetching:
+   ```bash
+   for CONTEXT in runtime ci diff e2e web; do
+     N=$(printf '%s\n' "$FETCH_BLOCKS" | cut -f2 | grep -cx "$CONTEXT")
+     if [ "$N" -gt 0 ]; then
+       echo "[bkit-debug] debug-fetch context=$CONTEXT CONFIGURED ($N block(s))"
+     else
+       echo "[bkit-debug] debug-fetch context=$CONTEXT NOT CONFIGURED — that evidence is UNCHECKED this attempt, NOT confirmed clean"
+     fi
+   done
+   ```
+3. **For each** `idx<TAB>context<TAB>name` in `FETCH_BLOCKS` → extract its fenced body → use as starting template → customise per failure (severity, freshness, limit, query, filters) → execute via Bash → capture stdout and stderr when non-empty, else add `[debug-fetch:<name>] skipped` and stderr breadcrumb to context artifact path. **If** `{DEBUG_ATTEMPT}` > 1 → vary customisations from prior attempts. Distinctly narrate each block outcome; ALWAYS note blocks with fetch issues to avoid downstream interpretation as clean runs:
    ````bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   if [ -z "$FETCH_NAMES" ]; then
-     echo "[bkit-debug] debug-fetch: NO BLOCKS CONFIGURED (.agents/config.md has none enabled) — runtime-log absence this attempt is UNCHECKED, not confirmed clean"
+   # Re-read; never inherit across a Bash-block boundary.
+   SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null)
+   if ! printf '%s\n' "$SECTION" | grep -q '^<!-- debug-fetch:start'; then
+     echo "[bkit-debug] debug-fetch: NO BLOCKS CONFIGURED (.agents/config.md has none enabled) — CI, e2e and runtime evidence are ALL unfetched this attempt; their absence is UNCHECKED, not confirmed clean"
    fi
-   BLOCK=$(printf '%s\n' "$SECTION" | awk -v want="$NAME" '
-     /^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); cur=(n==want); next }
+   case "$CONTEXT" in
+     runtime|ci|diff|e2e|web) PREFIX="debug-context-$CONTEXT" ;;
+     *) echo "[bkit-debug] debug-fetch: UNKNOWN context='$CONTEXT' (block '${NAME:-unnamed}') — NOT RUN; fix the context= attribute in .agents/config.md" >&2; exit 0 ;;
+   esac
+   # Select by ordinal — a repeated context+name pair would otherwise splice two
+   # bodies together and write both to one path.
+   BLOCK=$(printf '%s\n' "$SECTION" | awk -v widx="$IDX" '
+     /^<!-- debug-fetch:start/ { i++; cur=(i==widx); next }
      /^<!-- debug-fetch:end -->$/ { cur=0; next }
      cur' | sed -n '/^```/,/^```/p' | sed '/^```/d')
-   SUFFIX="${NAME:+$NAME-}"
+   [ -n "$BLOCK" ] || { echo "[bkit-debug] debug-fetch: block $IDX (context=$CONTEXT name=${NAME:-unnamed}) has no fenced body — NOT RUN" >&2; exit 0; }
+   # Repeated context+name pair → ordinal disambiguates the artifact path.
+   PAIRS=$(printf '%s\n' "$SECTION" | awk '
+     /^<!-- debug-fetch:start/ {
+       line=$0
+       sub(/^<!-- debug-fetch:start[ \t]*/,"",line); sub(/[ \t]*-->$/,"",line)
+       context="runtime"; name=""
+       n=split(line, p, /[ \t]+/)
+       for (i=1;i<=n;i++) {
+         if (p[i] ~ /^context=/) { context=substr(p[i],9) } else if (p[i] != "") { name=p[i] }
+       }
+       print context "\t" name
+     }')
+   PAIR=$(printf '%s\t%s' "$CONTEXT" "$NAME")
+   if [ "$(printf '%s\n' "$PAIRS" | grep -cxF "$PAIR")" -gt 1 ]; then
+     SUFFIX="${NAME:+$NAME-}$IDX-"
+   else
+     SUFFIX="${NAME:+$NAME-}"
+   fi
    ERRF=$(mktemp)
-   RUNTIME_LOGS=$({customised BLOCK} 2>"$ERRF")
+   FETCH_OUT=$({customised BLOCK} 2>"$ERRF")
    SKIP=$(grep -m1 '^\[debug-fetch:' "$ERRF"); rm -f "$ERRF"
-   OUT="docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${SUFFIX}${DEBUG_ATTEMPT}.md"
-   if [ -n "$RUNTIME_LOGS" ]; then
-     printf '%s' "$RUNTIME_LOGS" > "$OUT"
-     echo "[bkit-debug] debug-fetch:${NAME:-default} CHECKED — data returned"
+   OUT="docs/plans/{YYYYMM}/logs/{FID}/${PREFIX}-${SUFFIX}${DEBUG_ATTEMPT}.md"
+   if [ -n "$FETCH_OUT" ]; then
+     printf '%s' "$FETCH_OUT" > "$OUT"
+     echo "[bkit-debug] debug-fetch context=$CONTEXT name=${NAME:-default} CHECKED — data returned"
    elif [ -n "$SKIP" ]; then
      printf '%s\n' "$SKIP" > "$OUT"
-     echo "[bkit-debug] debug-fetch:${NAME:-default} SELF-SKIPPED ($SKIP) — NOT CHECKED; this is NOT evidence of 'no runtime errors' (Trusted egress may also silently block the host — see .agents/config.md § Cloud allowed domains)"
+     echo "[bkit-debug] debug-fetch context=$CONTEXT name=${NAME:-default} SELF-SKIPPED ($SKIP) — NOT CHECKED; this is NOT evidence that this source was clean (Trusted egress may also silently block the host — see .agents/config.md § Cloud allowed domains)"
    else
-     echo "[bkit-debug] debug-fetch:${NAME:-default} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)"
+     echo "[bkit-debug] debug-fetch context=$CONTEXT name=${NAME:-default} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)"
    fi
    ````
-8. <!-- bkit:tracker github start -->
+4. Confirm the local-test artifact Step 3 captured. Do NOT re-run tests here:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
+   TESTS_LOCAL="docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
+   [ -s "$TESTS_LOCAL" ] \
+     && echo "[bkit-debug] local test output CHECKED — captured by Step 3" \
+     || echo "[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean"
+   ```
+5. <!-- bkit:tracker github start -->
    `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## {identifier} — {title} ({state.name})` heading, the `description` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
-9. Update status and commit:
+6. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -692,50 +671,55 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
    DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
+   LOGDIR="docs/plans/{YYYYMM}/logs/{FID}"
    ARTIFACTS=()
-   for f in "docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-*-${DEBUG_ATTEMPT}.md"; do
+   for f in "$LOGDIR"/debug-context-*-"${DEBUG_ATTEMPT}".md; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
    ARTIFACTS_JSON=$(printf '%s\n' "${ARTIFACTS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$FETCH_VERDICT" --argjson a "$DEBUG_ATTEMPT" --argjson arts "$ARTIFACTS_JSON" \
-     '{type:"step-done", workflow:"debug", step:"debug-fetch-context", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}' \
+   # Re-enumerate; never inherit FETCH_BLOCKS across a Bash-block boundary.
+   CONFIGURED=$(sed -n '/^<!-- bkit:end -->/,$p' .agents/config.md 2>/dev/null | awk '
+     /^<!-- debug-fetch:start/ {
+       c="runtime"
+       for (i=1;i<=NF;i++) if ($i ~ /^context=/) c=substr($i,9)
+       print c
+     }')
+   CONTEXTS_JSON=$(for CONTEXT in runtime ci diff e2e web; do
+     printf '%s\n' "$CONFIGURED" | grep -qx "$CONTEXT" && echo "$CONTEXT"
+   done | jq -R . | jq -s 'map(select(. != ""))')
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$FETCH_VERDICT" --argjson a "$DEBUG_ATTEMPT" --argjson arts "$ARTIFACTS_JSON" --argjson contexts "$CONTEXTS_JSON" \
+     '{type:"step-done", workflow:"debug", step:"debug-fetch-context", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts, contextsConfigured:$contexts}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-10. <!-- bkit:tracker github start -->
-    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker github end -->
-    <!-- bkit:tracker linear start -->
-    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
-    <!-- bkit:tracker linear end -->
-    <!-- bkit:tracker true start -->
-    `{BODY}` = fenced block below — ONLY add artifact links if present:
-    ```comment
-    ### Step 4 — Fetch Context - Verdict: {FETCH_VERDICT}
-    [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
-    [debug-context-diff-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md)
-    [debug-context-tests-local-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md)
-    [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
-    [debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md)
-    [debug-context-related-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md)
-    ```
-    <!-- bkit:tracker true end -->
-11. Route:
-    - **If** `DEBUG_MODE` = SOAK → Step 7.
-    - **Else** → Step 5.
+7. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
+   `{BODY}` = fenced block below. One link per artifact in `ARTIFACTS` (`{ARTIFACT}` = its basename), then one `NOT CONFIGURED` line per context absent from `contextsConfigured`:
+   ```comment
+   ### Step 4 — Fetch Context - Verdict: {FETCH_VERDICT} - Contexts: {CONTEXTS_CONFIGURED}
+   [{ARTIFACT}](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/{ARTIFACT})
+   context={MISSING_CONTEXT} NOT CONFIGURED — that evidence was not checked this attempt
+   ```
+   <!-- bkit:tracker true end -->
+8. Route:
+   - **If** `DEBUG_MODE` = SOAK → Step 7.
+   - **Else** → Step 5.
 
 ### 🔒 Gate 4 — Fetch Context
 
-- [ ] Run details discovery attempted (`RUN_ID`, `RUN_SHA`)
-- [ ] CI logs fetch attempted
-- [ ] Diff vs last-passing CI on `dev` attempted
-- [ ] Local test output captured
-- [ ] Playwright artifact download attempted (if e2e job failed)
-- [ ] Runtime `debug-fetch` blocks enumerated, customised, and executed
-- [ ] Runtime artifacts written (if output available)
+- [ ] `debug-fetch` blocks enumerated with ordinal, context and name (`FETCH_BLOCKS`)
+- [ ] Context coverage narrated BEFORE fetching (`runtime` / `ci` / `diff` / `e2e` / `web` each `CONFIGURED` or `NOT CONFIGURED`)
+- [ ] Every enumerated block customised and executed, or narrated `NOT RUN` (unknown context, empty body)
+- [ ] Every block outcome narrated `CHECKED` / `SELF-SKIPPED` / neither — no silent block
+- [ ] Artifacts written per context (`debug-context-*-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Fetch verdict derived (`FETCH_VERDICT`)
-- [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
+- [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`, `contextsConfigured`)
 
 <!-- bkit:tracker true start -->
 

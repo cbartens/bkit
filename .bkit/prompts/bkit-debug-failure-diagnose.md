@@ -45,7 +45,7 @@ maxTurns: 50
    - FINAL → Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 6. Read historical gotchas: search `docs/knowledge.jsonl` → grep by symptom / error-class / workflow-step. **If** matches → add to `Prior Knowledge`.
 7. Read scar-tissue: search reverted commits with candidate files. **If** matches capture what was tried and why reverted → add to `Prior Knowledge`.
-8. Investigate inputs: CI logs, diff vs last-passing CI, local / E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. ONLY re-run narrower filters via Bash if hypothesis needs probing.
+8. Investigate inputs: CI logs, diff vs last-passing CI, local / E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. ONLY re-run narrower filters via Bash if hypothesis needs probing. Absent evidence is NOT proof; cap confidence on unchecked classes.
 9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
 10. Update **Create** with ALL hypotheses including dismissed — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` unknown when appending → write PENDING, set later via `Edit`.
 11. Rot-signal check: **If** stack trace / root-cause analysis shows ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis require.
@@ -74,7 +74,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link. **If** no run → `None`; initially set to PENDING.]
+[`Run #{RUN_ID}` link. **If** not checked / not configured / skipped → `NOT CHECKED: <why>`; **Else** none → `None`; initially set to PENDING.]
 
 ## Prior Attempts Reviewed
 
@@ -86,11 +86,11 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Related Issues
 
-[Related issues, one `- #N — title (state)` entry per prior-incident match. **If** none → `None`; initially set to PENDING.]
+[Related issues, one `- #N — title (state)` entry per prior-incident match. **If** not checked / not configured / skipped → `NOT CHECKED: <why>`; **Else** none → `None`; initially set to PENDING.]
 
 ## Failures
 
-[Error summary and relationships between failures; initially set to PENDING.]
+[Error summary and relationships between failures. **If** not checked / not configured / skipped → `NOT CHECKED: <why>`; **Else** none → `None`; initially set to PENDING.]
 
 ## Root Cause
 

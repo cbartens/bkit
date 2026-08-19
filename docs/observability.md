@@ -17,7 +17,7 @@
 
 ## Debug Fetch
 
-Runtime log fetching for `/bkit-debug` (`debug-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/config.md`. Author and enable runtime-log sources there.
+Failure-evidence fetching for `/bkit-debug` (`debug-fetch:*` blocks + cloud CLI provisioning) → configure in `.agents/config.md`. Author and enable each context there — `ci`, `diff`, `e2e`, `runtime` (default) and the optional `web`. bkit hardcodes no CI host, workflow filename, branch name or e2e framework; a context with no enabled block is fetched for no run and reported `NOT CONFIGURED` every attempt.
 
 <!-- bkit:end -->
 
@@ -143,4 +143,4 @@ Every phase workflow header (`bkit-{design,plan,build,debug,ship}.md`) carries a
 
 `bkit-worktree-{prune,sync}.md` (human-triggered utility commands, meaningless in adopt mode) call `bkit_worktree_helper_guard` and **self-skip loudly** — a distinguishable stdout message, never a silent no-op — when `CAN_WORKTREE=false`.
 
-`/bkit-debug`'s runtime `debug-fetch` narration (Step "Fetch Context") distinguishes `CHECKED` / `SELF-SKIPPED` / `NO BLOCKS CONFIGURED` per block, every attempt — a self-skip `exit 0` (missing CLI/token, or a host blocked by the cloud Trusted-egress allowlist, `.agents/config.md` § Cloud allowed domains) is never read as "no runtime errors"; it is logged as unavailable, not clean. This half carries no automated assertion — verified manually (run `/bkit-debug` in a `CAN_WORKTREE=false` runtime, confirm the loud narration) per the honest limit D3, an intentional asymmetry with the bats-tested worktree-helper self-skip above.
+`/bkit-debug`'s `debug-fetch` narration (Step "Fetch Context") distinguishes `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` per block, every attempt — a self-skip `exit 0` (missing CLI/token, or a host blocked by the cloud Trusted-egress allowlist, `.agents/config.md` § Cloud allowed domains) is never read as "no errors"; it is logged as unavailable, not clean. The same rule covers every context, so an absent CI or e2e artifact is "we did not look", never "CI was green": context coverage is narrated before any fetch runs and persisted as `contextsConfigured` on the `debug-fetch-context` status row, and `bkit-debug-failure-diagnose` is required to separate NOT CONFIGURED / self-skipped / actually-checked before drawing a conclusion. `observability-debug-fetch-context-missing` advises when an enabled consumer section covers only some contexts. The narration half carries no automated assertion — verified manually (run `/bkit-debug` in a `CAN_WORKTREE=false` runtime, confirm the loud narration) per the honest limit D3, an intentional asymmetry with the bats-tested worktree-helper self-skip above.

@@ -19,7 +19,9 @@ import {
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
   detectObservabilityDebugFetchProvisionMissing,
+  detectObservabilityDebugFetchContextMissing,
   detectObservabilityDebugFetchSourceNotEnabled,
+  parseDebugFetchStart,
   detectMissingMcpServers,
   detectExtraMcpServers,
   REQUIRED_MCP_SERVERS,
@@ -631,6 +633,124 @@ describe("detectObservabilityDebugFetchMissing", () => {
   it("returns null when .agents/config.md does not exist", () => {
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeNull();
+  });
+});
+
+describe("parseDebugFetchStart", () => {
+  it("defaults to context=runtime so pre-context consumer blocks keep working untouched", () => {
+    expect(parseDebugFetchStart("<!-- debug-fetch:start vercel -->")).toEqual({
+      name: "vercel",
+      context: "runtime",
+    });
+    expect(parseDebugFetchStart("<!-- debug-fetch:start -->")).toEqual({
+      name: "",
+      context: "runtime",
+    });
+  });
+
+  it("reads context= in either attribute order", () => {
+    expect(parseDebugFetchStart("<!-- debug-fetch:start github context=ci -->")).toEqual({
+      name: "github",
+      context: "ci",
+    });
+    expect(parseDebugFetchStart("<!-- debug-fetch:start context=ci github -->")).toEqual({
+      name: "github",
+      context: "ci",
+    });
+  });
+
+  it("accepts a context with no block name", () => {
+    expect(parseDebugFetchStart("<!-- debug-fetch:start context=e2e -->")).toEqual({
+      name: "",
+      context: "e2e",
+    });
+  });
+
+  it("rejects non-start and non-line-anchored markers", () => {
+    expect(parseDebugFetchStart("<!-- debug-fetch:end -->")).toBeNull();
+    expect(parseDebugFetchStart("<!-- debug-fetch:provision vercel -->")).toBeNull();
+    expect(parseDebugFetchStart("  <!-- debug-fetch:start vercel -->")).toBeNull();
+    expect(parseDebugFetchStart("prose about <!-- debug-fetch:start vercel --> inline")).toBeNull();
+  });
+});
+
+describe("detectObservabilityDebugFetchContextMissing", () => {
+  function writeConfig(content: string): void {
+    const dir = path.join(tmpDir, ".agents");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "config.md"), content, "utf-8");
+  }
+
+  const MANAGED = "<!-- bkit:start -->\n# Config\n\n<!-- bkit:end -->\n";
+  const RUNTIME_BLOCK =
+    "<!-- debug-fetch:start vercel -->\n" +
+    "```bash\nvercel logs --scope acme --json\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+  const block = (context: string): string =>
+    `<!-- debug-fetch:start src context=${context} -->\n` +
+    "```bash\necho evidence\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+
+  it("flags a runtime-only consumer section — the shape every pre-context upgrade inherits", () => {
+    writeConfig(MANAGED + "\n## Enabled\n\n" + RUNTIME_BLOCK);
+    const f = detectObservabilityDebugFetchContextMissing(tmpDir);
+    expect(f?.id).toBe("observability-debug-fetch-context-missing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("context=ci");
+    expect(f?.detect).toContain("context=diff");
+    expect(f?.detect).toContain("context=e2e");
+    // Must not imply the unfetched evidence was clean.
+    expect(f?.detect).toContain("never fetched");
+  });
+
+  it("names only the contexts actually missing", () => {
+    writeConfig(MANAGED + "\n" + RUNTIME_BLOCK + block("ci") + block("diff"));
+    const f = detectObservabilityDebugFetchContextMissing(tmpDir);
+    expect(f?.detect).toContain("context=e2e");
+    expect(f?.detect).not.toContain("context=ci");
+    expect(f?.detect).not.toContain("context=diff");
+  });
+
+  it("does NOT flag once every evidence context has a block", () => {
+    writeConfig(MANAGED + "\n" + RUNTIME_BLOCK + block("ci") + block("diff") + block("e2e"));
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
+  });
+
+  it("does NOT require a runtime block — runtime absence is the other advisory's job", () => {
+    writeConfig(MANAGED + "\n" + block("ci") + block("diff") + block("e2e"));
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
+  });
+
+  it("defers to observability-debug-fetch-missing when the consumer section is empty", () => {
+    writeConfig(MANAGED);
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
+  });
+
+  it("is dismissed by the debug-fetch:none opt-out marker", () => {
+    writeConfig(MANAGED + "\n<!-- debug-fetch:none intentional -->\n" + RUNTIME_BLOCK);
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
+  });
+
+  it("ignores context blocks that sit INSIDE the managed block (shipped examples never run)", () => {
+    writeConfig(
+      "<!-- bkit:start -->\n" +
+        block("ci") +
+        block("diff") +
+        block("e2e") +
+        "<!-- bkit:end -->\n\n" +
+        RUNTIME_BLOCK,
+    );
+    const f = detectObservabilityDebugFetchContextMissing(tmpDir);
+    expect(f?.id).toBe("observability-debug-fetch-context-missing");
+  });
+
+  it("returns null when .agents/config.md has no bkit-managed block (consumer-owned)", () => {
+    writeConfig("# Config\n\nNo bkit markers here.\n");
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when .agents/config.md does not exist", () => {
+    expect(detectObservabilityDebugFetchContextMissing(tmpDir)).toBeNull();
   });
 });
 
