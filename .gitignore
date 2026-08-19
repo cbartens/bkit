@@ -96,3 +96,6 @@ playwright/.auth/
 .bkit/.env
 
 # <!-- bkit:end -->
+
+# Internal
+.bkit/consumers.md
