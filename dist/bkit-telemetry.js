@@ -133,6 +133,47 @@ export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 /** The decision lifecycle — a separate axis from the triage ladder. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
+export const DEFERRAL_REASONS = new Set([
+    "scope-declared",
+    "hard-blocked",
+    "needs-decision",
+    "own-cycle",
+    "unjustified",
+]);
+/**
+ * The adjudication verdict: this was in-scope work that should have been finished.
+ * Written ONLY by a reviewer judging someone else's deferral — never self-assigned
+ * at write time, where the four justifications are the whole legal vocabulary.
+ *
+ * Set via same-`key` append like any other update, and NEVER rewritten afterwards:
+ * a later row that closes the entry carries `unjustified` through verbatim, because
+ * the rate it feeds (`computeDeferralDiscipline` in `bkit-analysis.ts`) measures how
+ * often an agent deferred work it should have done — not whether someone later
+ * cleaned up after it.
+ */
+export const UNJUSTIFIED_REASON = "unjustified";
+/**
+ * The subagents sanctioned to write a `deferral` row (`.bkit/jsonl.md`
+ * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
+ * write the kind at all.
+ *
+ * The list is data, not prose, because the prose alone did not hold. Both
+ * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` carry an
+ * explicit "NO out-of-scope deferral" contract line, and the executor still
+ * wrote rows — a blocked plan task is unfinished in-scope work, and routing it
+ * to the ledger converts it into something the build loop treats as settled.
+ * Its `BLOCKED` log line is the record; the next verify pass reads it.
+ *
+ * Orchestrator-written rows carry no `subagent` and are outside this check.
+ */
+export const DEFERRAL_WRITERS = new Set([
+    "bkit-design-generate",
+    "bkit-plan-generate",
+    "bkit-plan-update",
+    "bkit-build-challenge-remediate",
+    "bkit-debug-abort-handover",
+    "bkit-ship-deferred-sweep",
+]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
 // Mirrors bkit-status.ts's tuple dedupe approach.
@@ -231,6 +272,24 @@ export function validate(event) {
     }
     else if (e["status"] !== undefined) {
         return { ok: false, reason: `${kind} rows do not carry status` };
+    }
+    // reason — the deferral justification (see DeferralReason). Required on write:
+    // an unjustifiable deferral is unfinished work, and the whole point of the field
+    // is that it cannot be skipped. Enforced on write only; `parse` stays tolerant so
+    // rows appended before the field existed still read.
+    if (kind === "deferral") {
+        if (e["reason"] === undefined || e["reason"] === null) {
+            return { ok: false, reason: "deferral row missing required field: reason" };
+        }
+        if (!DEFERRAL_REASONS.has(e["reason"])) {
+            return {
+                ok: false,
+                reason: `deferral reason must be one of ${[...DEFERRAL_REASONS].join("|")} (got: ${String(e["reason"])})`,
+            };
+        }
+    }
+    else if (e["reason"] !== undefined) {
+        return { ok: false, reason: `${kind} rows do not carry reason` };
     }
     if (kind === "compliance") {
         if (!e["rule"] || !e["result"] || !e["phase"] || !e["parentSha"]) {

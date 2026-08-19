@@ -40,10 +40,10 @@ maxTurns: 50
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md` and `docs/knowledge.jsonl`; skip missing.
 4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
-   - Files/modules edited (direct).
-   - Symbols exported/changed and their consumers (`grep` for callers).
-   - Schemas/tables touched and downstream readers (RLS policies, indexes, FK constraints).
-   - Public endpoints / event names / queue topics modified and their producers/consumers.
+   - Files / modules edited (direct).
+   - Symbols exported / changed and their consumers (`grep` for callers).
+   - Schemas / tables touched and downstream readers (RLS policies, indexes, FK constraints).
+   - Public endpoints / event names / queue topics modified and their producers / consumers.
 6. Risk classification per surface:
    - High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, RLS policies, multi-subscriber event payloads, public type exports. Flag explicitly.
    - Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → CRITICAL.

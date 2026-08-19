@@ -792,10 +792,12 @@ Usage:
                                  changes nothing. --dry-run: report without writing.
   bkit analysis                 Cross-repo analysis — reports counts/rates/elapsed-time,
                                  #183 size↔outcome regression, dispatch-size threshold,
-                                 counterSource trust labelling, and per-rule compliance
-                                 rate over kind:"compliance" rows. Reads from
-                                 harvest/ and .bkit/stats.jsonl. Advisory +
-                                 inform-only: exits 0.
+                                 counterSource trust labelling, per-rule compliance
+                                 rate over kind:"compliance" rows, and the
+                                 unjustified-deferral rate per (subagent, model)
+                                 over kind:"deferral" rows. Reads from harvest/,
+                                 .bkit/stats.jsonl and docs/deferrals.jsonl.
+                                 Advisory + inform-only: exits 0.
   bkit help                     Print this message.
 
 Core (implicit — no flag; installed/upgraded on every install):

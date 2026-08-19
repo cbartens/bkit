@@ -34,10 +34,12 @@ One file per `kind`; writers:
 | `outcome` | `.bkit/stats.jsonl` | every workflow at its close (one run row per workflow run; keyed by `repo`+`workflow`+`parentSha`) |
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design/plan/build/debug/ship) on observed friction |
-| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover` |
+| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only) |
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover` |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate` |
+
+**Writers are exhaustive:** ONLY agents listed as writers for a given kind are allowed to write that specific kind; NO exceptions.
 
 ## Generic Fields (all kinds)
 
@@ -63,7 +65,7 @@ One file per `kind`; writers:
 | `outcome` | `parentSha?` (run anchor), `prNumber:number?` (ship-only), `linesAdded:number`, `linesDeleted:number`, `linesChanged:number`, `filesChanged:number`, `taskCount:number`, `durationSeconds:number`, `ciTrySuccess:number?`, `correctiveCommits:number?`, `reviewIterations:number?`, `deferrals:number`, `failures:number` (the repo's cumulative UNIQUE entity count at close, folded — not lines; per-cycle is the delta against the previous `outcome` row), `frictionAdded:number?`, `deferralsAdded:number?`, `failuresAdded:number?` (per-run deltas — rows THIS run added to each ledger, counted from `workflow`+`ts>=`workflow-started), `coverage?:{unit?,integration?,e2e?}` (per-tier, each `{lines,branches,functions,statements}:number` %; best-effort — a tier is absent when its coverage report is not produced, opt-in). |
 | `compliance` | `rule`, `result:"pass"\|"fail"\|"n/a"`, `evidence?`, `phase`, `parentSha`. |
 | `friction` | `key`, `category` (§ Categories), `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row), `confidence?:number`, `lastConfirmed?:number`, `recurrenceCount?:number`. |
-| `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
+| `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `reason` (§ Deferral Reason), `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
 | `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
@@ -144,6 +146,33 @@ Kinds with BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): `summa
 - NOT `bkit install` preflight `blocker`/`advisory` — different axis.
 - Pick level the ROW earns. All-`LOW` ledger = useless as no severity.
 
+## Deferral Reason
+
+`reason` REQUIRED on `deferral`, absent elsewhere. Why the work is deferred — distinct from `status` (how far) and `severity` (how much). Closed enum, lowercase:
+
+<!-- prettier-ignore -->
+| Value | Means | Also required |
+| --- | --- | --- |
+| `scope-declared` | design/plan called it out of scope BEFORE work started. | `references` to that doc §. |
+| `hard-blocked` | external blocker (credential, upstream fix, feature) blocks it now. | Name blocker in `description`. |
+| `needs-decision` | human decision missing; guessing worse than waiting. | State decision + options. |
+| `own-cycle` | plan-sized — new architecture, not a mechanical fix. | Say what makes it plan-sized. |
+| `unjustified` | ADJUDICATOR-ONLY — in-scope work that should have been finished. | Which test it failed. |
+
+- First four → deferral. None fit → unfinished work, DO IT (`.agents/rules.md` § "Finish over deferrals").
+- `unjustified` never self-assigned — writer picks first four; reviewer adjudicating another's deferral sets it via same-`key` append.
+- Set once, carried verbatim by every later row — the rate it feeds counts the deferral that should not have been written.
+- No free prose — an unadjudicable reason reads as justification while being none; the enum closes that.
+
+**The four tests.** Reviewer marks `unjustified` when ALL hold:
+
+1. `remediation` names specific files + a bounded edit, not a new architecture.
+2. Surface inside files the cycle already touched.
+3. No external blocker — no missing decision, credential, upstream fix, confirmation.
+4. `scope-declared` with no pre-existing declaration — the row is the ONLY place it was called out of scope.
+
+Test 4 carries the weight: genuine deferral declared out of scope BEFORE work started; unjustified declared at moment of avoidance. Both timestamps in ledger.
+
 ## Categories
 
 Free-form; closest term, `other` if none. `deferral` + `failure` → domain set; `friction` → friction set — do NOT mix.
@@ -187,6 +216,7 @@ Fields that change after first write:
 | Field | Changes when |
 | --- | --- |
 | `status` | work closes (`OPEN` -> `CLOSED`), or a decision is `SUPERSEDED`. |
+| `reason` | (`deferral` only) reviewer adjudicates -> `unjustified`, naming the failed test in `description` and setting `status` -> `TRIAGED`. One-way: never rewritten, carried verbatim by every later row — fold is last-wins, so omitting it erases the verdict and its rate. Gated on the live ledger. |
 | `remediation` | the fix is known — usually AFTER the row was logged mid-workflow. |
 | `severity` | re-triage says it was worse or milder than first thought. |
 | `confidence` | (`friction` only) the same thing recurs (raise) or is contradicted (lower). |
@@ -350,12 +380,13 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "type": "issue",
   "category": "infra",
   "severity": "LOW",
+  "reason": "scope-declared",
   "summary": "pnpm tag-drop README note for the install snippet",
   "description": "pnpm normaliser strips the #vX.Y.Z pin from github:cbartens/bkit git-dep entries in package.json; document the workaround in README or fix upstream",
   "remediation": "note the pin workaround in the README install snippet",
   "source": "phase",
   "status": "OPEN",
-  "references": ["ISSUE-131", "ISSUE-130", "README.md"]
+  "references": ["ISSUE-131", "ISSUE-130", "README.md", "docs/plans/202607/131-install-snippet-design.md § Non-goals"]
 }
 ```
 
@@ -429,11 +460,10 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
 }
 ```
 
-Row-update lifecycle — `pnpm-tag-drop-readme-note` deferral: three appends raised -> analysed -> closed; same `key` → `fold` returns last; dated `ts` → "how long open" / "time to fix". Envelope trimmed for delta; on disk = full single-line row:
+Row-update lifecycle — `pnpm-tag-drop-readme-note` deferral, raised then closed by same-`key` append (§ Updating a Row). Envelope trimmed for delta; on disk = full single-line row:
 
 <!-- prettier-ignore -->
 ```jsonl
-{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
-{ "ts": 1721578400000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "TRIAGED", "references": ["ISSUE-131", "README.md"] }
-{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "PR-412", "e93da12"] }
+{ "ts": 1718900000000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "LOW", "reason": "scope-declared", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "status": "OPEN", "references": ["ISSUE-131"] }
+{ "ts": 1724256800000, "kind": "deferral", "key": "pnpm-tag-drop-readme-note", "type": "issue", "category": "infra", "severity": "MEDIUM", "reason": "scope-declared", "summary": "pnpm tag-drop README note", "description": "pnpm strips the #vX.Y.Z pin from git-dep entries", "remediation": "note the pin workaround in the README install snippet", "status": "CLOSED", "references": ["ISSUE-131", "PR-412", "e93da12"] }
 ```

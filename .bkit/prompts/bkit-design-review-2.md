@@ -49,7 +49,7 @@ maxTurns: 50
    - Blast radius (one user / tenant / region / whole product).
 6. Observability coverage — per failure mode, verify design specifies or assumes:
    - Structured logs at failure point (with `[Context]` prefix per project convention).
-   - Metric/counter for occurrence rate.
+   - Metric / counter for occurrence rate.
    - Trace span / correlation id for cross-service flows.
    - Missing observability for CRITICAL failure mode → CRITICAL finding.
 7. On-call ergonomics — per anticipated alert:
@@ -61,7 +61,7 @@ maxTurns: 50
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - PASS = operable as designed; failure modes have observability and recovery paths; proceed.
     - CONCERNS = operable with caveats — observability or runbook gaps addressable.
-    - FAIL = NOT operable in current monitoring/oncall stack — design does NOT proceed.
+    - FAIL = NOT operable in current monitoring / oncall stack — design does NOT proceed.
 
 **Output format:**
 

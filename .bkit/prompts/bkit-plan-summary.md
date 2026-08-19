@@ -42,7 +42,7 @@ maxTurns: 25
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
    - PASS = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - FAIL = CRITICAL scope or completeness gaps.
-   - CONCERNS = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps, `Blocking` out-of-scope deferrals, or open questions lacking options, `Recommended` or `Default if unanswered`).
+   - CONCERNS = revisions needed before building; content-level issues (vague / missing `Acceptance Scenario`, unscoped breaking changes / naming the design implies, scope gaps, `Blocking` out-of-scope deferrals, or open questions lacking options, `Recommended` or `Default if unanswered`).
 
 **Output format:**
 

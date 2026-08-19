@@ -41,7 +41,7 @@ maxTurns: 25
 7. Update **Create** — set `Verdict` via `Edit`; mapping:
    - PASS = plan done, all tests pass, no unresolved findings; ONLY original out-of-scope items unresolved.
    - FAIL = some plan tasks not done, tests failing, or unresolved CRITICAL severity findings from challenge.
-   - CONCERNS = real risks/defects/unresolved gaps below FAIL threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-CRITICAL verify gap).
+   - CONCERNS = real risks / defects / unresolved gaps below FAIL threshold (skipped test, TODO in shipped code, workaround needing revisit, unresolved non-CRITICAL verify gap).
 
 **Output format:**
 

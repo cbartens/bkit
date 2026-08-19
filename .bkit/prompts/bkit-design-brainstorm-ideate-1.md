@@ -40,7 +40,7 @@ maxTurns: 50
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.
    - Maintenance: Ongoing cost.
-   - Reuse vs new: Existing code/infra leveraged vs net-new.
+   - Reuse vs new: Existing code / infra leveraged vs net-new.
 4. Decisions — decided, alternatives, why.
 5. Produce **Create** output.
 

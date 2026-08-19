@@ -56,7 +56,7 @@ maxTurns: 100
 12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - PASS = every remediation step has `DONE` across logs AND all local tests pass.
     - FAIL = unable to remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
-    - CONCERNS = remediation applied, all local tests pass, but non-blocking flake/warning needs follow-up.
+    - CONCERNS = remediation applied, all local tests pass, but non-blocking flake / warning needs follow-up.
 
 **Output format:**
 

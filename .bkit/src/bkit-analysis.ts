@@ -27,6 +27,7 @@ import * as path from "node:path";
 import {
   ARCHIVE_SHARD_TEMPLATE,
   MAX_ROWS_BEFORE_ROLLUP,
+  UNJUSTIFIED_REASON,
   foldFrom,
   parse,
   type TelemetryEvent,
@@ -334,6 +335,98 @@ export function computeVersionCompliance(rows: ComplianceRow[]): VersionComplian
 }
 
 // ---------------------------------------------------------------------------
+// Deferral discipline — unjustified-rate per writer
+// ---------------------------------------------------------------------------
+
+/**
+ * One folded `kind:"deferral"` entity. `subagent` + `model` are absent on rows an
+ * orchestrator wrote directly (`.bkit/jsonl.md` § Who Wrote It).
+ */
+export interface DeferralRow {
+  ts: number;
+  repo: string;
+  bkitVersion: string;
+  key?: string;
+  workflow?: string;
+  step?: string;
+  subagent?: string;
+  model?: string;
+  reason?: string;
+  severity?: string;
+  status?: string;
+}
+
+export interface DeferralDisciplineEntry {
+  /** The writer: subagent name, or the workflow that wrote the row itself. */
+  writer: string;
+  /** That writer's model, `unknown` on orchestrator-written rows. */
+  model: string;
+  total: number;
+  unjustifiedCount: number;
+  /** Share of this writer's deferrals a reviewer ruled should have been finished. */
+  unjustifiedRate: number;
+  /** Tally per `reason`; `unspecified` counts rows predating the field. */
+  byReason: Record<string, number>;
+}
+
+/**
+ * Unjustified-rate per `(subagent, model)`.
+ *
+ * The point is attribution, not a leaderboard: a writer with a high rate has
+ * either a prompt that under-specifies when deferring is legal, or a turn budget
+ * that runs out before the work does — an agent nearing `maxTurns` writes a
+ * deferral instead of finishing. Those need different fixes, and the rate is what
+ * separates them from one-off judgement calls.
+ *
+ * Counts FOLDED entities, so an adjudication and its later close are one deferral,
+ * not three. `unjustified` is carried verbatim through later rows precisely so the
+ * rate keeps counting the deferral that should not have been written.
+ */
+export function computeDeferralDiscipline(rows: DeferralRow[]): DeferralDisciplineEntry[] {
+  const byWriter: Record<
+    string,
+    {
+      writer: string;
+      model: string;
+      total: number;
+      unjustifiedCount: number;
+      byReason: Record<string, number>;
+    }
+  > = {};
+
+  for (const row of rows) {
+    const writer =
+      row.subagent ?? (row.workflow ? `${row.workflow} (orchestrator)` : "unattributed");
+    const model = row.model ?? "unknown";
+    const id = `${writer} ${model}`;
+    if (!byWriter[id])
+      byWriter[id] = { writer, model, total: 0, unjustifiedCount: 0, byReason: {} };
+    const w = byWriter[id]!;
+    w.total++;
+    const reason = row.reason ?? "unspecified";
+    w.byReason[reason] = (w.byReason[reason] ?? 0) + 1;
+    if (reason === UNJUSTIFIED_REASON) w.unjustifiedCount++;
+  }
+
+  return Object.values(byWriter)
+    .map((w) => ({
+      writer: w.writer,
+      model: w.model,
+      total: w.total,
+      unjustifiedCount: w.unjustifiedCount,
+      unjustifiedRate: w.total > 0 ? w.unjustifiedCount / w.total : 0,
+      byReason: w.byReason,
+    }))
+    .sort(
+      (a, b) =>
+        b.unjustifiedCount - a.unjustifiedCount ||
+        b.unjustifiedRate - a.unjustifiedRate ||
+        b.total - a.total ||
+        a.writer.localeCompare(b.writer),
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Full analysis report
 // ---------------------------------------------------------------------------
 
@@ -343,6 +436,7 @@ export interface AnalysisReport {
   regression: RegressionResult;
   complianceRates: ComplianceRuleRate[];
   versionCompliance: VersionComplianceEntry[];
+  deferralDiscipline: DeferralDisciplineEntry[];
   reportLines: string[];
 }
 
@@ -352,12 +446,15 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
   const outcomeRows: OutcomeRow[] = [];
   const complianceRows: ComplianceRow[] = [];
+  const deferralRows: DeferralRow[] = [];
 
   for (const ev of events) {
     if (ev.kind === "outcome") {
       outcomeRows.push(ev as OutcomeRow);
     } else if (ev.kind === "compliance") {
       complianceRows.push(ev as ComplianceRow);
+    } else if (ev.kind === "deferral") {
+      deferralRows.push(ev as unknown as DeferralRow);
     }
   }
 
@@ -366,6 +463,7 @@ export function runAnalysis(paths: string[]): AnalysisReport {
   const regression = computeRegression(outcomeRows);
   const complianceRates = computeComplianceRates(complianceRows);
   const versionCompliance = computeVersionCompliance(complianceRows);
+  const deferralDiscipline = computeDeferralDiscipline(deferralRows);
 
   const reportLines: string[] = [
     `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
@@ -415,7 +513,35 @@ export function runAnalysis(paths: string[]): AnalysisReport {
     }
   }
 
-  return { counts, elapsed, regression, complianceRates, versionCompliance, reportLines };
+  // Deferral discipline — who defers work they should have finished.
+  if (deferralDiscipline.length > 0) {
+    const totals = deferralDiscipline.reduce(
+      (acc, d) => ({ total: acc.total + d.total, unjust: acc.unjust + d.unjustifiedCount }),
+      { total: 0, unjust: 0 },
+    );
+    reportLines.push(
+      `[bkit-analysis] Deferral discipline: ${totals.unjust}/${totals.total} adjudicated unjustified (${((totals.unjust / totals.total) * 100).toFixed(1)}%), by writer:`,
+    );
+    for (const d of deferralDiscipline) {
+      const reasons = Object.entries(d.byReason)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([reason, n]) => `${reason}=${n}`)
+        .join(" ");
+      reportLines.push(
+        `  ${d.writer} [${d.model}]: ${d.unjustifiedCount}/${d.total} unjustified (${(d.unjustifiedRate * 100).toFixed(1)}%) | ${reasons}`,
+      );
+    }
+  }
+
+  return {
+    counts,
+    elapsed,
+    regression,
+    complianceRates,
+    versionCompliance,
+    deferralDiscipline,
+    reportLines,
+  };
 }
 
 // ---------------------------------------------------------------------------

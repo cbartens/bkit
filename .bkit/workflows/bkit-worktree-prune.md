@@ -64,9 +64,9 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
    Have you synced with /bkit-worktree-sync {FID}?
    ```
 
-   Ask: `Prune anyway? [y/N]:` — **if** human says anything other than `y` → STOP.
+   Ask: `Prune anyway? [y/N]:` — **If** human says anything other than `y` → STOP.
 
-5. Ask: `Remove worktree at $WORKTREE_PATH? [y/N]:` — **if** not `y` → STOP.
+5. Ask: `Remove worktree at $WORKTREE_PATH? [y/N]:` — **If** not `y` → STOP.
 
 6. `git worktree remove "$WORKTREE_PATH" --force`.
 7. `git worktree prune`.

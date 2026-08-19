@@ -39,13 +39,8 @@ maxTurns: 50
 4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
 5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer onto selected approach, NOT as separate approach.
 6. Each conflict → pick stronger, justify.
-7. Draft `Acceptance Scenario` — initial draft only (expanded later):
-   - Narrative: 2-3 sentences, user POV (NOT system POV).
-   - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
-   - Key Edge Cases: ONLY design-shaping cases affecting scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
-   - Process Sketch: Happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME examples. Outcomes, NOT implementation steps.
-8. Preserve strongest approaches. Consolidate Decisions.
-9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+7. Preserve strongest approaches. Consolidate Decisions.
+8. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
 
 **Output format:**
 
@@ -58,7 +53,7 @@ maxTurns: 50
 
 ## Acceptance Scenario
 
-[Initial draft only — NO Concrete Example, NO Test Matrix (expanded later).]
+[Initial draft only (expanded later); NO Test Matrix (added later); initially set to PENDING.]
 
 ### Narrative
 

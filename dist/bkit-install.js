@@ -1725,7 +1725,16 @@ async function main() {
             const harvestStatsPath = path.join(cwd, HARVEST_DEST_DIR, "stats.jsonl");
             const harvestFrictionPath = path.join(cwd, HARVEST_DEST_DIR, "friction.jsonl");
             const frictionPath = path.join(cwd, ".bkit", "friction.jsonl");
-            const paths = [statsPath, harvestStatsPath, harvestFrictionPath, frictionPath].filter((p) => fs.existsSync(p));
+            // deferrals is LOCAL-only: harvest takes it count-only (prose never leaves the
+            // consumer), so the discipline rate is this repo's own writers, not a fleet view.
+            const deferralsPath = path.join(cwd, "docs", "deferrals.jsonl");
+            const paths = [
+                statsPath,
+                harvestStatsPath,
+                harvestFrictionPath,
+                frictionPath,
+                deferralsPath,
+            ].filter((p) => fs.existsSync(p));
             if (paths.length === 0) {
                 console.log("[bkit-analysis] No telemetry files found. Run `bkit harvest` first, or accumulate telemetry via bkit workflows.");
                 return;

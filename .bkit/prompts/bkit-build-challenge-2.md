@@ -43,12 +43,12 @@ maxTurns: 50
 4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
-   - Auth & AuthZ: missing checks, role/permission gaps, session/token handling, privilege escalation.
+   - Auth & AuthZ: missing checks, role / permission gaps, session / token handling, privilege escalation.
    - RLS / tenancy: RLS bypasses, missing `deleted_at` filters, tenant-id leaks, cross-tenant exposure, policies stale vs new schema.
-   - Input validation: injection (SQL/NoSQL/command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
-   - Secrets: hardcoded keys/tokens, `NEXT_PUBLIC_*` leaks, secrets in logs / errors / repo.
-   - Data exposure: PII in logs/responses, internal IDs, over-fetching, sensitive serialized fields, missing redaction.
-   - OWASP Top 10 catch-all: cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification/integrity/logging failures.
+   - Input validation: injection (SQL / NoSQL / command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
+   - Secrets: hardcoded keys / tokens, secrets in logs / errors / repo.
+   - Data exposure: PII in logs / responses, internal IDs, over-fetching, sensitive serialized fields, missing redaction.
+   - OWASP Top 10 catch-all: cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification / integrity / logging failures.
    - Supply chain: new dependencies — CVEs, maintainer trust, install scripts.
 7. Per finding, ALL five required: `Severity` (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix. **If** incomplete → not counted in `Failures`.
    - `class: mechanical` = surgical edit, NO redesign (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).

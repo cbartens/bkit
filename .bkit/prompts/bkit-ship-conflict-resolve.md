@@ -34,7 +34,7 @@ maxTurns: 100
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
   - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
   - `package.json` dep-version bumped on one side only → take bump.
-  - Additive JSON array entries / object property additions with no key/position overlap → concatenate.
+  - Additive JSON array entries / object property additions with no key / position overlap → concatenate.
 - **Refused resolutions:**
   - Same function / method body edited both sides.
   - Same JSON key with different values (excluding one-sided bumps above).

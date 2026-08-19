@@ -50,12 +50,13 @@ maxTurns: 50
 8. CRITICAL items MUST be applied; no consensus required. **If** conflict across findings → prefer stricter wording.
 9. OPTIONAL items — apply each on merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
 10. **If** input carries `Suggested Scope Expansion` → write candidates into plan's `Suggested Scope Expansion`; advisory list, never `Agent Execution Runbook` tasks, no scope expansion.
-11. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
+11. Append scope-expansion rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain plan item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+12. **If** applied findings add / reword open questions under `Open Questions & Assumptions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
+13. Update **Create** — set `Verdict` via `Edit`; mapping:
     - PASS = all CRITICAL applied; OPTIONAL applied on merit.
     - CONCERNS = some OPTIONAL skipped.
     - FAIL = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-13. Re-read **Create** → assert template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
+14. Re-read **Create** → assert template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
 
 **Output format:**
 

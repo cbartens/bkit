@@ -44,7 +44,7 @@ maxTurns: 50
    ```
 3. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 4. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-5. Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do NOT use token/context-window size as factor.
+5. Identify decomposition boundaries: domain boundaries, organisational structure, chronological dependencies. Do NOT use token / context-window size as factor.
 6. Group design work into workstreams at identified boundaries. No workstream target count; granularity follows logical seams.
 7. Per workstream: assign stable ID `WS-{N}`; identify `Requires` (other workstream IDs). `Requires` mandatory; empty `[]` only for root workstream without upstream prerequisites.
 8. Append workstream sections to **Create** output via `Edit` at end of file.

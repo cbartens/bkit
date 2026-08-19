@@ -44,7 +44,7 @@ maxTurns: 25
 7. Verify every scope item has BOTH build task AND verification task.
 8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
-10. Replaced/superseded code → `Supersession Inventory` with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
+10. Replaced / superseded code → `Supersession Inventory` with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
 11. All `Out of Scope` entries `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → CRITICAL.
 12. No task scopes edits inside `bkit:start` / `bkit:end` blocks; ALWAYS edit below `bkit:end`.
 13. Sort findings: CRITICAL / OPTIONAL / OUT OF SCOPE.

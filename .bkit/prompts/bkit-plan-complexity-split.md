@@ -37,20 +37,20 @@ maxTurns: 50
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Treat proposed groupings in inputs as ADVISORY only — verify independently.
 4. Estimate total agent tokens to execute master plan end-to-end. Target sub-plan count = `ceil(total / 85K)`. Each sub-plan budget <= 85K tokens.
-5. Partition tasks, constraints, 🔒 Gates into sub-plans by domain (API/DB/web/mobile/infra) and dependency order. Each sub-plan <= 85K tokens.
+5. Partition tasks, constraints, gates into sub-plans by domain (API / DB / web / mobile / infra) and dependency order. Each sub-plan <= 85K tokens.
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
-7. Copy ALL tasks (preserve `Done when` entry verbatim), constraints, 🔒 Gates from master into sub-plans.
+7. Copy ALL tasks (preserve `Done when` entry verbatim), constraints, gates from master into sub-plans.
 8. Each sub-plan self-contained per `docs/plans/template.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master<->sub-plans. Relative paths.
 10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → FAIL):
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
-    - Confirm every task, constraint, and 🔒 Gate appears in exactly one sub-plan.
+    - Confirm every task, constraint, and gate appears in exactly one sub-plan.
     - Confirm every task's `Done when` entry survived copy verbatim.
     - Confirm each sub-plan's estimated tokens <= 85K.
     - Confirm master is high-level index with correct bidirectional links.
     - Confirm each sub-plan references parent and is self-contained per `docs/plans/template.md`.
-11. Once self-verify = PASS → remove ALL tasks, constraints, 🔒 Gates from master.
-12. Master retains context/goals/patterns; replace `Agent Execution Runbook` with sub-plan index (relative paths).
+11. Once self-verify = PASS → remove ALL tasks, constraints, gates from master.
+12. Master retains context / goals / patterns; replace `Agent Execution Runbook` with sub-plan index (relative paths).
 13. `Verdict` mapping:
     - PASS = lossless split (task count, <= 85K cap, and template invariants self-verified).
     - FAIL = self-detected agent bug (task count mismatch, sub-plan > 85K, template violation) or failed self-verify.

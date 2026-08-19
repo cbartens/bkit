@@ -42,12 +42,12 @@ maxTurns: 50
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** after each finding — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
-6. Explore bug/edge-case vectors — depth over breadth:
-   - Null/undefined: missing guards, optional-chaining gaps, default-value drift.
-   - Off-by-one/boundary: array indexing, range queries, pagination, slice/splice limits.
+6. Explore bug / edge-case vectors — depth over breadth:
+   - Null / undefined: missing guards, optional-chaining gaps, default-value drift.
+   - Off-by-one / boundary: array indexing, range queries, pagination, slice / splice limits.
    - Error paths: unhandled exceptions, missing error boundaries, silent failures, swallowed rejections, retry storms, timeout gaps, log-only `catch` on irreversible side-effects (delete / charge / send / deploy) that proceeds regardless (must fail-closed).
    - Edge cases: empty states, large payloads, unicode, timezone, zero-length arrays, NaN, negative numbers.
-   - Data integrity: races, concurrent mutations, missing constraints, orphaned records, transaction gaps, relaxed guards/filters with no compensating limits (rate / quota / cost-amplification vector).
+   - Data integrity: races, concurrent mutations, missing constraints, orphaned records, transaction gaps, relaxed guards / filters with no compensating limits (rate / quota / cost-amplification vector).
 7. Per finding, ALL five required: `Severity` (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix. **If** incomplete → not counted in `Failures`.
    - `class: mechanical` = surgical edit, NO redesign (missing predicate, missing join, missing column in test fixture, silent-no-op test, wrong import, missing re-export, naming mismatch, missing `deleted_at` filter, swap test client).
    - `class: architectural` = redesign required (wrong layer, wrong abstraction, scope expansion, leaks tenancy, violates principle, requires plan / design rework).

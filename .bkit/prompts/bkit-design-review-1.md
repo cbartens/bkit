@@ -46,18 +46,18 @@ maxTurns: 50
 5. Ecosystem search — per major capability the design requires:
    - Search `{framework/runtime} {capability} built-in` → stack already solves it?
    - Search `{problem} best practice {current year}` → standard ecosystem approach?
-   - Check official docs for relevant framework/library.
+   - Check official docs for relevant framework / library.
    - Record per finding: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification).
    - **If** existing solution covers >80% of requirement → recommend it over custom code; note remaining 20% gap.
 6. Stack feasibility — buildable with approved stack? Constraints?
-7. Library/API eval — maturity, bundle, types, license.
+7. Library / API eval — maturity, bundle, types, license.
 8. Integration risk — monorepo fit, systems touched.
 9. PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = CONCERNS.
-10. Unknowns/blockers needing experimentation.
+10. Unknowns / blockers needing experimentation.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - PASS = feasible as designed; proceed.
     - CONCERNS = feasible with caveats — design proceeds, findings addressable.
-    - FAIL = NOT feasible in current stack/scope — design does NOT proceed, findings NOT addressable.
+    - FAIL = NOT feasible in current stack / scope — design does NOT proceed, findings NOT addressable.
 
 **Output format:**
 

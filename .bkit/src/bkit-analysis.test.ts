@@ -19,6 +19,7 @@ import {
   MAX_ROWS_BEFORE_ROLLUP,
   computeComplianceRates,
   computeCounts,
+  computeDeferralDiscipline,
   computeElapsedStats,
   computeRegression,
   computeVersionCompliance,
@@ -27,6 +28,7 @@ import {
   runAnalysis,
   writeRollupShard,
   type ComplianceRow,
+  type DeferralRow,
   type OutcomeRow,
 } from "./bkit-analysis";
 import { foldFrom, type TelemetryEvent } from "./bkit-telemetry";
@@ -330,6 +332,85 @@ describe("computeVersionCompliance", () => {
 });
 
 // ---------------------------------------------------------------------------
+// computeDeferralDiscipline
+// ---------------------------------------------------------------------------
+
+describe("computeDeferralDiscipline", () => {
+  const deferral = (over: Partial<DeferralRow> = {}): DeferralRow => ({
+    ts: 1000,
+    repo: "cbartens/bkit",
+    bkitVersion: "4.10.0",
+    workflow: "build",
+    subagent: "bkit-build-challenge-remediate",
+    model: "claude-sonnet-5",
+    reason: "scope-declared",
+    ...over,
+  });
+
+  it("rates unjustified deferrals per (subagent, model)", () => {
+    const result = computeDeferralDiscipline([
+      deferral({ key: "a", reason: "unjustified" }),
+      deferral({ key: "b", reason: "unjustified" }),
+      deferral({ key: "c", reason: "hard-blocked" }),
+      deferral({ key: "d", reason: "scope-declared" }),
+      deferral({ key: "e", subagent: "bkit-design-generate", model: "claude-opus-5" }),
+    ]);
+
+    const remediate = result.find((d) => d.writer === "bkit-build-challenge-remediate")!;
+    expect(remediate.total).toBe(4);
+    expect(remediate.unjustifiedCount).toBe(2);
+    expect(remediate.unjustifiedRate).toBe(0.5);
+    expect(remediate.byReason).toEqual({ unjustified: 2, "hard-blocked": 1, "scope-declared": 1 });
+
+    const design = result.find((d) => d.writer === "bkit-design-generate")!;
+    expect(design.unjustifiedCount).toBe(0);
+    expect(design.unjustifiedRate).toBe(0);
+  });
+
+  // Same prompt, two models is the comparison the split exists for — a rate that
+  // collapses them cannot tell a bad prompt from a model that gives up early.
+  it("splits one subagent across the models that ran it", () => {
+    const result = computeDeferralDiscipline([
+      deferral({ key: "a", model: "claude-sonnet-5", reason: "unjustified" }),
+      deferral({ key: "b", model: "claude-opus-5" }),
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((d) => d.model).sort()).toEqual(["claude-opus-5", "claude-sonnet-5"]);
+  });
+
+  // `.bkit/jsonl.md` § Who Wrote It: subagent/model are absent on orchestrator rows.
+  it("attributes orchestrator-written rows to the workflow", () => {
+    const result = computeDeferralDiscipline([
+      { ts: 1, repo: "r", bkitVersion: "4.10.0", workflow: "ship", reason: "own-cycle" },
+      { ts: 2, repo: "r", bkitVersion: "4.10.0", reason: "own-cycle" },
+    ]);
+    expect(result.map((d) => d.writer).sort()).toEqual(["ship (orchestrator)", "unattributed"]);
+    expect(result.every((d) => d.model === "unknown")).toBe(true);
+  });
+
+  // Rows predating the field must not read as justified — they are unknown, and
+  // silently folding them into a justification would flatter every historic writer.
+  it("buckets a missing reason as unspecified, not as a justification", () => {
+    const [entry] = computeDeferralDiscipline([deferral({ key: "a", reason: undefined })]);
+    expect(entry!.byReason).toEqual({ unspecified: 1 });
+    expect(entry!.unjustifiedCount).toBe(0);
+  });
+
+  it("ranks the worst offender first", () => {
+    const result = computeDeferralDiscipline([
+      deferral({ key: "a", subagent: "clean", reason: "hard-blocked" }),
+      deferral({ key: "b", subagent: "sloppy", reason: "unjustified" }),
+      deferral({ key: "c", subagent: "sloppy", reason: "unjustified" }),
+    ]);
+    expect(result[0]!.writer).toBe("sloppy");
+  });
+
+  it("returns nothing when no deferrals exist", () => {
+    expect(computeDeferralDiscipline([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // computeElapsedStats
 // ---------------------------------------------------------------------------
 
@@ -445,6 +526,43 @@ describe("runAnalysis — full report (WS4-T3)", () => {
     expect(report.counts.total).toBe(0);
     expect(report.regression.totalRows).toBe(0);
     expect(report.complianceRates).toHaveLength(0);
+    expect(report.deferralDiscipline).toHaveLength(0);
+  });
+
+  // The deferral ledger is a separate file from stats.jsonl, so the discipline
+  // rate only exists if the caller passes it — `bkit analysis` adding
+  // docs/deferrals.jsonl to its path list is the other half of this.
+  it("folds deferral rows from a ledger path into the discipline rate", () => {
+    const deferralsPath = path.join(tmpDir, "deferrals.jsonl");
+    const row = (key: string, reason: string, ts: number) => ({
+      ...baseEnvelope("deferral"),
+      ts,
+      key,
+      type: "issue",
+      category: "agentic",
+      severity: "LOW",
+      description: "d",
+      subagent: "bkit-build-challenge-remediate",
+      model: "claude-sonnet-5",
+      reason,
+    });
+    // Same key twice: raised, then adjudicated. Folding must count ONE deferral.
+    const rows = [
+      row("a", "own-cycle", 1_700_000_002_000),
+      row("a", "unjustified", 1_700_000_003_000),
+      row("b", "hard-blocked", 1_700_000_004_000),
+    ];
+    fs.writeFileSync(deferralsPath, rows.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+
+    const report = runAnalysis([deferralsPath]);
+
+    expect(report.deferralDiscipline).toHaveLength(1);
+    const entry = report.deferralDiscipline[0]!;
+    expect(entry.writer).toBe("bkit-build-challenge-remediate");
+    expect(entry.total).toBe(2);
+    expect(entry.unjustifiedCount).toBe(1);
+    expect(entry.unjustifiedRate).toBe(0.5);
+    expect(report.reportLines.join("\n")).toMatch(/Deferral discipline: 1\/2/);
   });
 });
 

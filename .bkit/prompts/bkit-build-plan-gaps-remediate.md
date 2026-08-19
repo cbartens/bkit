@@ -30,7 +30,7 @@ maxTurns: 100
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Apply gap fixes (edit / create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
-- **Blockers:** Append `BLOCKED` log line per blocked gap; NO out-of-scope deferral.
+- **Blockers:** Append `BLOCKED` log lines per blocked tasks / gates (log IS the record). NEVER append to `docs/deferrals.jsonl`; blocked plan tasks are unfinished in-scope work, NOT deferrals.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -51,7 +51,7 @@ maxTurns: 100
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - PASS = every gap has `DONE` across logs AND local tests pass.
     - FAIL = unable to remediate; any gap ends `BLOCKED` with NO later `DONE` OR local tests fail.
-    - CONCERNS = remediation applied, tests pass, but non-blocking flake/warning needs follow-up.
+    - CONCERNS = remediation applied, tests pass, but non-blocking flake / warning needs follow-up.
 
 **Output format:**
 

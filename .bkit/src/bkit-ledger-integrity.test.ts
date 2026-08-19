@@ -18,6 +18,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import {
+  DEFERRAL_REASONS,
+  DEFERRAL_WRITERS,
+  UNJUSTIFIED_REASON,
+  foldFrom,
+  identity,
+  parse,
+} from "./bkit-telemetry";
+
 const REPO_ROOT = path.resolve(__dirname, "../..");
 
 /** Ledger → the `kind` values legal in it (`.bkit/jsonl.md` § Which kind → which ledger). */
@@ -116,6 +125,83 @@ describe("live ledgers are machine-readable", () => {
       });
     });
   }
+
+  // `reason` (`.bkit/jsonl.md` § Deferral Reason) is what makes a deferral's claim
+  // to be out-of-scope adjudicable rather than self-granted. `validate()` gates it
+  // on programmatic writes, but every live deferral row is appended by an agent via
+  // `jq >>`, which never touches the codec — so the file itself is the only place
+  // the enum can be enforced.
+  describe("docs/deferrals.jsonl reason", () => {
+    // Rows appended before the field existed cannot grow one: the ledger is
+    // append-only and backfilling would invent a justification nobody gave. The
+    // cutoff is the day the field landed; every row already on disk predates it.
+    const REASON_REQUIRED_FROM = 1785456000000; // 2026-07-31T00:00:00Z
+
+    // FOLDED, not per-line: a superseded row keeps whatever it said, by design
+    // (`.bkit/jsonl.md` § Updating a Row — "older rows = history"), so a value
+    // corrected by same-`key` append must not keep failing from the line it was
+    // corrected on. What has to hold is the CURRENT state of each entity.
+    const entities = () => {
+      const { state } = foldFrom([path.join(REPO_ROOT, "docs/deferrals.jsonl")]);
+      return [...state.values()] as unknown as Record<string, unknown>[];
+    };
+
+    it("every entity's reason is in the enum", () => {
+      const bad = entities()
+        .filter((row) => row.reason !== undefined && !DEFERRAL_REASONS.has(row.reason as string))
+        .map((row) => `${String(row.key)}: reason=${JSON.stringify(row.reason)}`);
+      expect(bad).toEqual([]);
+    });
+
+    // `unjustified` is the one reason its own writer cannot assign — a reviewer
+    // sets it on someone else's deferral. `fold()` is last-write-wins over the
+    // whole row, so the next same-`key` append silently decides whether the
+    // verdict survives, and the party it judges is usually the one appending.
+    // `.bkit/jsonl.md` § Field Semantics states the carry-forward; nothing but
+    // this test enforces it, and the rate in `computeDeferralDiscipline` counts
+    // the folded entity, so a dropped verdict erases the finding outright.
+    it("no entity drops an `unjustified` verdict a later row was meant to carry", () => {
+      const raw = fs.readFileSync(path.join(REPO_ROOT, "docs/deferrals.jsonl"), "utf-8");
+      const { events } = parse(raw);
+      const everUnjustified = new Set(
+        events
+          .filter((e) => (e as Record<string, unknown>)["reason"] === UNJUSTIFIED_REASON)
+          .map((e) => identity(e)),
+      );
+      const dropped = entities()
+        .filter(
+          (row) => everUnjustified.has(identity(row as never)) && row.reason !== UNJUSTIFIED_REASON,
+        )
+        .map((row) => `${String(row.key)}: now reason=${JSON.stringify(row.reason)}`);
+      expect(dropped).toEqual([]);
+    });
+
+    it("every entity updated since the field landed carries a reason", () => {
+      const bare = entities()
+        .filter(
+          (row) => typeof row.ts === "number" && row.ts >= REASON_REQUIRED_FROM && !row.reason,
+        )
+        .map((row) => `${String(row.key)}: ts=${String(row.ts)}`);
+      expect(bare).toEqual([]);
+    });
+
+    // The writer list is exhaustive, and prose alone did not hold it: the plan
+    // executor wrote rows despite a contract line forbidding it, turning blocked
+    // plan tasks into ledger entries the build loop reads as settled. Same cutoff
+    // as above — the rows that predate the rule stay as the record of why it exists.
+    it("no entity since the cutoff names an unsanctioned writer", () => {
+      const rogue = entities()
+        .filter(
+          (row) =>
+            typeof row.ts === "number" &&
+            row.ts >= REASON_REQUIRED_FROM &&
+            typeof row.subagent === "string" &&
+            !DEFERRAL_WRITERS.has(row.subagent),
+        )
+        .map((row) => `${String(row.key)}: subagent=${String(row.subagent)}`);
+      expect(rogue).toEqual([]);
+    });
+  });
 
   it("no row smuggles an unexpanded shell substitution into a field", () => {
     const offenders: string[] = [];

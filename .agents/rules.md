@@ -19,7 +19,7 @@
 - **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
 - **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
 - **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
-- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work. If in doubt, treat as in-scope and FINISH.
+- **Finish over deferrals:** NEVER defer in-scope work you can finish. ONLY defer genuinely out-of-scope or hard-blocked work; Declaring something out of scope does NOT make it so; reviewers WILL refute unfinished work. If in doubt, treat as in-scope and FINISH work.
 - **Scope discipline:** ONLY do what requests ask. NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do NOT bundle.
 - **No speculative scope:** ONLY build for requirements at hand (YAGNI). NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
 - **Investigate before implementing:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice {current year}`. Prefer official docs / discovered code over custom.
@@ -37,10 +37,10 @@
 - **No invented symbols:** ALWAYS confirm APIs / SDKs / flags / configs / imports exist as written before using (grep code, read docs, check live endpoints). NEVER assume or invent.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Imports:** No barrel files / `index.ts` exports.
-- **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders/commented-out code, or dead stubs. Match surrounding comment density.
+- **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders / commented-out code, or dead stubs. Match surrounding comment density.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
 - **Blockers:** NEVER fail silently. Document in logs/files/responses.
-- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+- **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = NOT valid deferral → FINISH work.
 - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 
 ### Skills & Docs
