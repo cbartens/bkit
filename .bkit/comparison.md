@@ -230,7 +230,7 @@ Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safet
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-ship-conflict-resolve` | Conflict resolver | Resolves merge conflicts against the integration branch. Medium effort, with test gate. |
-| `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from plan `Done when` + ship-input acceptance + design scope; FAILs the merge if any unplanned gap (silent `TODO`, skipped test) is found. Declared deferrals resurfaced, never blocking. Gates only what the repo can prove — plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process, never gated. |
+| `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from plan `Acceptance Scenario` sections + `Done when` lines; FAILs the merge if any unplanned gap (silent `TODO`, skipped test) is found. Declared deferrals resurfaced, never blocking. Gates only what the repo can prove — plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process, never gated, and no plan precondition or merge condition blocks however a log or summary restates it. |
 | `bkit-debug-failure-diagnose` | Diagnostician | (If post-merge checks fail) diagnoses the regression. Shared with debug. |
 | `bkit-debug-failure-remediate` | Fixer | (If post-merge checks fail) applies the fix. |
 | `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. High effort. Parallel with summary. |

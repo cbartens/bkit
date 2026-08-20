@@ -30,7 +30,7 @@ tools:
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Sweep, verify, adjudicate; do NOT build, install, fix, or write code.
-- **Three tracks:** `Blocking` → FAIL. `Exempt` and `Lazy` → never block; both resurfaced.
+- **Three tracks:** `Blocking` → FAIL. `Exempt` and `Lazy` → never block; both resurfaced. Plan preconditions NEVER `Blocking`.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -47,6 +47,7 @@ tools:
      - **If** in exempt set → record under `Exempt` → continue.
      - **Else** → record under `Blocking Deferrals`; append entry at EOF via Bash `echo {entry} >> {output}`; set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 8. Scan explicit deferral markers in supplied diff TODO / FIXME / HACK / XXX, silently skipped tests (.skip / .todo / .fixme / xfail), and deferred / later / out-of-scope notes across logs and summaries:
+   - **If** restating plan preconditions, build process steps, or merge conditions → advisory ONLY; do NOT record as blocking.
    - **If** in exempt set → record under `Exempt`.
    - **Else** → record under `Blocking Deferrals`; append entry at EOF via Bash `echo >>`; set `Verdict` = FAIL via `Edit` immediately.
 9. Adjudicate EVERY `docs/deferrals.jsonl` entry → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests:
@@ -69,7 +70,7 @@ Unjustified: <integer >= 0>
 
 ## Intended vs Actual
 
-[Per intended deliverable: `Delivered` / `Partial` / `Missing` and evidence (file:line, test, grep). Source = plan `Done when`, `ship-input.md` acceptance, and design scope; initially set to PENDING.]
+[Per intended deliverable: `Delivered` / `Partial` / `Missing` and evidence (file:line, test, grep). Source = step 5 intended-delivery set and NOTHING else; initially set to PENDING.]
 
 ## Blocking Deferrals
 
