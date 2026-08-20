@@ -50,7 +50,7 @@
 - **Concrete Example _(plan phase only)_:** Specific user role + starting state + numbered steps + observable outcome. One scenario, not a list.
 - **Derived Test Matrix _(plan phase only)_:** One row per testable behaviour. Each row → exactly one task in the Agent Execution Runbook. No row without a target file.
 
-**Design-missing fallback:** If `{FID}-design.md` is absent or has no `## Acceptance Scenario` section, replace the inherited Narrative and Success Criteria fields with `⚠️ MISSING: design doc has no Acceptance Scenario — human must provide before plan proceeds`. Do NOT fabricate either field; gate-1 stays blocked until human fills both.
+**Design-Missing Fallback:** If `{FID}-design.md` is absent or has no `## Acceptance Scenario` section, replace the inherited Narrative and Success Criteria fields with `⚠️ MISSING: design doc has no Acceptance Scenario — human must provide before plan proceeds`. Do NOT fabricate either field; gate-1 stays blocked until human fills both.
 
 ### Narrative _(inherited from design — do not rewrite)_
 
@@ -96,7 +96,7 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 >
 > **Discrimination (no false-green):** each row's assertion MUST observe the **affected** surface and would FAIL if the behaviour were broken — never assert transport status (200/201) or a derived proxy surface, never mock away the boundary under test.
 
-**Tier key** — use these exact tier names in the `Type` column (they MUST match `docs/testing.md`); pick the **lowest tier that actually exercises** the behaviour (a behaviour may need several):
+**Tier Key** — use these exact tier names in the `Type` column (they MUST match `docs/testing.md`); pick the **lowest tier that actually exercises** the behaviour (a behaviour may need several):
 
 <!-- prettier-ignore -->
 | Tier | Use for | Example behaviour |
@@ -154,7 +154,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 > **Never a bare question.** Every open question carries 2-3 concrete options, a recommendation, and the default applied if nobody answers — a human confirming this section must be able to decide from what is on the page. _(Canonical shape for the plan.)_
 
 - **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
-- **Open question:** [decision needed] → [who / how to resolve]
+- **Open Question:** [decision needed] → [who / how to resolve]
   - **Options:** A — [option, trade-off] · B — [option, trade-off] · C — [option, trade-off, optional]
   - **Recommended:** [A] — [why, 1 line]
   - **Default if unanswered:** [what the agent proceeds with]
@@ -172,7 +172,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 [Document rejected paths and why. List future phase recommendations.]
 
-**Selection rule:** pick the approach with the best quality-of-end-state, NOT the smallest diff / lowest cost-of-change. In-scope work = complete or explicitly moved to `Out of Scope` — no 90% solutions or silent shortcuts.
+**Selection Rule:** pick the approach with the best quality-of-end-state, NOT the smallest diff / lowest cost-of-change. In-scope work = complete or explicitly moved to `Out of Scope` — no 90% solutions or silent shortcuts.
 
 ## Out of Scope
 
@@ -202,14 +202,14 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 > Reference: `docs/security.md`. Check all that apply; skip inapplicable rows.
 
-- [ ] **New API route** — auth guard applied (e.g. a `requireMember`-style check)? Rate-limited if auth-adjacent?
-- [ ] **New DB table/column** — row-level security enabled deny-by-default? Tenant-scoped (e.g. via a membership join)?
-- [ ] **Role-gated mutation** — role checked at the API layer (not RLS alone)?
-- [ ] **User input** — validated by a schema (e.g. Zod) with `parse()` called in the handler?
+- [ ] **New API Route** — auth guard applied (e.g. a `requireMember`-style check)? Rate-limited if auth-adjacent?
+- [ ] **New DB Table/Column** — row-level security enabled deny-by-default? Tenant-scoped (e.g. via a membership join)?
+- [ ] **Role-Gated Mutation** — role checked at the API layer (not RLS alone)?
+- [ ] **User Input** — validated by a schema (e.g. Zod) with `parse()` called in the handler?
 - [ ] **PII** — absent from logs? Audit/CDC trigger updated if a new column lands on a monitored table?
 - [ ] **Redirect URL** — validated against an allow-list?
 - [ ] **Webhook** — signature verified? Secret declared in the env schema?
-- [ ] **New secret/env var** — added to the env schema? Stored in the project's secret manager (e.g. GCP Secret Manager / Vercel env)?
+- [ ] **New Secret/Env Var** — added to the env schema? Stored in the project's secret manager (e.g. GCP Secret Manager / Vercel env)?
 
 _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
@@ -217,18 +217,17 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 **CRITICAL:** Check off ALL core items. Check conditional items only when applicable. Abort if anything required is missing.
 
-### Core (always verify)
+### Core _(always verify)_
 
 - [ ] **Package Management:** Verify `package.json` for required packages. Ensure `pnpm-lock.yaml` syncs cleanly.
 - [ ] **Dependency Versions:** Run `pnpm outdated` and spot-check CLI versions (`npx tsc --version`, `pnpm --version`, plus any stack CLIs — e.g. `npx supabase --version`). Flag any outdated dependencies that may silently block or break implementation. Many infrastructure errors stem from version mismatches between CLI tools and their backend services.
-- [ ] **Existing-solution search (reuse over duplicate):** grep/read for existing implementations of this capability; prefer extending them. Search `{framework} {capability} built-in` / `{problem} best practice {current year}` before writing custom. Every planned `[NEW]` artifact must justify why an existing one can't be evolved.
+- [ ] **Existing-Solution Search (reuse over duplicate):** grep/read for existing implementations of this capability; prefer extending them. Search `{framework} {capability} built-in` / `{problem} best practice {current year}` before writing custom. Every planned `[NEW]` artifact must justify why an existing one can't be evolved.
 - [ ] **User Context:** Verify read/write access to required files. Request any missing user information up front.
-- [ ] **Pending Blockers:** Query the configured issue tracker for open issues (label `blocker`) relevant to this feature.
 - [ ] **Project Context:** Check `docs/knowledge.jsonl` and `docs/decisions.jsonl` for relevant patterns, established decisions, and known gotchas.
 - [ ] **Testing & Quality:** Ensure testing strategy aligns with `docs/testing.md`.
 - [ ] **Prerequisite Plans:** List `docs/plans/...` plans that must be fully executed and verified BEFORE this one.
 
-### Conditional (verify only when applicable)
+### Conditional _(verify only when applicable)_
 
 - [ ] **Secrets & Env Vars** _(new API keys / third-party credentials)_: Verify the project's secret store (e.g. GCP Secret Manager, Vercel env vars) and any service-account / IAM roles.
 - [ ] **Schema State** _(any DB reads/writes)_: Confirm exact database state against `docs/data-schema.md` before finalizing data-access logic.
@@ -250,7 +249,7 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 [Define how this feature interacts with the existing database schema and what changes are required.]
 
-**Invariant conformance** _(multi-store or privileged writes)_: every mutation path maintains every store a read surface depends on, under a compatible privilege, with the returned error actually checked (never swallowed). If a write can fail on privilege/constraint, the plan says how that failure surfaces — not a silent 200.
+**Invariant Conformance** _(multi-store or privileged writes)_: every mutation path maintains every store a read surface depends on, under a compatible privilege, with the returned error actually checked (never swallowed). If a write can fail on privilege/constraint, the plan says how that failure surfaces — not a silent 200.
 
 ### Data Schema Usage (Inputs & Outputs)
 
@@ -360,10 +359,8 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 > [!IMPORTANT]
 > **Continuous Execution:** Work runbook autonomously. No pause for user permission at any Gate. Check `[x]` tasks as you go.
-> **Blockers:** Task incomplete → **DO NOT fail silently**. Create tracker issue (label `blocker`) with context before stopping, via configured tracker MCP.
-> **Never drop work silently:** append deferred/out-of-scope to `docs/deferrals.jsonl`, bugs to `docs/failures.jsonl` (`.bkit/jsonl.md` format; check existing entries first).
 > **Step Isolation:** Complete each task fully (verification + checkbox) before next task.
-> **Progress Updates:** After each major task, post structured summary as issue comment via configured tracker MCP (`.agents/rules.md` § Tracker MCP).
+> **Integration Shape:** a plan MAY suggest a PR / commit / sequencing shape where it helps — advisory only, NEVER a gate; delivering every task in ONE PR is always correct. Do NOT specify a merge method; that is not a plan choice.
 
 **Implementation Tasks (Examples):**
 
@@ -387,7 +384,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > - **End-to-end integration** — core data paths need at least 1 integration test firing the real API against a local DB _without_ ORM/DB mocking.
 > - **Browser E2E for UI only** (e.g. Playwright) — don't drive a browser for non-visual logic.
 >
-> **Browser E2E conventions** — follow the project's test-auth and data-factory conventions (see `docs/testing.md`). Typically: a shared `setup` project logs in once and reuses stored auth state (tests for sign-in / sign-up / account-deletion opt out explicitly), and all test data comes from typed factories with per-test overrides rather than inline strings.
+> **Browser E2E Conventions** — follow the project's test-auth and data-factory conventions (see `docs/testing.md`). Typically: a shared `setup` project logs in once and reuses stored auth state (tests for sign-in / sign-up / account-deletion opt out explicitly), and all test data comes from typed factories with per-test overrides rather than inline strings.
 
 **Mandatory Tasks (Testing & Documentation):**
 
@@ -406,9 +403,12 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 ## Verification Plan
 
+> [!IMPORTANT]
+> **Advisory build-phase checks, NOT merge gates.** Only `Agent Execution Runbook` `Done when` lines gate the merge; nothing in this section does. Do NOT write "before merge" on a box no agent can tick — a precondition only CI or a human can settle (a lane that must have RUN, a deployed-service state, an operator step) is unenforceable here. Work that MUST block the merge is a runbook task with a codebase-verifiable `Done when`; a lane that MUST run is enforced in CI config, not in plan prose.
+
 ### Automated Tests
 
-- [ ] **Full local gate suite:** Run the project's complete local gate set — typecheck (`tsc --noEmit`), lint, `format:check`, prose, `slop:delta`, and `bkit check` — plus the unit + in-process integration tests. Do NOT weaken any gate to pass (see the anti-suppression CRITICAL under Architecture & Component Changes).
+- [ ] **Full Local Gate Suite:** Run the project's complete local gate set — typecheck (`tsc --noEmit`), lint, `format:check`, prose, `slop:delta`, and `bkit check` — plus the unit + in-process integration tests. Do NOT weaken any gate to pass (see the anti-suppression CRITICAL under Architecture & Component Changes).
 - [ ] **Test Synchronization:** [List existing E2E tests (e.g. Playwright) to update synchronously to prevent CI failures.]
 - [ ] **Build Configuration:** [Add new mock files/test configs to `exclude` array in `tsconfig.json` to protect production builds.]
 - [ ] **[Test Type] (`path/to/test.spec.ts`):** [Describe flows/unit/E2E additions. Note data hygiene needs.]
@@ -416,23 +416,22 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 - [ ] **Run all tests:** Execute locally. Pass the unit and integration suites (e.g. `pnpm test` and `pnpm test:integration`). Fix all failures before Gate 4.
 
 > [!IMPORTANT]
-> **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and any reference repos it names) and `docs/knowledge.jsonl`. Halt if stuck.
+> **No Architectural Downgrades:** If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and any reference repos it names) and `docs/knowledge.jsonl`. Halt if stuck.
 
-### 🔒 Gate 4: Automated Verification Confirmed
+### 🔒 Gate 4: Automated Verification Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Manual Verification`.
 
 - [ ] **Gate 4 - Verified:** Every checkbox in Automated Tests independently verified and checked off. Explicit proof (test outputs, CLI results, API responses) gathered.
 
-### Manual Verification
+### 👤 Manual Verification
+
+> [!CAUTION]
+> **Owner-run acceptance checks — advisory only.** Run during build wherever a CLI can (Dashboard Ban below). An unticked box blocks nothing: not the merge, not plan approval. This is NOT a Gate 1 human-confirmation section.
 
 > [!WARNING]
 > **Dashboard Ban:** Proactively use local CLIs (e.g. `gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
 - [ ] **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
-
-## Merge Method
-
-**Merge method: always squash.** Plans MUST NOT propose `rebase` or `merge-commit` as the integration method into `dev`. Default is hardcoded to `gh pr merge --squash --delete-branch --body ""`. If a plan needs commit-boundary preservation for ordering reasons, decompose into separate PRs rather than requesting a non-squash merge.
 
 <!-- bkit:end -->
