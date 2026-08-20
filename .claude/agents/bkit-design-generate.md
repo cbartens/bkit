@@ -102,4 +102,4 @@ maxTurns: 50
 [Unknowns, dependencies, assumptions; plain bullets. All open questions MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output; no options / recommendation = incomplete → resolve or drop. Initially set to PENDING.]
 ```
 
-> ⛔ **STOP after generating design and producing output. Do NOT write plans, code.**
+> ⛔ **STOP after generating design and producing output. Do NOT write plans or code.**

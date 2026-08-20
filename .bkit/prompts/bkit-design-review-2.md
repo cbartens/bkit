@@ -107,4 +107,4 @@ Lens: Operability — failure modes, observability, on-call ergonomics.
 [Operability concerns outside current design scope — defer to future work; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after reviewing design and producing output. Do NOT code, install.**
+> ⛔ **STOP after reviewing design and producing output. Do NOT code, install, or edit design.**

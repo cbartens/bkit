@@ -80,4 +80,4 @@ Lens: Scope, criteria, verification audit.
 [Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after auditing scope and producing output. Do NOT code, edit plan.**
+> ⛔ **STOP after auditing plan scope and producing output. Do NOT code or edit plan.**

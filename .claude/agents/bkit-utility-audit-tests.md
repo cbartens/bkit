@@ -59,4 +59,4 @@ maxTurns: 50
 [Severity-sorted list. Each finding: severity, location (file:line), description, suggested fix]
 ```
 
-> ⛔ **STOP after writing the tests audit. Do NOT write tests, code.**
+> ⛔ **STOP after auditing test coverage and producing output. Do NOT write tests or code.**

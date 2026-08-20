@@ -114,4 +114,4 @@ Lens: Buildability — stack feasibility, library fit, integration risk.
 [Findings outside current design scope — defer to future work; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after reviewing design and producing output. Do NOT code, install.**
+> ⛔ **STOP after reviewing design and producing output. Do NOT code, install, or edit design.**

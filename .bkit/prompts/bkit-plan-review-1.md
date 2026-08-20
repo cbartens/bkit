@@ -86,4 +86,4 @@ Lens: Tightness, scope discipline, design-coverage.
 [From `related-*.md` context overlapping plan surfaces. One line each: Candidate, source (`#N` / `docs/deferrals.jsonl` / `docs/failures.jsonl`), and recommendation (fold in / keep deferred / needs design decision). Advisory ONLY; never tasks. **If** none → `None`; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after reviewing plan and producing output. Do NOT code, edit plan.**
+> ⛔ **STOP after reviewing plan and producing output. Do NOT code or edit plan.**

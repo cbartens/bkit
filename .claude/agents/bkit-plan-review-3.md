@@ -89,4 +89,4 @@ Lens: Regression risk, design-coverage.
 [Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after reviewing plan and producing output. Do NOT code, edit plan.**
+> ⛔ **STOP after reviewing plan and producing output. Do NOT code or edit plan.**

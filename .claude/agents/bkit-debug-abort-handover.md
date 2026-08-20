@@ -89,4 +89,4 @@ maxTurns: 25
 [Prior diagnoses, prior remediations, CI runs, observability evidence; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after producing handover output. Do NOT fix, change code.**
+> ⛔ **STOP after writing handover and producing output. Do NOT apply fixes or change code.**

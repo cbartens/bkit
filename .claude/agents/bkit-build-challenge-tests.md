@@ -70,4 +70,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after generating tests and producing output. Do NOT change implementation, expand scope.**
+> ⛔ **STOP after writing tests and producing output. Do NOT change implementation or expand scope.**

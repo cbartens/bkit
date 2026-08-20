@@ -73,4 +73,4 @@ Strategy: STANDARD | PIVOT | FINAL
 [Append-only flat log. Each entry one line: `DONE — Step {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Step {N}: {name / description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after remediating failure and producing output. Do NOT expand scope.**
+> ⛔ **STOP after applying diagnosis fixes and producing output. Do NOT expand scope.**

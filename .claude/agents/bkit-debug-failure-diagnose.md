@@ -148,4 +148,4 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 CONFIRMED | REFUTED | INCONCLUSIVE — [One-line justification; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**
+> ⛔ **STOP after diagnosing failure and producing output. Do NOT apply fixes or change code.**

@@ -67,4 +67,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [Append-only flat log. Each entry one line: `DONE — Finding {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Finding {N}: {name / description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after applying fixes and producing output. Do NOT add new scope, generate tests.**
+> ⛔ **STOP after applying challenge fixes and producing output. Do NOT expand scope or generate tests.**

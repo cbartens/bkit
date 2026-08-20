@@ -55,4 +55,4 @@ tools:
 [Severity-sorted list. Each finding: severity, location (file:line), description, suggested fix]
 ```
 
-> ⛔ **STOP after writing the codebase audit. Do NOT fix.**
+> ⛔ **STOP after auditing codebase and producing output. Do NOT apply fixes or write code.**

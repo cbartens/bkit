@@ -73,4 +73,4 @@ Lens: Risk premortem — failure modes, scale, time, handover.
 [Risks that apply regardless of which approach is picked — surface for the final design's `Risks & Open Questions` section.]
 ```
 
-> ⛔ **STOP after brainstorming and producing output. Do NOT write design doc, plans, code.**
+> ⛔ **STOP after brainstorming design approaches and producing output. Do NOT write design doc, plans, or code.**

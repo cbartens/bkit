@@ -86,4 +86,4 @@ Failures: <integer >= 0>
 [Count and brief description per gap. **If** no gaps → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after verifying plan and producing output. Do NOT fix.**
+> ⛔ **STOP after verifying plan implementation and producing output. Do NOT apply fixes.**

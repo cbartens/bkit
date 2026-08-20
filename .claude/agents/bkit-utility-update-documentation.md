@@ -54,4 +54,4 @@ maxTurns: 50
 [Per file: which pass(es) applied, which gaps closed]
 ```
 
-> ⛔ **STOP after writing the sync report. Do NOT code.**
+> ⛔ **STOP after syncing docs and producing output. Do NOT code or modify implementation.**

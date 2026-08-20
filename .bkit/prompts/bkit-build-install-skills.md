@@ -64,4 +64,4 @@ maxTurns: 25
 [Technologies with no matching skill. **If** all matched → `None`]
 ```
 
-> ⛔ **STOP after installing skills and producing output. Do NOT code, expand scope.**
+> ⛔ **STOP after installing skills and producing output. Do NOT code or expand scope.**

@@ -74,4 +74,4 @@ Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integri
 [**If** `Verdict` = CONCERNS or FAIL → prioritized list — per finding: severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), file:line, exploit scenario, suggested fix. **Else** → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after reviewing diff and producing output. Do NOT fix — workflow applies fixes.**
+> ⛔ **STOP after challenging diff and producing output. Do NOT apply fixes.**

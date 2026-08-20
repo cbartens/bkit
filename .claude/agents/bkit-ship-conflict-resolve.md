@@ -86,4 +86,4 @@ Verdict: PASS | FAIL [Initially set to PENDING.]
 [Append-only flat log. Each entry one line: `STEP {N} — {description} — {outcome}`. Order = event order. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after producing verdict and log. Do NOT clear the sentinel; caller does.**
+> ⛔ **STOP after resolving conflicts and producing output. Do NOT clear the sentinel.**

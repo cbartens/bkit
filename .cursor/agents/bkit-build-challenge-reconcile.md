@@ -63,4 +63,4 @@ Failures: <integer >= 0>
 [**If** `Verdict` = CONCERNS or FAIL → prioritized list — per finding: lens, severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), file:line, exploit scenario, suggested fix, `agreement: {N}/{total}`. **Else** → `None`; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after reconciling findings and producing output. Do NOT fix — workflow applies fixes.**
+> ⛔ **STOP after reconciling findings and producing output. Do NOT apply fixes.**

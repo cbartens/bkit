@@ -53,4 +53,4 @@ tools:
 [Per file: old path → new path]
 ```
 
-> ⛔ **STOP after writing the reference sync report. Do NOT change content.**
+> ⛔ **STOP after fixing locators and producing output. Do NOT change content, detail, or task meaning.**

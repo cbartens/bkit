@@ -83,4 +83,4 @@ Deep dive: `cat tmp/gcp-audit/dev-errors.json | jq '[.[] | select(.jsonPayload.m
 [Green CI timestamps, latest error, post-deploy count, active signatures]
 ```
 
-> ⛔ **STOP after writing the GCP errors audit. Do NOT diagnose, code.**
+> ⛔ **STOP after scanning logs and producing output. Do NOT diagnose or code.**

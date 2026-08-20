@@ -68,4 +68,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [Modified design body — verbatim copy of prior versioned design with CRITICAL items and OPTIONAL items judged on merit applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
-> ⛔ **STOP after updating design and producing output. Do NOT code, expand scope.**
+> ⛔ **STOP after updating design and producing output. Do NOT code or expand scope.**

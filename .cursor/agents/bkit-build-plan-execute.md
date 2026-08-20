@@ -63,4 +63,4 @@ Verdict: PASS | FAIL [Initially set to PENDING.]
 [Append-only flat log. Each entry one line: `DONE — Task {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Task {N}: {name / description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after executing tasks and producing output. Do NOT push, open PRs.**
+> ⛔ **STOP after implementing plan tasks and producing output. Do NOT push or open PRs.**

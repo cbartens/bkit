@@ -84,4 +84,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [why this is a logical unit]
 ```
 
-> ⛔ **STOP after decomposing design and producing output. Do NOT write plans, code.**
+> ⛔ **STOP after organising design and producing output. Do NOT write plans or code.**

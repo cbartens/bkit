@@ -93,4 +93,4 @@ maxTurns: 25
 3. **Readability:** re-read end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
 4. Report to caller (not file): original vs new line / word counts; list blocks restored verbatim due to ambiguity.
 
-> ⛔ **STOP after writing the compressed target. Do NOT make other modifications.**
+> ⛔ **STOP after compressing prose and producing output. Do NOT make other modifications.**

@@ -59,4 +59,4 @@ tools:
 [Severity-sorted list. Each finding: severity, location (file:line), exploit scenario, suggested fix]
 ```
 
-> ⛔ **STOP after writing the security audit. Do NOT fix.**
+> ⛔ **STOP after auditing security and producing output. Do NOT apply fixes or write code.**

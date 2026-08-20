@@ -69,4 +69,4 @@ Strategy: STANDARD | PIVOT | FINAL
 [Append-only flat log. Each entry one line: `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
-> ⛔ **STOP after remediating gaps and producing output. Do NOT push, expand scope.**
+> ⛔ **STOP after applying gap fixes and producing output. Do NOT push or expand scope.**

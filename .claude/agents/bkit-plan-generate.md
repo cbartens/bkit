@@ -68,4 +68,4 @@ maxTurns: 50
 
 See `docs/plans/template.md`.
 
-> ⛔ **STOP after generating plan and producing output. Do NOT code, run commands.**
+> ⛔ **STOP after generating plan and producing output. Do NOT code or run commands.**

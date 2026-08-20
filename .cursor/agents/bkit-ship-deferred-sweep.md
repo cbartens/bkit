@@ -88,4 +88,4 @@ Unjustified: <integer >= 0>
 [**If** `Verdict` = FAIL → per blocking deferral, what to resolve or move to declared out-of-scope before re-ship. **Else** → `None`; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after sweeping and producing output. Do NOT fix.**
+> ⛔ **STOP after sweeping deferrals and producing output. Do NOT apply fixes.**

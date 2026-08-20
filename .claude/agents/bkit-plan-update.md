@@ -70,4 +70,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [Modified plan body — verbatim copy of prior versioned plan with CRITICAL items and OPTIONAL items judged on merit applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
-> ⛔ **STOP after updating plan and producing output. Do NOT code, expand scope.**
+> ⛔ **STOP after updating plan and producing output. Do NOT code or expand scope.**

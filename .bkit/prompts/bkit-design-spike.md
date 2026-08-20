@@ -93,4 +93,4 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 [Why PASS / CONCERNS / FAIL; initially set to PENDING.]
 ```
 
-> ⛔ **STOP after emitting spike findings and producing output. Do NOT code outside spike directory.**
+> ⛔ **STOP after settling named unknowns and producing output. Do NOT implement design or code outside spike directory.**

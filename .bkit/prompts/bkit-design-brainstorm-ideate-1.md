@@ -69,4 +69,4 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 [Table: Decided / Alternatives / Why]
 ```
 
-> ⛔ **STOP after brainstorming and producing output. Do NOT write design doc, plans, code.**
+> ⛔ **STOP after brainstorming design approaches and producing output. Do NOT write design doc, plans, or code.**
