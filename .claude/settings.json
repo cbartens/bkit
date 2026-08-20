@@ -35,7 +35,9 @@
       "WebFetch(domain:linear.app)",
       "WebFetch(domain:nvidia.com)",
       "WebFetch(domain:ollama.com)",
-      "WebFetch(domain:opencode.ai)"
+      "WebFetch(domain:opencode.ai)",
+      "WebFetch(domain:tavily.com)",
+      "WebFetch(domain:*.tavily.com)"
     ],
     "deny": [
       "Bash(rm -rf /*)",

@@ -67,6 +67,8 @@
       "wget *ollama.com*": "allow",
       "curl *opencode.ai*": "allow",
       "wget *opencode.ai*": "allow",
+      "curl *tavily.com*": "allow",
+      "wget *tavily.com*": "allow",
       "curl *z.ai*": "allow",
       "wget *z.ai*": "allow"
     }

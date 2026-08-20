@@ -24,6 +24,8 @@
     "*.ollama.com",
     "opencode.ai",
     "*.opencode.ai",
+    "tavily.com",
+    "*.tavily.com",
     "z.ai",
     "*.z.ai"
   ]

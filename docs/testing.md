@@ -400,6 +400,8 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
 | `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
+| `bkit-untrusted-fence.test.ts` | Unit | Untrusted-content fence: identical at every workflow write site, no second fence from shipped fetch blocks, `Context:` names untrusted `Read:` paths. |
+| `bkit-untrusted-input-coverage.test.ts` | Unit | Untrusted-input header bullet: run-time enumeration of `.bkit/prompts/` + `.bkit/workflows/`, three named clause constants, glob-scoped stale-variant deny, matcher negative controls. |
 
 ## Compliance grader test coverage
 

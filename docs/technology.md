@@ -99,4 +99,4 @@ Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` 
 
 ## Naming Conventions
 
-See `.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.
+See `.agents/rules.md` § Project Rules → Naming Conventions for server actions, deployed functions, migrations, tests, and log format rules.
