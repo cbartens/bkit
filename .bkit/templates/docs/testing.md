@@ -262,7 +262,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 **Knobs flipped under the marker:**
 
 - `TURBO_LOG_LEVEL=full` — surfaces Vitest/build output across all turbo steps (otherwise compressed to errors-only)
-- `NODE_OPTIONS=--trace-warnings --trace-deprecation` — stacks on deprecations / transitive-dep regressions
+- `NODE_OPTIONS=--trace-warnings --trace-deprecation` — stacks on deprecations / transitive-dep regressions. Set as a job-level `env:` key in static YAML, NEVER written to `$GITHUB_ENV`: the runner blocklists `NODE_OPTIONS` for that command, rejects the write with an `::error::`, and still concludes the step `success` — so the flag reaches nothing while the run goes green. Spell the `contains()` marker test out rather than reusing `env.VERBOSE_CI` (the `env` context is not available to a job-level `env:` value). A step with its own `env:` block replaces the job-level value rather than merging, so it must restate the flags
 - `DEBUG=vercel:*,supabase:*` — Vercel deploy + Supabase migration internal chain (no `pw:*` — duplicates Playwright trace)
 - Playwright (when `bkit-stub:e2e` enabled): appends `--trace=on` only — `--video` and `--screenshot` are `playwright.config.ts use:` keys, not CLI flags (Playwright errors on unknown CLI options). The trace.zip captures snapshots / network / console / source, which covers the dominant diagnose use case. Never pass `--reporter=line` — let `playwright.config.ts`'s chain run
 

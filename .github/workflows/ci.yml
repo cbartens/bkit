@@ -303,7 +303,7 @@ jobs:
       # the consumer scaffold's `main-lag-warning` block (kept marker-free here — bkit's own
       # ci.yml is intentionally degenerate, not the shipped scaffold). See docs/deployments.md
       # § "Promotion-lag warning".
-      - name: Check Main Lags Dev
+      - name: Check Default Branch Lags Dev
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

@@ -44,9 +44,22 @@ jobs:
     # registry mapping; `pnpm config set` writes the shell-expanded literal token into
     # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
     # install step also keeps its own env: block for explicitness and for the tests that assert it.
+    #
+    # NODE_OPTIONS is set HERE, in static YAML, and must NEVER be written to $GITHUB_ENV.
+    # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command,
+    # because a step able to set it at runtime could inject code into the runner's own node
+    # process. The write is REJECTED with
+    #   ##[error]Can't store NODE_OPTIONS output parameter using '$GITHUB_ENV' command.
+    # and — the part that hides it — the step's conclusion stays `success`, so the flag
+    # reaches nothing while the run goes green. Two more traps: the marker test is spelled
+    # out rather than reused as `env.VERBOSE_CI`, because the `env` context is NOT available
+    # to a job-level `env:` value and the shorter form resolves empty on every run; and a
+    # step with its own `env:` block REPLACES this value rather than merging, so such a step
+    # must restate the flags. See docs/testing.md § "CI verbosity".
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
       GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     # bkit:end verbose-ci-env
     steps:
@@ -69,14 +82,15 @@ jobs:
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
-      # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
-      # $GITHUB_ENV. Note that steps with their own `env:` block override $GITHUB_ENV —
-      # those steps must inline these vars in their env: declaration to stay verbose-aware.
+      # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
+      # that steps with their own `env:` block override $GITHUB_ENV — those steps must
+      # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is
+      # deliberately NOT set here; the runner rejects that write while reporting success.
+      # See the job-level `env:` block above.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
         run: |
           echo "🔊 [verbose ci] marker active — escalating log detail"
-          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
       - name: Check SHA Cache
@@ -139,7 +153,7 @@ jobs:
       # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
       # bkit-owned: edit it in the bkit template, not here. `bkit check` raises a (non-blocking)
       # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
-      - name: Check Main Lags Dev
+      - name: Check Default Branch Lags Dev
         if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -283,10 +297,12 @@ jobs:
   bkit-tests-unit:
     runs-on: ubuntu-latest
     # Env vars duplicated from bkit-tests-static's managed verbose-ci-env block.
-    # See the verbose-ci-env block comment in bkit-tests-static for documentation.
+    # See the verbose-ci-env block comment in bkit-tests-static for documentation —
+    # including why NODE_OPTIONS is a static YAML key here and never a $GITHUB_ENV write.
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
       GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -302,11 +318,12 @@ jobs:
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
+      # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
+      # rejects that write and still reports success. See bkit-tests-static's block comment.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
         run: |
           echo "🔊 [verbose ci] marker active — escalating log detail"
-          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
       - name: Check SHA Cache
@@ -709,7 +726,12 @@ jobs:
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
 #       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
-#       - name: Resolve Base Ref             # [M] PR->origin/<base>; push->github.event.before; dispatch->HEAD~1
+#       - name: Resolve Base Ref             # [M] PR->origin/<base>; push->github.event.before; dispatch->no meaningful base
+#       #   DISPATCH IS NOT A DIFF. A workflow_dispatch has no base commit, so any fallback you pick (HEAD~1 and friends)
+#       #   scopes the run to whatever the LAST commit happened to touch — dispatch on a docs or plan-close HEAD and the
+#       #   "run everything" button buys a static+unit run that reports green having proved nothing. Short-circuit
+#       #   workflow_dispatch in the affected step to the same run-to-be-safe values you already emit when there is no
+#       #   base (everything affected), the way run_migration below already does, and never consult the diff on a dispatch.
 # bkit-stub:affected-graph — [M] turbo "what changed" engine (the Detect Affected Packages step).
 #       # Capture stdout/stderr SEPARATELY: 2>&1 merges turbo's banner into the JSON -> jq falls back to
 #       # [] = ghost-green. turbo error / no base / non-JSON -> global-dep fallback (web_affected=true). Drop for single-package.
@@ -761,7 +783,12 @@ jobs:
 #       - name: Materialise Base Worktree    # [PR] base as detached worktree for slop-delta; loud-fail if it resolves to HEAD
 #       - name: Setup pnpm                    # [U]
 #       - name: Setup Node                    # [U] node-version: {{NODE_VERSION}}, cache: pnpm
-#       - name: Configure Verbose CI         # [U] if: VERBOSE_CI=='1' — write NODE_OPTIONS/DEBUG to $GITHUB_ENV (steps with own env: must re-declare)
+#       - name: Configure Verbose CI         # [U] if: VERBOSE_CI=='1' — write DEBUG to $GITHUB_ENV (steps with own env: must re-declare).
+#       #   NEVER write NODE_OPTIONS to $GITHUB_ENV: the runner blocklists it for that command (a runtime-settable
+#       #   NODE_OPTIONS could inject code into the runner's own node process), REJECTS the write with an ::error::,
+#       #   and still concludes the step `success` — so the flag reaches nothing while the run goes green. Set it as a
+#       #   job-level `env:` key in static YAML instead, spelling the contains() marker test out rather than reusing
+#       #   env.VERBOSE_CI (the env context is not available to a job-level env: value, so that form resolves empty).
 #       - name: Install Dependencies         # [U] pnpm install --frozen-lockfile
 #       - name: Install Vale                  # [U] pinned tarball + `vale sync` (else E100: write-good missing)
 #       - name: Run Lint                      # [U] static checks FAIL-FAST before env pull; PRs scope --filter=...[origin/<base>]
@@ -938,7 +965,7 @@ jobs:
 #
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
-# moment any tier is skippable. ~seconds, no checkout.
+# moment any tier is skippable. ~seconds; needs no checkout UNTIL you extract the gate (below).
 #   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migration,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
 #   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
 #   # cannot red the capstone, which is the hollow-green this job exists to prevent.
@@ -957,7 +984,25 @@ jobs:
 #       #   inventory, exit 0); flip to an assert later, once the allowlist of legitimately-never-run files
 #       #   is seeded from a real inventory. Adds a checkout + artifact download, so raise timeout-minutes
 #       #   above the seconds a pure aggregator needs.
-#       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
+#       #   ⚠️ That diagnostic checkout is continue-on-error and run-level-gated ONLY while it stays a diagnostic.
+#       #   The moment the gate below reads a file from the repo, the checkout becomes LOAD-BEARING — see the
+#       #   assert step's own note. Do not let the two share one gated, failure-tolerant checkout.
+#       # EXTRACT THIS GATE TO A FILE. It is the only branch-protection required check, so a false green here
+#       #   is a false green for the whole repo — and assertions written as a shell heredoc inside a YAML string
+#       #   are the one part of the repo that cannot be unit-tested. Move the decision into a script your normal
+#       #   test command already runs, taking the environment as an argument so it is callable from a test. The
+#       #   four tests worth writing are the ones proving it CANNOT pass: a lane that failed; a gated lane that
+#       #   ran when its job-level gate said it should have skipped; a tier reporting success having executed
+#       #   zero tests; and a plan that will not parse, which must RED rather than read as "nothing was required".
+#       #   ⚠️ Doing this gives the capstone a dependency it never had as inline shell — a file on disk. Add an
+#       #   UNGATED checkout that is NOT continue-on-error (a checkout failure must red at the checkout step,
+#       #   where the message is legible, not later as a module-resolution error inside the gate). A checkout
+#       #   gated on run_level == 'full' leaves every other run level with no script: the required check then
+#       #   exits non-zero with "cannot find module" WITHOUT EVER READING THE PLAN. Live paths that hit it:
+#       #   an affected-empty run (the "push a bare trigger commit" recovery), and a transient checkout failure
+#       #   that continue-on-error would otherwise swallow. Guard it — assert the checkout is neither gated nor
+#       #   continue-on-error, and that the gate step itself is neither.
+#       - name: Assert Test Plan Followed    # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
 #       #   NAMESPACE TRAP: bkit-tests-scope is the PLANNER, not a test lane, but it shares the bkit-tests-* namespace.
 #       #   Assert its result EXPLICITLY (as below) — a capstone that loops over "every bkit-tests-* lane" skips it,
 #       #   and a scope failure then leaves the capstone GREEN. Same for any external guard policing that namespace:

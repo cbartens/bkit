@@ -60,16 +60,62 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).toContain("{{NODE_VERSION}}");
   });
 
-  describe("Check Main Lags Dev step (promotion-lag warning)", () => {
-    it("ships the Check Main Lags Dev step", () => {
-      expect(content).toContain("- name: Check Main Lags Dev");
+  describe("[verbose ci] NODE_OPTIONS knob", () => {
+    // The runner blocklists NODE_OPTIONS for the $GITHUB_ENV workflow command and REJECTS
+    // the write with an ::error:: while still concluding the step `success` — so the shape
+    // below ships a knob that reaches nothing on a run that goes green. Only static YAML
+    // works. These two assertions are a pair: deleting the rejected write on its own would
+    // leave the lanes quiet AND knob-less, which is worse than the bug, because the error
+    // annotation was the only thing pointing at it.
+    it("never writes NODE_OPTIONS to $GITHUB_ENV", () => {
+      const offenders = content
+        .split("\n")
+        .filter((l) => /NODE_OPTIONS\s*=/.test(l) && l.includes("GITHUB_ENV"));
+      expect(offenders).toEqual([]);
+    });
+
+    it("every job declaring VERBOSE_CI also declares a marker-gated job-level NODE_OPTIONS", () => {
+      // Derived, not hand-listed: the lane set comes from the VERBOSE_CI declarations
+      // themselves, so a lane added later is covered without editing this test.
+      const verboseLanes = content
+        .split("\n")
+        .filter((l) => /^\s+VERBOSE_CI:\s*\$\{\{/.test(l)).length;
+      const nodeOptionKeys = content
+        .split("\n")
+        .filter(
+          (l) =>
+            /^\s+NODE_OPTIONS:\s*\$\{\{/.test(l) &&
+            l.includes("[verbose ci]") &&
+            l.includes("--trace-warnings"),
+        ).length;
+      expect(verboseLanes).toBeGreaterThan(0);
+      expect(nodeOptionKeys).toBe(verboseLanes);
+    });
+
+    it("gates NODE_OPTIONS on the spelled-out contains() test, not env.VERBOSE_CI", () => {
+      // The `env` context is not available to a job-level `env:` value, so
+      // `env.VERBOSE_CI` there resolves empty on every run — no flags, no error, no signal.
+      const nodeOptionLines = content
+        .split("\n")
+        .filter((l) => /^\s+NODE_OPTIONS:\s*\$\{\{/.test(l));
+      expect(nodeOptionLines.length).toBeGreaterThan(0);
+      for (const line of nodeOptionLines) {
+        expect(line).not.toMatch(/env\.VERBOSE_CI/);
+        expect(line).toContain("contains(github.event.head_commit.message, '[verbose ci]')");
+      }
+    });
+  });
+
+  describe("Check Default Branch Lags Dev step (promotion-lag warning)", () => {
+    it("ships the Check Default Branch Lags Dev step", () => {
+      expect(content).toContain("- name: Check Default Branch Lags Dev");
     });
 
     it("fires only on dev pushes (not PRs, not other branches)", () => {
       // The step's if: gates on a push to dev — that's the moment main starts
       // to lag. Matching the exact guard keeps it from firing on PRs / feature pushes.
       expect(content).toMatch(
-        /Check Main Lags Dev[\s\S]*?if:[^\n]*github\.event_name == 'push'[^\n]*github\.ref == 'refs\/heads\/dev'/,
+        /Check Default Branch Lags Dev[\s\S]*?if:[^\n]*github\.event_name == 'push'[^\n]*github\.ref == 'refs\/heads\/dev'/,
       );
     });
 
@@ -77,8 +123,9 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
       // The trigger is the stale-consumed-surface set, not any dev-ahead-of-main —
       // so ordinary app-code dev pushes stay quiet.
       const step =
-        content.match(/- name: Check Main Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/)?.[0] ??
-        "";
+        content.match(
+          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
+        )?.[0] ?? "";
       expect(step).toContain(".github/renovate.json5");
       expect(step).toContain(".github/workflows");
       expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
@@ -91,15 +138,16 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
       const block =
         content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
         "";
-      expect(block).toContain("- name: Check Main Lags Dev");
+      expect(block).toContain("- name: Check Default Branch Lags Dev");
       expect(block).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
       expect(block).not.toMatch(/\{\{[A-Z_]+\}\}/);
     });
 
     it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {
       const step =
-        content.match(/- name: Check Main Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/)?.[0] ??
-        "";
+        content.match(
+          /- name: Check Default Branch Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/,
+        )?.[0] ?? "";
       expect(step).toContain("::warning::");
       // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
       expect(step).not.toMatch(/exit [1-9]/);

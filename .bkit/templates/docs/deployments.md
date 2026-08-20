@@ -124,7 +124,7 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 | `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
 | `[force build]` | The lighter hammer. Exposes `should_force_build=true` + `run_level=full`; does **not** bypass `web_affected`, so no integration / e2e / @live unless web is genuinely affected. Rebuild without paying @live's side effects. No effect unless the consumer's deploy steps gate on the output. | Read by `Detect Direct Push` step |
 | `[force full]` | The hammer. Exposes `should_run_full=true` → `run_level=full` **and** bypasses `web_affected` (the `bkit-stub:e2e` / integration / `bkit-tests-live` blocks run on **any** commit, incl. docs-only / empty), greening the non-hollow capstone (the forced lanes must genuinely run). On a PR it upgrades the local e2e lane to the full suite; `@live` stays **push-only** (reached on a docs-only/empty `[force full]` push via the effective `web_affected`, never off a PR / dispatch — real LLM + email side effects). Replaces the removed `[force e2e]` / `[force live]`. | Read by `Detect Direct Push` step |
-| `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
+| `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key — never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 
 **Two deploy-forcing markers only: `[force build]` + `[force full]`.** No granular `[force e2e]` / `[force live]` — they would be silent no-ops gated behind `web_affected`. `[force full]` = single gate-bypass ("validate everything") → one effective `web_affected` drives integration + e2e + @live uniformly.
@@ -175,7 +175,7 @@ Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-in
 
 Fix at source: gate global-dep force on **real** global-dep change. Intersect changed root files against `turbo.json` `globalDependencies` / `globalEnv` (+ root lockfile + `package.json`); force `web_affected` ONLY on match. Turbo-pinned `//` (docs, metadata, non-triggering root dirs) must **not** force. Narrow `docs/**`-only guard = same idea, incomplete (`README`-only still over-triggers) — prefer `globalDependencies` intersection. Consumer `ci.yml` (Tier-3 `bkit-stub:affected-graph`); port fix per monorepo. Orthogonal to `[force full]` (deliberately bypasses `web_affected`).
 
-### Promotion-lag warning (`Check Main Lags Dev`)
+### Promotion-lag warning (`Check Default Branch Lags Dev`)
 
 CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites — surfaces read LIVE from default branch, not `dev` / validated tip:
 
@@ -183,7 +183,7 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 - **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
 - **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
 
-`Check Main Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
+`Check Default Branch Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
 Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
