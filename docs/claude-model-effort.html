@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claude Effort Levels — Cheat Sheet</title>
+<style>
+  @page { size: A4 landscape; margin: 9mm 10mm; }
+
+  :root {
+    --ink:      #16191d;
+    --muted:    #6d6a66;
+    --rule:     #cfcac0;
+    --rule-lt:  #e6e2da;
+    --paper:    #ffffff;
+    --band:     #f4f1ea;
+    --opus:     #1f4e5f;
+    --sonnet:   #8a5a24;
+    --ultra:    #5b4b8a;
+    --warn:     #9c2f2f;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-size: 7.1pt;
+    line-height: 1.30;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, .mono {
+    font-family: Menlo, "SF Mono", Consolas, monospace;
+    font-size: 0.93em;
+    letter-spacing: -0.01em;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-bottom: 1.6pt solid var(--ink);
+    padding-bottom: 1.8mm; margin-bottom: 2.2mm;
+  }
+  h1 {
+    font-family: Charter, "Iowan Old Style", Georgia, serif;
+    font-size: 13.5pt; font-weight: 600; margin: 0;
+    letter-spacing: -0.015em;
+  }
+  h1 em { font-style: italic; color: var(--muted); font-weight: 400; }
+  .meta { text-align: right; color: var(--muted); font-size: 6.8pt; line-height: 1.45; }
+  .meta strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- ladder strip ---------- */
+  .ladder { display: flex; gap: 1.3mm; margin-bottom: 2.2mm; }
+  .rung {
+    flex: 1; border: 0.5pt solid var(--rule); border-top: 2pt solid var(--rule);
+    padding: 1.1mm 1.5mm 1.2mm; background: #fdfcfa;
+  }
+  .rung.is-default { border-top-color: var(--opus); background: #f7fafb; }
+  .rung.is-ultra   { border-top-color: var(--ultra); background: #f8f6fb; }
+  .rung .pos { font-size: 6pt; color: var(--muted); letter-spacing: 0.09em; text-transform: uppercase; }
+  .rung .label { font-size: 9pt; font-weight: 600; letter-spacing: -0.01em; margin: 0.2mm 0 0.4mm; }
+  .rung .api { color: var(--opus); font-weight: 600; }
+  .rung.is-ultra .api { color: var(--ultra); }
+  .rung .gloss { color: var(--muted); font-size: 6.2pt; line-height: 1.24; margin-top: 0.6mm; }
+  .tag {
+    display: inline-block; font-size: 5.5pt; letter-spacing: 0.07em; text-transform: uppercase;
+    font-weight: 700; padding: 0.3mm 1mm; border-radius: 1pt; vertical-align: 1.2pt; margin-left: 1mm;
+  }
+  .tag-default { background: var(--opus); color: #fff; }
+  .tag-session { background: var(--band); color: var(--muted); border: 0.4pt solid var(--rule); }
+
+  /* ---------- main table ---------- */
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-size: 6pt; letter-spacing: 0.085em; text-transform: uppercase; color: var(--muted);
+    font-weight: 700; text-align: left; padding: 0 2mm 1.2mm; border-bottom: 0.9pt solid var(--ink);
+    white-space: nowrap;
+  }
+  thead th.num { text-align: right; }
+  tbody td { padding: 1.15mm 1.7mm; border-bottom: 0.4pt solid var(--rule-lt); vertical-align: top; }
+  tbody td.num { text-align: right; white-space: nowrap; }
+
+  tr.band td {
+    background: var(--band); border-bottom: 0.6pt solid var(--rule); border-top: 0.6pt solid var(--rule);
+    padding: 1.1mm 2mm; font-size: 6.4pt; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700;
+  }
+  tr.band .rate { float: right; letter-spacing: 0.02em; text-transform: none; font-weight: 500; color: var(--muted); }
+  tr.band.opus td   { color: var(--opus);   box-shadow: inset 2.2pt 0 0 var(--opus); }
+  tr.band.sonnet td { color: var(--sonnet); box-shadow: inset 2.2pt 0 0 var(--sonnet); }
+
+  .eff { font-weight: 600; font-size: 7.6pt; white-space: nowrap; }
+  .anchor code { color: var(--ink); background: #f2efe9; padding: 0.1mm 0.7mm; border-radius: 1pt; }
+  .cost { font-weight: 700; }
+  .rel { color: var(--muted); }
+  .rel.hi { color: var(--warn); font-weight: 600; }
+  .never { color: var(--warn); font-weight: 700; }
+  .ultra-row td { background: #faf8fd; }
+  .ultra-row .eff { color: var(--ultra); }
+  .dim td { color: var(--muted); }
+  .dim .eff { color: var(--muted); }
+
+  /* ---------- footer panels ---------- */
+  .panels { display: flex; gap: 3mm; margin-top: 2.4mm; }
+  .panel { flex: 1; border-top: 1.2pt solid var(--ink); padding-top: 1.3mm; }
+  .panel h2 {
+    font-size: 6.2pt; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 1.4mm;
+    font-weight: 700;
+  }
+  .panel p { margin: 0 0 1.0mm; font-size: 6.4pt; line-height: 1.34; color: #33373c; }
+  .panel p:last-child { margin-bottom: 0; }
+  .panel strong { color: var(--ink); }
+  .k { display: inline-block; min-width: 21mm; font-weight: 600; color: var(--ink); }
+  .swap { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Claude Effort Levels <em>— cheat sheet</em></h1>
+  <div class="meta">
+    Claude Code slider &rarr; API value &rarr; cost, anchored to <strong>bkit</strong> agents<br>
+    Rates verified against platform.claude.com &middot; <strong>August 2026</strong>
+  </div>
+</header>
+
+<div class="ladder">
+  <div class="rung">
+    <div class="pos">Position 1</div>
+    <div class="label">Low</div>
+    <div class="mono api">low</div>
+    <div class="gloss">Persists across sessions</div>
+  </div>
+  <div class="rung">
+    <div class="pos">Position 2</div>
+    <div class="label">Medium</div>
+    <div class="mono api">medium</div>
+    <div class="gloss">Persists across sessions</div>
+  </div>
+  <div class="rung is-default">
+    <div class="pos">Position 3</div>
+    <div class="label">High<span class="tag tag-default">Default</span></div>
+    <div class="mono api">high</div>
+    <div class="gloss">Default on every model except Opus 4.7</div>
+  </div>
+  <div class="rung">
+    <div class="pos">Position 4</div>
+    <div class="label">Extra</div>
+    <div class="mono api">xhigh</div>
+    <div class="gloss">Default on Opus 4.7. App label is &ldquo;Extra&rdquo;, not &ldquo;Extra high&rdquo;</div>
+  </div>
+  <div class="rung">
+    <div class="pos">Position 5</div>
+    <div class="label">Max<span class="tag tag-session">Session</span></div>
+    <div class="mono api">max</div>
+    <div class="gloss">Rejected by settings file; env var only</div>
+  </div>
+  <div class="rung is-ultra">
+    <div class="pos">Position 6</div>
+    <div class="label">Ultracode<span class="tag tag-session">Session</span></div>
+    <div class="mono api">xhigh</div>
+    <div class="gloss"><strong>Not a deeper level.</strong> Sends <span class="mono">xhigh</span> &mdash; less than Max &mdash; plus multi-agent workflow orchestration</div>
+  </div>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:15mm">Effort</th>
+      <th style="width:13mm">API</th>
+      <th>Best for &mdash; anchored to the bkit agents that use it</th>
+      <th class="num" style="width:20mm">Out tokens*</th>
+      <th class="num" style="width:17mm">Cost/call</th>
+      <th class="num" style="width:19mm">vs Opus High<sup>&dagger;</sup></th>
+    </tr>
+  </thead>
+  <tbody>
+
+    <tr class="band opus"><td colspan="6">Claude Opus 5 <span class="rate mono">$5 / $25 per MTok &nbsp;·&nbsp; 1M context &nbsp;·&nbsp; 128K max out</span></td></tr>
+
+    <tr class="dim">
+      <td class="eff">Low</td><td class="mono">low</td>
+      <td class="anchor"><span class="never">bkit: never.</span> All five <code>*-summary</code> agents run Low on Haiku 4.5 instead. If it&rsquo;s simple enough for Low, drop the model too</td>
+      <td class="num mono">~1.5K</td><td class="num mono cost">$0.088</td><td class="num mono rel">0.35&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">Medium</td><td class="mono">medium</td>
+      <td class="anchor"><code>bkit-plan-review-2</code>, <code>bkit-plan-scope-check-1</code> &mdash; judgement without exploration. <em>You:</em> sanity-check a plan, review a short diff</td>
+      <td class="num mono">~4K</td><td class="num mono cost">$0.150</td><td class="num mono rel">0.6&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">High</td><td class="mono">high</td>
+      <td class="anchor"><code>bkit-build-challenge-1/2</code>, <code>bkit-build-plan-verify</code>, <code>bkit-utility-audit-*</code> &mdash; finding what&rsquo;s wrong with what exists. <em>You:</em> review a diff, debug red CI</td>
+      <td class="num mono">~8K</td><td class="num mono cost">$0.250</td><td class="num mono rel"><strong>1&times;</strong></td>
+    </tr>
+    <tr>
+      <td class="eff">Extra</td><td class="mono">xhigh</td>
+      <td class="anchor"><code>bkit-plan-generate</code>, <code>bkit-design-generate</code>, <code>bkit-debug-failure-diagnose</code> &mdash; authoring what everything downstream depends on. <em>You:</em> architecture calls, root-cause after two failed attempts</td>
+      <td class="num mono">~25K</td><td class="num mono cost">$0.675</td><td class="num mono rel">2.7&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">Max</td><td class="mono">max</td>
+      <td class="anchor"><span class="never">bkit: never</span> &mdash; zero of 48 agents. <em>You:</em> one correctness-critical problem where being wrong beats 6&times; the spend</td>
+      <td class="num mono">~60K</td><td class="num mono cost">$1.550</td><td class="num mono rel hi">6.2&times;</td>
+    </tr>
+    <tr class="ultra-row">
+      <td class="eff">Ultracode</td><td class="mono">xhigh &times;N</td>
+      <td class="anchor"><span class="never">bkit: can&rsquo;t</span> &mdash; frontmatter rejects it. <em>You:</em> codebase-wide sweep, 500-file migration, multi-lens review with adversarial verification</td>
+      <td class="num mono">~25K <span style="color:var(--muted)">/agent</span></td><td class="num mono cost">~$10<span style="color:var(--muted)">&sup2;</span></td><td class="num mono rel hi">~40&times;</td>
+    </tr>
+
+    <tr class="band sonnet"><td colspan="6">Claude Sonnet 5 <span class="rate mono">$3 / $15 per MTok &nbsp;·&nbsp; intro $2 / $10 until 31 Aug 2026 &nbsp;·&nbsp; 1M context</span></td></tr>
+
+    <tr class="dim">
+      <td class="eff">Low</td><td class="mono">low</td>
+      <td class="anchor"><span class="never">bkit: never</span> &mdash; Haiku 4.5 owns this tier. <em>You:</em> high-volume, latency-sensitive chat</td>
+      <td class="num mono">~1.5K</td><td class="num mono cost">$0.053</td><td class="num mono rel">0.21&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">Medium</td><td class="mono">medium</td>
+      <td class="anchor"><code>bkit-build-plan-execute</code>, <code>bkit-debug-failure-remediate</code>, <code>bkit-ship-conflict-resolve</code>, <code>bkit-utility-update-*</code> &mdash; the entire execution tier. <em>You:</em> implement a change you&rsquo;ve already spec&rsquo;d, write tests, sync docs</td>
+      <td class="num mono">~4K</td><td class="num mono cost">$0.090</td><td class="num mono rel">0.36&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">High</td><td class="mono">high</td>
+      <td class="anchor"><span class="never">bkit: never</span> &mdash; it jumps Sonnet/medium straight to Opus/high. <em>You:</em> general coding wanting more than Medium without Opus money</td>
+      <td class="num mono">~8K</td><td class="num mono cost">$0.150</td><td class="num mono rel">0.6&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">Extra</td><td class="mono">xhigh</td>
+      <td class="anchor"><span class="swap">Rarely right.</span> Costs more than Opus 5 at High ($0.250), which is also stronger. Move model, not effort</td>
+      <td class="num mono">~25K</td><td class="num mono cost">$0.405</td><td class="num mono rel">1.6&times;</td>
+    </tr>
+    <tr>
+      <td class="eff">Max</td><td class="mono">max</td>
+      <td class="anchor"><span class="swap">Almost never.</span> Costs more than Opus 5 at Extra ($0.675)</td>
+      <td class="num mono">~60K</td><td class="num mono cost">$0.930</td><td class="num mono rel">3.7&times;</td>
+    </tr>
+    <tr class="ultra-row">
+      <td class="eff">Ultracode</td><td class="mono">xhigh &times;N</td>
+      <td class="anchor">Same fan-out work as Opus Ultracode, cheaper per agent</td>
+      <td class="num mono">~25K <span style="color:var(--muted)">/agent</span></td><td class="num mono cost">~$6<span style="color:var(--muted)">&sup2;</span></td><td class="num mono rel hi">~24&times;</td>
+    </tr>
+
+  </tbody>
+</table>
+
+<div class="panels">
+
+  <div class="panel">
+    <h2>The two crossovers to memorise</h2>
+    <p><strong>Sonnet 5 at Extra ($0.405) costs more than Opus 5 at High ($0.250)</strong> &mdash; and Opus is the stronger model.</p>
+    <p><strong>Sonnet 5 at Max ($0.930) costs more than Opus 5 at Extra ($0.675).</strong></p>
+    <p>Past Sonnet/High, <span class="swap">change model, not effort</span>. That is exactly the jump bkit already makes &mdash; Sonnet/medium straight to Opus/high, with nothing in between.</p>
+    <p>Going up a model tier costs 1.67&times; (Sonnet&rarr;Opus) or 2&times; (Opus&rarr;Fable). Going High&rarr;Max costs ~6&times;.</p>
+  </div>
+
+  <div class="panel">
+    <h2>What bkit actually uses &mdash; 5 pairings</h2>
+    <p><span class="k">Haiku 4.5 · low</span> the five <code>*-summary</code> agents</p>
+    <p><span class="k">Sonnet 5 · medium</span> the whole execution tier (~17 agents)</p>
+    <p><span class="k">Opus 5 · medium</span> <code>plan-review-2</code>, <code>plan-scope-check-1</code></p>
+    <p><span class="k">Opus 5 · high</span> review, verify, audit, ship</p>
+    <p><span class="k">Opus 5 · xhigh</span> generate, update, diagnose, reconcile</p>
+    <p><strong>Never <span class="mono">max</span>.</strong> Zero of 48 agents. The split is <em>decide</em> vs <em>do</em>: pay for the decision, economise on the execution.</p>
+    <p>Frontmatter <span class="mono">effort</span> overrides the session slider &mdash; so bkit is unaffected by wherever you leave it. Only <span class="mono">CLAUDE_CODE_EFFORT_LEVEL</span> outranks it; leave that unset.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Fine print</h2>
+    <p><strong>*</strong> Output-token figures are an <strong>estimate</strong> &mdash; Anthropic publishes no per-level token counts (effort is &ldquo;a behavioral signal, not a strict token budget&rdquo;). Costs are exact arithmetic on that estimate, at 10,000 input tokens per call.</p>
+    <p><strong>&dagger;</strong> Cross-model rows are a <strong>cost ruler, not a capability equivalence</strong>: &ldquo;the effort scale is calibrated per model, so the same level name does not represent the same underlying value across models.&rdquo; Within a model the ordering is sound.</p>
+    <p><strong>&sup2;</strong> Ultracode cost assumes a 15-agent workflow. Hard caps: ~16 concurrent, 1000 per workflow lifetime.</p>
+    <p><strong>Ultracode:</strong> session-only. Enable with <span class="mono">/effort ultracode</span>, <span class="mono">claude --effort ultracode</span> (needs v2.1.203+), or the keyword &ldquo;ultracode&rdquo; in a prompt for one turn. Silently degrades to plain <span class="mono">xhigh</span> if workflows are off.</p>
+    <p><strong>Thinking is a separate toggle from Effort.</strong> On Opus 5, keep Thinking on and lower Effort rather than switching it off &mdash; thinking-on at Low beats thinking-off at similar cost.</p>
+  </div>
+
+</div>
+
+</body>
+</html>
