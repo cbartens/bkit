@@ -39,8 +39,10 @@ const VERBS = [
 ] as const;
 
 /**
- * `Recommended Next Step` is exempt: it is a fixed-shape copy-paste handoff block,
- * byte-identical across all five prompts, and reports no upstream artifact content.
+ * `Recommended Next Step` is exempt: it is a fixed-shape copy-paste handoff block
+ * that reports no upstream artifact content, so the coverage/treatment verbs above
+ * do not apply. Its opening `<ref>` derivation clause is shared verbatim across all
+ * five prompts; the routing clause after it is per-phase and deliberately differs.
  */
 const EXEMPT_PREFIX = "Copy-paste handoff.";
 
