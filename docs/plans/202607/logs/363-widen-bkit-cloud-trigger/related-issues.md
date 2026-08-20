@@ -8,12 +8,13 @@ Surfaced while scoping #363's dev-CD-failure auto-route. #363 makes the `bkit-cl
 
 ### Target concurrency model
 
-| Phase                     | Cross-FID                                  | Same-FID                             |
-| ------------------------- | ------------------------------------------ | ------------------------------------ |
-| Design / Plan / Build     | unlimited                                  | one workflow at a time               |
-| Debug (`feat/**`)         | unlimited (per-FID isolation)              | one workflow at a time               |
+<!-- prettier-ignore -->
+| Phase | Cross-FID | Same-FID |
+| --- | --- | --- |
+| Design / Plan / Build | unlimited | one workflow at a time |
+| Debug (`feat/**`) | unlimited (per-FID isolation) | one workflow at a time |
 | Debug (`dev`, post-merge) | one at a time globally (queue, not cancel) | n/a — `dev` is the convergence point |
-| Ship                      | **one at a time globally**                 | one workflow at a time               |
+| Ship | **one at a time globally** | one workflow at a time |
 
 Today's `bkit-cloud.yml:73` group expression `bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}` enforces some of this and contradicts the rest.
 

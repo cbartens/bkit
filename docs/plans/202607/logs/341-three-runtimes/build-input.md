@@ -26,16 +26,17 @@ Related: **#134** (design→ship branch / artifact-trail model).
 
 ## 1. The three runtimes
 
-| Dimension                        | **1. local** (laptop)                               | **2. gh-action runner** (bkit install cloud option)                                          | **3. claude.ai runner** (`.claude/cloud.md`)                             |
-| -------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Triggered by**                 | dev runs `/bkit-*` in IDE                           | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest`     | user starts a session at claude.ai/code (or Auto-fix webhook)            |
-| **gh CLI auth**                  | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport**                         | **fragile** (see §2)                                                     |
-| **Write / merge token**          | dev's own creds (full)                              | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
-| **GitHub MCP / built-in**        | usually not configured                              | optional                                                                                     | **proxy-managed → auth-reliable, but see §5 downsides**                  |
-| **git push**                     | unrestricted                                        | standard runner (branch-protection only)                                                     | **proxy-restricted to the current working branch**                       |
-| **Worktree `.worktrees/{FID}`**  | native                                              | works                                                                                        | breaks — session is on `claude/…`, no worktrees                          |
-| **Network egress (debug-fetch)** | full                                                | full                                                                                         | **Trusted allowlist**; app backends need a **Custom** allowlist          |
-| **Autonomous merge to `dev`**    | ✅ gh                                               | ✅ gh (GH_BKIT_TOKEN/App)                                                                    | ✅ gh if authed, else MCP fallback (both server-side)                    |
+<!-- prettier-ignore -->
+| Dimension | **1. local** (laptop) | **2. gh-action runner** (bkit install cloud option) | **3. claude.ai runner** (`.claude/cloud.md`) |
+| --- | --- | --- | --- |
+| **Triggered by** | dev runs `/bkit-*` in IDE | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest` | user starts a session at claude.ai/code (or Auto-fix webhook) |
+| **gh CLI auth** | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport** | **fragile** (see §2) |
+| **Write / merge token** | dev's own creds (full) | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
+| **GitHub MCP / built-in** | usually not configured | optional | **proxy-managed → auth-reliable, but see §5 downsides** |
+| **git push** | unrestricted | standard runner (branch-protection only) | **proxy-restricted to the current working branch** |
+| **Worktree `.worktrees/{FID}`** | native | works | breaks — session is on `claude/…`, no worktrees |
+| **Network egress (debug-fetch)** | full | full | **Trusted allowlist**; app backends need a **Custom** allowlist |
+| **Autonomous merge to `dev`** | ✅ gh | ✅ gh (GH_BKIT_TOKEN/App) | ✅ gh if authed, else MCP fallback (both server-side) |
 
 Detection primitives exist: `CLAUDE_CODE_REMOTE=true` (mode 3), `GITHUB_ACTIONS`/`CI` (mode 2), neither (mode 1).
 
@@ -101,19 +102,20 @@ Research on the GitHub MCP server surfaced three real cost centres — the reaso
 
 **6c. gh → MCP tool map** (reference):
 
-| gh command                                      | MCP fallback                            | Notes                                                          |
-| ----------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
-| `gh repo view --json nameWithOwner`             | `get_me` + context / parse `git remote` | identity                                                       |
-| `gh pr create`                                  | `create_pull_request`                   |                                                                |
-| `gh pr view {N} --json …`                       | `pull_request_read` (get)               | request minimal fields                                         |
-| `gh pr list --head X`                           | `list_pull_requests`                    |                                                                |
-| `gh pr merge {N} --squash`                      | `merge_pull_request`                    | ⚠ **pass explicit skip-free `commit_message`** (D1)            |
-| `gh pr edit {N} --title`                        | `update_pull_request`                   |                                                                |
-| `gh pr update-branch {N}`                       | `update_pull_request_branch`            |                                                                |
-| `gh run list --branch X`                        | `actions_list`                          |                                                                |
-| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs`          |                                                                |
-| `gh run download -n playwright-report`          | **— none —**                            | keep gh/`gh api` (§4 seam)                                     |
-| `git push origin dev` (docs/status tail)        | `push_files` / `create_or_update_file`  | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
+<!-- prettier-ignore -->
+| gh command | MCP fallback | Notes |
+| --- | --- | --- |
+| `gh repo view --json nameWithOwner` | `get_me` + context / parse `git remote` | identity |
+| `gh pr create` | `create_pull_request` |  |
+| `gh pr view {N} --json …` | `pull_request_read` (get) | request minimal fields |
+| `gh pr list --head X` | `list_pull_requests` |  |
+| `gh pr merge {N} --squash` | `merge_pull_request` | ⚠ **pass explicit skip-free `commit_message`** (D1) |
+| `gh pr edit {N} --title` | `update_pull_request` |  |
+| `gh pr update-branch {N}` | `update_pull_request_branch` |  |
+| `gh run list --branch X` | `actions_list` |  |
+| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs` |  |
+| `gh run download -n playwright-report` | **— none —** | keep gh/`gh api` (§4 seam) |
+| `git push origin dev` (docs/status tail) | `push_files` / `create_or_update_file` | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
 
 **6d. D1 fix (all paths):** guarantee a skip-token-free merge body and extend Step 6.3 to scan the **resulting squash body**, not just the PR title; consider dropping `[skip ci]` from intermediate status-commit **subjects**.
 
@@ -760,16 +762,17 @@ This plan implements three-runtime support (#341) for bkit's five phase workflow
 
 All items properly categorized per the plan:
 
-| Item                                                    | Designation                                                                                    | Rationale                                                                                                      |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Shell-native MCP CLI shim                               | Exempt (out-of-guiding-principle scope; deferred to future / lower priority)                   | New-tooling investment; best long-term shape but not "minimal, additive changes"                               |
-| Uniform PR-close in all runtimes                        | Exempt (rejected alternate in design; breaks mode-1 constraints: offline, instant, no network) | D5(a) (PR-close) is conditional on OQ-A; D5 is fallback if human selects it                                    |
-| Runtime #4 (Cursor bg agent)                            | Exempt (first-class detection not in guiding principle)                                        | Scope limited to three known runtimes; Cursor left as future expansion                                         |
-| Narrow gh read-path corroboration outside MCP           | Exempt (doctrine forbids gh for tracker ops; out of scope)                                     | MCP-internal corroboration per D12; if it proves unreliable, open separate follow-up                           |
-| Root cause of MCP `search_issues` zero on private repos | Exempt (undiagnosed; logged in docs/failures.jsonl OQ3)                                        | Mitigated by D12 (mark as inconclusive, corroborate, log as distinct state); root-cause investigation deferred |
-| Periodic transport-fallback frequency summariser        | Exempt (new feature; not in design scope)                                                      | D25 gives rows a mechanical reader inside Close Workflow; analysis/aggregation deferred                        |
-| Mode-tuned subagent fan-out pacing                      | Exempt (deferred per design §6g; only if hit; would fix rate-limited tight-looping)            | N2; revisit only if shared-account rate budget becomes operational concern                                     |
-| `/Users/jesse` vendored skill "fix" (D20 correction)    | Exempt (creates skill-sync drift; ships no consumer defect)                                    | Kept as-is per D20; consumer-side fix if needed; not bkit's responsibility                                     |
+<!-- prettier-ignore -->
+| Item | Designation | Rationale |
+| --- | --- | --- |
+| Shell-native MCP CLI shim | Exempt (out-of-guiding-principle scope; deferred to future / lower priority) | New-tooling investment; best long-term shape but not "minimal, additive changes" |
+| Uniform PR-close in all runtimes | Exempt (rejected alternate in design; breaks mode-1 constraints: offline, instant, no network) | D5(a) (PR-close) is conditional on OQ-A; D5 is fallback if human selects it |
+| Runtime #4 (Cursor bg agent) | Exempt (first-class detection not in guiding principle) | Scope limited to three known runtimes; Cursor left as future expansion |
+| Narrow gh read-path corroboration outside MCP | Exempt (doctrine forbids gh for tracker ops; out of scope) | MCP-internal corroboration per D12; if it proves unreliable, open separate follow-up |
+| Root cause of MCP `search_issues` zero on private repos | Exempt (undiagnosed; logged in docs/failures.jsonl OQ3) | Mitigated by D12 (mark as inconclusive, corroborate, log as distinct state); root-cause investigation deferred |
+| Periodic transport-fallback frequency summariser | Exempt (new feature; not in design scope) | D25 gives rows a mechanical reader inside Close Workflow; analysis/aggregation deferred |
+| Mode-tuned subagent fan-out pacing | Exempt (deferred per design §6g; only if hit; would fix rate-limited tight-looping) | N2; revisit only if shared-account rate budget becomes operational concern |
+| `/Users/jesse` vendored skill "fix" (D20 correction) | Exempt (creates skill-sync drift; ships no consumer defect) | Kept as-is per D20; consumer-side fix if needed; not bkit's responsibility |
 
 **Verdict:** No BLOCKING deferrals. All out-of-scope items are properly exempted (genuinely-additive or outside guiding principle). No scope gaps. OQ-A and OQ-D are contingencies (alter T12/T13 if certain human choices made), not deferrals.
 
@@ -893,17 +896,18 @@ Landed on `dev` as `992f80a2` — `docs(341-three-runtimes): plan DONE bkit [ski
 
 **plan close** · cbartens/bkit
 
-| metric          | this run                       | med·5 |
-| --------------- | ------------------------------ | ----- |
-| durationSeconds | 40042 (11h7m)                  | —     |
-| linesChanged    | 4373 (+4337/-36)               | —     |
-| filesChanged    | 31                             | —     |
-| taskCount       | 119                            | —     |
-| frictionAdded   | 1                              | —     |
-| deferralsAdded  | 2                              | —     |
-| failuresAdded   | 0                              | —     |
-| compliance      | 2 pass · 0 fail · 0 n/a (100%) | —     |
-| attempts        | PLAN_ATTEMPT 1                 | —     |
+<!-- prettier-ignore -->
+| metric | this run | med·5 |
+| --- | --- | --- |
+| durationSeconds | 40042 (11h7m) | — |
+| linesChanged | 4373 (+4337/-36) | — |
+| filesChanged | 31 | — |
+| taskCount | 119 | — |
+| frictionAdded | 1 | — |
+| deferralsAdded | 2 | — |
+| failuresAdded | 0 | — |
+| compliance | 2 pass · 0 fail · 0 n/a (100%) | — |
+| attempts | PLAN_ATTEMPT 1 | — |
 
 ---
 

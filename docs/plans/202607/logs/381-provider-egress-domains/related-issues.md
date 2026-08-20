@@ -12,10 +12,11 @@ Sync a single network-domain allowlist from consumer `.agents/config.md` into Cl
 
 ## Source of truth
 
-| Layer                                 | What                                                                                      | Where                                                                                |
-| ------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Tooling defaults (stack-agnostic)** | GitHub, npm, provider/IDE docs hosts (`github.com`, `npmjs.com`, `nvidia.com`, `z.ai`, …) | `BKIT_SHIPPED_NETWORK_DOMAINS` in `.bkit/src/bkit-cloud-env.ts`                      |
-| **Consumer stack domains**            | Apex domains for debug-fetch / app / observability                                        | `.agents/config.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` |
+<!-- prettier-ignore -->
+| Layer | What | Where |
+| --- | --- | --- |
+| **Tooling defaults (stack-agnostic)** | GitHub, npm, provider/IDE docs hosts (`github.com`, `npmjs.com`, `nvidia.com`, `z.ai`, …) | `BKIT_SHIPPED_NETWORK_DOMAINS` in `.bkit/src/bkit-cloud-env.ts` |
+| **Consumer stack domains** | Apex domains for debug-fetch / app / observability | `.agents/config.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` |
 
 `bkit install` / `bkit upgrade` merge tooling ∪ consumer, expand each apex to `domain` + `*.domain`, then encode per host.
 
@@ -33,11 +34,12 @@ your-app.com
 
 ## Per-host encoding (same policy, native mechanics)
 
-| Host         | Artifact                  | Mechanism                                                                                                                                                                                                    |
-| ------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Claude**   | `.claude/settings.json`   | `WebFetch(domain:…)` allow rules enriched at install/upgrade                                                                                                                                                 |
-| **OpenCode** | `.opencode/opencode.json` | `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins). `webfetch` stays Action-only (`ask`) — OpenCode schema has no URL map                |
-| **Cursor**   | `.cursor/allowlist.json`  | Runtime file read by `.cursor/hooks/guardrails.cjs` (`beforeShellExecution`): ask on `curl`/`wget` unless command contains an allowlisted host. **Cursor-only by design** (no settings-native curl host map) |
+<!-- prettier-ignore -->
+| Host | Artifact | Mechanism |
+| --- | --- | --- |
+| **Claude** | `.claude/settings.json` | `WebFetch(domain:…)` allow rules enriched at install/upgrade |
+| **OpenCode** | `.opencode/opencode.json` | `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins). `webfetch` stays Action-only (`ask`) — OpenCode schema has no URL map |
+| **Cursor** | `.cursor/allowlist.json` | Runtime file read by `.cursor/hooks/guardrails.cjs` (`beforeShellExecution`): ask on `curl`/`wget` unless command contains an allowlisted host. **Cursor-only by design** (no settings-native curl host map) |
 
 **Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`.
 

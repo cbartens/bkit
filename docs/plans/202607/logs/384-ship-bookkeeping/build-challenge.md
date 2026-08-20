@@ -18,16 +18,17 @@ Re-probe of the NOW-REMEDIATED diff (`origin/dev..HEAD`) for ship workflow restr
 
 All 8 round-1 findings (1 CRITICAL + 2 HIGH + 4 MEDIUM + 1 LOW) are verified mechanically correct and regression-covered:
 
-| #   | R1 Finding                                        | Fix at HEAD                                                                                     | Verified                                                          |
-| --- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| 1   | B2 conflict staging lost                          | `git add -u && git add $BOOK_PATHS` + pathspec-free commit (`bkit-ship.md:470-471`)             | ✅ C1, C2 (C2 notes `.env*` gitignored → no secret leak via `-u`) |
-| 2   | jq telemetry literal                              | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` (`:539-540`)                 | ✅ C1, C2                                                         |
-| 3   | `update-branch` no guard                          | `\|\| { echo …; exit 1; }` (`:451`)                                                             | ✅ C1, C2 (`{PR_NUMBER}` integer-sourced, no injection)           |
-| 4   | STATUS_PATH not exported / set -u / audit silence | `export STATUS_PATH=` (`:641`) + `${STATUS_PATH:-}` (`gate:148`) + stderr fallback (`:153-160`) | ✅ facets (a)+(b); facet (c) partial — see Finding 2              |
-| 5   | Code 11 dead branch                               | Routes 11 → Step 5 alongside 10/14 (`:653`)                                                     | ✅ routing directive present — but see Finding 1 (incomplete)     |
-| 6   | `2>&1` corrupts jq                                | Dropped from both `gh api` captures (`gate:182, 290`)                                           | ✅ C1, C2                                                         |
-| 7   | `set -e` gate routing                             | `GATE_EXIT=0` + `\|\| GATE_EXIT=$?` (`:644-645`)                                                | ✅ C1, C2                                                         |
-| 8   | SHA sanitization in stub                          | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` (`tests/fixtures/gh/bin/gh:112`)                            | ✅ C1, C2 (blocks `/`, whitespace, glob, control chars)           |
+<!-- prettier-ignore -->
+| # | R1 Finding | Fix at HEAD | Verified |
+| --- | --- | --- | --- |
+| 1 | B2 conflict staging lost | `git add -u && git add $BOOK_PATHS` + pathspec-free commit (`bkit-ship.md:470-471`) | ✅ C1, C2 (C2 notes `.env*` gitignored → no secret leak via `-u`) |
+| 2 | jq telemetry literal | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` (`:539-540`) | ✅ C1, C2 |
+| 3 | `update-branch` no guard | `\|\| { echo …; exit 1; }` (`:451`) | ✅ C1, C2 (`{PR_NUMBER}` integer-sourced, no injection) |
+| 4 | STATUS_PATH not exported / set -u / audit silence | `export STATUS_PATH=` (`:641`) + `${STATUS_PATH:-}` (`gate:148`) + stderr fallback (`:153-160`) | ✅ facets (a)+(b); facet (c) partial — see Finding 2 |
+| 5 | Code 11 dead branch | Routes 11 → Step 5 alongside 10/14 (`:653`) | ✅ routing directive present — but see Finding 1 (incomplete) |
+| 6 | `2>&1` corrupts jq | Dropped from both `gh api` captures (`gate:182, 290`) | ✅ C1, C2 |
+| 7 | `set -e` gate routing | `GATE_EXIT=0` + `\|\| GATE_EXIT=$?` (`:644-645`) | ✅ C1, C2 |
+| 8 | SHA sanitization in stub | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` (`tests/fixtures/gh/bin/gh:112`) | ✅ C1, C2 (blocks `/`, whitespace, glob, control chars) |
 
 ## Reconciliation Summary
 

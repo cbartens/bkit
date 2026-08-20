@@ -22,11 +22,12 @@ select(.workflow=="debug")] | last.debugAttempt // 0' "$SRC"/"$STATUS"
 
 `.bkit/workflows/bkit-debug.md`:
 
-| Line   | Source    | Feeds                                                 |
-| ------ | --------- | ----------------------------------------------------- |
-| `:189` | `$SRC`    | `:190` `DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))`   |
-| `:219` | `$SRC`    | `:220` `+1`, inside `MAX_DEBUG_ATTEMPT` routing block |
-| `:364` | `$STATUS` | `:365` `+1`, Step 2 Worktree Setup                    |
+<!-- prettier-ignore -->
+| Line | Source | Feeds |
+| --- | --- | --- |
+| `:189` | `$SRC` | `:190` `DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))` |
+| `:219` | `$SRC` | `:220` `+1`, inside `MAX_DEBUG_ATTEMPT` routing block |
+| `:364` | `$STATUS` | `:365` `+1`, Step 2 Worktree Setup |
 
 Confirmed: `grep -c 'DEBUG_ATTEMPT=\$((PRIOR_DEBUG_ATTEMPT + 1))'` = 3 before/after; `git diff --stat` on `bkit-debug.md` → "6 changed lines, 3 insertions(+), 3 deletions(-)" — one line per site (jq program string), nothing else.
 
@@ -36,11 +37,12 @@ Confirmed: `grep -c 'DEBUG_ATTEMPT=\$((PRIOR_DEBUG_ATTEMPT + 1))'` = 3 before/af
 
 Crafted `status.jsonl` row `{"type":"workflow-meta","workflow":"debug","debugAttempt":"x[$(touch /tmp/PWNED...)]"}` (preceded by required `workflow-started` row for `lastIdx("debug")`); ran actual jq derive under GNU bash (5.3.9 aarch64 + system 3.2.57 `/bin/bash`):
 
-| Phase        | Result                                                                                                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Pre-fix**  | `PRIOR_DEBUG_ATTEMPT` → literal `x[$(touch /tmp/PWNED_CHECK)]`; `$((PRIOR_DEBUG_ATTEMPT + 1))` EXECUTES `touch` — marker file exists. Consistent with orchestrator repro. |
-| **Post-fix** | Same row → `PRIOR_DEBUG_ATTEMPT=0`, `DEBUG_ATTEMPT=1`; marker NOT created — both bash versions.                                                                           |
-| **Legit**    | `debugAttempt:5` → `PRIOR_DEBUG_ATTEMPT=5`, `DEBUG_ATTEMPT=6` — correct arithmetic untouched.                                                                             |
+<!-- prettier-ignore -->
+| Phase | Result |
+| --- | --- |
+| **Pre-fix** | `PRIOR_DEBUG_ATTEMPT` → literal `x[$(touch /tmp/PWNED_CHECK)]`; `$((PRIOR_DEBUG_ATTEMPT + 1))` EXECUTES `touch` — marker file exists. Consistent with orchestrator repro. |
+| **Post-fix** | Same row → `PRIOR_DEBUG_ATTEMPT=0`, `DEBUG_ATTEMPT=1`; marker NOT created — both bash versions. |
+| **Legit** | `debugAttempt:5` → `PRIOR_DEBUG_ATTEMPT=5`, `DEBUG_ATTEMPT=6` — correct arithmetic untouched. |
 
 ## Regression test (permanent, in `.bkit/src/bkit-counter-prose-audit.test.ts`)
 
@@ -64,14 +66,15 @@ Restored fix from backup; full suite (86/86 in this file) green again.
 
 ## Full local verification (all green)
 
-| Command                       | Result                                                                                                                                                      |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm typecheck`              | clean                                                                                                                                                       |
-| `pnpm test` (vitest)          | 58 files, 2282 passed \| 2 skipped \| 1 todo, 0 failed; `bkit-counter-prose-audit.test.ts`: 86/86 (81 pre-existing + 5 new: 2 static + 3 dynamic `it.each`) |
-| `pnpm slop:delta`             | net findings 0, net score 0.00 (jq coercion adds no shell try/catch; `defensive.error-obscuring` unaffected)                                                |
-| `pnpm lint:prose`             | 0 errors, 1 pre-existing unrelated warning (`docs/architecture.md:156`, "There is" sentence-start — not touched)                                            |
-| `pnpm format:check`           | required one `prettier --write` on edited test file (whitespace/line-wrap only); clean after                                                                |
-| `npx --yes bats tests/*.bats` | 45/45, incl. fail-closed T2.7/T2.9 for untouched post-marker `decide_next`/`check_max` contract                                                             |
+<!-- prettier-ignore -->
+| Command | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm test` (vitest) | 58 files, 2282 passed \| 2 skipped \| 1 todo, 0 failed; `bkit-counter-prose-audit.test.ts`: 86/86 (81 pre-existing + 5 new: 2 static + 3 dynamic `it.each`) |
+| `pnpm slop:delta` | net findings 0, net score 0.00 (jq coercion adds no shell try/catch; `defensive.error-obscuring` unaffected) |
+| `pnpm lint:prose` | 0 errors, 1 pre-existing unrelated warning (`docs/architecture.md:156`, "There is" sentence-start — not touched) |
+| `pnpm format:check` | required one `prettier --write` on edited test file (whitespace/line-wrap only); clean after |
+| `npx --yes bats tests/*.bats` | 45/45, incl. fail-closed T2.7/T2.9 for untouched post-marker `decide_next`/`check_max` contract |
 
 ## Mirror-regen flag
 

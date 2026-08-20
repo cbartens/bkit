@@ -349,6 +349,6 @@ None.
 | **DB** | N/A — no database. | — |
 | **Code** | `git revert {SQUASH_SHA}` then `pnpm bkit install` to regenerate mirrors + `.bkit/version` hashes. | Single squash commit; revert restores the prose counters and the fail-open guard together (the KN-26 pair inverts cleanly). |
 | **Data** | None. `soakEntryAt` rows already in a `status.jsonl` are ignored by the reverted code; `counter` rows already emitted with `shell-bus` stay valid (documented enum member). Both are additive and forward-compatible. | No log migration either way. |
-| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. | |
+| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. |  |
 
 _Code-only — `git revert` sufficient._

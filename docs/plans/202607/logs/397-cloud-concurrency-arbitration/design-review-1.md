@@ -79,14 +79,15 @@ The third probe is the decisive one: actionlint is not merely tolerating the exp
 
 ## Library / API Evaluation
 
-| Item                                           | Maturity                                                                               | Size / cost                                          | Types                     | License     | Verdict                                  |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------- | ------------------------- | ----------- | ---------------------------------------- |
-| GHA `concurrency` (workflow + job level)       | GA since 2021-04                                                                       | zero                                                 | n/a                       | first-party | USE-AS-IS                                |
-| GHA `concurrency.queue: max`                   | Released 2026-05-07, in the stable workflow-syntax reference; no preview flag stated   | zero                                                 | n/a                       | first-party | ADAPT — blocked on actionlint, see below |
-| `needs` context in `jobs.<job_id>.concurrency` | Documented in the context-availability table; independently type-checked by actionlint | zero                                                 | n/a                       | first-party | USE-AS-IS                                |
-| actionlint 1.7.12                              | latest release, **2026-03-30**                                                         | binary, CI-downloaded, SHA-pinned (`ci.yml:396-403`) | n/a                       | MIT         | **constraint**                           |
-| `yaml` (eemeli)                                | ~1.4M/wk                                                                               | devDep only, test-scope                              | bundled                   | ISC         | ADAPT (or use #363's `yq`)               |
-| `js-yaml`                                      | ~50M/wk                                                                                | devDep only                                          | separate `@types/js-yaml` | MIT         | viable, weaker fit                       |
+<!-- prettier-ignore -->
+| Item | Maturity | Size / cost | Types | License | Verdict |
+| --- | --- | --- | --- | --- | --- |
+| GHA `concurrency` (workflow + job level) | GA since 2021-04 | zero | n/a | first-party | USE-AS-IS |
+| GHA `concurrency.queue: max` | Released 2026-05-07, in the stable workflow-syntax reference; no preview flag stated | zero | n/a | first-party | ADAPT — blocked on actionlint, see below |
+| `needs` context in `jobs.<job_id>.concurrency` | Documented in the context-availability table; independently type-checked by actionlint | zero | n/a | first-party | USE-AS-IS |
+| actionlint 1.7.12 | latest release, **2026-03-30** | binary, CI-downloaded, SHA-pinned (`ci.yml:396-403`) | n/a | MIT | **constraint** |
+| `yaml` (eemeli) | ~1.4M/wk | devDep only, test-scope | bundled | ISC | ADAPT (or use #363's `yq`) |
+| `js-yaml` | ~50M/wk | devDep only | separate `@types/js-yaml` | MIT | viable, weaker fit |
 
 **The actionlint constraint is concrete and blocking for `queue: max`.** actionlint 1.7.12 predates the `queue` feature by five weeks. Probed directly with the pinned version:
 
@@ -136,17 +137,18 @@ Static validation is done and needs no repeat: actionlint 1.7.12 already accepts
 
 ## Unknowns & Blockers
 
-| Ref  | Item                                                                              | Status after this review                                                                                                                                                                                                              |
-| ---- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V-1  | `needs` in `jobs.<job_id>.concurrency`                                            | **CONFIRMED.** Docs context-availability table + actionlint's independently-implemented checker (positive, negative, and typo controls all behave). Contingency not required.                                                         |
-| V-2  | Queue depth 1                                                                     | **PARTLY FALSIFIED.** True only for `queue: single` (the default). `queue: max` gives 100, FIFO, at both levels. The design's own "consequence if false" applies.                                                                     |
-| V-3  | Skipped-`if:` job still holds the workflow group                                  | **STILL INFERRED.** Not documented either way; not settled by static probing. The `bkit-noop-{run_id}` lane keeps the design independent of it at job level, as the design argues. Needs the live PoC step 3, or explicit acceptance. |
-| V-4  | Groups are repository-scoped                                                      | **CONFIRMED.** "another job or workflow using the same concurrency group **in the repository**"; plus "Concurrency group names must be unique across workflows to avoid canceling in-progress jobs or runs from other workflows."     |
-| V-5  | `head_branch` / `display_title` on the runs API for `workflow_run`-triggered runs | **STILL INFERRED.** Load-bearing only for the contingency, which V-1's confirmation demotes to unused. Downgrade to a note.                                                                                                           |
-| new  | actionlint 1.7.12 rejects `queue:`                                                | **CONFIRMED by direct probe.** Blocks `queue: max` until resolved.                                                                                                                                                                    |
-| new  | `gh` needs `GH_REPO` when there is no checkout                                    | **CONFIRMED by direct probe.** Must be in the `resolve` job env.                                                                                                                                                                      |
-| open | Which YAML validator for the matrix test                                          | Unresolved, and now has an in-repo precedent (#363's `yq`) the design does not cite. Must close in Plan.                                                                                                                              |
-| open | #363's landing date                                                               | Unresolved. #363 has a plan on `dev` and a branch with no workflow edits; no PR.                                                                                                                                                      |
+<!-- prettier-ignore -->
+| Ref | Item | Status after this review |
+| --- | --- | --- |
+| V-1 | `needs` in `jobs.<job_id>.concurrency` | **CONFIRMED.** Docs context-availability table + actionlint's independently-implemented checker (positive, negative, and typo controls all behave). Contingency not required. |
+| V-2 | Queue depth 1 | **PARTLY FALSIFIED.** True only for `queue: single` (the default). `queue: max` gives 100, FIFO, at both levels. The design's own "consequence if false" applies. |
+| V-3 | Skipped-`if:` job still holds the workflow group | **STILL INFERRED.** Not documented either way; not settled by static probing. The `bkit-noop-{run_id}` lane keeps the design independent of it at job level, as the design argues. Needs the live PoC step 3, or explicit acceptance. |
+| V-4 | Groups are repository-scoped | **CONFIRMED.** "another job or workflow using the same concurrency group **in the repository**"; plus "Concurrency group names must be unique across workflows to avoid canceling in-progress jobs or runs from other workflows." |
+| V-5 | `head_branch` / `display_title` on the runs API for `workflow_run`-triggered runs | **STILL INFERRED.** Load-bearing only for the contingency, which V-1's confirmation demotes to unused. Downgrade to a note. |
+| new | actionlint 1.7.12 rejects `queue:` | **CONFIRMED by direct probe.** Blocks `queue: max` until resolved. |
+| new | `gh` needs `GH_REPO` when there is no checkout | **CONFIRMED by direct probe.** Must be in the `resolve` job env. |
+| open | Which YAML validator for the matrix test | Unresolved, and now has an in-repo precedent (#363's `yq`) the design does not cite. Must close in Plan. |
+| open | #363's landing date | Unresolved. #363 has a plan on `dev` and a branch with no workflow edits; no PR. |
 
 ## Verdict Reasoning
 

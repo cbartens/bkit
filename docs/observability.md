@@ -84,18 +84,19 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 
 `bkit-ship-gate.sh assert` stderr (#384 Tier-1 merge gate). Brackets load-bearing — consumer CI log-drain grep key. `--explain` prints a human note to stderr on the green path; refusals carry the named exit code + run URL. Exit codes are the audit trail — every terminal route writes one:
 
-| Code | Meaning                                                                           | Route                                     |
-| ---- | --------------------------------------------------------------------------------- | ----------------------------------------- |
-| 0    | Capstone `success` at head (or `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` honoured) | merge                                     |
-| 2    | Usage error (missing `--head`, bad args)                                          | refuse (operator)                         |
-| 10   | No run of the CI workflow exists at head                                          | refuse (poll) → Step 5 re-validate        |
-| 11   | Runs exist at head but none completed                                             | refuse (poll) → Step 5                    |
-| 12   | Selected run concluded failure                                                    | refuse                                    |
-| 13   | Selected run exists but capstone job absent                                       | refuse                                    |
-| 14   | Green run exists, but at a SUPERSEDED SHA                                         | refuse → Step 5 (re-validate at new head) |
-| 15   | Selected run concluded `cancelled`                                                | refuse                                    |
-| 16   | Capstone green but a lane concluded `skipped` (not full)                          | refuse                                    |
-| 20   | API error / rate limit / auth                                                     | refuse                                    |
+<!-- prettier-ignore -->
+| Code | Meaning | Route |
+| --- | --- | --- |
+| 0 | Capstone `success` at head (or `BKIT_SHIP_GATE_OVERRIDE=<refused-head>` honoured) | merge |
+| 2 | Usage error (missing `--head`, bad args) | refuse (operator) |
+| 10 | No run of the CI workflow exists at head | refuse (poll) → Step 5 re-validate |
+| 11 | Runs exist at head but none completed | refuse (poll) → Step 5 |
+| 12 | Selected run concluded failure | refuse |
+| 13 | Selected run exists but capstone job absent | refuse |
+| 14 | Green run exists, but at a SUPERSEDED SHA | refuse → Step 5 (re-validate at new head) |
+| 15 | Selected run concluded `cancelled` | refuse |
+| 16 | Capstone green but a lane concluded `skipped` (not full) | refuse |
+| 20 | API error / rate limit / auth | refuse |
 
 Canonical grep patterns (the refusal itself is signalled by the process exit code; `print_refusal_context` always prefixes a refusal block):
 

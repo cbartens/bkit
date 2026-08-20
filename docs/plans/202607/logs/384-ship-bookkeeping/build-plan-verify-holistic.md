@@ -55,13 +55,14 @@ SP1 produced: tested `bkit-ship-gate.sh` + `tests/ship-gate.bats`; `bkit-ship-ti
 
 SP2's rewritten `.bkit/workflows/bkit-ship.md` consumes every one of them:
 
-| SP1 output (Seam 1)                                        | SP2 consumption site (live)                | Evidence                                                                                                                                               |
-| ---------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `bkit-ship-gate.sh assert` (Tier-1 carrier)                | Step 6 merge gate                          | `bkit-ship.md:630` `bash "$GATE_SH" assert --head "$GATE_HEAD"`; routes exit code 14/10 → Step 5 re-validate, other refusal → Failure Path             |
-| `bkit-ship-timeouts.sh` (config, no third source of truth) | Step 5 re-validation poll loop             | `bkit-ship.md:519` sources it; `:523` `SHIP_CI_WAIT_TIMEOUT_S`, `:530` `SHIP_POLL_INTERVAL_S`, `:534` timeout status row — NOT re-hardcoded literals   |
-| `BOOK_ROOT` / `BOOK_PATHS` contract (SP1 T3 invariant)     | Step 1 resolution + every status/`git add` | 75 occurrences; `BOOK_PATHS=` `:187` = frozen allow-list; status writes resolve via `$BOOK_ROOT`                                                       |
-| `--match-head-commit` (SC1 mechanical carrier)             | Step 6 merge call                          | `bkit-ship.md:642` `gh pr merge … --match-head-commit "$GATE_HEAD"`                                                                                    |
-| Red→GREEN Tier-2 invariant                                 | SP2 T7 turned it GREEN                     | `bkit-ship-invariants.test.ts` **14/14 GREEN** (was 11/14 RED in SP1) — the central quality mechanism proves the rewrite is complete, not half-applied |
+<!-- prettier-ignore -->
+| SP1 output (Seam 1) | SP2 consumption site (live) | Evidence |
+| --- | --- | --- |
+| `bkit-ship-gate.sh assert` (Tier-1 carrier) | Step 6 merge gate | `bkit-ship.md:630` `bash "$GATE_SH" assert --head "$GATE_HEAD"`; routes exit code 14/10 → Step 5 re-validate, other refusal → Failure Path |
+| `bkit-ship-timeouts.sh` (config, no third source of truth) | Step 5 re-validation poll loop | `bkit-ship.md:519` sources it; `:523` `SHIP_CI_WAIT_TIMEOUT_S`, `:530` `SHIP_POLL_INTERVAL_S`, `:534` timeout status row — NOT re-hardcoded literals |
+| `BOOK_ROOT` / `BOOK_PATHS` contract (SP1 T3 invariant) | Step 1 resolution + every status/`git add` | 75 occurrences; `BOOK_PATHS=` `:187` = frozen allow-list; status writes resolve via `$BOOK_ROOT` |
+| `--match-head-commit` (SC1 mechanical carrier) | Step 6 merge call | `bkit-ship.md:642` `gh pr merge … --match-head-commit "$GATE_HEAD"` |
+| Red→GREEN Tier-2 invariant | SP2 T7 turned it GREEN | `bkit-ship-invariants.test.ts` **14/14 GREEN** (was 11/14 RED in SP1) — the central quality mechanism proves the rewrite is complete, not half-applied |
 
 **SP2's first action re-verified SP1 landed** (predecessor-verification prelude, all 4 boxes `[x]`). The gate's exit-code contract and the workflow's routing of those codes agree exactly — this is the feature's spine (SP1 tested gate → SP2 verify→base-check→integrate→re-validate→merge-gate→merge→close).
 
@@ -71,12 +72,13 @@ SP2 produced: the rewritten `bkit-ship.md` (Tier-2 GREEN); byte-identical render
 
 SP3's Tier-3 detector (`bkit-status-hole-detector.ts`) **derives its expected step set by parsing SP2's rewritten `bkit-ship.md` at runtime** — `deriveExpectedStepSetFromSource()` reads `## … Step N — Name` headings (13 present) + `step:"ship-*"` literals in fenced blocks (never a hand-maintained table, by design). SP3 Task 9 docs + Task 11 E2E reference the final shape.
 
-| SP2 output (Seam 2)                                                              | SP3 consumption site (live)                                           | Evidence                                                                                                                       |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Rewritten `bkit-ship.md` (13 `## Step N` headings + 14 `step:"ship-*"` literals) | Detector `deriveExpectedStepSetFromSource()` parses source at runtime | `bkit-status-hole-detector.ts:116`; detector test **35/35 GREEN**                                                              |
-| Canonical step-key set (14 keys)                                                 | Detector `SHIP_STEP_ORDER` cross-check constant                       | **byte-identical 14-key list** to SP1 `CANONICAL_SHIP_STEP_KEYS` (Finding-7 invented-name prevention holds across all 3 tiers) |
-| `.deferred-blocked` writer (SP2 T5)                                              | SP3 Task 11 E2E SC4 validates the FAIL→handover route                 | `bats ship-failure-path.bats` case 5/6 GREEN; documented in `ship-e2e-validation.md` SC4                                       |
-| Rendered mirrors drift-free (SP2 T8)                                             | SP3 docs reference final workflow shape                               | `bkit check` exit 0, 0 writes, no `bkit-rendered-prompts-stale`                                                                |
+<!-- prettier-ignore -->
+| SP2 output (Seam 2) | SP3 consumption site (live) | Evidence |
+| --- | --- | --- |
+| Rewritten `bkit-ship.md` (13 `## Step N` headings + 14 `step:"ship-*"` literals) | Detector `deriveExpectedStepSetFromSource()` parses source at runtime | `bkit-status-hole-detector.ts:116`; detector test **35/35 GREEN** |
+| Canonical step-key set (14 keys) | Detector `SHIP_STEP_ORDER` cross-check constant | **byte-identical 14-key list** to SP1 `CANONICAL_SHIP_STEP_KEYS` (Finding-7 invented-name prevention holds across all 3 tiers) |
+| `.deferred-blocked` writer (SP2 T5) | SP3 Task 11 E2E SC4 validates the FAIL→handover route | `bats ship-failure-path.bats` case 5/6 GREEN; documented in `ship-e2e-validation.md` SC4 |
+| Rendered mirrors drift-free (SP2 T8) | SP3 docs reference final workflow shape | `bkit check` exit 0, 0 writes, no `bkit-rendered-prompts-stale` |
 
 **SP3's first action re-verified SP2 landed** (predecessor-verification prelude, all 4 boxes `[x]`).
 
@@ -111,32 +113,35 @@ The full diff tells one coherent story:
 
 ## Full Test Results (re-run this session)
 
-| Gate                   | Command             | Result                                                                                                             |
-| ---------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| typecheck              | `pnpm typecheck`    | ✅ clean (exit 0)                                                                                                  |
-| unit/integration suite | `pnpm test`         | ✅ **75 files, 2651 passed / 2 skipped / 1 todo / 0 failed** (13.00s)                                              |
-| bats suite             | `pnpm test:bats`    | ✅ **140/140 GREEN** (ship-gate 16, ship-failure-path 6, ship-worktree-ownership 6, gh-smoke 7, + carrier helpers) |
-| drift gate             | `pnpm bkit check`   | ✅ exit 0, **0 writes**, no `bkit-rendered-prompts-stale` advisory                                                 |
-| slop delta             | `pnpm slop:delta`   | ✅ `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` (exit 0)                                      |
-| format check           | `pnpm format:check` | ✅ codebase clean (the only flagged file is this in-progress report stub)                                          |
+<!-- prettier-ignore -->
+| Gate | Command | Result |
+| --- | --- | --- |
+| typecheck | `pnpm typecheck` | ✅ clean (exit 0) |
+| unit/integration suite | `pnpm test` | ✅ **75 files, 2651 passed / 2 skipped / 1 todo / 0 failed** (13.00s) |
+| bats suite | `pnpm test:bats` | ✅ **140/140 GREEN** (ship-gate 16, ship-failure-path 6, ship-worktree-ownership 6, gh-smoke 7, + carrier helpers) |
+| drift gate | `pnpm bkit check` | ✅ exit 0, **0 writes**, no `bkit-rendered-prompts-stale` advisory |
+| slop delta | `pnpm slop:delta` | ✅ `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` (exit 0) |
+| format check | `pnpm format:check` | ✅ codebase clean (the only flagged file is this in-progress report stub) |
 
 Key cross-tier suites re-asserted in isolation:
 
-| Suite                                                                                         | Tier                            | Result            |
-| --------------------------------------------------------------------------------------------- | ------------------------------- | ----------------- |
-| `bkit-ship-invariants.test.ts`                                                                | Tier-2 (RED→GREEN proof)        | **14/14 GREEN**   |
-| `bkit-status-hole-detector.test.ts`                                                           | Tier-3 detector                 | **35/35 GREEN**   |
-| `bkit-counter-prose-audit` + `bkit-skip-ci-subject-audit` + `bkit-ci-dispatch-gate-alignment` | cross-check                     | **178/178 GREEN** |
-| `bkit-dogfood-noop.integration.test.ts`                                                       | SP2 T6 byte-identity automation | **7/7 GREEN**     |
+<!-- prettier-ignore -->
+| Suite | Tier | Result |
+| --- | --- | --- |
+| `bkit-ship-invariants.test.ts` | Tier-2 (RED→GREEN proof) | **14/14 GREEN** |
+| `bkit-status-hole-detector.test.ts` | Tier-3 detector | **35/35 GREEN** |
+| `bkit-counter-prose-audit` + `bkit-skip-ci-subject-audit` + `bkit-ci-dispatch-gate-alignment` | cross-check | **178/178 GREEN** |
+| `bkit-dogfood-noop.integration.test.ts` | SP2 T6 byte-identity automation | **7/7 GREEN** |
 
 ## Task Coverage (all 12 tasks 0–11)
 
-| Sub-plan                           | Tasks         | Checked | Unchecked | SP Gate unchecked |
-| ---------------------------------- | ------------- | ------- | --------- | ----------------- |
-| SP1 (Foundations & Tier-1 Gate)    | 0, 1, 2, 3, 4 | 5       | 0         | 0                 |
-| SP2 (Hardening, Rewrite & Mirrors) | 5, 6, 7, 8    | 4       | 0         | 0                 |
-| SP3 (Docs, Detector & E2E)         | 9, 10, 11     | 3       | 0         | 0                 |
-| **Total**                          | **0–11**      | **12**  | **0**     | **0**             |
+<!-- prettier-ignore -->
+| Sub-plan | Tasks | Checked | Unchecked | SP Gate unchecked |
+| --- | --- | --- | --- | --- |
+| SP1 (Foundations & Tier-1 Gate) | 0, 1, 2, 3, 4 | 5 | 0 | 0 |
+| SP2 (Hardening, Rewrite & Mirrors) | 5, 6, 7, 8 | 4 | 0 | 0 |
+| SP3 (Docs, Detector & E2E) | 9, 10, 11 | 3 | 0 | 0 |
+| **Total** | **0–11** | **12** | **0** | **0** |
 
 Authoritative count from `^- \[x\] \*\*Task [0-9]+` header lines across all 3 sub-plan files. All SP1/SP2/SP3 Gate checkboxes `[x]`.
 

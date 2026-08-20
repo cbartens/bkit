@@ -430,8 +430,8 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | `bkit-paths-policy.test.ts` | Unit | Drift test: committed `.cjs` === `generateGatePathsCjs()` output; `isMirrorPath` / `isGateConfig` correctness. |
 | `bkit-comply.test.ts` | Unit | `ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`, `formatComplianceSummary` — determinism, pass/fail, row shape (`bkitVersion` on every row). |
 | `bkit-comply.integration.test.ts` | Integration (boundary: git diff) | Temp git repo and `realGitAdapter`; asserts `no-mirror-edit` flagged on actual diff output. |
-| `bkit-comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: every wired close gate has `|| echo`, no bare invocation under `set -e`. |
-| `tests/telemetry-failopen.bats` SC #4 | Shell (boundary: exit codes) | `|| echo "[bkit-comply] grader unavailable, skipping"` exits 0 when command fails. |
+| `bkit-comply-gate-wiring.test.ts` | Integration (boundary: workflow files) | Grep-based audit: every wired close gate has `\|\| echo`, no bare invocation under `set -e`. |
+| `tests/telemetry-failopen.bats` SC #4 | Shell (boundary: exit codes) | `\|\| echo "[bkit-comply] grader unavailable, skipping"` exits 0 when command fails. |
 
 ## opencode host test coverage (sub-plan 4)
 

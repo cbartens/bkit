@@ -33,11 +33,12 @@ issues whose boundaries this design must respect.
 
 ## Canonical specs
 
-| Artifact                                                      | Path                                                                                                                                                 |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pass-3 design (10-step, keystone, conditional lenses)         | [`docs/plans/202605/80-audit-workflow-design.md`](https://github.com/cbartens/bkit/blob/dev/docs/plans/202605/80-audit-workflow-design.md)           |
+<!-- prettier-ignore -->
+| Artifact | Path |
+| --- | --- |
+| Pass-3 design (10-step, keystone, conditional lenses) | [`docs/plans/202605/80-audit-workflow-design.md`](https://github.com/cbartens/bkit/blob/dev/docs/plans/202605/80-audit-workflow-design.md) |
 | Pass-2 design (11-lens charter — still the charter of record) | [`docs/plans/202605/bar-199-audit-workflow-design.md`](https://github.com/cbartens/bkit/blob/dev/docs/plans/202605/bar-199-audit-workflow-design.md) |
-| Reference build snapshot (never merged)                       | branch `feat/bar-199-audit-workflow` @ `581b0e0`                                                                                                     |
+| Reference build snapshot (never merged) | branch `feat/bar-199-audit-workflow` @ `581b0e0` |
 
 ## Status — nothing is built
 
@@ -45,15 +46,16 @@ issues whose boundaries this design must respect.
 
 ## Workstream map — one issue per workstream
 
-| WS    | Name                                                                        | Issue    | Sub-plans                                                                                                                                             |
-| ----- | --------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** | Audit engine — orchestrator, conditional-lens keystone, pipeline contracts  | **#402** | A1 keystone · A2 stack-detect · A3 skill-install · A4 synthesise+correlate · A5 organise+summary · A6 orchestrator · A7 registry & legacy deprecation |
-| **B** | Universal lens layer — 13 always-on lenses + post-design charter amendments | **#403** | B1–B12 baseline lenses · **B13 `logic-dupe`**                                                                                                         |
-| **C** | Conditional lens layer — flag-gated lenses                                  | **#405** | `ui-ux` · `contract-conformance` · `derived-data` · `ai-llm` · `reference-signal`                                                                     |
-| **D** | Web-product lens family                                                     | **#207** | D1 SEO/AIO/IA · D2 analytics · D3 web-perf/CWV · D4 DX                                                                                                |
-| **E** | Runtime & rendered evidence                                                 | **#83**  | **E1 log-scan → `debug-fetch`** · E2 runtime lens · E3 seeded-render UX                                                                               |
-| **F** | Red-team — dynamic adversarial testing of a live app surface                | **#309** | single                                                                                                                                                |
-| **G** | Triggers & automation                                                       | **#324** | G1 recurring loop · G2 ship + milestone gates · G3 model-tier-scoped audit                                                                            |
+<!-- prettier-ignore -->
+| WS | Name | Issue | Sub-plans |
+| --- | --- | --- | --- |
+| **A** | Audit engine — orchestrator, conditional-lens keystone, pipeline contracts | **#402** | A1 keystone · A2 stack-detect · A3 skill-install · A4 synthesise+correlate · A5 organise+summary · A6 orchestrator · A7 registry & legacy deprecation |
+| **B** | Universal lens layer — 13 always-on lenses + post-design charter amendments | **#403** | B1–B12 baseline lenses · **B13 `logic-dupe`** |
+| **C** | Conditional lens layer — flag-gated lenses | **#405** | `ui-ux` · `contract-conformance` · `derived-data` · `ai-llm` · `reference-signal` |
+| **D** | Web-product lens family | **#207** | D1 SEO/AIO/IA · D2 analytics · D3 web-perf/CWV · D4 DX |
+| **E** | Runtime & rendered evidence | **#83** | **E1 log-scan → `debug-fetch`** · E2 runtime lens · E3 seeded-render UX |
+| **F** | Red-team — dynamic adversarial testing of a live app surface | **#309** | single |
+| **G** | Triggers & automation | **#324** | G1 recurring loop · G2 ship + milestone gates · G3 model-tier-scoped audit |
 
 **Closed as duplicates during consolidation** (content preserved in the surviving workstream issue): #404 → #403 · #206, #406 → #83 · #331, #401 → #324.
 
@@ -124,21 +126,23 @@ After designing the v1 lens prompts with "ecosystem-level conditional probes" (d
 
 ### Knowledge layering
 
-| Layer               | Knowledge owner  | Scope                                                                         |
-| ------------------- | ---------------- | ----------------------------------------------------------------------------- |
-| Lens prompts        | bkit             | Universal patterns ONLY (no library names anywhere)                           |
-| Stack-detect output | bkit             | Run-time structured report of THIS repo                                       |
-| Skills              | community / bkit | Stack-specific deep knowledge (extensible per framework)                      |
-| `docs/knowledge.md` | audited project  | Project-specific lessons-learned (`KN-*` entries from this team's own retros) |
-| WebSearch           | community        | Fresh signal — current best-practice consensus                                |
+<!-- prettier-ignore -->
+| Layer | Knowledge owner | Scope |
+| --- | --- | --- |
+| Lens prompts | bkit | Universal patterns ONLY (no library names anywhere) |
+| Stack-detect output | bkit | Run-time structured report of THIS repo |
+| Skills | community / bkit | Stack-specific deep knowledge (extensible per framework) |
+| `docs/knowledge.md` | audited project | Project-specific lessons-learned (`KN-*` entries from this team's own retros) |
+| WebSearch | community | Fresh signal — current best-practice consensus |
 
 ### Phased rollout
 
-| Phase                        | Scope                                                                                                                                                                                                                                          | Status                                                                     |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **Phase 1** (THIS issue, v1) | Add stack-detect step. Lens prompts read upstream stack report instead of doing per-lens detection. Keep ecosystem-level conditionals for now.                                                                                                 | Pending decision on scope split — ADD to BAR-199 v1 OR split to follow-up? |
-| **Phase 2** (follow-up)      | Skill-install step + author audit-skills per stack. Strip all stack-specific lists from lens prompts (loggers, validators, deprecated packages, test conventions, package-manager CLIs). Prompts become genuinely universal abstract patterns. | New Linear issue when 3+ audit-skills exist in catalog                     |
-| **Phase 3** (follow-up)      | WebSearch augmentation gated by `--with-websearch` flag.                                                                                                                                                                                       | Separate Linear issue                                                      |
+<!-- prettier-ignore -->
+| Phase | Scope | Status |
+| --- | --- | --- |
+| **Phase 1** (THIS issue, v1) | Add stack-detect step. Lens prompts read upstream stack report instead of doing per-lens detection. Keep ecosystem-level conditionals for now. | Pending decision on scope split — ADD to BAR-199 v1 OR split to follow-up? |
+| **Phase 2** (follow-up) | Skill-install step + author audit-skills per stack. Strip all stack-specific lists from lens prompts (loggers, validators, deprecated packages, test conventions, package-manager CLIs). Prompts become genuinely universal abstract patterns. | New Linear issue when 3+ audit-skills exist in catalog |
+| **Phase 3** (follow-up) | WebSearch augmentation gated by `--with-websearch` flag. | Separate Linear issue |
 
 ### Implementation impact
 
@@ -171,17 +175,18 @@ Follow-on to #94 (debug integration). Question raised: should `/bkit-design` and
 
 Walked both workflows. Findings:
 
-| Step            | Agent                                        | Reads                                    | Real codebase probe?                                                                                  |
-| --------------- | -------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| design 3        | `bkit-design-brainstorm-ideate-{1,2,3}`      | `design-input.md`                        | **Yes** — Read/Grep/Glob; surveys surface to propose approaches                                       |
-| design 4        | `bkit-design-generate`                       | the 3 brainstorms                        | No — merges artifacts                                                                                 |
-| design 5        | `bkit-design-review-{1,2}`                   | `design-v1-draft.md` + `design-input.md` | Has Grep/Bash but the prompt assesses **buildability/operability of the doc**. Probing is incidental. |
-| design 6,7      | `bkit-design-update`, `bkit-design-organise` | prior drafts/reviews                     | No                                                                                                    |
-| plan 3          | `bkit-plan-generate`                         | `plan-input.md` (= prompt + design)      | **Yes** — has to walk the actual files to enumerate tasks                                             |
-| plan 4          | `bkit-plan-review-{1,2,3}`                   | `plan-v1-draft.md` + `plan-input.md`     | Has Grep but checks tightness / dependency / regression-risk _of the plan_, not surface health        |
-| plan 6          | `bkit-plan-scope-check-{1,2}`                | `plan-v2-reviewed.md`                    | Doc-only                                                                                              |
-| build challenge | `bkit-build-challenge-{1,2}`                 | the diff                                 | Diff-scoped, not surface-wide                                                                         |
-| debug diagnose  | `bkit-debug-failure-diagnose`                | failure logs + repo                      | **Yes** — root-causes against live code (covered by #94)                                              |
+<!-- prettier-ignore -->
+| Step | Agent | Reads | Real codebase probe? |
+| --- | --- | --- | --- |
+| design 3 | `bkit-design-brainstorm-ideate-{1,2,3}` | `design-input.md` | **Yes** — Read/Grep/Glob; surveys surface to propose approaches |
+| design 4 | `bkit-design-generate` | the 3 brainstorms | No — merges artifacts |
+| design 5 | `bkit-design-review-{1,2}` | `design-v1-draft.md` + `design-input.md` | Has Grep/Bash but the prompt assesses **buildability/operability of the doc**. Probing is incidental. |
+| design 6,7 | `bkit-design-update`, `bkit-design-organise` | prior drafts/reviews | No |
+| plan 3 | `bkit-plan-generate` | `plan-input.md` (= prompt + design) | **Yes** — has to walk the actual files to enumerate tasks |
+| plan 4 | `bkit-plan-review-{1,2,3}` | `plan-v1-draft.md` + `plan-input.md` | Has Grep but checks tightness / dependency / regression-risk _of the plan_, not surface health |
+| plan 6 | `bkit-plan-scope-check-{1,2}` | `plan-v2-reviewed.md` | Doc-only |
+| build challenge | `bkit-build-challenge-{1,2}` | the diff | Diff-scoped, not surface-wide |
+| debug diagnose | `bkit-debug-failure-diagnose` | failure logs + repo | **Yes** — root-causes against live code (covered by #94) |
 
 ### Conclusion
 
@@ -783,19 +788,20 @@ No approach was fully adopted as consensus, and no good option was discarded. Th
 
 ## Risks
 
-| Risk                                                          | Severity          | Mitigation                                                                                                                                                                                                                                                 | Status     |
-| ------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Conditional-lens false-negative N/A is silent by construction | **CRITICAL**      | (a) inverse-evidence guard (`hasWebSurface=false but frameworks contains UI-shaped token` → CONCERNS); (b) Step 3 tracker-comment Applicability summary; (c) `[applicability-override=...]` re-invocation. None eliminate the risk; documented explicitly. | Mitigated  |
-| Conditional-lens false-positive (running on absent surface)   | MEDIUM            | Sanity-probe-before-emit clause: if zero matching files despite flag=true, emit `# Not Applicable (flag=true but no surface evidence)` and exit. 25-finding cap + explicit `location:` fields make noise identifiable.                                     | Mitigated  |
-| Reference-signal network reproducibility                      | MEDIUM            | `## Reference Repos Used` captures repo names + commit/tag + search query (same provenance discipline as `audit-install-skills.md`). Reproducibility is "explainable", not "identical".                                                                    | Mitigated  |
-| Second network surface opens with `--with-websearch`          | MEDIUM            | Opt-in only. Pass-2 prose "the only network surface" must be updated to "two opt-in network surfaces: Step 4 and Step 5 reference-signal". NOT a hidden surface.                                                                                           | Mitigated  |
-| Supply-chain `Bash` allowlist is prompt-level discipline      | MEDIUM            | Allowlist documented in prompt body + `.agents/prompts.md` § Tool set patterns. "Discipline, not sandbox" caveat explicit. Plan-time grep-gate verifies `NEVER git checkout` survives edits.                                                               | Mitigated  |
-| `status.json#steps[5].artifacts` grows 11 → 16                | MEDIUM            | Downstream readers MUST treat as variable-length list (review-2 O-5 gates at plan time). No hard-comparison to 11 or 16 in bkit-trackers.ts / cloud code.                                                                                                  | Mitigated  |
-| `audit-*` skills do not exist in registry yet (known Pass-2)  | ACCEPTED KNOWN    | Non-gating design. Audit runs to full strength on universal lenses regardless. Skill enrichment is latent until community/bkit authors them.                                                                                                               | Acceptable |
-| Universality constraint (zero library names) unenforceable    | ACCEPTED RESIDUAL | Per-prompt `**Lens discipline:**` clause + grep-gate in acceptance criteria. Review-time discipline (mirrors Pass-2).                                                                                                                                      | Accepted   |
-| AI/LLM lens self-reference on agent prompts                   | LOW               | Explicit `.agents/**` / `.cursor/**` / `.claude/**` scope exclusion in lens prompt body. Mitigated by plan-phase review.                                                                                                                                   | Noted      |
-| Ship-prune transience of auto-installed `audit-*` skills      | LOW               | Version capture in `audit-install-skills.md` makes divergence explainable. Reproducibility hedge is version log not persistence (Pass-2 posture).                                                                                                          | Noted      |
-| Token cost grows to ~4.5× design-triplet                      | ACKNOWLEDGED      | Frozen per comment 4539759063 §2 (no Sonnet downgrade this pass). Revisit after real-world usage if cost binds.                                                                                                                                            | Deferred   |
+<!-- prettier-ignore -->
+| Risk | Severity | Mitigation | Status |
+| --- | --- | --- | --- |
+| Conditional-lens false-negative N/A is silent by construction | **CRITICAL** | (a) inverse-evidence guard (`hasWebSurface=false but frameworks contains UI-shaped token` → CONCERNS); (b) Step 3 tracker-comment Applicability summary; (c) `[applicability-override=...]` re-invocation. None eliminate the risk; documented explicitly. | Mitigated |
+| Conditional-lens false-positive (running on absent surface) | MEDIUM | Sanity-probe-before-emit clause: if zero matching files despite flag=true, emit `# Not Applicable (flag=true but no surface evidence)` and exit. 25-finding cap + explicit `location:` fields make noise identifiable. | Mitigated |
+| Reference-signal network reproducibility | MEDIUM | `## Reference Repos Used` captures repo names + commit/tag + search query (same provenance discipline as `audit-install-skills.md`). Reproducibility is "explainable", not "identical". | Mitigated |
+| Second network surface opens with `--with-websearch` | MEDIUM | Opt-in only. Pass-2 prose "the only network surface" must be updated to "two opt-in network surfaces: Step 4 and Step 5 reference-signal". NOT a hidden surface. | Mitigated |
+| Supply-chain `Bash` allowlist is prompt-level discipline | MEDIUM | Allowlist documented in prompt body + `.agents/prompts.md` § Tool set patterns. "Discipline, not sandbox" caveat explicit. Plan-time grep-gate verifies `NEVER git checkout` survives edits. | Mitigated |
+| `status.json#steps[5].artifacts` grows 11 → 16 | MEDIUM | Downstream readers MUST treat as variable-length list (review-2 O-5 gates at plan time). No hard-comparison to 11 or 16 in bkit-trackers.ts / cloud code. | Mitigated |
+| `audit-*` skills do not exist in registry yet (known Pass-2) | ACCEPTED KNOWN | Non-gating design. Audit runs to full strength on universal lenses regardless. Skill enrichment is latent until community/bkit authors them. | Acceptable |
+| Universality constraint (zero library names) unenforceable | ACCEPTED RESIDUAL | Per-prompt `**Lens discipline:**` clause + grep-gate in acceptance criteria. Review-time discipline (mirrors Pass-2). | Accepted |
+| AI/LLM lens self-reference on agent prompts | LOW | Explicit `.agents/**` / `.cursor/**` / `.claude/**` scope exclusion in lens prompt body. Mitigated by plan-phase review. | Noted |
+| Ship-prune transience of auto-installed `audit-*` skills | LOW | Version capture in `audit-install-skills.md` makes divergence explainable. Reproducibility hedge is version log not persistence (Pass-2 posture). | Noted |
+| Token cost grows to ~4.5× design-triplet | ACKNOWLEDGED | Frozen per comment 4539759063 §2 (no Sonnet downgrade this pass). Revisit after real-world usage if cost binds. | Deferred |
 
 **Out-of-scope risks carried from Pass-2:** Stack-detect on polyglot / non-Node repos; external skill registry dependency; adversarial review of synthesis (audit is read-only terminal).
 
@@ -1127,12 +1133,13 @@ No agent framework matters if your underlying codebase has a fundamental securit
 
 When executing an audit across these frameworks, structure your review from four distinct angles:
 
-| Audit Angle                                   | What You Are Looking For                                                                                                                                                                             | Relevant Framework                    |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| **1. Tool & Capability Sandboxing**           | Are the functions/APIs exposed to the agent restricted? Does the agent have write access where it only needs read access? Is it running in an isolated environment (like a secure Docker container)? | OWASP Agentic Top 10 / AWS Guidelines |
-| **2. Prompt-as-Code Integrity**               | Are system prompts hardcoded haphazardly, or are they version-controlled, sanitized, and isolated from user-facing inputs to prevent context poisoning?                                              | MITRE ATLAS / NIST AI RMF             |
-| **3. Supply Chain & Framework Dependency**    | Are the orchestration libraries (e.g., LangChain, AutoGen, CrewAI) pinned to secure versions? Are you auditing third-party plugins for supply chain vulnerabilities?                                 | NIST SSDF / AWS Guidance              |
-| **4. Deterministic Logging & Blast Radiuses** | If an agent goes into an infinite loop or executes a destructive command, does the codebase have hard token limits, cost caps, and comprehensive execution logs for post-incident forensics?         | OWASP SAMM / OWASP Agentic            |
+<!-- prettier-ignore -->
+| Audit Angle | What You Are Looking For | Relevant Framework |
+| --- | --- | --- |
+| **1. Tool & Capability Sandboxing** | Are the functions/APIs exposed to the agent restricted? Does the agent have write access where it only needs read access? Is it running in an isolated environment (like a secure Docker container)? | OWASP Agentic Top 10 / AWS Guidelines |
+| **2. Prompt-as-Code Integrity** | Are system prompts hardcoded haphazardly, or are they version-controlled, sanitized, and isolated from user-facing inputs to prevent context poisoning? | MITRE ATLAS / NIST AI RMF |
+| **3. Supply Chain & Framework Dependency** | Are the orchestration libraries (e.g., LangChain, AutoGen, CrewAI) pinned to secure versions? Are you auditing third-party plugins for supply chain vulnerabilities? | NIST SSDF / AWS Guidance |
+| **4. Deterministic Logging & Blast Radiuses** | If an agent goes into an infinite loop or executes a destructive command, does the codebase have hard token limits, cost caps, and comprehensive execution logs for post-incident forensics? | OWASP SAMM / OWASP Agentic |
 
 > **Pro-Tip for Agentic Code Audits:** Never allow an agent to execute raw string outputs as code (e.g., using python eval()) without a strict, isolated, stateless sandbox environment. This is historically the #1 vector for Remote Code Execution (RCE) in agentic codebases.
 
@@ -1480,8 +1487,9 @@ Concrete exemplar (app#775, the confirmed instance under #776): "what do we call
 
 ### Proposed lens
 
-| WS    | Slug         | Class           | Type                      | Probe summary                                                                                                                                                 |
-| ----- | ------------ | --------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| WS | Slug | Class | Type | Probe summary |
+| --- | --- | --- | --- | --- |
 | (new) | `logic-dupe` | maintainability | **universal** (always-on) | Same conceptual rule implemented inline in N places with divergent load-bearing details. AST/semantic-aware where available, shape-pattern ripgrep where not. |
 
 Shapes to hunt (from #776):
@@ -1571,15 +1579,16 @@ Three facts that shaped the answer:
 
 Not topic — **evidence modality + trigger**. That is what determines tool surface, safety posture, and where a check may legally run. Grouping by topic is exactly how this issue ended up with "the synthesiser must dedup" and "the debt lens should read `deferrals.jsonl`" in the same place: the first is a pipeline contract that blocks everything, the second is a prompt-text edit that blocks nothing.
 
-| WS    | Name                        | Owns                                                                          | Does not own                                |
-| ----- | --------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
-| **A** | Audit engine                | Orchestrator, keystone, enrichment, contracts, synthesis, reporting, registry | Any probe content                           |
-| **B** | Universal static lenses     | Always-on probe charters                                                      | Gating mechanism                            |
-| **C** | Conditional static lenses   | Flag-gated probe charters                                                     | Web-product family (→ D)                    |
-| **D** | Web-product lens family     | SEO/AIO/IA, analytics, web-perf, DX                                           | The conditional model itself (→ A1)         |
-| **E** | Runtime & rendered evidence | Anything needing a live system                                                | Offensive probing (→ F)                     |
-| **F** | Adversarial / red-team      | Live attack harness, payload corpus, authorization boundary                   | Static reasoning about exploitability (→ C) |
-| **G** | Triggers & automation       | _When_ audits fire, scope, dedup, convergence                                 | Probes                                      |
+<!-- prettier-ignore -->
+| WS | Name | Owns | Does not own |
+| --- | --- | --- | --- |
+| **A** | Audit engine | Orchestrator, keystone, enrichment, contracts, synthesis, reporting, registry | Any probe content |
+| **B** | Universal static lenses | Always-on probe charters | Gating mechanism |
+| **C** | Conditional static lenses | Flag-gated probe charters | Web-product family (→ D) |
+| **D** | Web-product lens family | SEO/AIO/IA, analytics, web-perf, DX | The conditional model itself (→ A1) |
+| **E** | Runtime & rendered evidence | Anything needing a live system | Offensive probing (→ F) |
+| **F** | Adversarial / red-team | Live attack harness, payload corpus, authorization boundary | Static reasoning about exploitability (→ C) |
+| **G** | Triggers & automation | _When_ audits fire, scope, dedup, convergence | Probes |
 
 ### The one structural change to the PASSed design
 
@@ -1595,50 +1604,53 @@ This needs Pass-4 ratification in the design doc. It is a decomposition change, 
 
 ### From this issue's body
 
-| #   | Idea                                                                                                 | →   | Issue                           |
-| --- | ---------------------------------------------------------------------------------------------------- | --- | ------------------------------- |
-| 1   | 10-step pipeline: stack-detect, skill-install, synthesise, organise, summary, orchestrator, registry | A   | #402                            |
-| 2   | Conditional-lens keystone: applicability flags + `requires:` + 3-state coverage                      | A1  | #402                            |
-| 3   | 11 baseline universal lenses                                                                         | B1  | #403                            |
-| 4   | Supply-chain / CI-CD security lens (near-universal, needs `Bash`)                                    | B1  | #403                            |
-| 5   | Static UI/UX lens (absorbs deferred a11y/i18n)                                                       | C   | #405                            |
-| 6   | Data-layer / DB lens (conditional)                                                                   | C   | #405                            |
-| 7   | AI/LLM safety lens (conditional)                                                                     | C   | #405                            |
-| 8   | Reference-repo signal (`--with-websearch`, down-weighted)                                            | C   | #405                            |
-| 9   | Legacy `bkit-utility-audit-*` deprecation → deletion                                                 | A7  | #402 (deletion blocked on #406) |
+<!-- prettier-ignore -->
+| # | Idea | → | Issue |
+| --- | --- | --- | --- |
+| 1 | 10-step pipeline: stack-detect, skill-install, synthesise, organise, summary, orchestrator, registry | A | #402 |
+| 2 | Conditional-lens keystone: applicability flags + `requires:` + 3-state coverage | A1 | #402 |
+| 3 | 11 baseline universal lenses | B1 | #403 |
+| 4 | Supply-chain / CI-CD security lens (near-universal, needs `Bash`) | B1 | #403 |
+| 5 | Static UI/UX lens (absorbs deferred a11y/i18n) | C | #405 |
+| 6 | Data-layer / DB lens (conditional) | C | #405 |
+| 7 | AI/LLM safety lens (conditional) | C | #405 |
+| 8 | Reference-repo signal (`--with-websearch`, down-weighted) | C | #405 |
+| 9 | Legacy `bkit-utility-audit-*` deprecation → deletion | A7 | #402 (deletion blocked on #406) |
 
 ### From the comment thread
 
-| Date       | Idea                                                                                                                                                                                                                                              | →                                                        | Issue            |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------------- |
-| 2026-05-21 | Architecture change: stack-detect + skill-install + universal-pattern prompts                                                                                                                                                                     | A2, A3                                                   | #402             |
-| 2026-05-29 | Candidate Phase-2 lenses discussion (3 ideas evaluated)                                                                                                                                                                                           | split C / E3                                             | #405, #206       |
-| 2026-05-30 | Tier-1 domain gaps: supply-chain, data-layer, AI/LLM                                                                                                                                                                                              | B1, C                                                    | #403, #405       |
-| 2026-06-08 | Agentic audit frameworks — OWASP Agentic Top-10, MITRE ATLAS, AWS agentic, SAMM, SSDF; 4 audit dimensions (tool sandboxing, prompt-as-code integrity, agent-framework supply chain, deterministic logging & blast radius)                         | C (`ai-llm` charter)                                     | #405             |
-| 2026-06-08 | Open-source tooling: Promptfoo, RepoAudit, LLMAudit                                                                                                                                                                                               | C (skill-install candidates) + F (payload corpus)        | #405, #309       |
-| 2026-06-14 | #260 Milestone Orchestrator composes the audit as its "quality brain"; is also an automated-trigger home                                                                                                                                          | G1 overlap — **decision needed**                         | #324             |
-| 2026-06-16 | #263 testing doctrine → `tests` lens grades against the tier rubric; detectability buckets; hollow-boundary is runtime-only                                                                                                                       | B1 (`tests`), E2 (proof)                                 | #403, #83        |
-| 2026-07-03 | Coverage % **and coverage scope** (integration covers affected surfaces, not the whole app)                                                                                                                                                       | B1 (`tests`)                                             | #403             |
-| 2026-07-03 | Pass-3.1 amendment — doctrine-graded coverage folded into the `tests` lens                                                                                                                                                                        | B1                                                       | #403             |
-| 2026-07-05 | Retire GCP logs; audit log-scan moves onto the `debug-fetch` contract                                                                                                                                                                             | **E1**                                                   | **#406**         |
+<!-- prettier-ignore -->
+| Date | Idea | → | Issue |
+| --- | --- | --- | --- |
+| 2026-05-21 | Architecture change: stack-detect + skill-install + universal-pattern prompts | A2, A3 | #402 |
+| 2026-05-29 | Candidate Phase-2 lenses discussion (3 ideas evaluated) | split C / E3 | #405, #206 |
+| 2026-05-30 | Tier-1 domain gaps: supply-chain, data-layer, AI/LLM | B1, C | #403, #405 |
+| 2026-06-08 | Agentic audit frameworks — OWASP Agentic Top-10, MITRE ATLAS, AWS agentic, SAMM, SSDF; 4 audit dimensions (tool sandboxing, prompt-as-code integrity, agent-framework supply chain, deterministic logging & blast radius) | C (`ai-llm` charter) | #405 |
+| 2026-06-08 | Open-source tooling: Promptfoo, RepoAudit, LLMAudit | C (skill-install candidates) + F (payload corpus) | #405, #309 |
+| 2026-06-14 | #260 Milestone Orchestrator composes the audit as its "quality brain"; is also an automated-trigger home | G1 overlap — **decision needed** | #324 |
+| 2026-06-16 | #263 testing doctrine → `tests` lens grades against the tier rubric; detectability buckets; hollow-boundary is runtime-only | B1 (`tests`), E2 (proof) | #403, #83 |
+| 2026-07-03 | Coverage % **and coverage scope** (integration covers affected surfaces, not the whole app) | B1 (`tests`) | #403 |
+| 2026-07-03 | Pass-3.1 amendment — doctrine-graded coverage folded into the `tests` lens | B1 | #403 |
+| 2026-07-05 | Retire GCP logs; audit log-scan moves onto the `debug-fetch` contract | **E1** | **#406** |
 | 2026-07-06 | Silent-corruption lens layer: privilege/contract-conformance lens; derived-data/dual-source lens; `reliability` up-rank; `tests` discrimination probes; `observability` double-blind; `security` stated non-catch; **synthesise dedup→correlate** | C (2 new lenses), B1 (3 probe changes), A4 (correlation) | #405, #403, #402 |
-| 2026-07-13 | N/A coverage state must also cover dead log sources — consumer holding `audit-gcp-errors.sh` removal                                                                                                                                              | **E1**                                                   | **#406**         |
-| 2026-07-15 | `debt` lens reads `deferrals.jsonl` + `failures.jsonl` (#234): fold same-`key` rows, `TRIAGED` is open work, rank CRITICAL then oldest, cross-check against tracker+code, read-only                                                               | B1 (`debt`)                                              | #403             |
-| 2026-07-17 | **`logic-dupe`** — divergent inline logic duplication + guard generation                                                                                                                                                                          | **B2**                                                   | **#404**         |
-| 2026-07-17 | Suppression/escape-hatch debt → `debt`; dead config & feature flags → `dead-code`; leftover cruft → `debt` + `tests`                                                                                                                              | B1                                                       | #403             |
-| 2026-07-29 | Audit output from lower-tier models                                                                                                                                                                                                               | G3                                                       | #401             |
+| 2026-07-13 | N/A coverage state must also cover dead log sources — consumer holding `audit-gcp-errors.sh` removal | **E1** | **#406** |
+| 2026-07-15 | `debt` lens reads `deferrals.jsonl` + `failures.jsonl` (#234): fold same-`key` rows, `TRIAGED` is open work, rank CRITICAL then oldest, cross-check against tracker+code, read-only | B1 (`debt`) | #403 |
+| 2026-07-17 | **`logic-dupe`** — divergent inline logic duplication + guard generation | **B2** | **#404** |
+| 2026-07-17 | Suppression/escape-hatch debt → `debt`; dead config & feature flags → `dead-code`; leftover cruft → `debt` + `tests` | B1 | #403 |
+| 2026-07-29 | Audit output from lower-tier models | G3 | #401 |
 
 ### From sibling issues
 
-| Was                         | →   | Now                                                                       |
-| --------------------------- | --- | ------------------------------------------------------------------------- |
-| #83 runtime-probing lens    | E2  | re-scoped; capability-detection enum superseded by `debug-fetch` presence |
-| #206 seeded-render UX       | E3  | re-scoped; D6 manifest must be extensible for D's analytics + CWV         |
-| #207 web-product family     | D   | re-scoped; no longer owns inventing the conditional model (that is A1)    |
-| #309 red-team               | F   | re-scoped; shares attack taxonomy with C's `ai-llm`                       |
-| #324 recurring loop         | G1  | re-scoped; owns the shared delta-scoper + dedup ledger                    |
-| #331 silent-corruption      | G2  | **split** — lens half → #405 / #403 / #402; gate + behavioural proof stay |
-| #401 lower-tier-model audit | G3  | re-scoped as a _scoping_ problem, not a lens; fleshed out                 |
+<!-- prettier-ignore -->
+| Was | → | Now |
+| --- | --- | --- |
+| #83 runtime-probing lens | E2 | re-scoped; capability-detection enum superseded by `debug-fetch` presence |
+| #206 seeded-render UX | E3 | re-scoped; D6 manifest must be extensible for D's analytics + CWV |
+| #207 web-product family | D | re-scoped; no longer owns inventing the conditional model (that is A1) |
+| #309 red-team | F | re-scoped; shares attack taxonomy with C's `ai-llm` |
+| #324 recurring loop | G1 | re-scoped; owns the shared delta-scoper + dedup ledger |
+| #331 silent-corruption | G2 | **split** — lens half → #405 / #403 / #402; gate + behavioural proof stay |
+| #401 lower-tier-model audit | G3 | re-scoped as a _scoping_ problem, not a lens; fleshed out |
 
 **Nothing in the thread is unmapped.** The 2026-05-26/05-31 workflow-step comments are run logs; the 2026-05-27 authoring-rules reminder is standing doctrine, not scope.
 
@@ -1710,25 +1722,27 @@ Follow-up to the [reorganisation record](https://github.com/cbartens/bkit/issues
 
 ### Final state
 
-| WS                                  | Issue    | Sub-plans (inside the one issue)                                                                                                                      |
-| ----------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A** — Audit engine                | **#402** | A1 keystone · A2 stack-detect · A3 skill-install · A4 synthesise+correlate · A5 organise+summary · A6 orchestrator · A7 registry & legacy deprecation |
-| **B** — Universal lens layer        | **#403** | B1–B12 baseline lenses · B13 `logic-dupe`                                                                                                             |
-| **C** — Conditional lens layer      | **#405** | `ui-ux` · `contract-conformance` · `derived-data` · `ai-llm` · `reference-signal`                                                                     |
-| **D** — Web-product lens family     | **#207** | D1 SEO/AIO/IA · D2 analytics · D3 web-perf/CWV · D4 DX                                                                                                |
-| **E** — Runtime & rendered evidence | **#83**  | E1 log-scan → `debug-fetch` · E2 runtime lens · E3 seeded-render UX                                                                                   |
-| **F** — Red-team                    | **#309** | single                                                                                                                                                |
-| **G** — Triggers & automation       | **#324** | G1 recurring loop · G2 ship + milestone gates · G3 model-tier-scoped audit                                                                            |
+<!-- prettier-ignore -->
+| WS | Issue | Sub-plans (inside the one issue) |
+| --- | --- | --- |
+| **A** — Audit engine | **#402** | A1 keystone · A2 stack-detect · A3 skill-install · A4 synthesise+correlate · A5 organise+summary · A6 orchestrator · A7 registry & legacy deprecation |
+| **B** — Universal lens layer | **#403** | B1–B12 baseline lenses · B13 `logic-dupe` |
+| **C** — Conditional lens layer | **#405** | `ui-ux` · `contract-conformance` · `derived-data` · `ai-llm` · `reference-signal` |
+| **D** — Web-product lens family | **#207** | D1 SEO/AIO/IA · D2 analytics · D3 web-perf/CWV · D4 DX |
+| **E** — Runtime & rendered evidence | **#83** | E1 log-scan → `debug-fetch` · E2 runtime lens · E3 seeded-render UX |
+| **F** — Red-team | **#309** | single |
+| **G** — Triggers & automation | **#324** | G1 recurring loop · G2 ship + milestone gates · G3 model-tier-scoped audit |
 
 ### Merged and closed as duplicates
 
-| Closed                        | Into | Preserved as                                                          |
-| ----------------------------- | ---- | --------------------------------------------------------------------- |
-| #404 `logic-dupe` lens        | #403 | § B13 — full charter, exemplar, guard-generation deliverable          |
-| #406 log-scan → `debug-fetch` | #83  | § E1 — both defects, the fix, acceptance. Still the **do-first** item |
-| #206 seeded-render UX         | #83  | § E3 — D1–D6 decisions verbatim, architecture, honest cost            |
-| #331 silent-corruption gates  | #324 | § G2 — motivating case, three passes, gate design table               |
-| #401 lower-tier-model audit   | #324 | § G3 — attribution problem, scoping, open questions                   |
+<!-- prettier-ignore -->
+| Closed | Into | Preserved as |
+| --- | --- | --- |
+| #404 `logic-dupe` lens | #403 | § B13 — full charter, exemplar, guard-generation deliverable |
+| #406 log-scan → `debug-fetch` | #83 | § E1 — both defects, the fix, acceptance. Still the **do-first** item |
+| #206 seeded-render UX | #83 | § E3 — D1–D6 decisions verbatim, architecture, honest cost |
+| #331 silent-corruption gates | #324 | § G2 — motivating case, three passes, gate design table |
+| #401 lower-tier-model audit | #324 | § G3 — attribution problem, scoping, open questions |
 
 **No content was dropped.** Every merged issue's body was folded into the surviving issue before closing; the closed issues keep their bodies and now point at their new home.
 
@@ -1768,15 +1782,16 @@ Your instinct is right, but only for part of the milestone. **One design → thr
 
 ## Design-readiness triage
 
-| WS         | Design state                                                        | Next workflow                               |
-| ---------- | ------------------------------------------------------------------- | ------------------------------------------- |
-| **A** #402 | PASSed, contracts stale, 10 unfolded amendments                     | `/bkit-design` — **Pass 4, reconcile only** |
-| **B** #403 | Charter written (Pass-2 doc + amendments now consolidated)          | covered by A's Pass 4 → `/bkit-plan`        |
-| **C** #405 | Same, except `contract-conformance` / `derived-data` probes are new | covered by A's Pass 4 → `/bkit-plan`        |
-| **D** #207 | Overlap ownership explicitly unresolved                             | `/bkit-design` — **later**                  |
-| **E** #83  | E1 fully specified; E2/E3 need contract design                      | E1 now, design E2+E3 later                  |
-| **F** #309 | 5 open questions + a safety boundary                                | `/bkit-design` — **later**                  |
-| **G** #324 | Issue itself says "draft as a `/bkit-design` seed"                  | `/bkit-design` — **later**                  |
+<!-- prettier-ignore -->
+| WS | Design state | Next workflow |
+| --- | --- | --- |
+| **A** #402 | PASSed, contracts stale, 10 unfolded amendments | `/bkit-design` — **Pass 4, reconcile only** |
+| **B** #403 | Charter written (Pass-2 doc + amendments now consolidated) | covered by A's Pass 4 → `/bkit-plan` |
+| **C** #405 | Same, except `contract-conformance` / `derived-data` probes are new | covered by A's Pass 4 → `/bkit-plan` |
+| **D** #207 | Overlap ownership explicitly unresolved | `/bkit-design` — **later** |
+| **E** #83 | E1 fully specified; E2/E3 need contract design | E1 now, design E2+E3 later |
+| **F** #309 | 5 open questions + a safety boundary | `/bkit-design` — **later** |
+| **G** #324 | Issue itself says "draft as a `/bkit-design` seed" | `/bkit-design` — **later** |
 
 ## Recommended order
 
@@ -1814,16 +1829,17 @@ Each workstream issue now carries a **▶️ Next step** comment with its own re
 
 ### Order
 
-| #   | Action                                     | Issue            | Gate                                           |
-| --- | ------------------------------------------ | ---------------- | ---------------------------------------------- |
-| 1   | `/bkit-plan` → `/bkit-build` — **E1 only** | #83              | none — start now                               |
-| 2   | `/bkit-design` — **Pass 4, reconcile**     | #402             | none                                           |
-| 3   | `/bkit-plan` ×3                            | #402, #403, #405 | Pass-4 design PASS + version target confirmed  |
-| 4   | `/bkit-build` — A1–A5 → B, C → A6 → A7     | same             | plans                                          |
-| 5   | `/bkit-design`                             | #309             | queued (schema settled); independent otherwise |
-| 6   | `/bkit-design` — E2 + E3 together          | #83              | WS-A shipped + E1 landed                       |
-| 7   | `/bkit-design`                             | #207             | WS-A shipped + `ui-ux` battle-tested           |
-| 8   | `/bkit-design`                             | #324             | WS-A shipped **and 2–3 real runs banked**      |
+<!-- prettier-ignore -->
+| # | Action | Issue | Gate |
+| --- | --- | --- | --- |
+| 1 | `/bkit-plan` → `/bkit-build` — **E1 only** | #83 | none — start now |
+| 2 | `/bkit-design` — **Pass 4, reconcile** | #402 | none |
+| 3 | `/bkit-plan` ×3 | #402, #403, #405 | Pass-4 design PASS + version target confirmed |
+| 4 | `/bkit-build` — A1–A5 → B, C → A6 → A7 | same | plans |
+| 5 | `/bkit-design` | #309 | queued (schema settled); independent otherwise |
+| 6 | `/bkit-design` — E2 + E3 together | #83 | WS-A shipped + E1 landed |
+| 7 | `/bkit-design` | #207 | WS-A shipped + `ui-ux` battle-tested |
+| 8 | `/bkit-design` | #324 | WS-A shipped **and 2–3 real runs banked** |
 
 Serial throughout — concurrent bkit workflows on one clone collide on shared `dev`, working tree and `.git/config`. Use separate clones if parallelism is wanted.
 
@@ -1867,15 +1883,16 @@ This is the re-cut of the engine spec that previously lived in #80's body. #80 i
 
 ## Sub-plans
 
-| Sub-plan | Deliverable                                                                                                                                                                                                                         | Design-doc origin                                                                                               | Requires          |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------- |
-| **A1**   | Conditional-lens keystone — `## Applicability` block, `requires:` frontmatter contract, three-state `## Missing Lenses` (`ran` / `N/A — not applicable` / `crashed`), operator escapes (`[lenses=…]`, `[applicability-override=…]`) | WS-8 (#208, deleted)                                                                                            | —                 |
-| **A2**   | `bkit-audit-stack-detect` — `audit-stack.md` v2 schema + applicability flags + inverse-evidence guard                                                                                                                               | WS-1 (#187, deleted)                                                                                            | A1                |
-| **A3**   | `bkit-audit-install-skills` — skill install/uninstall reusing build/ship machinery, provenance log                                                                                                                                  | WS-2 (#188, deleted)                                                                                            | A2                |
-| **A4**   | `bkit-audit-synthesise` — dedup, coverage manifest, parse errors, **plus the dedup→correlate upgrade** (compose contract + reliability + tests findings into one "silent-corruption candidate")                                     | WS-4 (#190, deleted) + [2026-07-06 comment](https://github.com/cbartens/bkit/issues/80#issuecomment-5006018836) | A1                |
-| **A5**   | `bkit-audit-organise` + `bkit-audit-summary` — severity×class matrix, ranked list, workstream DAG, reference-signal down-rank grep-assert                                                                                           | WS-5 (#191, deleted)                                                                                            | A4                |
-| **A6**   | `bkit-audit.md` orchestrator — 10-step workflow, FID/lock/`status.jsonl`/gates/tracker comments/Failure Path, lens fan-out slots                                                                                                    | WS-6 (#192, deleted)                                                                                            | A1–A5, #403, #405 |
-| **A7**   | Registry & metadata — `.bkit/prompts.md` (Models + Audit Phase + tool-set rows), `.bkit/workflows.md`, `.bkit/docs.md` Workflow Matrix, legacy `bkit-utility-audit-*` deprecation headers                                           | WS-7 (#193, deleted)                                                                                            | A1–A6             |
+<!-- prettier-ignore -->
+| Sub-plan | Deliverable | Design-doc origin | Requires |
+| --- | --- | --- | --- |
+| **A1** | Conditional-lens keystone — `## Applicability` block, `requires:` frontmatter contract, three-state `## Missing Lenses` (`ran` / `N/A — not applicable` / `crashed`), operator escapes (`[lenses=…]`, `[applicability-override=…]`) | WS-8 (#208, deleted) | — |
+| **A2** | `bkit-audit-stack-detect` — `audit-stack.md` v2 schema + applicability flags + inverse-evidence guard | WS-1 (#187, deleted) | A1 |
+| **A3** | `bkit-audit-install-skills` — skill install/uninstall reusing build/ship machinery, provenance log | WS-2 (#188, deleted) | A2 |
+| **A4** | `bkit-audit-synthesise` — dedup, coverage manifest, parse errors, **plus the dedup→correlate upgrade** (compose contract + reliability + tests findings into one "silent-corruption candidate") | WS-4 (#190, deleted) + [2026-07-06 comment](https://github.com/cbartens/bkit/issues/80#issuecomment-5006018836) | A1 |
+| **A5** | `bkit-audit-organise` + `bkit-audit-summary` — severity×class matrix, ranked list, workstream DAG, reference-signal down-rank grep-assert | WS-5 (#191, deleted) | A4 |
+| **A6** | `bkit-audit.md` orchestrator — 10-step workflow, FID/lock/`status.jsonl`/gates/tracker comments/Failure Path, lens fan-out slots | WS-6 (#192, deleted) | A1–A5, #403, #405 |
+| **A7** | Registry & metadata — `.bkit/prompts.md` (Models + Audit Phase + tool-set rows), `.bkit/workflows.md`, `.bkit/docs.md` Workflow Matrix, legacy `bkit-utility-audit-*` deprecation headers | WS-7 (#193, deleted) | A1–A6 |
 
 **The design doc's WS-3 (16 lens prompts) is deliberately NOT here** — it has been extracted into WS-B (#403) and WS-C (#405). Rationale in the [reorg record on #80](https://github.com/cbartens/bkit/issues/80#issuecomment-5113784208): a single "16 lens prompts" workstream is exactly the lump that could not absorb ten post-design charter amendments, which is why they accumulated as comments for two months instead of landing.
 
@@ -1923,21 +1940,22 @@ This workstream owns the **always-on** lenses. Flag-gated lenses are WS-C (#405)
 
 Each `.bkit/prompts/bkit-audit-lens-{slug}.md`, `requires: always`, read-only reviewer skeleton (`Read, Grep, Glob, Write`), sibling-blind, 25-finding cap, emitting the `finding` block schema from WS-A.
 
-| #   | Slug            | Class           | Baseline probe                                                                                                                                                                                                                                                                               |
-| --- | --------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1  | `architecture`  | maintainability | import-graph fan-in/out hotspots, layering breaks, circular deps                                                                                                                                                                                                                             |
-| B2  | `hotpath`       | performance     | top-level static imports in entrypoints, sync I/O in async paths                                                                                                                                                                                                                             |
-| B3  | `config`        | compatibility   | build/runtime/deploy config vs actual code shape, manifest divergence                                                                                                                                                                                                                        |
-| B4  | `reliability`   | reliability     | silent swallows, broad catches, unbounded queues, races                                                                                                                                                                                                                                      |
-| B5  | `observability` | operability     | failure surfaces with no logs/metrics, missing context tags, PII in logs                                                                                                                                                                                                                     |
-| B6  | `debt`          | maintainability | `TODO`/`FIXME`/`HACK`/`XXX` + ticket-ID grep, workarounds without exit conditions                                                                                                                                                                                                            |
-| B7  | `dead-code`     | maintainability | unreferenced exports, orphan files, dupe utilities                                                                                                                                                                                                                                           |
-| B8  | `deps`          | compatibility   | manifest-driven dep hygiene, ESM/CJS interop traps, unmaintained packages                                                                                                                                                                                                                    |
-| B9  | `security`      | security        | auth holes, input validation, secrets handling, data leakage                                                                                                                                                                                                                                 |
-| B10 | `supply-chain`  | security        | CI/CD hardening (unpinned action SHAs, `pull_request_target`, over-broad token perms, secrets in workflow logs) + supply chain (lockfile integrity, postinstall, typosquat/dependency-confusion, committed-secret & git-history scan, SBOM/provenance). Carries allowlisted read-only `Bash` |
-| B11 | `tests`         | testability     | mocked-only critical paths, missing integration tests, assertion strength                                                                                                                                                                                                                    |
-| B12 | `docs-drift`    | maintainability | `.bkit/docs.md` + project docs vs actual code domains, stale invariants                                                                                                                                                                                                                      |
-| B13 | `logic-dupe`    | maintainability | **NEW** — divergent inline logic duplication (§ below)                                                                                                                                                                                                                                       |
+<!-- prettier-ignore -->
+| # | Slug | Class | Baseline probe |
+| --- | --- | --- | --- |
+| B1 | `architecture` | maintainability | import-graph fan-in/out hotspots, layering breaks, circular deps |
+| B2 | `hotpath` | performance | top-level static imports in entrypoints, sync I/O in async paths |
+| B3 | `config` | compatibility | build/runtime/deploy config vs actual code shape, manifest divergence |
+| B4 | `reliability` | reliability | silent swallows, broad catches, unbounded queues, races |
+| B5 | `observability` | operability | failure surfaces with no logs/metrics, missing context tags, PII in logs |
+| B6 | `debt` | maintainability | `TODO`/`FIXME`/`HACK`/`XXX` + ticket-ID grep, workarounds without exit conditions |
+| B7 | `dead-code` | maintainability | unreferenced exports, orphan files, dupe utilities |
+| B8 | `deps` | compatibility | manifest-driven dep hygiene, ESM/CJS interop traps, unmaintained packages |
+| B9 | `security` | security | auth holes, input validation, secrets handling, data leakage |
+| B10 | `supply-chain` | security | CI/CD hardening (unpinned action SHAs, `pull_request_target`, over-broad token perms, secrets in workflow logs) + supply chain (lockfile integrity, postinstall, typosquat/dependency-confusion, committed-secret & git-history scan, SBOM/provenance). Carries allowlisted read-only `Bash` |
+| B11 | `tests` | testability | mocked-only critical paths, missing integration tests, assertion strength |
+| B12 | `docs-drift` | maintainability | `.bkit/docs.md` + project docs vs actual code domains, stale invariants |
+| B13 | `logic-dupe` | maintainability | **NEW** — divergent inline logic duplication (§ below) |
 
 Probes stay stack-agnostic; stack-specificity arrives only via `audit-stack.md` + installed `audit-{token}` skills. The universality grep-gate (zero library names across `bkit-audit-lens-*.md`) applies here.
 
@@ -2050,13 +2068,14 @@ The web-product conditional family (SEO/AIO/IA, analytics, web-perf, DX) is larg
 
 ## Deliverable — 5 conditional lens prompts
 
-| Slug                   | Gate                            | Status                                   | Charter                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------------- | ------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ui-ux`                | `hasWebSurface`                 | designed (Pass 3)                        | Responsive mechanisms (breakpoints vs fixed `px` / hardcoded heights / absolute positioning), units & typography floors (`px` vs `rem`, sub-12px, tap targets), accessibility (missing `alt`, clickable non-interactive elements, unlabelled inputs, heading-order skips, focus states, `lang`), WCAG contrast **computed from design tokens**, design-system adherence (hardcoded colours/spacing off the scale), i18n (hardcoded strings, fixed widths vs longer translations), layout shift (images without dimensions). **Absorbs the a11y/i18n surface** v1 had listed out-of-scope. |
-| `contract-conformance` | `hasDb`                         | **sharpened — was `data-layer`**         | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `derived-data`         | `hasCache` / derived-store flag | **NEW — not in any design pass**         | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `ai-llm`               | `hasLLM`                        | designed, **needs framework enrichment** | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `reference-signal`     | `--with-websearch` opt-in       | designed (Pass 3)                        | Stack → popular reference repos → divergence from shared conventions as a **soft, lower-confidence external signal**. Emits `source: reference-repo`; WS-A enforces strict down-rank (never matrix top row, never ranked-list top 3, never exec summary). Capture repo names + commit/tag + query in `## Reference Repos Used` — reproducibility is "explainable", not "identical". Bound to top 3, structure/config/README only. The only network lens.                                                                                                                                  |
+<!-- prettier-ignore -->
+| Slug | Gate | Status | Charter |
+| --- | --- | --- | --- |
+| `ui-ux` | `hasWebSurface` | designed (Pass 3) | Responsive mechanisms (breakpoints vs fixed `px` / hardcoded heights / absolute positioning), units & typography floors (`px` vs `rem`, sub-12px, tap targets), accessibility (missing `alt`, clickable non-interactive elements, unlabelled inputs, heading-order skips, focus states, `lang`), WCAG contrast **computed from design tokens**, design-system adherence (hardcoded colours/spacing off the scale), i18n (hardcoded strings, fixed widths vs longer translations), layout shift (images without dimensions). **Absorbs the a11y/i18n surface** v1 had listed out-of-scope. |
+| `contract-conformance` | `hasDb` | **sharpened — was `data-layer`** | See below |
+| `derived-data` | `hasCache` / derived-store flag | **NEW — not in any design pass** | See below |
+| `ai-llm` | `hasLLM` | designed, **needs framework enrichment** | See below |
+| `reference-signal` | `--with-websearch` opt-in | designed (Pass 3) | Stack → popular reference repos → divergence from shared conventions as a **soft, lower-confidence external signal**. Emits `source: reference-repo`; WS-A enforces strict down-rank (never matrix top row, never ranked-list top 3, never exec summary). Capture repo names + commit/tag + query in `## Reference Repos Used` — reproducibility is "explainable", not "identical". Bound to top 3, structure/config/README only. The only network lens. |
 
 ## `contract-conformance` — the sharpened data-layer lens
 
@@ -2142,11 +2161,12 @@ Design them as **one pattern, not three**. A consumer who has implemented one sh
 
 ## Sub-plans
 
-| Sub-plan | Deliverable                                                                 | Depends on                                   |
-| -------- | --------------------------------------------------------------------------- | -------------------------------------------- |
-| **E1**   | Audit log-scan onto the `debug-fetch` contract + N/A for absent log sources | **nothing — independent of WS-A. DO FIRST.** |
-| **E2**   | Runtime-probing lens inside `/bkit-audit`                                   | WS-A (#402), E1's contract                   |
-| **E3**   | Seeded-render UX review — harness↔reviewer contract + vision reviewer       | WS-A (#402) finding schema; consumer harness |
+<!-- prettier-ignore -->
+| Sub-plan | Deliverable | Depends on |
+| --- | --- | --- |
+| **E1** | Audit log-scan onto the `debug-fetch` contract + N/A for absent log sources | **nothing — independent of WS-A. DO FIRST.** |
+| **E2** | Runtime-probing lens inside `/bkit-audit` | WS-A (#402), E1's contract |
+| **E3** | Seeded-render UX review — harness↔reviewer contract + vision reviewer | WS-A (#402) finding schema; consumer harness |
 
 ---
 
@@ -2511,21 +2531,23 @@ It owns **when audits fire and what they are scoped to**. It adds **no probes** 
 
 ### Shared machinery — build once, not three times
 
-| Primitive                                                     | Needed by                                                     | Failure mode if duplicated                                                                  |
-| ------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Delta-audit / commit-range scoper**                         | G1 (frequent cadence), G3 (low-tier commit slices)            | Two scopers that disagree about what "changed since" means                                  |
-| **Dedup + `FIXED-IN:{REF}` ledger**                           | G1 (re-finds everything every run), G2 (gate re-fires per PR) | Duplicate plans/builds for work already in flight — the #1 way a recurring loop eats itself |
-| **Triage policy** (severity × class → auto-eligible vs human) | G1, G2, G3                                                    | Three policies to approve and keep aligned                                                  |
+<!-- prettier-ignore -->
+| Primitive | Needed by | Failure mode if duplicated |
+| --- | --- | --- |
+| **Delta-audit / commit-range scoper** | G1 (frequent cadence), G3 (low-tier commit slices) | Two scopers that disagree about what "changed since" means |
+| **Dedup + `FIXED-IN:{REF}` ledger** | G1 (re-finds everything every run), G2 (gate re-fires per PR) | Duplicate plans/builds for work already in flight — the #1 way a recurring loop eats itself |
+| **Triage policy** (severity × class → auto-eligible vs human) | G1, G2, G3 | Three policies to approve and keep aligned |
 
 This is the main reason the three are one workstream rather than three issues.
 
 ## Sub-plans
 
-| Sub-plan | Trigger                                                               | Blocking?                                         |
-| -------- | --------------------------------------------------------------------- | ------------------------------------------------- |
-| **G1**   | Schedule (recurring, ~weekly full / frequent delta)                   | No — advisory up to the PR; human merges          |
-| **G2**   | Ship-phase (per-feature, at merge) + milestone-end (subsystem-scoped) | Ship gate: **yes**. Milestone run: advisory first |
-| **G3**   | On-demand + optional enrolment in G1's cadence                        | No — detective, after the fact                    |
+<!-- prettier-ignore -->
+| Sub-plan | Trigger | Blocking? |
+| --- | --- | --- |
+| **G1** | Schedule (recurring, ~weekly full / frequent delta) | No — advisory up to the PR; human merges |
+| **G2** | Ship-phase (per-feature, at merge) + milestone-end (subsystem-scoped) | Ship gate: **yes**. Milestone run: advisory first |
+| **G3** | On-demand + optional enrolment in G1's cadence | No — detective, after the fact |
 
 ---
 
@@ -2626,10 +2648,11 @@ Per-PR review and a per-lens audit would each have surfaced _smells_ (swallowed 
 
 ## The gate design — this sub-plan's core deliverable
 
-| Option                               | Scope / trigger                                  | Pro                            | Con                                                       |
-| ------------------------------------ | ------------------------------------------------ | ------------------------------ | --------------------------------------------------------- |
-| **A. Ship-phase gate** (`bkit-ship`) | per-feature, at merge, blocking                  | natural gate; blocks bad ships | per-feature scope misses cross-feature composition        |
-| **B. Milestone-end audit run**       | subsystem-scoped, when a feature group completes | sees composition               | later; needs a milestone trigger; non-blocking by default |
+<!-- prettier-ignore -->
+| Option | Scope / trigger | Pro | Con |
+| --- | --- | --- | --- |
+| **A. Ship-phase gate** (`bkit-ship`) | per-feature, at merge, blocking | natural gate; blocks bad ships | per-feature scope misses cross-feature composition |
+| **B. Milestone-end audit run** | subsystem-scoped, when a feature group completes | sees composition | later; needs a milestone trigger; non-blocking by default |
 
 **Decision — layered, not either/or:**
 

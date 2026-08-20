@@ -60,56 +60,60 @@ Sub-plan 3's three tasks are mostly well-executed: the Tier-3 detector (Task 10)
 
 ### Task 9 — Documentation + Contract Publication — `PASS (content present) / FAIL (template not synced)`
 
-| Done-when criterion                                                       | Status         | Evidence                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `docs/observability.md` contains literal `[bkit-ship-gate]`               | ✅ PASS (root) | Lines 41, 81–108: prefix registered in prefix list + dedicated section with exit-code table + every terminal route's stderr line. ⚠️ Template `.bkit/templates/docs/observability.md` NOT updated (0 occurrences).                                     |
-| `docs/deployments.md` contains literal `run_level=full` consumer contract | ✅ PASS (root) | Lines 192–214: Path A/B, capstone contract, `paths-ignore`/docs-short-circuit/`[skip ci]` opt-out, residual-risk naming. ⚠️ Template NOT updated → `bkit check` DRIFT (Gap 1).                                                                         |
-| `docs/deployments.md` contains `BKIT_SHIP_GATE_OVERRIDE` rollback audit   | ✅ PASS (root) | Lines 209–214: pin previous `@cbartens/bkit`; hold `bkit upgrade` for ship surfaces; audit `ship-gate-override` rows.                                                                                                                                  |
-| `docs/decisions.jsonl` row `384-ci-capstone-chain` exists                 | ✅ PASS        | Line 44: full reasoning chain (ci.yml:19-21/111/130/602 → single assertion strictly stronger than Step 3); discarded alternatives named (merge queue, required status checks, Step-1 probe).                                                           |
-| `docs/decisions.jsonl` row `384-tier3-promotion` exists                   | ✅ PASS        | Line 45: "one release of fail-open signal without muting"; cross-linked to deferral `384-promote-status-hole-detector-from-advisory-to-gate`.                                                                                                          |
-| `docs/deferrals.jsonl` seven out-of-scope rows present                    | ✅ PASS        | 5 pre-existing + 2 new (`384-merge-queue-unavailable-private-non-enterprise`, `384-required-status-checks-on-dev-via-bkit-protect-main`) = 7 out-of-scope. Mode-3 deferral (`384-mode-3-bookkeeping-e2e-deferred-to-341-live-run`) separate (Task 11). |
-| Each of the 5 pre-existing #384 keys `grep -c` ≤ 1                        | ✅ PASS        | All 5 keys verified count=1 (no duplicates).                                                                                                                                                                                                           |
-| `docs/knowledge.jsonl` gotchas surfaced                                   | ✅ PASS        | 2 new gotchas from execute-3 + content valid.                                                                                                                                                                                                          |
-| `docs/testing.md` ship coverage section                                   | ✅ PASS (root) | § "Ship merge-gate + bookkeeping test coverage (#384)": tiered carrier, stub-harness pattern, Tier-3 fail-open advisory channel. ⚠️ Template NOT updated.                                                                                              |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `docs/observability.md` contains literal `[bkit-ship-gate]` | ✅ PASS (root) | Lines 41, 81–108: prefix registered in prefix list + dedicated section with exit-code table + every terminal route's stderr line. ⚠️ Template `.bkit/templates/docs/observability.md` NOT updated (0 occurrences). |
+| `docs/deployments.md` contains literal `run_level=full` consumer contract | ✅ PASS (root) | Lines 192–214: Path A/B, capstone contract, `paths-ignore`/docs-short-circuit/`[skip ci]` opt-out, residual-risk naming. ⚠️ Template NOT updated → `bkit check` DRIFT (Gap 1). |
+| `docs/deployments.md` contains `BKIT_SHIP_GATE_OVERRIDE` rollback audit | ✅ PASS (root) | Lines 209–214: pin previous `@cbartens/bkit`; hold `bkit upgrade` for ship surfaces; audit `ship-gate-override` rows. |
+| `docs/decisions.jsonl` row `384-ci-capstone-chain` exists | ✅ PASS | Line 44: full reasoning chain (ci.yml:19-21/111/130/602 → single assertion strictly stronger than Step 3); discarded alternatives named (merge queue, required status checks, Step-1 probe). |
+| `docs/decisions.jsonl` row `384-tier3-promotion` exists | ✅ PASS | Line 45: "one release of fail-open signal without muting"; cross-linked to deferral `384-promote-status-hole-detector-from-advisory-to-gate`. |
+| `docs/deferrals.jsonl` seven out-of-scope rows present | ✅ PASS | 5 pre-existing + 2 new (`384-merge-queue-unavailable-private-non-enterprise`, `384-required-status-checks-on-dev-via-bkit-protect-main`) = 7 out-of-scope. Mode-3 deferral (`384-mode-3-bookkeeping-e2e-deferred-to-341-live-run`) separate (Task 11). |
+| Each of the 5 pre-existing #384 keys `grep -c` ≤ 1 | ✅ PASS | All 5 keys verified count=1 (no duplicates). |
+| `docs/knowledge.jsonl` gotchas surfaced | ✅ PASS | 2 new gotchas from execute-3 + content valid. |
+| `docs/testing.md` ship coverage section | ✅ PASS (root) | § "Ship merge-gate + bookkeeping test coverage (#384)": tiered carrier, stub-harness pattern, Tier-3 fail-open advisory channel. ⚠️ Template NOT updated. |
 
 ### Task 10 — Tier-3 Status-Hole Detector (Advisory, fail-open) — `PASS`
 
-| Done-when criterion                                                                    | Status  | Evidence                                                                                                                                                                                                                            |
-| -------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test bkit-status-hole-detector` passes                                           | ✅ PASS | `pnpm vitest run .bkit/src/bkit-status-hole-detector.test.ts` → 35/35 passed (97ms).                                                                                                                                                |
-| Detector CLI exits 0 with advisory output on a known-holey fixture                     | ✅ PASS | Ran `npx tsx ... /tmp/holey-status.jsonl` → printed advisory report (PATH_A, 3 missing, 1 unexpected); `EXIT_CODE=0`. No `process.exit(nonZero)` anywhere; main() returns unconditionally.                                          |
-| Path-conditional sets asserted                                                         | ✅ PASS | `computeMandatoryForPath` handles PATH_A (skips conflict-resolve + retry), PATH_B (skips retry), MERGED_ON_ENTRY (skips middle + retry), ABORTED (empty), IN_PROGRESS (empty). 5 classifyRun cases + 4 mandatory-set cases in test. |
-| Invented names (`ship-resume-human-override`) surface as delta                         | ✅ PASS | Test line 361 + 478; CLI run above surfaced it as `unexpected (invented names): ship-resume-human-override`.                                                                                                                        |
-| Expected set derived from `bkit-ship.md` (headings + literals), NEVER a parallel table | ✅ PASS | `deriveExpectedStepSetFromSource()` parses `## … Step N` headings + `step:"ship-…"` literals at runtime. Cross-checks against `SHIP_STEP_ORDER` (frozen canonical) via `checkSourceCanonicalDrift`.                                 |
-| Promotion criteria referenced from `docs/decisions.jsonl` `384-tier3-promotion`        | ✅ PASS | Detector source header (lines 7, 12) + `docs/testing.md` line 353 reference decision `384-tier3-promotion`.                                                                                                                         |
-| No `as any` / `@ts-ignore` / `.skip` / empty `catch`                                   | ✅ PASS | No anti-patterns. Two `catch (_e) { void _e; }` blocks (JSON parse skip line 316; realpath skip line 430) are intentional advisory fail-open paths with comments — not gate-weakening.                                              |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `pnpm test bkit-status-hole-detector` passes | ✅ PASS | `pnpm vitest run .bkit/src/bkit-status-hole-detector.test.ts` → 35/35 passed (97ms). |
+| Detector CLI exits 0 with advisory output on a known-holey fixture | ✅ PASS | Ran `npx tsx ... /tmp/holey-status.jsonl` → printed advisory report (PATH_A, 3 missing, 1 unexpected); `EXIT_CODE=0`. No `process.exit(nonZero)` anywhere; main() returns unconditionally. |
+| Path-conditional sets asserted | ✅ PASS | `computeMandatoryForPath` handles PATH_A (skips conflict-resolve + retry), PATH_B (skips retry), MERGED_ON_ENTRY (skips middle + retry), ABORTED (empty), IN_PROGRESS (empty). 5 classifyRun cases + 4 mandatory-set cases in test. |
+| Invented names (`ship-resume-human-override`) surface as delta | ✅ PASS | Test line 361 + 478; CLI run above surfaced it as `unexpected (invented names): ship-resume-human-override`. |
+| Expected set derived from `bkit-ship.md` (headings + literals), NEVER a parallel table | ✅ PASS | `deriveExpectedStepSetFromSource()` parses `## … Step N` headings + `step:"ship-…"` literals at runtime. Cross-checks against `SHIP_STEP_ORDER` (frozen canonical) via `checkSourceCanonicalDrift`. |
+| Promotion criteria referenced from `docs/decisions.jsonl` `384-tier3-promotion` | ✅ PASS | Detector source header (lines 7, 12) + `docs/testing.md` line 353 reference decision `384-tier3-promotion`. |
+| No `as any` / `@ts-ignore` / `.skip` / empty `catch` | ✅ PASS | No anti-patterns. Two `catch (_e) { void _e; }` blocks (JSON parse skip line 316; realpath skip line 430) are intentional advisory fail-open paths with comments — not gate-weakening. |
 
 ### Task 11 — E2E Validation + Rollout — `PASS (report); live E2E deferred (documented)`
 
-| Done-when criterion                                                | Status      | Evidence                                                                                                                                                                               |
-| ------------------------------------------------------------------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ship-e2e-validation.md` non-empty                                 | ✅ PASS     | 184 lines, comprehensive.                                                                                                                                                              |
-| Path A + Path B2 attempts recorded with PASS/FAIL against all 5 SC | ✅ PASS     | SC1–SC5 each tabled with mechanical PASS + live DEFERRED. Path A = 341 real ship (SC1/2/3/5 PASS, SC4 N/A). Path B2 = bats mechanical (all PASS).                                      |
-| Rate-limit sample present                                          | ✅ PASS     | `gh api rate_limit`: 5000/h, 5 used; poll-loop budget analysis (Risk 4).                                                                                                               |
-| Tier-3 watermark calibration note present                          | ✅ PASS     | 341 = clean baseline (0 holes); 261 = holey (3 missing); promotion target = 341.                                                                                                       |
-| Mode-3 deferral cross-ref recorded                                 | ✅ PASS     | § "Mode-3 deferral": deferred to `384-mode-3-bookkeeping-e2e-deferred-to-341-live-run` (depends on `341-live-run-verification-mode-1-and-mode-3`); recorded in `docs/deferrals.jsonl`. |
-| `--explain` vs `gh pr checks`                                      | ⚠️ DEFERRED | No live PR with capstone available; deferred to first real ship; no `docs/failures.jsonl` row (no disagreement observed). Documented.                                                  |
-| No silent drops (deferrals recorded)                               | ✅ PASS     | All deferred work (live Path A/B2 E2E, mode-3, --explain diff) is explicitly recorded with deferral keys, not silently omitted.                                                        |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `ship-e2e-validation.md` non-empty | ✅ PASS | 184 lines, comprehensive. |
+| Path A + Path B2 attempts recorded with PASS/FAIL against all 5 SC | ✅ PASS | SC1–SC5 each tabled with mechanical PASS + live DEFERRED. Path A = 341 real ship (SC1/2/3/5 PASS, SC4 N/A). Path B2 = bats mechanical (all PASS). |
+| Rate-limit sample present | ✅ PASS | `gh api rate_limit`: 5000/h, 5 used; poll-loop budget analysis (Risk 4). |
+| Tier-3 watermark calibration note present | ✅ PASS | 341 = clean baseline (0 holes); 261 = holey (3 missing); promotion target = 341. |
+| Mode-3 deferral cross-ref recorded | ✅ PASS | § "Mode-3 deferral": deferred to `384-mode-3-bookkeeping-e2e-deferred-to-341-live-run` (depends on `341-live-run-verification-mode-1-and-mode-3`); recorded in `docs/deferrals.jsonl`. |
+| `--explain` vs `gh pr checks` | ⚠️ DEFERRED | No live PR with capstone available; deferred to first real ship; no `docs/failures.jsonl` row (no disagreement observed). Documented. |
+| No silent drops (deferrals recorded) | ✅ PASS | All deferred work (live Path A/B2 E2E, mode-3, --explain diff) is explicitly recorded with deferral keys, not silently omitted. |
 
 ---
 
 ## Test Results
 
-| Gate                                                          | Result                                                | Notes                                                                                                                                 |
-| ------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm vitest run .bkit/src/bkit-status-hole-detector.test.ts` | ✅ 35/35 GREEN                                        | Task 10 targeted test.                                                                                                                |
-| `pnpm typecheck`                                              | ✅ GREEN                                              | `tsc --noEmit` clean.                                                                                                                 |
-| `pnpm test`                                                   | ⚠️ 1 FAILED / 2650 passed                             | `bkit-upgrade.integration.test.ts` #281 AC timeout (Gap 2 — pre-existing, unrelated, environmental). Excluding that flake: all green. |
-| `pnpm format:check`                                           | ✅ GREEN                                              | Prettier clean.                                                                                                                       |
-| `pnpm lint:prose`                                             | ✅ 0 errors (1 warning)                               | 1 write-good warning in `docs/testing.md:318` ("There is") — non-blocking.                                                            |
-| `pnpm slop:delta`                                             | ✅ GREEN                                              | 0 net-new, 0 worsened.                                                                                                                |
-| `pnpm test:bats`                                              | ✅ GREEN (per execute log + predecessor verification) | ship-gate.bats (16), ship-failure-path.bats, ship-worktree-ownership.bats.                                                            |
-| `pnpm bkit check`                                             | ❌ RED — 2 writes DRIFT                               | Gap 1: `docs/deployments.md` template not synced + `.bkit/version` pin. Was GREEN (0 writes) on origin/dev.                           |
+<!-- prettier-ignore -->
+| Gate | Result | Notes |
+| --- | --- | --- |
+| `pnpm vitest run .bkit/src/bkit-status-hole-detector.test.ts` | ✅ 35/35 GREEN | Task 10 targeted test. |
+| `pnpm typecheck` | ✅ GREEN | `tsc --noEmit` clean. |
+| `pnpm test` | ⚠️ 1 FAILED / 2650 passed | `bkit-upgrade.integration.test.ts` #281 AC timeout (Gap 2 — pre-existing, unrelated, environmental). Excluding that flake: all green. |
+| `pnpm format:check` | ✅ GREEN | Prettier clean. |
+| `pnpm lint:prose` | ✅ 0 errors (1 warning) | 1 write-good warning in `docs/testing.md:318` ("There is") — non-blocking. |
+| `pnpm slop:delta` | ✅ GREEN | 0 net-new, 0 worsened. |
+| `pnpm test:bats` | ✅ GREEN (per execute log + predecessor verification) | ship-gate.bats (16), ship-failure-path.bats, ship-worktree-ownership.bats. |
+| `pnpm bkit check` | ❌ RED — 2 writes DRIFT | Gap 1: `docs/deployments.md` template not synced + `.bkit/version` pin. Was GREEN (0 writes) on origin/dev. |
 
 ## Anti-Pattern Scan
 

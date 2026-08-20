@@ -103,11 +103,12 @@ _(Note: Comment 6 below overrides this to exclude `main` — final filter is `['
 
 **Branch-aware routing table (keyed on `head_branch`):**
 
-| Trigger                                                 | success    | failure     |
-| ------------------------------------------------------- | ---------- | ----------- |
-| `feat/**` / `fix/**` CI (pre-merge, via `pull_request`) | → **ship** | → debug     |
-| `dev` CI (post-merge to dev, via `push`)                | → nothing  | → **debug** |
-| `main` CI (post dev→main promotion, via `push`)         | → nothing  | → **debug** |
+<!-- prettier-ignore -->
+| Trigger | success | failure |
+| --- | --- | --- |
+| `feat/**` / `fix/**` CI (pre-merge, via `pull_request`) | → **ship** | → debug |
+| `dev` CI (post-merge to dev, via `push`) | → nothing | → **debug** |
+| `main` CI (post dev→main promotion, via `push`) | → nothing | → **debug** |
 
 _(Comment 6 overrides: `main` is manual/excluded.)_
 
@@ -197,11 +198,12 @@ Settled by the constraint above. The final `workflow_run` branch filter widens t
 
 #### Updated branch-aware routing table (FINAL)
 
-| Trigger                                                 | success    | failure     |
-| ------------------------------------------------------- | ---------- | ----------- |
-| `feat/**` / `fix/**` CI (pre-merge, via `pull_request`) | → **ship** | → debug     |
-| `dev` CI (post-merge to dev, via `push`)                | → nothing  | → **debug** |
-| `main` CI (post dev→main promotion)                     | **manual** | **manual**  |
+<!-- prettier-ignore -->
+| Trigger | success | failure |
+| --- | --- | --- |
+| `feat/**` / `fix/**` CI (pre-merge, via `pull_request`) | → **ship** | → debug |
+| `dev` CI (post-merge to dev, via `push`) | → nothing | → **debug** |
+| `main` CI (post dev→main promotion) | **manual** | **manual** |
 
 #### Plan scope update for `/bkit-plan`
 
@@ -215,12 +217,13 @@ Settled by the constraint above. The final `workflow_run` branch filter widens t
 
 Unpacked open item #4 ("loop/concurrency safety on dev pushes") into four sub-risks. One moves to the new dedicated concurrency ticket **#397**; three stay here as #363's responsibility.
 
-| Sub-risk                                                                                                                       | Owner            | Note                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Concurrency-key collapse on `dev` (`bkit-auto-dev` group, cancel vs queue semantic)                                            | **#363**         | #397 Requirements #3 and "Interaction with #363" explicitly defer the `cancel-in-progress: false` flip back here. The dev-debug "one at a time, **queue not cancel**" intent is the load-bearing decision.                         |
-| Self-triggering / debug-on-debug loop (per-session `MAX_NORMAL_ATTEMPT` resets each new `workflow_run` dispatch)               | **#363**         | Intrinsic to the dev auto-route path. Needs a cross-session attempt cap per FID (e.g. max N dispatched debug sessions within a window) or the loop can ping-pong until a human notices.                                            |
-| Stale-run guard for the no-PR `dev` case                                                                                       | **#363**         | `bkit-auto.md:86-92` matches `headSha` against the PR's `headRefOid`; on `dev` there's no PR — FID recovered from merge-commit scope, head compared against dev's current HEAD. Build-time verification rather than policy choice. |
-| Cross-surface race (dispatch-debug vs CI-ship on one FID; `bkit-auto-{ISSUE}` vs `bkit-auto-feat/{FID}` groups don't collapse) | **#397** (Gap 2) | Pre-existing, not introduced by #363.                                                                                                                                                                                              |
+<!-- prettier-ignore -->
+| Sub-risk | Owner | Note |
+| --- | --- | --- |
+| Concurrency-key collapse on `dev` (`bkit-auto-dev` group, cancel vs queue semantic) | **#363** | #397 Requirements #3 and "Interaction with #363" explicitly defer the `cancel-in-progress: false` flip back here. The dev-debug "one at a time, **queue not cancel**" intent is the load-bearing decision. |
+| Self-triggering / debug-on-debug loop (per-session `MAX_NORMAL_ATTEMPT` resets each new `workflow_run` dispatch) | **#363** | Intrinsic to the dev auto-route path. Needs a cross-session attempt cap per FID (e.g. max N dispatched debug sessions within a window) or the loop can ping-pong until a human notices. |
+| Stale-run guard for the no-PR `dev` case | **#363** | `bkit-auto.md:86-92` matches `headSha` against the PR's `headRefOid`; on `dev` there's no PR — FID recovered from merge-commit scope, head compared against dev's current HEAD. Build-time verification rather than policy choice. |
+| Cross-surface race (dispatch-debug vs CI-ship on one FID; `bkit-auto-{ISSUE}` vs `bkit-auto-feat/{FID}` groups don't collapse) | **#397** (Gap 2) | Pre-existing, not introduced by #363. |
 
 #### What this means for `/bkit-plan` #363
 

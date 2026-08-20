@@ -42,10 +42,11 @@ All seven findings reduce to one defect class — a load-bearing rule that lives
 
 `bkit-tests-check` is hard-coded in `docs/deployments.md`, in `bkit-protect-main.sh`, and would be a third copy in the gate. The CI workflow filename is the same class of literal. Both resolve from `package.json` (read by `jq`, survive `stripManagedKeys` because it touches only `scripts` + `devDependencies`):
 
-| Key                | Default            | Read by                      |
-| ------------------ | ------------------ | ---------------------------- |
+<!-- prettier-ignore -->
+| Key | Default | Read by |
+| --- | --- | --- |
 | `bkit.capstoneJob` | `bkit-tests-check` | gate; `bkit-protect-main.sh` |
-| `bkit.ciWorkflow`  | `ci.yml`           | gate's run-selection query   |
+| `bkit.ciWorkflow` | `ci.yml` | gate's run-selection query |
 
 **Config-home rule:** `.bkit/scripts/*` is Tier 1 (bkit-owned, force-overwritten on `bkit upgrade`) — anything a consumer may tune lives in `package.json`; only bkit-owned defaults live in a managed config script. Timeouts/limits are bkit-owned → one managed config script (`bkit-ship-timeouts.sh`) with units in identifiers, matching the `bkit-counter-bus-config.sh` precedent.
 
@@ -55,17 +56,18 @@ A head SHA legitimately carries several runs. Query `GET /repos/{o}/{r}/actions/
 
 ### Gate exit codes — one per condition, never collapsed
 
-| Code | Condition                                                | Merge                              |
-| ---- | -------------------------------------------------------- | ---------------------------------- |
-| 0    | Capstone present in selected run, concluded `success`    | proceed                            |
-| 10   | No run of the CI workflow exists at head                 | refuse                             |
-| 11   | Runs exist at head but none completed                    | refuse (caller may poll)           |
-| 12   | Selected run concluded failure                           | refuse                             |
-| 13   | Selected run exists but capstone job **absent**          | refuse — never vacuous pass        |
-| 14   | Green run exists, but at a **superseded** SHA            | refuse, print both SHAs + run URL  |
-| 15   | Selected run concluded `cancelled`                       | refuse — "dispatch, do not push"   |
-| 16   | Capstone green but a lane concluded `skipped` (not full) | refuse — vacuous green             |
-| 20   | API error / rate limit / auth                            | refuse, **distinct from "no run"** |
+<!-- prettier-ignore -->
+| Code | Condition | Merge |
+| --- | --- | --- |
+| 0 | Capstone present in selected run, concluded `success` | proceed |
+| 10 | No run of the CI workflow exists at head | refuse |
+| 11 | Runs exist at head but none completed | refuse (caller may poll) |
+| 12 | Selected run concluded failure | refuse |
+| 13 | Selected run exists but capstone job **absent** | refuse — never vacuous pass |
+| 14 | Green run exists, but at a **superseded** SHA | refuse, print both SHAs + run URL |
+| 15 | Selected run concluded `cancelled` | refuse — "dispatch, do not push" |
+| 16 | Capstone green but a lane concluded `skipped` (not full) | refuse — vacuous green |
+| 20 | API error / rate limit / auth | refuse, **distinct from "no run"** |
 
 Codes 10–16 mean "not validated". Code 20 means "unknown". Conflating them lets a degraded API read as an unvalidated head, and lets an unvalidated head read as an API blip. Distinguish a `skipped` lane (code 16) from a `cache_skip` sentinel green (code 0 + `--explain` note) — the SHA-cache short-circuit is keyed to the exact commit SHA and is sound.
 

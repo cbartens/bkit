@@ -68,17 +68,18 @@ Key `fail-open-empty-catch-is-a-documented-contract-adding-console-error-trigger
 
 ## Test Results
 
-| Gate                | Result                   | Notes                                                                                                 |
-| ------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `pnpm slop:delta`   | ✅ OK, 0 net-new         | **FIXED.** Was RED (4 added, +4.80). Now `added 0, resolved 0, net findings 0, net score 0.00`.       |
-| `pnpm lint:slop`    | ✅ report-only           | Findings 11 → 8; repo score 36.40 → 31.60 (the 4 error-swallowing findings cleared; baseline intact). |
-| `pnpm typecheck`    | ✅ GREEN                 | `tsc --noEmit` clean.                                                                                 |
-| `pnpm test`         | ✅ 75 files, 2651 passed | 2 skipped / 1 todo / **0 failed.** No regression.                                                     |
-| `pnpm test:bats`    | ✅ 140/140 passed        | ship-gate.bats (16), ship-failure-path.bats, ship-worktree-ownership.bats, + others.                  |
-| `pnpm format:check` | ✅ GREEN                 | All matched files use Prettier code style.                                                            |
-| `pnpm lint:prose`   | ✅ 0 errors, 1 warning   | Pre-existing write-good warning in `docs/testing.md:318` ("There is") — non-blocking.                 |
-| `pnpm bkit check`   | ✅ 0 writes, exit 0      | No drift (advisories.md regen is normal post-install, not drift).                                     |
-| `pnpm build`        | ✅ GREEN                 | `tsc && chmod +x dist/bkit-install.js` — dist synced to source.                                       |
+<!-- prettier-ignore -->
+| Gate | Result | Notes |
+| --- | --- | --- |
+| `pnpm slop:delta` | ✅ OK, 0 net-new | **FIXED.** Was RED (4 added, +4.80). Now `added 0, resolved 0, net findings 0, net score 0.00`. |
+| `pnpm lint:slop` | ✅ report-only | Findings 11 → 8; repo score 36.40 → 31.60 (the 4 error-swallowing findings cleared; baseline intact). |
+| `pnpm typecheck` | ✅ GREEN | `tsc --noEmit` clean. |
+| `pnpm test` | ✅ 75 files, 2651 passed | 2 skipped / 1 todo / **0 failed.** No regression. |
+| `pnpm test:bats` | ✅ 140/140 passed | ship-gate.bats (16), ship-failure-path.bats, ship-worktree-ownership.bats, + others. |
+| `pnpm format:check` | ✅ GREEN | All matched files use Prettier code style. |
+| `pnpm lint:prose` | ✅ 0 errors, 1 warning | Pre-existing write-good warning in `docs/testing.md:318` ("There is") — non-blocking. |
+| `pnpm bkit check` | ✅ 0 writes, exit 0 | No drift (advisories.md regen is normal post-install, not drift). |
+| `pnpm build` | ✅ GREEN | `tsc && chmod +x dist/bkit-install.js` — dist synced to source. |
 
 ## Anti-Pattern Scan
 

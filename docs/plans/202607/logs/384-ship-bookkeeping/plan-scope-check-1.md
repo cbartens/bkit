@@ -10,20 +10,21 @@ Failures: 1
 
 ## Per-task audit
 
-| Task                                                                             | Has Scope                                                                                                                                                                                                            | Has Criteria (`Done when`)                                                      | Has Verification                                                                                                                                                                                                                                                  | Notes                                                                                                                                                          |
-| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Task 0** — WS-1: #341 Serialisation Carve-Out (GO/NO-GO)                       | ✅ Explicit (verify #341 landed; confirm no concurrent bkit-ship.md PR; record `384-341-serialisation` decision)                                                                                                     | ✅ Concrete `Done when` with 4 clauses                                          | ✅ `git log --oneline d64ef5be..HEAD -- .bkit/workflows/bkit-ship.md`; `grep -c 'bkit_runtime_row ship'`, `'RUNTIME_DEVPUSHES'`, `'bkit_close_guard_checkout'`; `docs/decisions.jsonl` row                                                                        | Tight, single-concern gate. Verifiers are executable.                                                                                                          |
-| **Task 1** — WS-3: Configuration Surface                                         | ✅ Explicit (package.json keys; `bkit-ship-timeouts.sh` byte-identical pair; modify `bkit-protect-main.sh`; new unit test)                                                                                           | ✅ 4-clause `Done when`                                                         | ⚠️ 3 of 4 verifiers concrete (`pnpm test bkit-config-keys`, `pnpm test bkit-package-json`, grep for `jq` read); **4th clause "both byte-identical pairs verified by `bkit-dogfood-noop.integration.test.ts`" is forward-referenced — see MAJOR-1**                | Scope is single (config surface).                                                                                                                              |
-| **Task 2** — WS-2: gh Stub Harness + Fixture Corpus (GO/NO-GO cost hinge)        | ✅ Explicit (extend PATH-shim idiom; fixture dispatch layer; 7 + 1 fixtures; husky wiring; NO-GO escalation)                                                                                                         | ✅ 5-clause `Done when`                                                         | ✅ File existence; executable bit; smoke bats; `.husky/pre-push` content; `pnpm test:bats` exit 0                                                                                                                                                                 | Single concern (test infra). NO-GO explicitly plan-halting.                                                                                                    |
-| **Task 3** — WS-6: Bookkeeping Contract + Tier-2 Invariant Test (RED)            | ✅ Explicit (write `.bkit/src/bkit-ship-invariants.test.ts` against current prose; publish canonical 14 step keys + 8-path `BOOK_PATHS`; positive presence assertions)                                               | ✅ 3-clause `Done when` (test exists, FAILS on current, frozen lists published) | ✅ Test execution; published frozen lists                                                                                                                                                                                                                         | Single concern (the RED test).                                                                                                                                 |
-| **Task 4** — WS-4: `bkit-ship-gate.sh` + `tests/ship-gate.bats` (Tier-1 carrier) | ✅ Explicit (byte-identical pair; full contract; 10 named bats cases; override semantics)                                                                                                                            | ✅ 3-clause `Done when`                                                         | ⚠️ 2 of 3 verifiers concrete (`pnpm test:bats tests/ship-gate.bats`; `--explain` exit-code determinism); **3rd clause "byte-identical pair verified by `bkit-dogfood-noop.integration.test.ts`" forward-referenced — see MAJOR-1**                                | Single concern (the gate).                                                                                                                                     |
-| **Task 5** — WS-8: Failure Path + Worktree Hardening                             | ✅ Explicit (3 Failure Path sub-fixes + Step 12 ownership scoping; 2 new bats files)                                                                                                                                 | ✅ 4-clause `Done when`                                                         | ✅ `pnpm test:bats` (×2); `grep -c '2>/dev/null \|\| true'` reduction ≥ 6; `.deferred-blocked` writer wired into `@bkit-ship-deferred-sweep` prompt                                                                                                               | See MINOR-1 (bundles two distinct hardening areas) and MINOR-2 (`.bkit/workflows.md` shared with Task 8).                                                      |
-| **Task 6** — WS-5: Gate Distribution / Dogfood Mirroring                         | ✅ Explicit (verify install/upgrade placement; executable bit; partial-upgrade drift; enforce byte-identity via bkit-dogfood-noop)                                                                                   | ✅ 4-clause `Done when`                                                         | ✅ `pnpm test bkit-dogfood-noop`; manual `bkit check`; `ls -l`; `diff`                                                                                                                                                                                            | **Task 6 is the explicit owner of `bkit-dogfood-noop` extension** (per Gate 2 line 492 + Verification Plan line 509: "extended for two new scripts (Task 6)"). |
-| **Task 7** — WS-7: `bkit-ship.md` Structural Rewrite (Tier-2 GREEN)              | ✅ Explicit (rewrite to verify→base-check→integrate→re-validate→merge gate→merge→close; explicit `BOOK_ROOT` mode-3 conditional; timeouts sourced from `bkit-ship-timeouts.sh`; pre-merge snapshot; three deletions) | ✅ Multi-clause `Done when` (10+ checks)                                        | ✅ Tier-2 test GREEN; `grep -c 'git add -A'` = 0; every `gh pr merge` carries `--match-head-commit`; lock window rows; shape match; no bare numeric timeout; `BOOK_ROOT` at every write site; canonical 14 keys; `pnpm slop:delta` green; `pnpm lint:prose` green | Single file. Preserves Task 5 block explicitly (review-2 MINOR 4).                                                                                             |
-| **Task 8** — WS-9: Rendered Mirrors + Workflow Index Regeneration                | ✅ Explicit (regenerate via `bkit install`; re-section `.bkit/workflows.md` ship step table; restamp markers)                                                                                                        | ✅ 4-clause `Done when`                                                         | ✅ `bkit install` exit 0; `bkit check` no drift; `diff` of `.claude/commands/bkit-ship.md`; `.bkit/workflows.md` reflects new step numbers                                                                                                                        | Single concern (distribution). See MINOR-2 (shared file with Task 5).                                                                                          |
-| **Task 9** — WS-10: Documentation + Contract Publication                         | ✅ Explicit (5 docs: observability.md, deployments.md, decisions.jsonl ×2 keys, deferrals.jsonl with dedup guard, knowledge.jsonl)                                                                                   | ✅ 4-clause `Done when`                                                         | ✅ Literal-content greps; `grep -c '<key>'` ≤ 1 dedup; `pnpm test` passes                                                                                                                                                                                         | See MINOR-3 (bundles 5 docs, but all are "publish already-decided contracts").                                                                                 |
-| **Task 10** — WS-11: Tier-3 Status-Hole Detector                                 | ✅ Explicit (test file + detector; derive from `bkit-ship.md`; path-conditional sets; fail-open channel; pinned watermark)                                                                                           | ✅ 5-clause `Done when`                                                         | ✅ `pnpm test bkit-status-hole-detector`; CLI exits 0; invented names surface as delta; promotion criteria referenced                                                                                                                                             | Single concern (the detector). Maps to matrix row 8.                                                                                                           |
-| **Task 11** — WS-12: E2E Validation + Rollout                                    | ✅ Explicit (manual; `--explain` vs `gh pr checks`; Path A + Path B2; 5 SCs; rate-limit sample; Tier-3 watermark calibration; mode-3 deferral; release gate+config+prose together; validation report)                | ✅ 5-clause `Done when`                                                         | ✅ `ship-e2e-validation.md` exists + non-empty; PASS/FAIL per SC; rate-limit sample; mode-3 deferral cross-ref; `docs/failures.jsonl` rows                                                                                                                        | Single workstream. Maps to matrix row 9.                                                                                                                       |
+<!-- prettier-ignore -->
+| Task | Has Scope | Has Criteria (`Done when`) | Has Verification | Notes |
+| --- | --- | --- | --- | --- |
+| **Task 0** — WS-1: #341 Serialisation Carve-Out (GO/NO-GO) | ✅ Explicit (verify #341 landed; confirm no concurrent bkit-ship.md PR; record `384-341-serialisation` decision) | ✅ Concrete `Done when` with 4 clauses | ✅ `git log --oneline d64ef5be..HEAD -- .bkit/workflows/bkit-ship.md`; `grep -c 'bkit_runtime_row ship'`, `'RUNTIME_DEVPUSHES'`, `'bkit_close_guard_checkout'`; `docs/decisions.jsonl` row | Tight, single-concern gate. Verifiers are executable. |
+| **Task 1** — WS-3: Configuration Surface | ✅ Explicit (package.json keys; `bkit-ship-timeouts.sh` byte-identical pair; modify `bkit-protect-main.sh`; new unit test) | ✅ 4-clause `Done when` | ⚠️ 3 of 4 verifiers concrete (`pnpm test bkit-config-keys`, `pnpm test bkit-package-json`, grep for `jq` read); **4th clause "both byte-identical pairs verified by `bkit-dogfood-noop.integration.test.ts`" is forward-referenced — see MAJOR-1** | Scope is single (config surface). |
+| **Task 2** — WS-2: gh Stub Harness + Fixture Corpus (GO/NO-GO cost hinge) | ✅ Explicit (extend PATH-shim idiom; fixture dispatch layer; 7 + 1 fixtures; husky wiring; NO-GO escalation) | ✅ 5-clause `Done when` | ✅ File existence; executable bit; smoke bats; `.husky/pre-push` content; `pnpm test:bats` exit 0 | Single concern (test infra). NO-GO explicitly plan-halting. |
+| **Task 3** — WS-6: Bookkeeping Contract + Tier-2 Invariant Test (RED) | ✅ Explicit (write `.bkit/src/bkit-ship-invariants.test.ts` against current prose; publish canonical 14 step keys + 8-path `BOOK_PATHS`; positive presence assertions) | ✅ 3-clause `Done when` (test exists, FAILS on current, frozen lists published) | ✅ Test execution; published frozen lists | Single concern (the RED test). |
+| **Task 4** — WS-4: `bkit-ship-gate.sh` + `tests/ship-gate.bats` (Tier-1 carrier) | ✅ Explicit (byte-identical pair; full contract; 10 named bats cases; override semantics) | ✅ 3-clause `Done when` | ⚠️ 2 of 3 verifiers concrete (`pnpm test:bats tests/ship-gate.bats`; `--explain` exit-code determinism); **3rd clause "byte-identical pair verified by `bkit-dogfood-noop.integration.test.ts`" forward-referenced — see MAJOR-1** | Single concern (the gate). |
+| **Task 5** — WS-8: Failure Path + Worktree Hardening | ✅ Explicit (3 Failure Path sub-fixes + Step 12 ownership scoping; 2 new bats files) | ✅ 4-clause `Done when` | ✅ `pnpm test:bats` (×2); `grep -c '2>/dev/null \|\| true'` reduction ≥ 6; `.deferred-blocked` writer wired into `@bkit-ship-deferred-sweep` prompt | See MINOR-1 (bundles two distinct hardening areas) and MINOR-2 (`.bkit/workflows.md` shared with Task 8). |
+| **Task 6** — WS-5: Gate Distribution / Dogfood Mirroring | ✅ Explicit (verify install/upgrade placement; executable bit; partial-upgrade drift; enforce byte-identity via bkit-dogfood-noop) | ✅ 4-clause `Done when` | ✅ `pnpm test bkit-dogfood-noop`; manual `bkit check`; `ls -l`; `diff` | **Task 6 is the explicit owner of `bkit-dogfood-noop` extension** (per Gate 2 line 492 + Verification Plan line 509: "extended for two new scripts (Task 6)"). |
+| **Task 7** — WS-7: `bkit-ship.md` Structural Rewrite (Tier-2 GREEN) | ✅ Explicit (rewrite to verify→base-check→integrate→re-validate→merge gate→merge→close; explicit `BOOK_ROOT` mode-3 conditional; timeouts sourced from `bkit-ship-timeouts.sh`; pre-merge snapshot; three deletions) | ✅ Multi-clause `Done when` (10+ checks) | ✅ Tier-2 test GREEN; `grep -c 'git add -A'` = 0; every `gh pr merge` carries `--match-head-commit`; lock window rows; shape match; no bare numeric timeout; `BOOK_ROOT` at every write site; canonical 14 keys; `pnpm slop:delta` green; `pnpm lint:prose` green | Single file. Preserves Task 5 block explicitly (review-2 MINOR 4). |
+| **Task 8** — WS-9: Rendered Mirrors + Workflow Index Regeneration | ✅ Explicit (regenerate via `bkit install`; re-section `.bkit/workflows.md` ship step table; restamp markers) | ✅ 4-clause `Done when` | ✅ `bkit install` exit 0; `bkit check` no drift; `diff` of `.claude/commands/bkit-ship.md`; `.bkit/workflows.md` reflects new step numbers | Single concern (distribution). See MINOR-2 (shared file with Task 5). |
+| **Task 9** — WS-10: Documentation + Contract Publication | ✅ Explicit (5 docs: observability.md, deployments.md, decisions.jsonl ×2 keys, deferrals.jsonl with dedup guard, knowledge.jsonl) | ✅ 4-clause `Done when` | ✅ Literal-content greps; `grep -c '<key>'` ≤ 1 dedup; `pnpm test` passes | See MINOR-3 (bundles 5 docs, but all are "publish already-decided contracts"). |
+| **Task 10** — WS-11: Tier-3 Status-Hole Detector | ✅ Explicit (test file + detector; derive from `bkit-ship.md`; path-conditional sets; fail-open channel; pinned watermark) | ✅ 5-clause `Done when` | ✅ `pnpm test bkit-status-hole-detector`; CLI exits 0; invented names surface as delta; promotion criteria referenced | Single concern (the detector). Maps to matrix row 8. |
+| **Task 11** — WS-12: E2E Validation + Rollout | ✅ Explicit (manual; `--explain` vs `gh pr checks`; Path A + Path B2; 5 SCs; rate-limit sample; Tier-3 watermark calibration; mode-3 deferral; release gate+config+prose together; validation report) | ✅ 5-clause `Done when` | ✅ `ship-e2e-validation.md` exists + non-empty; PASS/FAIL per SC; rate-limit sample; mode-3 deferral cross-ref; `docs/failures.jsonl` rows | Single workstream. Maps to matrix row 9. |
 
 **Task completeness verdict:** 12/12 tasks have explicit Scope, Criteria, and Verification. Template contract met.
 
@@ -41,66 +42,70 @@ Failures: 1
 
 ## Scope creep (against issue scope)
 
-| Task | Touches in-scope item?                                          | Verdict                                                   |
-| ---- | --------------------------------------------------------------- | --------------------------------------------------------- |
-| 0    | Gates `.bkit/workflows/bkit-ship.md` work                       | ✅ in                                                     |
-| 1    | package.json + `bkit-ship-timeouts.sh` + `bkit-protect-main.sh` | ✅ enabling infrastructure for gate (in-scope)            |
-| 2    | `tests/fixtures/gh/` + `.husky/pre-push`                        | ✅ enabling test infrastructure (in-scope)                |
-| 3    | Tier-2 invariant test                                           | ✅ in (verification-gap detector's prose companion)       |
-| 4    | `bkit-ship-gate.sh` + `tests/ship-gate.bats`                    | ✅ in (merge gate mechanism)                              |
-| 5    | `.deferred-blocked` writer + Failure Path + Step 12             | ✅ in                                                     |
-| 6    | Dogfood mirroring of new scripts                                | ✅ in (rendered mirrors)                                  |
-| 7    | `bkit-ship.md` rewrite                                          | ✅ in                                                     |
-| 8    | Rendered mirrors + `.bkit/workflows.md` step table              | ✅ in                                                     |
-| 9    | Documentation                                                   | ✅ per-template (template mandates documentation updates) |
-| 10   | Tier-3 status-hole detector                                     | ✅ in (verification-gap detector)                         |
-| 11   | E2E validation                                                  | ✅ per-template (manual verification)                     |
+<!-- prettier-ignore -->
+| Task | Touches in-scope item? | Verdict |
+| --- | --- | --- |
+| 0 | Gates `.bkit/workflows/bkit-ship.md` work | ✅ in |
+| 1 | package.json + `bkit-ship-timeouts.sh` + `bkit-protect-main.sh` | ✅ enabling infrastructure for gate (in-scope) |
+| 2 | `tests/fixtures/gh/` + `.husky/pre-push` | ✅ enabling test infrastructure (in-scope) |
+| 3 | Tier-2 invariant test | ✅ in (verification-gap detector's prose companion) |
+| 4 | `bkit-ship-gate.sh` + `tests/ship-gate.bats` | ✅ in (merge gate mechanism) |
+| 5 | `.deferred-blocked` writer + Failure Path + Step 12 | ✅ in |
+| 6 | Dogfood mirroring of new scripts | ✅ in (rendered mirrors) |
+| 7 | `bkit-ship.md` rewrite | ✅ in |
+| 8 | Rendered mirrors + `.bkit/workflows.md` step table | ✅ in |
+| 9 | Documentation | ✅ per-template (template mandates documentation updates) |
+| 10 | Tier-3 status-hole detector | ✅ in (verification-gap detector) |
+| 11 | E2E validation | ✅ per-template (manual verification) |
 
 **No scope creep identified.**
 
 ## Scope gaps (in-scope items missing a task)
 
-| In-scope item (from issue)             | Owning task(s)                                        | Covered? |
-| -------------------------------------- | ----------------------------------------------------- | -------- |
-| `.bkit/workflows/bkit-ship.md` rewrite | Task 7 (structural) + Task 5 (Failure Path + Step 12) | ✅       |
-| `.deferred-blocked` writer             | Task 5 (implement) + Task 3 (assert)                  | ✅       |
-| Failure Path status target             | Task 5                                                | ✅       |
-| `.bkit/workflows.md` step table        | Task 8 (+ Task 5 wires prompt)                        | ✅       |
-| Rendered mirrors                       | Task 8 (regen) + Task 6 (verify distribution)         | ✅       |
-| Verification-gap detector              | Task 10 (Tier-3 status-hole detector)                 | ✅       |
+<!-- prettier-ignore -->
+| In-scope item (from issue) | Owning task(s) | Covered? |
+| --- | --- | --- |
+| `.bkit/workflows/bkit-ship.md` rewrite | Task 7 (structural) + Task 5 (Failure Path + Step 12) | ✅ |
+| `.deferred-blocked` writer | Task 5 (implement) + Task 3 (assert) | ✅ |
+| Failure Path status target | Task 5 | ✅ |
+| `.bkit/workflows.md` step table | Task 8 (+ Task 5 wires prompt) | ✅ |
+| Rendered mirrors | Task 8 (regen) + Task 6 (verify distribution) | ✅ |
+| Verification-gap detector | Task 10 (Tier-3 status-hole detector) | ✅ |
 
 **No scope gaps identified.**
 
 ## Derived Test Matrix ↔ Runbook bidirectional mapping
 
-| Matrix row                                                                                        | Maps to task(s) | Bidirectional? |
-| ------------------------------------------------------------------------------------------------- | --------------- | -------------- |
-| 1. Gate maps 7 fixtures → exit codes (`tests/ship-gate.bats`)                                     | Task 4          | ✅             |
-| 2. Prose invariants (`.bkit/src/bkit-ship-invariants.test.ts`)                                    | Task 3 + Task 7 | ✅             |
-| 3. `.deferred-blocked` writer fires on FAIL                                                       | Task 3 + Task 5 | ✅             |
-| 4. Failure Path append ordering + `BOOK_ROOT` (`tests/ship-failure-path.bats`)                    | Task 5          | ✅             |
-| 5. Step 12 worktree ownership (`tests/ship-worktree-ownership.bats`)                              | Task 5          | ✅             |
-| 6. Config keys (`.bkit/src/bkit-config-keys.test.ts`)                                             | Task 1          | ✅             |
-| 7. `bkit-ship-gate.sh` byte-identical + install/upgrade (`bkit-dogfood-noop.integration.test.ts`) | Task 6          | ✅             |
-| 8. Tier-3 detector (`.bkit/src/bkit-status-hole-detector.test.ts`)                                | Task 10         | ✅             |
-| 9. First real Path A + Path B2 ship (E2E manual)                                                  | Task 11         | ✅             |
+<!-- prettier-ignore -->
+| Matrix row | Maps to task(s) | Bidirectional? |
+| --- | --- | --- |
+| 1. Gate maps 7 fixtures → exit codes (`tests/ship-gate.bats`) | Task 4 | ✅ |
+| 2. Prose invariants (`.bkit/src/bkit-ship-invariants.test.ts`) | Task 3 + Task 7 | ✅ |
+| 3. `.deferred-blocked` writer fires on FAIL | Task 3 + Task 5 | ✅ |
+| 4. Failure Path append ordering + `BOOK_ROOT` (`tests/ship-failure-path.bats`) | Task 5 | ✅ |
+| 5. Step 12 worktree ownership (`tests/ship-worktree-ownership.bats`) | Task 5 | ✅ |
+| 6. Config keys (`.bkit/src/bkit-config-keys.test.ts`) | Task 1 | ✅ |
+| 7. `bkit-ship-gate.sh` byte-identical + install/upgrade (`bkit-dogfood-noop.integration.test.ts`) | Task 6 | ✅ |
+| 8. Tier-3 detector (`.bkit/src/bkit-status-hole-detector.test.ts`) | Task 10 | ✅ |
+| 9. First real Path A + Path B2 ship (E2E manual) | Task 11 | ✅ |
 
 Gate 2's "Verify test coverage against Derived Test Matrix" checkbox (plan line 491) reproduces this mapping verbatim. **Bidirectional map intact — every matrix row → ≥1 task; every task with a test target → ≥1 matrix row.**
 
 ## Inter-task scope overlap
 
-| File                                                     | Tasks touching it                                                                                                                     | Sequencing                                                                     | Ambiguity?     |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | -------------- |
-| `.bkit/workflows/bkit-ship.md`                           | Task 5 (Failure Path + Step 12 block edits); Task 7 (structural rewrite)                                                              | Task 5 → Task 7 (Task 7 explicitly preserves Task 5's block, review-2 MINOR 4) | ✅ Resolved    |
-| `.bkit/scripts/bkit-ship-gate.sh` + template             | Task 4 (creates); Task 6 (verifies distribution, no edit)                                                                             | Task 4 → Task 6                                                                | ✅ Resolved    |
-| `.bkit/scripts/bkit-protect-main.sh` + template          | Task 1 only                                                                                                                           | —                                                                              | ✅             |
-| `package.json`                                           | Task 1 only                                                                                                                           | —                                                                              | ✅             |
-| `.bkit/workflows.md`                                     | Task 5 (wires `.deferred-blocked` into `@bkit-ship-deferred-sweep` prompt); Task 8 (re-sections ship step table)                      | Task 5 → Task 8 (Task 8 dep on Task 5 transitively via Task 7)                 | ⚠️ See MINOR-2 |
-| `tests/ship-gate.bats`                                   | Task 2 (optional: "smoke bats case … or appended to `tests/ship-gate.bats` setup"); Task 4 (creates the file)                         | Task 2 → Task 4                                                                | ⚠️ See MINOR-4 |
-| `.bkit/src/bkit-ship-invariants.test.ts`                 | Task 3 (creates RED); Task 7 (makes GREEN by rewriting prose under test — no edit to test file)                                       | Task 3 → Task 7                                                                | ✅ Resolved    |
-| `bkit-dogfood-noop.integration.test.ts`                  | Task 1 (Done-when references as verifier); Task 4 (Done-when references as verifier); Task 6 (explicitly extends for two new scripts) | Task 6 owns extension; Tasks 1+4 reference                                     | ⚠️ See MAJOR-1 |
-| `.husky/pre-push`                                        | Task 2 only                                                                                                                           | —                                                                              | ✅             |
-| Rendered mirrors (`.claude/commands/bkit-ship.md`, etc.) | Task 8 only                                                                                                                           | —                                                                              | ✅             |
+<!-- prettier-ignore -->
+| File | Tasks touching it | Sequencing | Ambiguity? |
+| --- | --- | --- | --- |
+| `.bkit/workflows/bkit-ship.md` | Task 5 (Failure Path + Step 12 block edits); Task 7 (structural rewrite) | Task 5 → Task 7 (Task 7 explicitly preserves Task 5's block, review-2 MINOR 4) | ✅ Resolved |
+| `.bkit/scripts/bkit-ship-gate.sh` + template | Task 4 (creates); Task 6 (verifies distribution, no edit) | Task 4 → Task 6 | ✅ Resolved |
+| `.bkit/scripts/bkit-protect-main.sh` + template | Task 1 only | — | ✅ |
+| `package.json` | Task 1 only | — | ✅ |
+| `.bkit/workflows.md` | Task 5 (wires `.deferred-blocked` into `@bkit-ship-deferred-sweep` prompt); Task 8 (re-sections ship step table) | Task 5 → Task 8 (Task 8 dep on Task 5 transitively via Task 7) | ⚠️ See MINOR-2 |
+| `tests/ship-gate.bats` | Task 2 (optional: "smoke bats case … or appended to `tests/ship-gate.bats` setup"); Task 4 (creates the file) | Task 2 → Task 4 | ⚠️ See MINOR-4 |
+| `.bkit/src/bkit-ship-invariants.test.ts` | Task 3 (creates RED); Task 7 (makes GREEN by rewriting prose under test — no edit to test file) | Task 3 → Task 7 | ✅ Resolved |
+| `bkit-dogfood-noop.integration.test.ts` | Task 1 (Done-when references as verifier); Task 4 (Done-when references as verifier); Task 6 (explicitly extends for two new scripts) | Task 6 owns extension; Tasks 1+4 reference | ⚠️ See MAJOR-1 |
+| `.husky/pre-push` | Task 2 only | — | ✅ |
+| Rendered mirrors (`.claude/commands/bkit-ship.md`, etc.) | Task 8 only | — | ✅ |
 
 ## CRITICAL
 

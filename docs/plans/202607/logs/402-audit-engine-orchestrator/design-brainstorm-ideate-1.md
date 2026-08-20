@@ -14,11 +14,12 @@ Assigned emphasis: **Task 4 — synthesiser dedup→correlate.** Tasks 1/2/3/5 c
 
 The three legs of the silent-corruption composition are **not co-located**:
 
-| Leg                                   | Lens                          | Natural `location:`                     | Class       |
-| ------------------------------------- | ----------------------------- | --------------------------------------- | ----------- |
-| "subject S is privilege-restricted"   | `contract-conformance` (WS-C) | grant/policy/migration declaration      | security    |
-| "write to S discards its outcome"     | `reliability` (WS-B)          | request-path write site in product code | reliability |
-| "S's critical path is mock-collapsed" | `tests` (WS-B)                | a test file                             | testability |
+<!-- prettier-ignore -->
+| Leg | Lens | Natural `location:` | Class |
+| --- | --- | --- | --- |
+| "subject S is privilege-restricted" | `contract-conformance` (WS-C) | grant/policy/migration declaration | security |
+| "write to S discards its outcome" | `reliability` (WS-B) | request-path write site in product code | reliability |
+| "S's critical path is mock-collapsed" | `tests` (WS-B) | a test file | testability |
 
 Three files, three classes. The shipped dedup key `(class, normalized_location)` with a 5-line bucket
 **cannot express this join** — it is same-location/same-class by construction, and the Pass-2 cross-class
@@ -62,9 +63,10 @@ are reported, not guessed — see `unevaluable (no subject match)` below.
 
 **Rule table (canonical: `bkit-audit.md` Step 6; derived copy in the synthesiser prompt).**
 
-| rule id                       | subject kind | required legs (lens · signal)                                                 | amplifier legs                    | severity                              | class       |
-| ----------------------------- | ------------ | ----------------------------------------------------------------------------- | --------------------------------- | ------------------------------------- | ----------- |
-| `silent-corruption-candidate` | `store`      | `contract-conformance · restricted-subject` + `reliability · unchecked-write` | `tests · non-discriminating-test` | CRITICAL with amplifier, HIGH without | reliability |
+<!-- prettier-ignore -->
+| rule id | subject kind | required legs (lens · signal) | amplifier legs | severity | class |
+| --- | --- | --- | --- | --- | --- |
+| `silent-corruption-candidate` | `store` | `contract-conformance · restricted-subject` + `reliability · unchecked-write` | `tests · non-discriminating-test` | CRITICAL with amplifier, HIGH without | reliability |
 
 Required/amplifier split is load-bearing: the _harm_ is (restricted subject × discarded write outcome);
 the tests leg explains _why it stayed green_ and raises severity but is not a precondition. It also

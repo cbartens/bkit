@@ -37,13 +37,14 @@ DONE — Finding 8 (LOW): test stub SHA extraction without sanitization — adde
 
 ## Test Results
 
-| Suite                       | Command           | Result                                                   |
-| --------------------------- | ----------------- | -------------------------------------------------------- |
-| Vitest (unit + integration) | `pnpm test`       | 75 files, 2651 passed, 2 skipped, 1 todo — exit 0        |
-| Bats (shell + gate)         | `pnpm test:bats`  | 140 passed, 0 failed — exit 0 (incl. 16 ship-gate cases) |
-| Drift gate                  | `pnpm bkit check` | 0 writes — exit 0 (no `bkit-rendered-prompts-stale`)     |
-| Slop delta                  | `pnpm slop:delta` | 0 added / 0 worsened, net 0.00 — exit 0                  |
-| Typecheck                   | `pnpm typecheck`  | exit 0                                                   |
+<!-- prettier-ignore -->
+| Suite | Command | Result |
+| --- | --- | --- |
+| Vitest (unit + integration) | `pnpm test` | 75 files, 2651 passed, 2 skipped, 1 todo — exit 0 |
+| Bats (shell + gate) | `pnpm test:bats` | 140 passed, 0 failed — exit 0 (incl. 16 ship-gate cases) |
+| Drift gate | `pnpm bkit check` | 0 writes — exit 0 (no `bkit-rendered-prompts-stale`) |
+| Slop delta | `pnpm slop:delta` | 0 added / 0 worsened, net 0.00 — exit 0 |
+| Typecheck | `pnpm typecheck` | exit 0 |
 
 All findings remediated (8/8 DONE, 0 BLOCKED); all local tests pass.
 

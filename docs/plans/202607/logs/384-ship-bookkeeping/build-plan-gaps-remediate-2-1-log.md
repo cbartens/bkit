@@ -36,16 +36,17 @@ Re-read `384-ship-bookkeeping-plan-2.md`, `build-plan-verify-2-1.md`, and the st
 
 Plan-wording + knowledge-row change only — no source/test/workflow files modified, so test surfaces are unaffected by construction. Re-ran the full gate loop to confirm no regression:
 
-| Gate                                            | Result                                                                                     |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `typecheck`                                     | exit 0 (clean)                                                                             |
-| `test` (vitest)                                 | exit 0 — **2616 passed / 2 skipped / 1 todo** (matches verify baseline exactly)            |
-| `format:check`                                  | exit 0 (all pass)                                                                          |
-| `lint:slop`                                     | exit 0                                                                                     |
-| `lint:prose`                                    | exit 0 — **0 errors / 1 warning** (same pre-existing non-fatal warning as verify baseline) |
-| `test:bats` (SP2 carrier)                       | exit 0 — **140/140 GREEN** (matches verify baseline)                                       |
-| `bkit check`                                    | exit 0 — no `bkit-rendered-prompts-stale` drift                                            |
-| `bkit install --claude --cursor --opencode=zai` | exit 0 — **0 writes** (idempotent)                                                         |
+<!-- prettier-ignore -->
+| Gate | Result |
+| --- | --- |
+| `typecheck` | exit 0 (clean) |
+| `test` (vitest) | exit 0 — **2616 passed / 2 skipped / 1 todo** (matches verify baseline exactly) |
+| `format:check` | exit 0 (all pass) |
+| `lint:slop` | exit 0 |
+| `lint:prose` | exit 0 — **0 errors / 1 warning** (same pre-existing non-fatal warning as verify baseline) |
+| `test:bats` (SP2 carrier) | exit 0 — **140/140 GREEN** (matches verify baseline) |
+| `bkit check` | exit 0 — no `bkit-rendered-prompts-stale` drift |
+| `bkit install --claude --cursor --opencode=zai` | exit 0 — **0 writes** (idempotent) |
 
 ## Verdict rationale
 

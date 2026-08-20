@@ -12,45 +12,48 @@ Failures: 0
 
 Issue "Agreed solution" (plan-input.md:98–131) — each element mapped to a task:
 
-| Agreed-solution element                                                    | Task(s)                           | Status |
-| -------------------------------------------------------------------------- | --------------------------------- | ------ |
-| Two paths keyed on `git merge-base --is-ancestor` (A/B)                    | Task 7 Step 3                     | ✓      |
-| Frozen head — bookkeeping never rides branch                               | Task 7 Step 1, Task 3 (invariant) | ✓      |
-| Single capstone gate common to both paths                                  | Task 4                            | ✓      |
-| `gh pr update-branch` for B1                                               | Task 7 Step 4 B1                  | ✓      |
-| B2: worktree + `@bkit-ship-conflict-resolve` + push --force-with-lease     | Task 7 Step 4 B2                  | ✓      |
-| Re-validation mandatory in B (unconditional `gh workflow run`)             | Task 7 Step 5                     | ✓      |
-| Bookkeeping off the branch, `[skip ci]` push at close                      | Task 7 Step 1 + Steps 7+          | ✓      |
-| `.deferred-blocked` writer (Finding 2)                                     | Task 5(a)                         | ✓      |
-| Failure Path status target fix (Finding 4)                                 | Task 5(b),(c)                     | ✓      |
-| `--match-head-commit` on every merge                                       | Task 7 Step 6b, Task 3            | ✓      |
-| Verification gap (status-hole detector)                                    | Task 10                           | ✓      |
-| Resulting shape: start→verify→base-check→integrate→re-validate→merge→close | Task 7                            | ✓      |
+<!-- prettier-ignore -->
+| Agreed-solution element | Task(s) | Status |
+| --- | --- | --- |
+| Two paths keyed on `git merge-base --is-ancestor` (A/B) | Task 7 Step 3 | ✓ |
+| Frozen head — bookkeeping never rides branch | Task 7 Step 1, Task 3 (invariant) | ✓ |
+| Single capstone gate common to both paths | Task 4 | ✓ |
+| `gh pr update-branch` for B1 | Task 7 Step 4 B1 | ✓ |
+| B2: worktree + `@bkit-ship-conflict-resolve` + push --force-with-lease | Task 7 Step 4 B2 | ✓ |
+| Re-validation mandatory in B (unconditional `gh workflow run`) | Task 7 Step 5 | ✓ |
+| Bookkeeping off the branch, `[skip ci]` push at close | Task 7 Step 1 + Steps 7+ | ✓ |
+| `.deferred-blocked` writer (Finding 2) | Task 5(a) | ✓ |
+| Failure Path status target fix (Finding 4) | Task 5(b),(c) | ✓ |
+| `--match-head-commit` on every merge | Task 7 Step 6b, Task 3 | ✓ |
+| Verification gap (status-hole detector) | Task 10 | ✓ |
+| Resulting shape: start→verify→base-check→integrate→re-validate→merge→close | Task 7 | ✓ |
 
 Issue "In" scope (plan-input.md:141) — `bkit-ship.md`, `.deferred-blocked` writer, Failure Path target, `.bkit/workflows.md` step table, rendered mirrors — all have tasks. No agreed-solution element is missing a task.
 
 ## Design Acceptance Coverage — SC → Task
 
-| SC  | Success Criterion                                                                                               | Owning task(s)                                                                                                                                                       | Covered |
-| --- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| 1   | Merge refuses non-validated head (capstone present+`success` at PR head AND `--match-head-commit`)              | Task 4 (gate asserts capstone+success+headSha); Task 7 Step 6b (`--match-head-commit`); Task 3 (Tier-2 invariant: every `gh pr merge` carries `--match-head-commit`) | ✓       |
-| 2   | No non-integration push to `feat/{FID}`; every head move followed by re-validation                              | Task 3 (invariant: no commit/push to `feat/{FID}` outside B2 block); Task 7 Step 5 (re-validation on observed head move)                                             | ✓       |
-| 3   | One `status.jsonl` per run, one tree, terminal row, no dangling `IN_PROGRESS`; refusals + poll-timeout emit row | Task 7 Step 1 (BOOK_ROOT once); Task 7 Step 5/6 (row before each cap + per refusal); Task 5(b) (Failure Path reads BOOK_ROOT); Task 8 (workflows.md)                 | ✓       |
-| 4   | Deferred-sweep FAIL → handover artifact, never bare STOP                                                        | Task 5(a) (`.deferred-blocked` writer); Task 3 (writer referenced under BOOK_ROOT); Task 11 Manual Step 3 (trigger FAIL → handover)                                  | ✓       |
-| 5   | Staging never outside `BOOK_PATHS` allow-list, verified mechanically                                            | Task 3 (Tier-2 positive presence: `BOOK_PATHS` = frozen 8-path list, every `git add` resolves via it, no `git add -A`); Task 7 (uses `BOOK_PATHS`)                   | ✓       |
+<!-- prettier-ignore -->
+| SC | Success Criterion | Owning task(s) | Covered |
+| --- | --- | --- | --- |
+| 1 | Merge refuses non-validated head (capstone present+`success` at PR head AND `--match-head-commit`) | Task 4 (gate asserts capstone+success+headSha); Task 7 Step 6b (`--match-head-commit`); Task 3 (Tier-2 invariant: every `gh pr merge` carries `--match-head-commit`) | ✓ |
+| 2 | No non-integration push to `feat/{FID}`; every head move followed by re-validation | Task 3 (invariant: no commit/push to `feat/{FID}` outside B2 block); Task 7 Step 5 (re-validation on observed head move) | ✓ |
+| 3 | One `status.jsonl` per run, one tree, terminal row, no dangling `IN_PROGRESS`; refusals + poll-timeout emit row | Task 7 Step 1 (BOOK_ROOT once); Task 7 Step 5/6 (row before each cap + per refusal); Task 5(b) (Failure Path reads BOOK_ROOT); Task 8 (workflows.md) | ✓ |
+| 4 | Deferred-sweep FAIL → handover artifact, never bare STOP | Task 5(a) (`.deferred-blocked` writer); Task 3 (writer referenced under BOOK_ROOT); Task 11 Manual Step 3 (trigger FAIL → handover) | ✓ |
+| 5 | Staging never outside `BOOK_PATHS` allow-list, verified mechanically | Task 3 (Tier-2 positive presence: `BOOK_PATHS` = frozen 8-path list, every `git add` resolves via it, no `git add -A`); Task 7 (uses `BOOK_PATHS`) | ✓ |
 
 ### Narrative WHEN→THEN → Task
 
-| WHEN step                        | THEN → Task                                                                           |
-| -------------------------------- | ------------------------------------------------------------------------------------- |
-| ship starts                      | BOOK_ROOT/BOOK_PATHS resolved once → Task 7 Step 1                                    |
-| Path A (dev ancestor)            | no integration, straight to gate → Task 7 Step 3                                      |
-| Path B1 mergeable                | `gh pr update-branch` → Task 7 Step 4 B1                                              |
-| Path B2 conflicting              | worktree+resolve+push, or handover → Task 7 Step 4 B2                                 |
-| head SHA differs from ENTRY_HEAD | unconditional dispatch + bounded poll + status row → Task 7 Step 5                    |
+<!-- prettier-ignore -->
+| WHEN step | THEN → Task |
+| --- | --- |
+| ship starts | BOOK_ROOT/BOOK_PATHS resolved once → Task 7 Step 1 |
+| Path A (dev ancestor) | no integration, straight to gate → Task 7 Step 3 |
+| Path B1 mergeable | `gh pr update-branch` → Task 7 Step 4 B1 |
+| Path B2 conflicting | worktree+resolve+push, or handover → Task 7 Step 4 B2 |
+| head SHA differs from ENTRY_HEAD | unconditional dispatch + bounded poll + status row → Task 7 Step 5 |
 | capstone present+success+no skip | merge `--match-head-commit`; ELSE refuse w/ both SHAs+URL → Task 7 Step 6/6b + Task 4 |
-| deferred sweep FAILs             | `.deferred-blocked` + handover → Task 5(a)                                            |
-| run ends by any route            | one complete path-scoped record set in BOOK_ROOT + terminal row → Task 7 + Task 5     |
+| deferred sweep FAILs | `.deferred-blocked` + handover → Task 5(a) |
+| run ends by any route | one complete path-scoped record set in BOOK_ROOT + terminal row → Task 7 + Task 5 |
 
 Every SC and every narrative step maps to ≥1 task. No uncovered SC or WHEN→THEN.
 
@@ -58,15 +61,16 @@ Every SC and every narrative step maps to ≥1 task. No uncovered SC or WHEN→T
 
 The design + deferrals explicitly DEFERRED these. Verified NONE silently absorbed as tasks:
 
-| Deferred item (key)                                                                                     | Plan handling                                                                                                                                                         | Absorbed?                         |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Full kernel extraction (`384-extract-ship-git-ci-mechanics-into-a-tested-kernel`)                       | Only merge gate extracted (Task 4); base/integrate/re-validate stay prose. Out-of-Scope row present. Task 9 records ledger row.                                       | No ✓                              |
-| Status-hole detector promotion advisory→gate (`384-promote-status-hole-detector-from-advisory-to-gate`) | Task 10 ships fail-open advisory; Done-when asserts exit 0 advisory (NOT non-zero). Promotion criteria recorded by Task 9.                                            | No ✓                              |
-| Ship-without-branch-checkout outside B2 (`384-ship-without-a-writable-branch-checkout-outside-b2`)      | Only the 2 findings the deferral itself authorizes absorbed (Step 12 ownership → Task 5; push-timing → Task 7). Full removal NOT in scope.                            | No ✓ (authorized absorption only) |
-| Per-workflow rollback mechanism (`per-workflow-rollback-path-for-shipped-bkit-workflow-changes`)        | Manual rollback path documented in scope (Task 9, docs/deployments.md); the per-workflow _mechanism_ explicitly the follow-up. Suggested Scope Expansion row says so. | No ✓                              |
-| Merge queue                                                                                             | Out-of-Scope row (unavailable: private non-Enterprise repos). Not a task.                                                                                             | No ✓                              |
-| Surgical patch (13-step skeleton)                                                                       | Out-of-Scope row (REJECTED). Not a task.                                                                                                                              | No ✓                              |
-| `384-ship-redesign-sequence-after-341`                                                                  | Satisfied by plan existing + Task 0 recording serialisation decision. Does not absorb #341 work.                                                                      | No ✓                              |
+<!-- prettier-ignore -->
+| Deferred item (key) | Plan handling | Absorbed? |
+| --- | --- | --- |
+| Full kernel extraction (`384-extract-ship-git-ci-mechanics-into-a-tested-kernel`) | Only merge gate extracted (Task 4); base/integrate/re-validate stay prose. Out-of-Scope row present. Task 9 records ledger row. | No ✓ |
+| Status-hole detector promotion advisory→gate (`384-promote-status-hole-detector-from-advisory-to-gate`) | Task 10 ships fail-open advisory; Done-when asserts exit 0 advisory (NOT non-zero). Promotion criteria recorded by Task 9. | No ✓ |
+| Ship-without-branch-checkout outside B2 (`384-ship-without-a-writable-branch-checkout-outside-b2`) | Only the 2 findings the deferral itself authorizes absorbed (Step 12 ownership → Task 5; push-timing → Task 7). Full removal NOT in scope. | No ✓ (authorized absorption only) |
+| Per-workflow rollback mechanism (`per-workflow-rollback-path-for-shipped-bkit-workflow-changes`) | Manual rollback path documented in scope (Task 9, docs/deployments.md); the per-workflow _mechanism_ explicitly the follow-up. Suggested Scope Expansion row says so. | No ✓ |
+| Merge queue | Out-of-Scope row (unavailable: private non-Enterprise repos). Not a task. | No ✓ |
+| Surgical patch (13-step skeleton) | Out-of-Scope row (REJECTED). Not a task. | No ✓ |
+| `384-ship-redesign-sequence-after-341` | Satisfied by plan existing + Task 0 recording serialisation decision. Does not absorb #341 work. | No ✓ |
 
 Deferred-boundary intact. No deferred item silently absorbed into a build task.
 
@@ -83,13 +87,14 @@ No re-implementation of #341 territory. ✓
 
 ## Over-Engineering (YAGNI) Check
 
-| Artifact                                                   | Origin                                                                                                            | Verdict                                   |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `bkit.capstoneJob` / `bkit.ciWorkflow` config keys         | Design Decisions + config-home rule; retires 3rd hard-coded copy in `bkit-protect-main.sh`                        | Justified, design-mandated                |
-| `bkit-ship-timeouts.sh` managed config (5 named constants) | Design (plan-input.md:522): follows `bkit-counter-bus-config.sh` precedent; consumed by Task 7 Step 5 poll + lock | Justified, precedent-backed               |
-| `BKIT_SHIP_GATE_OVERRIDE` escape                           | Design Flow 5; gate writes own row                                                                                | Design-mandated                           |
-| `bkit ship:audit` CLI (Task 10)                            | "or wired into existing `bkit slop:delta` channel" — reuses existing channel rather than new                      | Hedged to existing infra; not speculative |
-| Outbox / pre-merge snapshot                                | Design Flow 1 + Data Model; solves Finding 6 loss                                                                 | Design-mandated                           |
+<!-- prettier-ignore -->
+| Artifact | Origin | Verdict |
+| --- | --- | --- |
+| `bkit.capstoneJob` / `bkit.ciWorkflow` config keys | Design Decisions + config-home rule; retires 3rd hard-coded copy in `bkit-protect-main.sh` | Justified, design-mandated |
+| `bkit-ship-timeouts.sh` managed config (5 named constants) | Design (plan-input.md:522): follows `bkit-counter-bus-config.sh` precedent; consumed by Task 7 Step 5 poll + lock | Justified, precedent-backed |
+| `BKIT_SHIP_GATE_OVERRIDE` escape | Design Flow 5; gate writes own row | Design-mandated |
+| `bkit ship:audit` CLI (Task 10) | "or wired into existing `bkit slop:delta` channel" — reuses existing channel rather than new | Hedged to existing infra; not speculative |
+| Outbox / pre-merge snapshot | Design Flow 1 + Data Model; solves Finding 6 loss | Design-mandated |
 
 No speculative config/flags/abstraction/"for the future" items. Every new artifact traces to a design Decision or Approach. No YAGNI violation.
 
@@ -97,13 +102,14 @@ No speculative config/flags/abstraction/"for the future" items. Every new artifa
 
 Plan `Rollback Strategy` section (plan-v2-reviewed.md:428–438) + Task 9 covers all axes required by the design's rollback requirement (Risk 8, Decisions row "Publish a consumer rollback path"):
 
-| Axis                         | Scoped                                                                  | Where                                            |
-| ---------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------ |
-| Code (gate script + mirrors) | `git revert` (two-file pair together)                                   | Rollback Strategy                                |
-| Code (workflow prose)        | `git revert` (single file)                                              | Rollback Strategy                                |
-| Consumer rollback (3 repos)  | Pin previous `@cbartens/bkit`; hold `bkit upgrade`; audit override rows | Rollback Strategy + Task 9 → docs/deployments.md |
-| Config keys                  | Remove keys; defaults = pre-change behaviour                            | Rollback Strategy                                |
-| Risk window (version skew)   | `bkit check` catches partial upgrade                                    | Rollback Strategy                                |
+<!-- prettier-ignore -->
+| Axis | Scoped | Where |
+| --- | --- | --- |
+| Code (gate script + mirrors) | `git revert` (two-file pair together) | Rollback Strategy |
+| Code (workflow prose) | `git revert` (single file) | Rollback Strategy |
+| Consumer rollback (3 repos) | Pin previous `@cbartens/bkit`; hold `bkit upgrade`; audit override rows | Rollback Strategy + Task 9 → docs/deployments.md |
+| Config keys | Remove keys; defaults = pre-change behaviour | Rollback Strategy |
+| Risk window (version skew) | `bkit check` catches partial upgrade | Rollback Strategy |
 
 Rollback path present and task-backed. ✓
 

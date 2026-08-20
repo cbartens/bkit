@@ -12,15 +12,16 @@ Failures: 2
 
 ### High-risk surfaces touched
 
-| Surface                                                                                                          | Change                                                                                                     | Consumers / blast radius                                                                                                                                                                                                                                    |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.bkit/scripts/bkit-ship-gate.sh` + `.bkit/templates/.bkit/scripts/bkit-ship-gate.sh` (NEW, byte-identical pair) | Tier-1 force-overwritten on `bkit upgrade`                                                                 | Every ship run; failure is **unrecoverable** (untested head squashed to `dev`). Consumers receive via `bkit upgrade` with no per-workflow revert.                                                                                                           |
-| `.bkit/workflows/bkit-ship.md` (MODIFY, structural rewrite; plan states 1244 lines, actual 1278 — cosmetic)      | 13-step skeleton → verify → base-check → integrate → re-validate → merge gate → merge → close              | Propagates to 4 rendered command surfaces via `bkit install`: `.claude/commands/bkit-ship.md` (byte-identical), `.cursor/commands/bkit-ship.md` (transformed), `.opencode/commands/bkit-ship.md`, templates-content snapshot. Every ship run depends on it. |
-| `.bkit/scripts/bkit-protect-main.sh` + template pair (MODIFY)                                                    | Line 38 literal `REQUIRED_JOB="bkit-tests-check"` → `jq` read of `bkit.capstoneJob`                        | Existing call site, behaviour-preserving for default config. `jq` already a declared dependency (`Requires: gh, jq`), so no new dep introduced.                                                                                                             |
-| `.bkit/scripts/bkit-ship-timeouts.sh` + template pair (NEW)                                                      | Managed config (CI-wait timeout, poll interval, dev-lock staleness, acquire deadline, `MAX_MERGE_ATTEMPT`) | Sourced by rewritten `bkit-ship.md` prose (Task 7). Tier-1 force-overwritten.                                                                                                                                                                               |
-| `.husky/pre-push` (MODIFY)                                                                                       | Task 2 wires `pnpm test:bats` after the `pnpm bkit check` line                                             | Every push from bkit's own repo; consumer `.husky/pre-push` is seed-or-print (bkit-owned pre-push is repo-local, not consumer-shipped for this change).                                                                                                     |
-| `package.json` (MODIFY)                                                                                          | Adds `bkit.capstoneJob`, `bkit.ciWorkflow` (consumer-tunable; survive `stripManagedKeys`)                  | bkit's own worked example; consumers may override.                                                                                                                                                                                                          |
-| Canonical 14 `ship-*` step keys (frozen schema)                                                                  | Published as stable vocabulary; numbers may move, keys may not                                             | `counter_next`/`counter_current`, fold reducer, Resume (`bkit-ship.md:25`), lock-staleness cross-check (`:27`), every historical consumer row keys on names. Renaming resets attempt counters across 3 repos.                                               |
+<!-- prettier-ignore -->
+| Surface | Change | Consumers / blast radius |
+| --- | --- | --- |
+| `.bkit/scripts/bkit-ship-gate.sh` + `.bkit/templates/.bkit/scripts/bkit-ship-gate.sh` (NEW, byte-identical pair) | Tier-1 force-overwritten on `bkit upgrade` | Every ship run; failure is **unrecoverable** (untested head squashed to `dev`). Consumers receive via `bkit upgrade` with no per-workflow revert. |
+| `.bkit/workflows/bkit-ship.md` (MODIFY, structural rewrite; plan states 1244 lines, actual 1278 — cosmetic) | 13-step skeleton → verify → base-check → integrate → re-validate → merge gate → merge → close | Propagates to 4 rendered command surfaces via `bkit install`: `.claude/commands/bkit-ship.md` (byte-identical), `.cursor/commands/bkit-ship.md` (transformed), `.opencode/commands/bkit-ship.md`, templates-content snapshot. Every ship run depends on it. |
+| `.bkit/scripts/bkit-protect-main.sh` + template pair (MODIFY) | Line 38 literal `REQUIRED_JOB="bkit-tests-check"` → `jq` read of `bkit.capstoneJob` | Existing call site, behaviour-preserving for default config. `jq` already a declared dependency (`Requires: gh, jq`), so no new dep introduced. |
+| `.bkit/scripts/bkit-ship-timeouts.sh` + template pair (NEW) | Managed config (CI-wait timeout, poll interval, dev-lock staleness, acquire deadline, `MAX_MERGE_ATTEMPT`) | Sourced by rewritten `bkit-ship.md` prose (Task 7). Tier-1 force-overwritten. |
+| `.husky/pre-push` (MODIFY) | Task 2 wires `pnpm test:bats` after the `pnpm bkit check` line | Every push from bkit's own repo; consumer `.husky/pre-push` is seed-or-print (bkit-owned pre-push is repo-local, not consumer-shipped for this change). |
+| `package.json` (MODIFY) | Adds `bkit.capstoneJob`, `bkit.ciWorkflow` (consumer-tunable; survive `stripManagedKeys`) | bkit's own worked example; consumers may override. |
+| Canonical 14 `ship-*` step keys (frozen schema) | Published as stable vocabulary; numbers may move, keys may not | `counter_next`/`counter_current`, fold reducer, Resume (`bkit-ship.md:25`), lock-staleness cross-check (`:27`), every historical consumer row keys on names. Renaming resets attempt counters across 3 repos. |
 
 ### New tests / fixtures
 
@@ -48,15 +49,16 @@ Failures: 2
 
 ### Findings coverage (all 7 issue findings have a regression test)
 
-| Finding                                       | Regression coverage                                                                            |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| F1 (Step 3 doesn't verify green)              | Replaced by gate assertion; `ship-gate.bats`                                                   |
-| F2 (`.deferred-blocked` no writer)            | Task 5 writer + Task 3 invariant + Manual Step 3 trigger                                       |
-| F3 (Step 6 validates one SHA, merges another) | `--match-head-commit` invariant (Task 3); Task 11 Manual Step 1/2                              |
-| F4 (Failure Path wrong tree)                  | `ship-failure-path.bats` (BOOK_ROOT honoured; append after abort)                              |
-| F5 (Step 8 retry loop)                        | Deleted; routing to build. No direct test (deletion is the fix).                               |
-| F6 (`git add -A`)                             | Tier-2 invariant (no `git add -A`; no `git add -- docs/`) — **see MAJOR 2** for allow-list gap |
-| F7 (invented step names)                      | Task 10 detector surfaces delta against pinned watermark                                       |
+<!-- prettier-ignore -->
+| Finding | Regression coverage |
+| --- | --- |
+| F1 (Step 3 doesn't verify green) | Replaced by gate assertion; `ship-gate.bats` |
+| F2 (`.deferred-blocked` no writer) | Task 5 writer + Task 3 invariant + Manual Step 3 trigger |
+| F3 (Step 6 validates one SHA, merges another) | `--match-head-commit` invariant (Task 3); Task 11 Manual Step 1/2 |
+| F4 (Failure Path wrong tree) | `ship-failure-path.bats` (BOOK_ROOT honoured; append after abort) |
+| F5 (Step 8 retry loop) | Deleted; routing to build. No direct test (deletion is the fix). |
+| F6 (`git add -A`) | Tier-2 invariant (no `git add -A`; no `git add -- docs/`) — **see MAJOR 2** for allow-list gap |
+| F7 (invented step names) | Task 10 detector surfaces delta against pinned watermark |
 
 ## CRITICAL
 

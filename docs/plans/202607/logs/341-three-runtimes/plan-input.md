@@ -22,16 +22,17 @@ Related: **#134** (design→ship branch / artifact-trail model).
 
 ## 1. The three runtimes
 
-| Dimension                        | **1. local** (laptop)                               | **2. gh-action runner** (bkit install cloud option)                                          | **3. claude.ai runner** (`.claude/cloud.md`)                             |
-| -------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Triggered by**                 | dev runs `/bkit-*` in IDE                           | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest`     | user starts a session at claude.ai/code (or Auto-fix webhook)            |
-| **gh CLI auth**                  | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport**                         | **fragile** (see §2)                                                     |
-| **Write / merge token**          | dev's own creds (full)                              | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
-| **GitHub MCP / built-in**        | usually not configured                              | optional                                                                                     | **proxy-managed → auth-reliable, but see §5 downsides**                  |
-| **git push**                     | unrestricted                                        | standard runner (branch-protection only)                                                     | **proxy-restricted to the current working branch**                       |
-| **Worktree `.worktrees/{FID}`**  | native                                              | works                                                                                        | breaks — session is on `claude/…`, no worktrees                          |
-| **Network egress (debug-fetch)** | full                                                | full                                                                                         | **Trusted allowlist**; app backends need a **Custom** allowlist          |
-| **Autonomous merge to `dev`**    | ✅ gh                                               | ✅ gh (GH_BKIT_TOKEN/App)                                                                    | ✅ gh if authed, else MCP fallback (both server-side)                    |
+<!-- prettier-ignore -->
+| Dimension | **1. local** (laptop) | **2. gh-action runner** (bkit install cloud option) | **3. claude.ai runner** (`.claude/cloud.md`) |
+| --- | --- | --- | --- |
+| **Triggered by** | dev runs `/bkit-*` in IDE | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest` | user starts a session at claude.ai/code (or Auto-fix webhook) |
+| **gh CLI auth** | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport** | **fragile** (see §2) |
+| **Write / merge token** | dev's own creds (full) | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
+| **GitHub MCP / built-in** | usually not configured | optional | **proxy-managed → auth-reliable, but see §5 downsides** |
+| **git push** | unrestricted | standard runner (branch-protection only) | **proxy-restricted to the current working branch** |
+| **Worktree `.worktrees/{FID}`** | native | works | breaks — session is on `claude/…`, no worktrees |
+| **Network egress (debug-fetch)** | full | full | **Trusted allowlist**; app backends need a **Custom** allowlist |
+| **Autonomous merge to `dev`** | ✅ gh | ✅ gh (GH_BKIT_TOKEN/App) | ✅ gh if authed, else MCP fallback (both server-side) |
 
 Detection primitives exist: `CLAUDE_CODE_REMOTE=true` (mode 3), `GITHUB_ACTIONS`/`CI` (mode 2), neither (mode 1).
 
@@ -97,19 +98,20 @@ Research on the GitHub MCP server surfaced three real cost centres — the reaso
 
 **6c. gh → MCP tool map** (reference):
 
-| gh command                                      | MCP fallback                            | Notes                                                          |
-| ----------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
-| `gh repo view --json nameWithOwner`             | `get_me` + context / parse `git remote` | identity                                                       |
-| `gh pr create`                                  | `create_pull_request`                   |                                                                |
-| `gh pr view {N} --json …`                       | `pull_request_read` (get)               | request minimal fields                                         |
-| `gh pr list --head X`                           | `list_pull_requests`                    |                                                                |
-| `gh pr merge {N} --squash`                      | `merge_pull_request`                    | ⚠ **pass explicit skip-free `commit_message`** (D1)            |
-| `gh pr edit {N} --title`                        | `update_pull_request`                   |                                                                |
-| `gh pr update-branch {N}`                       | `update_pull_request_branch`            |                                                                |
-| `gh run list --branch X`                        | `actions_list`                          |                                                                |
-| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs`          |                                                                |
-| `gh run download -n playwright-report`          | **— none —**                            | keep gh/`gh api` (§4 seam)                                     |
-| `git push origin dev` (docs/status tail)        | `push_files` / `create_or_update_file`  | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
+<!-- prettier-ignore -->
+| gh command | MCP fallback | Notes |
+| --- | --- | --- |
+| `gh repo view --json nameWithOwner` | `get_me` + context / parse `git remote` | identity |
+| `gh pr create` | `create_pull_request` |  |
+| `gh pr view {N} --json …` | `pull_request_read` (get) | request minimal fields |
+| `gh pr list --head X` | `list_pull_requests` |  |
+| `gh pr merge {N} --squash` | `merge_pull_request` | ⚠ **pass explicit skip-free `commit_message`** (D1) |
+| `gh pr edit {N} --title` | `update_pull_request` |  |
+| `gh pr update-branch {N}` | `update_pull_request_branch` |  |
+| `gh run list --branch X` | `actions_list` |  |
+| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs` |  |
+| `gh run download -n playwright-report` | **— none —** | keep gh/`gh api` (§4 seam) |
+| `git push origin dev` (docs/status tail) | `push_files` / `create_or_update_file` | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
 
 **6d. D1 fix (all paths):** guarantee a skip-token-free merge body and extend Step 6.3 to scan the **resulting squash body**, not just the PR title; consider dropping `[skip ci]` from intermediate status-commit **subjects**.
 

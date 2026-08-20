@@ -10,39 +10,41 @@ Lens: task dependency graph correctness, DAG/cycle check, topological-sort valid
 
 ## 1. Task → Workstream mapping (reconstructed from runbook)
 
-| Task | WS    | Title (short)                                | Declared deps (verbatim from runbook)                                         |
-| ---- | ----- | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| 0    | WS-1  | #341 Serialisation Carve-Out                 | none                                                                          |
-| 1    | WS-3  | Configuration Surface                        | Task 0                                                                        |
-| 2    | WS-2  | gh Stub Harness (GO/NO-GO cost hinge)        | Task 0                                                                        |
-| 3    | WS-6  | Bookkeeping Contract + Tier-2 invariant test | Task 0                                                                        |
-| 4    | WS-4  | `bkit-ship-gate.sh` + bats                   | Task 1, Task 2                                                                |
-| 5    | WS-8  | Failure Path + Worktree Hardening            | Task 4, **"Task 6 contract (BOOK_ROOT — refer to Task 3's published name…)"** |
-| 6    | WS-5  | Gate Distribution / Dogfood Mirroring        | Task 1, Task 4                                                                |
-| 7    | WS-7  | `bkit-ship.md` Structural Rewrite            | Task 4, Task 5, Task 3                                                        |
-| 8    | WS-9  | Rendered Mirrors + Workflow Index            | Task 7, Task 5                                                                |
-| 9    | WS-10 | Documentation + Contract Publication         | Task 4, Task 7, Task 8                                                        |
-| 10   | WS-11 | Tier-3 Status-Hole Detector                  | Task 3, Task 7                                                                |
-| 11   | WS-12 | E2E Validation + Rollout                     | Task 4, Task 5, Task 6, Task 7, Task 8, Task 9, Task 10                       |
+<!-- prettier-ignore -->
+| Task | WS | Title (short) | Declared deps (verbatim from runbook) |
+| --- | --- | --- | --- |
+| 0 | WS-1 | #341 Serialisation Carve-Out | none |
+| 1 | WS-3 | Configuration Surface | Task 0 |
+| 2 | WS-2 | gh Stub Harness (GO/NO-GO cost hinge) | Task 0 |
+| 3 | WS-6 | Bookkeeping Contract + Tier-2 invariant test | Task 0 |
+| 4 | WS-4 | `bkit-ship-gate.sh` + bats | Task 1, Task 2 |
+| 5 | WS-8 | Failure Path + Worktree Hardening | Task 4, **"Task 6 contract (BOOK_ROOT — refer to Task 3's published name…)"** |
+| 6 | WS-5 | Gate Distribution / Dogfood Mirroring | Task 1, Task 4 |
+| 7 | WS-7 | `bkit-ship.md` Structural Rewrite | Task 4, Task 5, Task 3 |
+| 8 | WS-9 | Rendered Mirrors + Workflow Index | Task 7, Task 5 |
+| 9 | WS-10 | Documentation + Contract Publication | Task 4, Task 7, Task 8 |
+| 10 | WS-11 | Tier-3 Status-Hole Detector | Task 3, Task 7 |
+| 11 | WS-12 | E2E Validation + Rollout | Task 4, Task 5, Task 6, Task 7, Task 8, Task 9, Task 10 |
 
 ## 2. Design vs plan — dependency conformance
 
 Design workstream table is the source of truth (`plan-input.md` § Suggested Workstreams). Comparison (resolving Task 5's "Task 6 contract" to Task 3 per its own parenthetical):
 
-| WS    | Design deps                            | Plan task | Plan deps (resolved)                                          | Match                                   |
-| ----- | -------------------------------------- | --------- | ------------------------------------------------------------- | --------------------------------------- |
-| WS-1  | []                                     | 0         | []                                                            | ✅                                      |
-| WS-2  | [WS-1]                                 | 2         | [Task 0]                                                      | ✅                                      |
-| WS-3  | [WS-1]                                 | 1         | [Task 0]                                                      | ✅                                      |
-| WS-4  | [WS-2, WS-3]                           | 4         | [Task 2, Task 1]                                              | ✅                                      |
-| WS-5  | [WS-3, WS-4]                           | 6         | [Task 1, Task 4]                                              | ✅                                      |
-| WS-6  | [WS-1]                                 | 3         | [Task 0]                                                      | ✅                                      |
-| WS-7  | [WS-4, WS-6, WS-8]                     | 7         | [Task 4, Task 3, Task 5]                                      | ✅                                      |
-| WS-8  | [WS-4, WS-6]                           | 5         | [Task 4, Task 3] (functionally)                               | ⚠️ literal label wrong — see MAJOR 1    |
-| WS-9  | [WS-7, WS-8]                           | 8         | [Task 7, Task 5]                                              | ✅                                      |
-| WS-10 | [WS-4, WS-7]                           | 9         | [Task 4, Task 7, **Task 8**]                                  | ⚠️ stronger — see MINOR 1               |
-| WS-11 | [WS-6, WS-7]                           | 10        | [Task 3, Task 7]                                              | ✅                                      |
-| WS-12 | [WS-4, WS-5, WS-7, WS-9, WS-10, WS-11] | 11        | [Task 4, Task 6, Task 7, Task 8, Task 9, Task 10, **Task 5**] | ⚠️ adds transitive Task 5 — see MINOR 2 |
+<!-- prettier-ignore -->
+| WS | Design deps | Plan task | Plan deps (resolved) | Match |
+| --- | --- | --- | --- | --- |
+| WS-1 | [] | 0 | [] | ✅ |
+| WS-2 | [WS-1] | 2 | [Task 0] | ✅ |
+| WS-3 | [WS-1] | 1 | [Task 0] | ✅ |
+| WS-4 | [WS-2, WS-3] | 4 | [Task 2, Task 1] | ✅ |
+| WS-5 | [WS-3, WS-4] | 6 | [Task 1, Task 4] | ✅ |
+| WS-6 | [WS-1] | 3 | [Task 0] | ✅ |
+| WS-7 | [WS-4, WS-6, WS-8] | 7 | [Task 4, Task 3, Task 5] | ✅ |
+| WS-8 | [WS-4, WS-6] | 5 | [Task 4, Task 3] (functionally) | ⚠️ literal label wrong — see MAJOR 1 |
+| WS-9 | [WS-7, WS-8] | 8 | [Task 7, Task 5] | ✅ |
+| WS-10 | [WS-4, WS-7] | 9 | [Task 4, Task 7, **Task 8**] | ⚠️ stronger — see MINOR 1 |
+| WS-11 | [WS-6, WS-7] | 10 | [Task 3, Task 7] | ✅ |
+| WS-12 | [WS-4, WS-5, WS-7, WS-9, WS-10, WS-11] | 11 | [Task 4, Task 6, Task 7, Task 8, Task 9, Task 10, **Task 5**] | ⚠️ adds transitive Task 5 — see MINOR 2 |
 
 ## 3. DAG / cycle check
 

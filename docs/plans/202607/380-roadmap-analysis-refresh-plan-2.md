@@ -263,7 +263,7 @@ None — all triggers are workflow-close-driven or on-demand; no scheduler.
 | --- | --- | --- |
 | **Code** | `git revert {COMMIT}` — all changes are an additive prompt file + workflow-step edits | No DB. Reverting drops the analysis/cadence/sync/reconcile additions; the status tier (sub-plan 1) is unaffected. |
 | **Mirrors** | `bkit install` re-renders host mirrors from the reverted SSOT (run in sub-plan 3) | Mirrors are force-overwritten, not drift-gated. |
-| **Risk window** | None — no deploy, no migration apply | |
+| **Risk window** | None — no deploy, no migration apply |  |
 
 _Code-only — `git revert` sufficient; re-run `bkit install` (sub-plan 3) to re-render mirrors._
 

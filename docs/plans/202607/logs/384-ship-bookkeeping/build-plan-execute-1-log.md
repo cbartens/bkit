@@ -98,24 +98,25 @@ The cost hinge settled in well under the half-day budget (Risk-12 recalibrated):
 
 `tests/ship-gate.bats` (NEW) — 16 cases (the 10 design-named cases + 6 supporting cases):
 
-| #   | Case                                                        | Exit  |
-| --- | ----------------------------------------------------------- | ----- |
-| 1   | `accepts-green-capstone-at-head`                            | 0     |
-| 2   | `accepts-green-capstone-at-head --explain` (success note)   | 0     |
-| 3   | `rejects-failed-run`                                        | 12    |
-| 4   | `rejects-no-run-at-head`                                    | 10    |
-| 5   | `rejects-none-completed`                                    | 11    |
-| 6   | `rejects-stale-green-at-superseded-head`                    | 14    |
-| 7   | `rejects-run-missing-capstone`                              | 13    |
-| 8   | `rejects-cancelled-run-at-head`                             | 15    |
-| 9   | `rejects-run-with-skipped-lanes`                            | 16    |
-| 10  | `accepts-cache-skipped-green` (cache marker present)        | 0     |
-| 11  | `distinguishes-api-error-from-no-run` (20 vs 10)            | 20/10 |
-| 12  | `distinguishes-rate-limit-exhausted-from-generic-api-error` | 20    |
-| 13  | override honoured on refused head + audit row               | 0     |
-| 14  | override ignored when SHA ≠ refused head                    | 12    |
-| 15  | config resolution from `package.json`                       | 0     |
-| 16  | usage: missing `--head` exits 2                             | 2     |
+<!-- prettier-ignore -->
+| # | Case | Exit |
+| --- | --- | --- |
+| 1 | `accepts-green-capstone-at-head` | 0 |
+| 2 | `accepts-green-capstone-at-head --explain` (success note) | 0 |
+| 3 | `rejects-failed-run` | 12 |
+| 4 | `rejects-no-run-at-head` | 10 |
+| 5 | `rejects-none-completed` | 11 |
+| 6 | `rejects-stale-green-at-superseded-head` | 14 |
+| 7 | `rejects-run-missing-capstone` | 13 |
+| 8 | `rejects-cancelled-run-at-head` | 15 |
+| 9 | `rejects-run-with-skipped-lanes` | 16 |
+| 10 | `accepts-cache-skipped-green` (cache marker present) | 0 |
+| 11 | `distinguishes-api-error-from-no-run` (20 vs 10) | 20/10 |
+| 12 | `distinguishes-rate-limit-exhausted-from-generic-api-error` | 20 |
+| 13 | override honoured on refused head + audit row | 0 |
+| 14 | override ignored when SHA ≠ refused head | 12 |
+| 15 | config resolution from `package.json` | 0 |
+| 16 | usage: missing `--head` exits 2 | 2 |
 
 All 16 GREEN. Full bats suite 128/128 GREEN (no regression).
 
@@ -147,21 +148,22 @@ All 16 GREEN. Full bats suite 128/128 GREEN (no regression).
 
 ## Test Results
 
-| Suite                               | Result                                                                                                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bats tests/ship-gate.bats`         | 16/16 GREEN                                                                                                                                                   |
-| `bats tests/fixtures/gh/smoke.bats` | 7/7 GREEN                                                                                                                                                     |
-| `pnpm test:bats` (full suite)       | 128/128 GREEN (no regression)                                                                                                                                 |
-| `pnpm test bkit-config-keys`        | 12/12 GREEN                                                                                                                                                   |
-| `pnpm test bkit-package-json`       | 15/15 GREEN (existing — no regression)                                                                                                                        |
-| `pnpm test bkit-ship-invariants`    | **11/14 RED** (expected — Tier-2 invariant is the plan's central quality mechanism; SP2 T7 turns it GREEN)                                                    |
-| `pnpm test` (overall)               | 2605 pass, 11 fail (all in `bkit-ship-invariants.test.ts`), 2 skipped, 1 todo — RED solely on the deliberately-RED invariant per the plan's Verification Plan |
-| `pnpm typecheck`                    | GREEN                                                                                                                                                         |
-| `pnpm format:check`                 | GREEN (after prettier auto-fix on the two new test files)                                                                                                     |
-| `pnpm lint:prose`                   | 0 errors, 1 pre-existing warning in `docs/testing.md` (unrelated)                                                                                             |
-| `pnpm slop:delta`                   | 0 net-new / worsened findings                                                                                                                                 |
-| `pnpm bkit check`                   | exit 0 (20 advisories, all pre-existing)                                                                                                                      |
-| `pnpm check:dist`                   | GREEN (no dist drift — source changes don't affect compiled install engine)                                                                                   |
+<!-- prettier-ignore -->
+| Suite | Result |
+| --- | --- |
+| `bats tests/ship-gate.bats` | 16/16 GREEN |
+| `bats tests/fixtures/gh/smoke.bats` | 7/7 GREEN |
+| `pnpm test:bats` (full suite) | 128/128 GREEN (no regression) |
+| `pnpm test bkit-config-keys` | 12/12 GREEN |
+| `pnpm test bkit-package-json` | 15/15 GREEN (existing — no regression) |
+| `pnpm test bkit-ship-invariants` | **11/14 RED** (expected — Tier-2 invariant is the plan's central quality mechanism; SP2 T7 turns it GREEN) |
+| `pnpm test` (overall) | 2605 pass, 11 fail (all in `bkit-ship-invariants.test.ts`), 2 skipped, 1 todo — RED solely on the deliberately-RED invariant per the plan's Verification Plan |
+| `pnpm typecheck` | GREEN |
+| `pnpm format:check` | GREEN (after prettier auto-fix on the two new test files) |
+| `pnpm lint:prose` | 0 errors, 1 pre-existing warning in `docs/testing.md` (unrelated) |
+| `pnpm slop:delta` | 0 net-new / worsened findings |
+| `pnpm bkit check` | exit 0 (20 advisories, all pre-existing) |
+| `pnpm check:dist` | GREEN (no dist drift — source changes don't affect compiled install engine) |
 
 ---
 

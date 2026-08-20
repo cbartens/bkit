@@ -28,13 +28,14 @@ The Step 2 worktree rebase (`.rebase-failed` sentinel) was a **false positive**.
 
 ### Verified facts
 
-| #   | Fact                           | Check                                                                           | Result                                                                          |
-| --- | ------------------------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| 1   | origin/dev is ancestor of HEAD | `git merge-base --is-ancestor origin/dev HEAD`                                  | exit 0 — **YES**                                                                |
-| 2   | No conflicted files            | `git diff --name-only --diff-filter=U`                                          | **empty**                                                                       |
-| 3   | Frozen PR head unmutated       | `origin/feat/384-ship-bookkeeping` = `6f5393857533050478ccce28b6a6edecf19882cd` | matches build-close `parentSha` (status.jsonl lines 53–54) and CI dispatch head |
-| 4   | Working tree clean             | `git status --short`                                                            | clean                                                                           |
-| 5   | No rebase in progress          | `.git/rebase-merge` / `.git/rebase-apply`                                       | absent                                                                          |
+<!-- prettier-ignore -->
+| # | Fact | Check | Result |
+| --- | --- | --- | --- |
+| 1 | origin/dev is ancestor of HEAD | `git merge-base --is-ancestor origin/dev HEAD` | exit 0 — **YES** |
+| 2 | No conflicted files | `git diff --name-only --diff-filter=U` | **empty** |
+| 3 | Frozen PR head unmutated | `origin/feat/384-ship-bookkeeping` = `6f5393857533050478ccce28b6a6edecf19882cd` | matches build-close `parentSha` (status.jsonl lines 53–54) and CI dispatch head |
+| 4 | Working tree clean | `git status --short` | clean |
+| 5 | No rebase in progress | `.git/rebase-merge` / `.git/rebase-apply` | absent |
 
 ### Delta: HEAD vs origin/feat/384-ship-bookkeeping
 

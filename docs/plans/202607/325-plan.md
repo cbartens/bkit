@@ -20,16 +20,17 @@ Large pnpm-11 monorepo consumers exceed Mend Community Cloud's **3 GB hosted-run
 
 ## Shipped surface
 
-| Area         | File(s)                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Flag + type  | `.bkit/src/bkit-cli.ts` (`--renovate`), `.bkit/src/bkit-manifest.ts` (`RENOVATE_RUNNERS`/`parseRenovateRunner`, manifest entry)      |
-| Module       | `.bkit/src/bkit-modules.ts` (`runRenovateModule` write/reclaim + self-hosted activation advisory)                                    |
-| Threading    | `.bkit/src/bkit-install.ts` (`detectRenovateRunner`, ctx, recovery hints)                                                            |
-| Advisories   | `.bkit/src/bkit-postinstall.ts` (`renovate-self-hosted-mend-both-active`; OOM advisory suppressed self-hosted)                       |
-| Workflow     | `.bkit/templates/.github/workflows/renovate.yml` (SHA-pinned, `GH_BKIT_TOKEN`, `RENOVATE_HOST_RULES`, `RENOVATE_ALLOWED_ENV=PNPM_*`) |
-| Config fence | `.bkit/templates/.github/renovate.json5` (`ignorePaths` + DO-NOT-BUMP for `renovate.yml`)                                            |
-| Docs         | `docs/deployments.md` §Self-hosted Renovate + presence-matrix row; `docs/knowledge.md` KN-CORE-10; `docs/decisions.md` DE-34         |
-| Tests        | cli/manifest/templates-content/modules-integration/postinstall                                                                       |
+<!-- prettier-ignore -->
+| Area | File(s) |
+| --- | --- |
+| Flag + type | `.bkit/src/bkit-cli.ts` (`--renovate`), `.bkit/src/bkit-manifest.ts` (`RENOVATE_RUNNERS`/`parseRenovateRunner`, manifest entry) |
+| Module | `.bkit/src/bkit-modules.ts` (`runRenovateModule` write/reclaim + self-hosted activation advisory) |
+| Threading | `.bkit/src/bkit-install.ts` (`detectRenovateRunner`, ctx, recovery hints) |
+| Advisories | `.bkit/src/bkit-postinstall.ts` (`renovate-self-hosted-mend-both-active`; OOM advisory suppressed self-hosted) |
+| Workflow | `.bkit/templates/.github/workflows/renovate.yml` (SHA-pinned, `GH_BKIT_TOKEN`, `RENOVATE_HOST_RULES`, `RENOVATE_ALLOWED_ENV=PNPM_*`) |
+| Config fence | `.bkit/templates/.github/renovate.json5` (`ignorePaths` + DO-NOT-BUMP for `renovate.yml`) |
+| Docs | `docs/deployments.md` §Self-hosted Renovate + presence-matrix row; `docs/knowledge.md` KN-CORE-10; `docs/decisions.md` DE-34 |
+| Tests | cli/manifest/templates-content/modules-integration/postinstall |
 
 **Architecture:** `--renovate` is a WHERE sub-mode of the renovate module (mirrors `cloud`'s `--auto=` axis); config is single-source (mode = presence of `renovate.yml`); recorded in `package.json` `bkit.renovateRunner`.
 

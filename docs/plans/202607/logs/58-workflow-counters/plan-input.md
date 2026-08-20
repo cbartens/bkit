@@ -50,13 +50,14 @@ Move numeric counter tracking and threshold comparison out of orchestrator conte
 
 ## What shipped (WS3), and what did not
 
-| Original acceptance criterion                           | Status                                                            |
-| ------------------------------------------------------- | ----------------------------------------------------------------- |
-| All `MAX_*` constants in one config file                | 🟡 `bkit-counter-bus-config.sh` exists — but see constraint 6     |
-| Threshold comparison out of prose, into shell           | 🟡 6 of 7 counters; `CHALLENGE_REMEDIATE_ATTEMPT` never converted |
-| Counters stored in status and read from it              | ❌ never shipped                                                  |
-| No `*_ATTEMPT` referenced in prose outside fenced shell | ❌ still prose                                                    |
-| Exceeding `MAX_*` cannot silently continue              | ❌ `decide_next` fails **open**                                   |
+<!-- prettier-ignore -->
+| Original acceptance criterion | Status |
+| --- | --- |
+| All `MAX_*` constants in one config file | 🟡 `bkit-counter-bus-config.sh` exists — but see constraint 6 |
+| Threshold comparison out of prose, into shell | 🟡 6 of 7 counters; `CHALLENGE_REMEDIATE_ATTEMPT` never converted |
+| Counters stored in status and read from it | ❌ never shipped |
+| No `*_ATTEMPT` referenced in prose outside fenced shell | ❌ still prose |
+| Exceeding `MAX_*` cannot silently continue | ❌ `decide_next` fails **open** |
 
 `counter_init` / `counter_inc` / `counter_get` are called from **zero** workflow sites.
 
@@ -83,15 +84,16 @@ Why derivation rather than the original stored-`counters` sketch: that sketch ha
 
 ## Call sites (7)
 
-| Counter                       | Site                           | Today                         |
-| ----------------------------- | ------------------------------ | ----------------------------- |
-| `VERIFY_ATTEMPT`              | `bkit-build.md:563`            | `decide_next`                 |
-| `TEST_ATTEMPT`                | `bkit-build.md:960`            | `decide_next`                 |
-| `CHALLENGE_REMEDIATE_ATTEMPT` | `bkit-build.md:780-783`, `804` | **prose vs literal `1`**      |
-| `DEBUG_ATTEMPT`               | `bkit-debug.md:194`            | `decide_next`                 |
-| `NORMAL_ATTEMPT`              | `bkit-debug.md:424`            | `decide_next`                 |
-| `SOAK_ATTEMPT`                | `bkit-debug.md:432`, `440`     | `counter_reset` + `check_max` |
-| `MERGE_ATTEMPT`               | `bkit-ship.md:586`             | `decide_next`                 |
+<!-- prettier-ignore -->
+| Counter | Site | Today |
+| --- | --- | --- |
+| `VERIFY_ATTEMPT` | `bkit-build.md:563` | `decide_next` |
+| `TEST_ATTEMPT` | `bkit-build.md:960` | `decide_next` |
+| `CHALLENGE_REMEDIATE_ATTEMPT` | `bkit-build.md:780-783`, `804` | **prose vs literal `1`** |
+| `DEBUG_ATTEMPT` | `bkit-debug.md:194` | `decide_next` |
+| `NORMAL_ATTEMPT` | `bkit-debug.md:424` | `decide_next` |
+| `SOAK_ATTEMPT` | `bkit-debug.md:432`, `440` | `counter_reset` + `check_max` |
+| `MERGE_ATTEMPT` | `bkit-ship.md:586` | `decide_next` |
 
 Adjacent, worth folding in: the `FOLD` blob is byte-identical across all three workflows (md5 `d04a2499ad1900d9757b00774dd87866`, 1079 bytes) — three hand-synced copies of a non-trivial jq reducer. Sourcing it once from the counter-bus makes the derivation and the workflows agree by construction.
 
@@ -136,13 +138,14 @@ Verified against `dev` @ 5478fa08.
 
 ### What shipped vs. what this issue asked for
 
-| Acceptance criterion (original body)                                                              | Status                                        |
-| ------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| All `MAX_*` constants live in one config file                                                     | ✅ `.bkit/scripts/bkit-counter-bus-config.sh` |
-| Threshold comparison moved out of prose into shell                                                | ✅ `decide_next` / `check_max`                |
-| **Counters stored in status + read from it; orchestrator no longer tracks "this is attempt N"**   | ❌ never shipped                              |
-| **No `*_ATTEMPT` variable referenced in orchestrator markdown except inside fenced shell blocks** | ❌ still prose                                |
-| **A workflow that exceeds `MAX_*` cannot silently continue**                                      | ❌ **regressed — it now silently continues**  |
+<!-- prettier-ignore -->
+| Acceptance criterion (original body) | Status |
+| --- | --- |
+| All `MAX_*` constants live in one config file | ✅ `.bkit/scripts/bkit-counter-bus-config.sh` |
+| Threshold comparison moved out of prose into shell | ✅ `decide_next` / `check_max` |
+| **Counters stored in status + read from it; orchestrator no longer tracks "this is attempt N"** | ❌ never shipped |
+| **No `*_ATTEMPT` variable referenced in orchestrator markdown except inside fenced shell blocks** | ❌ still prose |
+| **A workflow that exceeds `MAX_*` cannot silently continue** | ❌ **regressed — it now silently continues** |
 
 The helper script `.bkit/scripts/bkit-counter-bus.sh` was written with the full contract (`counter_init` / `counter_inc` / `counter_get` / `counter_reset`), but **`counter_init`, `counter_inc` and `counter_get` are called from zero workflow sites.** The only helper call sites in the entire workflow corpus are:
 

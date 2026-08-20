@@ -39,16 +39,17 @@ Documented that the ship-gate content lives outside the managed block in both do
 
 ## Test Results
 
-| Gate                                        | Result                      | Notes                                                                                       |
-| ------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm bkit check`                           | ✅ 0 writes, exit 0         | GREEN — was 2 writes/exit 1 before fix                                                      |
-| `pnpm typecheck`                            | ✅ GREEN                    | `tsc --noEmit` clean                                                                        |
-| `pnpm test`                                 | ✅ 75/75 files, 2651 passed | 0 failures (pre-existing flake `bkit-upgrade.integration.test.ts` passed this run)          |
-| `pnpm format:check`                         | ✅ GREEN                    | Prettier clean                                                                              |
-| `pnpm lint:prose`                           | ✅ 0 errors, 1 warning      | Pre-existing write-good warning in testing.md:318                                           |
-| `pnpm lint:slop`                            | report-only                 | 11 findings, all pre-existing (not from this change)                                        |
-| `pnpm test:bats`                            | ✅ 140/140 passed           | ship-gate.bats (16), ship-failure-path.bats (6), ship-worktree-ownership.bats (6), + others |
-| `pnpm vitest run bkit-status-hole-detector` | ✅ 35/35 passed             | Task 10 detector test                                                                       |
+<!-- prettier-ignore -->
+| Gate | Result | Notes |
+| --- | --- | --- |
+| `pnpm bkit check` | ✅ 0 writes, exit 0 | GREEN — was 2 writes/exit 1 before fix |
+| `pnpm typecheck` | ✅ GREEN | `tsc --noEmit` clean |
+| `pnpm test` | ✅ 75/75 files, 2651 passed | 0 failures (pre-existing flake `bkit-upgrade.integration.test.ts` passed this run) |
+| `pnpm format:check` | ✅ GREEN | Prettier clean |
+| `pnpm lint:prose` | ✅ 0 errors, 1 warning | Pre-existing write-good warning in testing.md:318 |
+| `pnpm lint:slop` | report-only | 11 findings, all pre-existing (not from this change) |
+| `pnpm test:bats` | ✅ 140/140 passed | ship-gate.bats (16), ship-failure-path.bats (6), ship-worktree-ownership.bats (6), + others |
+| `pnpm vitest run bkit-status-hole-detector` | ✅ 35/35 passed | Task 10 detector test |
 
 ### Pre-existing concerns (NOT from this change, NOT fixed)
 

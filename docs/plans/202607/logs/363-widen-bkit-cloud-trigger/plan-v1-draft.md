@@ -90,20 +90,21 @@ A developer ships a `feat/{FID}` PR via `/bkit-ship`; the squash-merge lands on 
 
 ### Derived Test Matrix
 
-| #   | Behaviour                                                                    | How to verify                                                                                                     |
-| --- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| T1  | `workflow_run.branches` includes `dev`                                       | `yq` / `jq` parse of `bkit-cloud.yml` `on.workflow_run.branches` contains `dev`                                   |
-| T2  | `cancel-in-progress` is `false` for `dev`, `true` otherwise                  | Expression `${{ github.event.workflow_run.head_branch != 'dev' }}` present in concurrency block                   |
-| T3  | Ctx step derives FID from commit scope on `dev` (no PR)                      | Bash unit: feed a `feat(363-widen-bkit-cloud-trigger): ...` subject → assert `FID=363-widen-bkit-cloud-trigger`   |
-| T4  | Ctx step routes `dev` success → skip, failure → debug                        | Bash unit: `CONCLUSION=success` + `BRANCH=dev` → `skip=true`; `CONCLUSION=failure` + `BRANCH=dev` → `phase=debug` |
-| T5  | Ctx step enforces `MAX_DEV_DISPATCH_ATTEMPTS` cap                            | Bash unit: seed status.jsonl with 3 `dev-dispatch` rows → assert `skip=true` + notice                             |
-| T6  | `bkit-auto` accepts non-numeric ARG as FID (CI_DEV mode)                     | Bash unit: `ARG=363-widen-bkit-cloud-trigger` → `MODE=CI_DEV`, no `gh pr view` call                               |
-| T7  | `bkit-auto` CI_DEV skips `PR_STATE != OPEN` assert                           | Read: Step 1.7 gated on `MODE=CI` only                                                                            |
-| T8  | `bkit-debug` creates `fix/{FID}` worktree in CI_DEV mode                     | Read: Step 2 branch-creation logic selects `fix/{FID}` when CI_DEV                                                |
-| T9  | `bkit-ship` squash `--subject` includes `bkit [auto route]` when `bkit:auto` | Bash unit: `LABELS` contains `bkit:auto` → subject ends with `bkit [auto route]`                                  |
-| T10 | `MAX_DEV_DISPATCH_ATTEMPTS=3` in counter-bus-config                          | `grep MAX_DEV_DISPATCH_ATTEMPTS .bkit/scripts/bkit-counter-bus-config.sh`                                         |
-| T11 | Mirrors regenerated (`.claude/`, `.cursor/`, `.opencode/` in sync)           | `pnpm bkit upgrade --dry-run` produces no diff on canonical files                                                 |
-| T12 | Version bumped 4.10.0 → 4.11.0                                               | `jq -r .version package.json` = `4.11.0`; `grep pinnedVersion .bkit/version` = `4.11.0`                           |
+<!-- prettier-ignore -->
+| # | Behaviour | How to verify |
+| --- | --- | --- |
+| T1 | `workflow_run.branches` includes `dev` | `yq` / `jq` parse of `bkit-cloud.yml` `on.workflow_run.branches` contains `dev` |
+| T2 | `cancel-in-progress` is `false` for `dev`, `true` otherwise | Expression `${{ github.event.workflow_run.head_branch != 'dev' }}` present in concurrency block |
+| T3 | Ctx step derives FID from commit scope on `dev` (no PR) | Bash unit: feed a `feat(363-widen-bkit-cloud-trigger): ...` subject → assert `FID=363-widen-bkit-cloud-trigger` |
+| T4 | Ctx step routes `dev` success → skip, failure → debug | Bash unit: `CONCLUSION=success` + `BRANCH=dev` → `skip=true`; `CONCLUSION=failure` + `BRANCH=dev` → `phase=debug` |
+| T5 | Ctx step enforces `MAX_DEV_DISPATCH_ATTEMPTS` cap | Bash unit: seed status.jsonl with 3 `dev-dispatch` rows → assert `skip=true` + notice |
+| T6 | `bkit-auto` accepts non-numeric ARG as FID (CI_DEV mode) | Bash unit: `ARG=363-widen-bkit-cloud-trigger` → `MODE=CI_DEV`, no `gh pr view` call |
+| T7 | `bkit-auto` CI_DEV skips `PR_STATE != OPEN` assert | Read: Step 1.7 gated on `MODE=CI` only |
+| T8 | `bkit-debug` creates `fix/{FID}` worktree in CI_DEV mode | Read: Step 2 branch-creation logic selects `fix/{FID}` when CI_DEV |
+| T9 | `bkit-ship` squash `--subject` includes `bkit [auto route]` when `bkit:auto` | Bash unit: `LABELS` contains `bkit:auto` → subject ends with `bkit [auto route]` |
+| T10 | `MAX_DEV_DISPATCH_ATTEMPTS=3` in counter-bus-config | `grep MAX_DEV_DISPATCH_ATTEMPTS .bkit/scripts/bkit-counter-bus-config.sh` |
+| T11 | Mirrors regenerated (`.claude/`, `.cursor/`, `.opencode/` in sync) | `pnpm bkit upgrade --dry-run` produces no diff on canonical files |
+| T12 | Version bumped 4.10.0 → 4.11.0 | `jq -r .version package.json` = `4.11.0`; `grep pinnedVersion .bkit/version` = `4.11.0` |
 
 ---
 
@@ -396,12 +397,13 @@ No plan superseded. This is a new feature plan for #363. Related issues (#119, #
 
 ## Documentation Updates
 
-| File                  | Change                                                                     |
-| --------------------- | -------------------------------------------------------------------------- |
-| `.bkit/cloud.md`      | Decision log entry + routing table `dev` row + loop-bound note             |
-| `docs/deployments.md` | CI/CD matrix `dev` branch row + auto-route contract update                 |
-| `docs/security.md`    | § CI Auto-Route Trust — `dev` push trigger trust surface                   |
-| `CHANGELOG.md`        | Unreleased entry: "widen bkit-cloud trigger to post-merge `dev` CI (#363)" |
+<!-- prettier-ignore -->
+| File | Change |
+| --- | --- |
+| `.bkit/cloud.md` | Decision log entry + routing table `dev` row + loop-bound note |
+| `docs/deployments.md` | CI/CD matrix `dev` branch row + auto-route contract update |
+| `docs/security.md` | § CI Auto-Route Trust — `dev` push trigger trust surface |
+| `CHANGELOG.md` | Unreleased entry: "widen bkit-cloud trigger to post-merge `dev` CI (#363)" |
 
 ---
 

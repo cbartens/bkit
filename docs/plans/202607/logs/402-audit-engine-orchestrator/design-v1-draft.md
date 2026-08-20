@@ -652,9 +652,9 @@ Assert on the **`## Missing Lenses` + `## Correlation Coverage` manifest rows**,
 <!-- prettier-ignore -->
 | Slot | Expected row | Note |
 | --- | --- | --- |
-| `ui-ux` | `N/A — not applicable (hasWebSurface=false)` | |
-| `contract-conformance` | `N/A — not applicable (hasDb=false)` | |
-| `derived-data` | `N/A — not applicable (hasDerivedStore=false)` | |
+| `ui-ux` | `N/A — not applicable (hasWebSurface=false)` |  |
+| `contract-conformance` | `N/A — not applicable (hasDb=false)` |  |
+| `derived-data` | `N/A — not applicable (hasDerivedStore=false)` |  |
 | `reference-signal` | `N/A — not applicable (hasNetwork=false)` | unless `--with-websearch` |
 | `ai-llm` | `N/A — not applicable (hasLLM=true but no surface evidence)` | **see below** |
 | `supply-chain` | `ran` | universal now; CI + lockfile both present |

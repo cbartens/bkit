@@ -10,18 +10,19 @@ Verdict: SINGLE
 
 ### 1. Task count and file surfaces
 
-| Task | Type                    | File surface                                                                                                | Size                                                                                            |
-| ---- | ----------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 1    | code (cloud trigger)    | `.bkit/templates/.github/workflows/bkit-cloud.yml` (both jobs) + `.bkit/scripts/bkit-counter-bus-config.sh` | Large (~100 lines ctx-step bash + YAML trigger/concurrency/env edits, duplicated across 2 jobs) |
-| 2    | code (bkit-auto CI_DEV) | `.bkit/workflows/bkit-auto.md` Step 1 + Step 11 + Gate 1                                                    | Moderate (mode discrimination + 5 step gates + comment gating)                                  |
-| 3    | verify-only             | `.bkit/workflows/bkit-debug.md` (READ ONLY, zero diff)                                                      | None                                                                                            |
-| 4    | code (ship suffix)      | `.bkit/workflows/bkit-ship.md` lines 634-635                                                                | Trivial (one `${AUTO_ROUTE_SUFFIX}` append)                                                     |
-| 5    | docs                    | `.bkit/cloud.md`                                                                                            | Small (decision log + routing table)                                                            |
-| 6    | docs                    | `docs/deployments.md` (CI/CD matrix row + precondition note)                                                | Small                                                                                           |
-| 7    | docs                    | `docs/security.md`                                                                                          | Small (trust-surface subsection)                                                                |
-| 8    | mechanical              | `.bkit/version`, `package.json`, `CHANGELOG.md`, `.claude/`, `.cursor/`, `.opencode/`                       | Mechanical (version bump + `pnpm bkit upgrade` mirror regen)                                    |
-| 9    | validation              | all changed files                                                                                           | Verification gate (dry-runs + lint/typecheck)                                                   |
-| 10   | docs                    | `docs/deployments.md` (distinct "Consumer-repo acceptance note" section)                                    | Small                                                                                           |
+<!-- prettier-ignore -->
+| Task | Type | File surface | Size |
+| --- | --- | --- | --- |
+| 1 | code (cloud trigger) | `.bkit/templates/.github/workflows/bkit-cloud.yml` (both jobs) + `.bkit/scripts/bkit-counter-bus-config.sh` | Large (~100 lines ctx-step bash + YAML trigger/concurrency/env edits, duplicated across 2 jobs) |
+| 2 | code (bkit-auto CI_DEV) | `.bkit/workflows/bkit-auto.md` Step 1 + Step 11 + Gate 1 | Moderate (mode discrimination + 5 step gates + comment gating) |
+| 3 | verify-only | `.bkit/workflows/bkit-debug.md` (READ ONLY, zero diff) | None |
+| 4 | code (ship suffix) | `.bkit/workflows/bkit-ship.md` lines 634-635 | Trivial (one `${AUTO_ROUTE_SUFFIX}` append) |
+| 5 | docs | `.bkit/cloud.md` | Small (decision log + routing table) |
+| 6 | docs | `docs/deployments.md` (CI/CD matrix row + precondition note) | Small |
+| 7 | docs | `docs/security.md` | Small (trust-surface subsection) |
+| 8 | mechanical | `.bkit/version`, `package.json`, `CHANGELOG.md`, `.claude/`, `.cursor/`, `.opencode/` | Mechanical (version bump + `pnpm bkit upgrade` mirror regen) |
+| 9 | validation | all changed files | Verification gate (dry-runs + lint/typecheck) |
+| 10 | docs | `docs/deployments.md` (distinct "Consumer-repo acceptance note" section) | Small |
 
 **Total canonical file surfaces: 9** (one of which — `docs/deployments.md` — is touched by Tasks 6 and 10 on distinct, non-overlapping sections). File surfaces are cleanly separated: no two code-change tasks edit the same file. A single build agent can hold all 9 files in context without saturation.
 

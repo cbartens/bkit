@@ -27,11 +27,12 @@ Sub-Plan 2 is **functionally complete, correct, and now documentation-accurate**
 
 ### Required checks (this attempt)
 
-| Check (required by task) | Command                                                  | Result                                                                                                                                                               |
-| ------------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tier-2 invariant         | `pnpm vitest run .bkit/src/bkit-ship-invariants.test.ts` | **14/14 GREEN** (exit 0)                                                                                                                                             |
-| bats suite               | `pnpm test:bats`                                         | **140/140 GREEN** (exit 0); ship-failure-path 6/6, ship-worktree-ownership 6/6, ship-gate 16/16 (Tier-1 carrier, no regression)                                      |
-| Drift                    | `pnpm bkit check`                                        | **exit 0**; **NO `bkit-rendered-prompts-stale` advisory** (20 advisories reported, all pre-existing/unrelated: npm-auth, opencode-yml, coverage-stub, mcp-env, etc.) |
+<!-- prettier-ignore -->
+| Check (required by task) | Command | Result |
+| --- | --- | --- |
+| Tier-2 invariant | `pnpm vitest run .bkit/src/bkit-ship-invariants.test.ts` | **14/14 GREEN** (exit 0) |
+| bats suite | `pnpm test:bats` | **140/140 GREEN** (exit 0); ship-failure-path 6/6, ship-worktree-ownership 6/6, ship-gate 16/16 (Tier-1 carrier, no regression) |
+| Drift | `pnpm bkit check` | **exit 0**; **NO `bkit-rendered-prompts-stale` advisory** (20 advisories reported, all pre-existing/unrelated: npm-auth, opencode-yml, coverage-stub, mcp-env, etc.) |
 
 ### Concern resolution check (the focus of this attempt)
 
@@ -66,40 +67,44 @@ Spot-checked that the load-bearing structural elements landed by Tasks 5/6/7 rem
 
 ### Task 5 — Failure Path + Worktree Hardening — **PASS**
 
-| Done-when criterion                                                                                                 | Status | Evidence                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test:bats tests/ship-failure-path.bats` passes (append ordered after abort; BOOK_ROOT honoured; no silencing) | ✅     | bats 106-111 GREEN (6/6). `bkit-ship.md:74` abort precedes append; `:62-65` BOOK_ROOT via RUNTIME_DEVPUSHES; bats 109 asserts no `2>/dev/null \|\| true` git-call silencing. |
-| `pnpm test:bats tests/ship-worktree-ownership.bats` passes (ownership marker gates removal)                         | ✅     | bats 128-133 GREEN (6/6). Marker at `:342`, checked at `:1040`, absent-default skip at `:1044`.                                                                              |
-| `.deferred-blocked` writer wired under `BOOK_ROOT`                                                                  | ✅     | `bkit-ship.md:570-573` — `@bkit-ship-deferred-sweep` FAIL → `touch "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked"`. bats 110 GREEN.                           |
-| Six silencings removed                                                                                              | ✅     | bats 109 GREEN.                                                                                                                                                              |
-| Step 12 ownership-scoped; design/plan/build/debug untouched                                                         | ✅     | `bkit-ship.md:1040-1046`.                                                                                                                                                    |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `pnpm test:bats tests/ship-failure-path.bats` passes (append ordered after abort; BOOK_ROOT honoured; no silencing) | ✅ | bats 106-111 GREEN (6/6). `bkit-ship.md:74` abort precedes append; `:62-65` BOOK_ROOT via RUNTIME_DEVPUSHES; bats 109 asserts no `2>/dev/null \|\| true` git-call silencing. |
+| `pnpm test:bats tests/ship-worktree-ownership.bats` passes (ownership marker gates removal) | ✅ | bats 128-133 GREEN (6/6). Marker at `:342`, checked at `:1040`, absent-default skip at `:1044`. |
+| `.deferred-blocked` writer wired under `BOOK_ROOT` | ✅ | `bkit-ship.md:570-573` — `@bkit-ship-deferred-sweep` FAIL → `touch "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked"`. bats 110 GREEN. |
+| Six silencings removed | ✅ | bats 109 GREEN. |
+| Step 12 ownership-scoped; design/plan/build/debug untouched | ✅ | `bkit-ship.md:1040-1046`. |
 
 ### Task 6 — Gate Distribution / Dogfood Mirroring — **PASS**
 
-| Done-when criterion                                      | Status | Evidence                                                                                                                                           |
-| -------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test bkit-dogfood-noop` GREEN for both new scripts | ✅     | 7/7 GREEN (gate byte-identity, timeouts byte-identity, gate executable bit).                                                                       |
-| `ls -l` both homes shows executable                      | ✅     | `.bkit/scripts/bkit-ship-gate.sh` + `.bkit/templates/.bkit/scripts/bkit-ship-gate.sh` both `-rwxr-xr-x`. Timeouts `-rw-r--r--` (sourced, correct). |
-| `diff` between each pair is empty                        | ✅     | Gate pair: byte-identical (empty diff). Timeouts pair: byte-identical (empty diff).                                                                |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `pnpm test bkit-dogfood-noop` GREEN for both new scripts | ✅ | 7/7 GREEN (gate byte-identity, timeouts byte-identity, gate executable bit). |
+| `ls -l` both homes shows executable | ✅ | `.bkit/scripts/bkit-ship-gate.sh` + `.bkit/templates/.bkit/scripts/bkit-ship-gate.sh` both `-rwxr-xr-x`. Timeouts `-rw-r--r--` (sourced, correct). |
+| `diff` between each pair is empty | ✅ | Gate pair: byte-identical (empty diff). Timeouts pair: byte-identical (empty diff). |
 
 ### Task 7 — `bkit-ship.md` Structural Rewrite (Tier-2 invariant GREEN) — **PASS**
 
-| Done-when criterion                                                                           | Status | Evidence                                                                                                                                               |
-| --------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Tier-2 invariant test PASSES (RED→GREEN proof)                                                | ✅     | `bkit-ship-invariants.test.ts` 14/14 GREEN.                                                                                                            |
-| Structural shape (verify → base-check → integrate → re-validate → merge gate → merge → close) | ✅     | merge-base classification `:428`; timeouts sourced (not re-hardcoded) `:519/523`; `--match-head-commit` `:645`; BOOK_ROOT/BOOK_PATHS/outbox in Step 1. |
-| Three deletions (rebase-on-resume, prior-run diffing, Source files retry)                     | ✅     | Absent from main flow (verified in verify-2-1; no regression).                                                                                         |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| Tier-2 invariant test PASSES (RED→GREEN proof) | ✅ | `bkit-ship-invariants.test.ts` 14/14 GREEN. |
+| Structural shape (verify → base-check → integrate → re-validate → merge gate → merge → close) | ✅ | merge-base classification `:428`; timeouts sourced (not re-hardcoded) `:519/523`; `--match-head-commit` `:645`; BOOK_ROOT/BOOK_PATHS/outbox in Step 1. |
+| Three deletions (rebase-on-resume, prior-run diffing, Source files retry) | ✅ | Absent from main flow (verified in verify-2-1; no regression). |
 
 ### Task 8 — Rendered Mirrors + Workflow Index Regeneration — **PASS** (concern resolved)
 
-| Done-when criterion                                                                      | Status | Evidence                                                                                                                                                                                                                                                         |
-| ---------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bkit install` exits 0 with 0 writes (idempotent render)                                 | ✅     | `bkit install --claude --cursor --opencode=zai` exit 0, **0 writes**.                                                                                                                                                                                            |
-| `bkit check` reports no `bkit-rendered-prompts-stale` drift (authoritative check)        | ✅     | exit 0; no such advisory among reported.                                                                                                                                                                                                                         |
-| ~~`diff ... empty (byte-identical)`~~ → **replaced by authoritative drift check**        | ✅     | Plan wording corrected (Gap #1 resolved): Done-when now uses `bkit install` 0 writes + `bkit check` no advisory; literal source↔mirror diff is **non-empty by construction** (1288 src → 1102 rendered `.claude`; 156 tracker markers in source, 0 in rendered). |
-| `.bkit/workflows.md` ship section reflects new step numbers + `.deferred-blocked` writer | ✅     | (verified in verify-2-1; documentation-only remediation did not touch it).                                                                                                                                                                                       |
-| Task 5's `.deferred-blocked` writer wire-in preserved                                    | ✅     | `bkit-ship.md:570-573` intact.                                                                                                                                                                                                                                   |
-| `<!-- bkit:managed vX.Y.Z -->` markers restamped                                         | ✅     | (verified in verify-2-1).                                                                                                                                                                                                                                        |
+<!-- prettier-ignore -->
+| Done-when criterion | Status | Evidence |
+| --- | --- | --- |
+| `bkit install` exits 0 with 0 writes (idempotent render) | ✅ | `bkit install --claude --cursor --opencode=zai` exit 0, **0 writes**. |
+| `bkit check` reports no `bkit-rendered-prompts-stale` drift (authoritative check) | ✅ | exit 0; no such advisory among reported. |
+| ~~`diff ... empty (byte-identical)`~~ → **replaced by authoritative drift check** | ✅ | Plan wording corrected (Gap #1 resolved): Done-when now uses `bkit install` 0 writes + `bkit check` no advisory; literal source↔mirror diff is **non-empty by construction** (1288 src → 1102 rendered `.claude`; 156 tracker markers in source, 0 in rendered). |
+| `.bkit/workflows.md` ship section reflects new step numbers + `.deferred-blocked` writer | ✅ | (verified in verify-2-1; documentation-only remediation did not touch it). |
+| Task 5's `.deferred-blocked` writer wire-in preserved | ✅ | `bkit-ship.md:570-573` intact. |
+| `<!-- bkit:managed vX.Y.Z -->` markers restamped | ✅ | (verified in verify-2-1). |
 
 ### SP2 Gate — **PASS**
 
@@ -107,15 +112,16 @@ All six gate checkboxes independently verified this attempt: no bolt-on/gate-wea
 
 ## Test Results Summary
 
-| Suite / Check                                   | Result                                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `bkit-ship-invariants.test.ts` (Tier-2)         | **14/14 GREEN**                                                                                   |
-| `bkit-dogfood-noop.integration.test.ts`         | **7/7 GREEN**                                                                                     |
-| `bats` full suite                               | **140/140 GREEN** (ship-failure-path 6/6, ship-worktree-ownership 6/6, ship-gate 16/16)           |
-| `bkit check`                                    | **exit 0** — no `bkit-rendered-prompts-stale` drift                                               |
-| `bkit install --claude --cursor --opencode=zai` | **exit 0, 0 writes** (idempotent)                                                                 |
-| Gate pair / timeouts pair `diff`                | **byte-identical** (empty diffs)                                                                  |
-| Source↔mirror `diff`                            | **non-empty by construction** (1288→1102; 156→0 tracker markers) — matches corrected plan wording |
+<!-- prettier-ignore -->
+| Suite / Check | Result |
+| --- | --- |
+| `bkit-ship-invariants.test.ts` (Tier-2) | **14/14 GREEN** |
+| `bkit-dogfood-noop.integration.test.ts` | **7/7 GREEN** |
+| `bats` full suite | **140/140 GREEN** (ship-failure-path 6/6, ship-worktree-ownership 6/6, ship-gate 16/16) |
+| `bkit check` | **exit 0** — no `bkit-rendered-prompts-stale` drift |
+| `bkit install --claude --cursor --opencode=zai` | **exit 0, 0 writes** (idempotent) |
+| Gate pair / timeouts pair `diff` | **byte-identical** (empty diffs) |
+| Source↔mirror `diff` | **non-empty by construction** (1288→1102; 156→0 tracker markers) — matches corrected plan wording |
 
 Verdict: PASS
 Failures: 0

@@ -31,23 +31,24 @@ None (Single scope).
 
 **Behavioural re-verification (not presence-only).** The ctx `run:` block was extracted from the installed `.github/workflows/bkit-cloud.yml` via PyYAML (both `run`/claude and `opencode` jobs) and executed under stubbed `gh`/`git` with a mktemp workspace. Results (`GITHUB_OUTPUT` contents shown):
 
-| Case                                                                                                               | Result                                                                       |
-| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| T3/T4 `BRANCH=dev CONCLUSION=failure COMMIT_MSG='feat(363-widen-bkit-cloud-trigger): test (#1) bkit [auto route]'` | `skip=false phase=debug arg=363-widen-bkit-cloud-trigger`                    |
-| T4 `BRANCH=dev CONCLUSION=success`                                                                                 | `skip=true` + `dev CI passed — post-merge regression check OK` notice        |
-| T16 `COMMIT_MSG='feat(bar-123-auth): x'` on `dev`                                                                  | `skip=false phase=debug arg=bar-123-auth` (Linear shape admitted)            |
-| malformed scope (`chore: manual push`)                                                                             | `skip=true` + `Cannot derive FID by dev commit scope or linked PR` fail-safe |
-| stale-run guard (`LATEST_CI_SHA != HEAD_SHA`)                                                                      | `skip=true` + stale notice                                                   |
-| kill switch (`bkit:auto` absent)                                                                                   | `skip=true` + kill-switch notice                                             |
-| T5 cap — 3 DISTINCT headSha rows                                                                                   | `skip=true` + operator-review notice                                         |
-| T5 cap — 3 IDENTICAL headSha rows                                                                                  | `skip=false phase=debug` (distinct-cycle counting correct)                   |
-| T17 fail-closed (`push` fails, row absent on `origin/dev`)                                                         | `skip=true` + fail-closed notice; NO `phase=`/`arg=` emitted                 |
-| T13 `BRANCH=fix/363-widen-bkit-cloud-trigger`                                                                      | reaches dispatch; cap keyed on `FID=363` (proved by the seeded-cap case)     |
-| T15 `fix/**` + failure + 3 distinct rows                                                                           | `skip=true` + cap notice                                                     |
-| T15 `fix/**` + success                                                                                             | `skip=false phase=ship` (cap NOT consulted)                                  |
-| T15 `feat/**` + failure + 3 distinct rows                                                                          | `skip=false phase=debug` (cap NOT consulted — no pre-merge regression)       |
-| `feat/**` + success                                                                                                | `skip=false phase=ship` (unchanged)                                          |
-| `workflow_dispatch phase=debug issue=363`                                                                          | `skip=false phase=debug arg=363` (manual path unregressed)                   |
+<!-- prettier-ignore -->
+| Case | Result |
+| --- | --- |
+| T3/T4 `BRANCH=dev CONCLUSION=failure COMMIT_MSG='feat(363-widen-bkit-cloud-trigger): test (#1) bkit [auto route]'` | `skip=false phase=debug arg=363-widen-bkit-cloud-trigger` |
+| T4 `BRANCH=dev CONCLUSION=success` | `skip=true` + `dev CI passed — post-merge regression check OK` notice |
+| T16 `COMMIT_MSG='feat(bar-123-auth): x'` on `dev` | `skip=false phase=debug arg=bar-123-auth` (Linear shape admitted) |
+| malformed scope (`chore: manual push`) | `skip=true` + `Cannot derive FID by dev commit scope or linked PR` fail-safe |
+| stale-run guard (`LATEST_CI_SHA != HEAD_SHA`) | `skip=true` + stale notice |
+| kill switch (`bkit:auto` absent) | `skip=true` + kill-switch notice |
+| T5 cap — 3 DISTINCT headSha rows | `skip=true` + operator-review notice |
+| T5 cap — 3 IDENTICAL headSha rows | `skip=false phase=debug` (distinct-cycle counting correct) |
+| T17 fail-closed (`push` fails, row absent on `origin/dev`) | `skip=true` + fail-closed notice; NO `phase=`/`arg=` emitted |
+| T13 `BRANCH=fix/363-widen-bkit-cloud-trigger` | reaches dispatch; cap keyed on `FID=363` (proved by the seeded-cap case) |
+| T15 `fix/**` + failure + 3 distinct rows | `skip=true` + cap notice |
+| T15 `fix/**` + success | `skip=false phase=ship` (cap NOT consulted) |
+| T15 `feat/**` + failure + 3 distinct rows | `skip=false phase=debug` (cap NOT consulted — no pre-merge regression) |
+| `feat/**` + success | `skip=false phase=ship` (unchanged) |
+| `workflow_dispatch phase=debug issue=363` | `skip=false phase=debug arg=363` (manual path unregressed) |
 
 The `opencode` job was spot-checked on three of these and returned identical output. A structural diff of the two `# bkit:start shared-deriv` blocks (template and installed) shows **comment-only** divergence — every executable line is byte-identical.
 

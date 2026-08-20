@@ -46,12 +46,13 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Decisions
 
-| Decided                                                                                      | Alternatives                                          | Why                                                                                                                                           |
-| -------------------------------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Universal per-file bullet across all 46 prompts + 8 workflows (Approach A)                   | Partial P0/P1 coverage (C); render-time injection (B) | Input names the zero-gap universal header as recommended end-state; A reaches it with only mechanical content edits and no engine risk.       |
-| Enforcement test globs `.bkit/prompts/*.md` + `.bkit/workflows/*.md` dynamically             | Hardcoded allowlist of covered files (C)              | A glob makes new prompts covered-or-failing automatically; an allowlist becomes the next drift surface.                                       |
-| Assert a normalised load-bearing substring, not byte-exact bullet                            | Byte-exact match like `rules-sync`                    | The DATA/never-execute/never-steer clause is the invariant; byte-exact would nag on benign whitespace while adding no safety.                 |
-| Keep `rules.md`↔template sync on the existing `bkit-rules-sync` byte-equality gate           | New bespoke sync check for the security bullet        | The managed-block byte-equality gate already covers any rule added inside `bkit:start→bkit:end`; adding the invariant there is free coverage. |
-| Prose = defence-in-depth only; structural guards stay in #341                                | Re-track token-scope / merge-body here                | Input non-goal; keeps this issue to contract + coverage + enforcement, avoids scope collision.                                                |
-| `docs/security.md` threat-model section modelled on the existing "CI Auto-Route Trust" block | New standalone security doc                           | Reuses the in-repo trust-boundary precedent; `rules.md` already points here for mechanics.                                                    |
-| One batched `bkit install` at session end to regenerate mirrors                              | Install after each edit                               | Memory + rules: never per-edit installs in this repo; end-of-session batch, cross-provider parity verified once.                              |
+<!-- prettier-ignore -->
+| Decided | Alternatives | Why |
+| --- | --- | --- |
+| Universal per-file bullet across all 46 prompts + 8 workflows (Approach A) | Partial P0/P1 coverage (C); render-time injection (B) | Input names the zero-gap universal header as recommended end-state; A reaches it with only mechanical content edits and no engine risk. |
+| Enforcement test globs `.bkit/prompts/*.md` + `.bkit/workflows/*.md` dynamically | Hardcoded allowlist of covered files (C) | A glob makes new prompts covered-or-failing automatically; an allowlist becomes the next drift surface. |
+| Assert a normalised load-bearing substring, not byte-exact bullet | Byte-exact match like `rules-sync` | The DATA/never-execute/never-steer clause is the invariant; byte-exact would nag on benign whitespace while adding no safety. |
+| Keep `rules.md`↔template sync on the existing `bkit-rules-sync` byte-equality gate | New bespoke sync check for the security bullet | The managed-block byte-equality gate already covers any rule added inside `bkit:start→bkit:end`; adding the invariant there is free coverage. |
+| Prose = defence-in-depth only; structural guards stay in #341 | Re-track token-scope / merge-body here | Input non-goal; keeps this issue to contract + coverage + enforcement, avoids scope collision. |
+| `docs/security.md` threat-model section modelled on the existing "CI Auto-Route Trust" block | New standalone security doc | Reuses the in-repo trust-boundary precedent; `rules.md` already points here for mechanics. |
+| One batched `bkit install` at session end to regenerate mirrors | Install after each edit | Memory + rules: never per-edit installs in this repo; end-of-session batch, cross-provider parity verified once. |

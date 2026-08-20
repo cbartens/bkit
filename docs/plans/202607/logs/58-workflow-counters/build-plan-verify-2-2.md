@@ -29,14 +29,15 @@ None (Single scope).
 
 Python injection into `bkit-build.md:57-67`; restore + `shasum` `7a4c84ea0d349b260e7bb7d76fe052abe97c785c`.
 
-| Shape injected                                  | Attempt 1   | Attempt 2 (widened) |
-| ----------------------------------------------- | ----------- | ------------------- |
-| `echo "$TEST_ATTEMPT"`                          | REDS        | **REDS**            |
-| `echo $TEST_ATTEMPT`                            | **escaped** | **REDS**            |
-| `echo "${TEST_ATTEMPT}"`                        | **escaped** | **REDS**            |
-| `jq -nc --argjson a "${TEST_ATTEMPT}"`          | **escaped** | **REDS**            |
-| `jq -nc --argjson a $TEST_ATTEMPT`              | **escaped** | **REDS**            |
-| `--argjson a "$TEST_ATTEMPT"` in deriving block | **escaped** | **REDS** (Gap 2)    |
+<!-- prettier-ignore -->
+| Shape injected | Attempt 1 | Attempt 2 (widened) |
+| --- | --- | --- |
+| `echo "$TEST_ATTEMPT"` | REDS | **REDS** |
+| `echo $TEST_ATTEMPT` | **escaped** | **REDS** |
+| `echo "${TEST_ATTEMPT}"` | **escaped** | **REDS** |
+| `jq -nc --argjson a "${TEST_ATTEMPT}"` | **escaped** | **REDS** |
+| `jq -nc --argjson a $TEST_ATTEMPT` | **escaped** | **REDS** |
+| `--argjson a "$TEST_ATTEMPT"` in deriving block | **escaped** | **REDS** (Gap 2) |
 
 - **Gap 1:** `findIncompleteBlocks` (`:617`) = `\$\{?NAME\}?\b`.
 - **Gap 2:** `blockDerivesCounter` (`:589`) binds assignment target. `TEST_ATTEMPT` in VERIFY block reds; `VERIFY_ATTEMPT` in same block stays GREEN.
@@ -44,12 +45,13 @@ Python injection into `bkit-build.md:57-67`; restore + `shasum` `7a4c84ea0d349b2
 
 ### `\b` blind spot probes
 
-| Probe                            | Result                                |
-| -------------------------------- | ------------------------------------- |
-| `echo "${TEST_ATTEMPT:-0}"`      | REDS                                  |
-| `echo "${TEST_ATTEMPT}x"`        | REDS                                  |
-| `echo "$MAX_TEST_ATTEMPT"`       | GREEN (exemption)                     |
-| `echo '{TEST_ATTEMPT}'`          | GREEN (exemption)                     |
+<!-- prettier-ignore -->
+| Probe | Result |
+| --- | --- |
+| `echo "${TEST_ATTEMPT:-0}"` | REDS |
+| `echo "${TEST_ATTEMPT}x"` | REDS |
+| `echo "$MAX_TEST_ATTEMPT"` | GREEN (exemption) |
+| `echo '{TEST_ATTEMPT}'` | GREEN (exemption) |
 | `echo '$TEST_ATTEMPT'` (literal) | REDS — **false positive, not graded** |
 
 ### BLOCKING: 6 new sites derive N+1; marker recorded N

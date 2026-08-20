@@ -81,7 +81,7 @@ A developer runs any bkit phase — from their laptop, from a GitHub-Actions run
 | Scenario | Expected Behavior |
 | --- | --- |
 | Unknown runtime (Cursor bg agent — no bash-visible primitive) | Resolve `RUNTIME=unknown` → least-capable + loud; NEVER silent fallthrough to the mode-1 branch |
-| Identity says capable, reality says not (mode-2 read-only `GITHUB_TOKEN`; rotated `GH_TOKEN` 401) | `CAN_PUSH_DEV` selects a transport, not a permission; the **real push** certifies loudly (`push origin dev || exit 1`); no `--dry-run` probe (D23) |
+| Identity says capable, reality says not (mode-2 read-only `GITHUB_TOKEN`; rotated `GH_TOKEN` 401) | `CAN_PUSH_DEV` selects a transport, not a permission; the **real push** certifies loudly (`push origin dev \|\| exit 1`); no `--dry-run` probe (D23) |
 | Fallback dies with the thing it rescues (`.mcp.json` + `cloud-bootstrap.sh` both read `GH_BKIT_TOKEN`) | Loud dual-lane preflight; if neither gh nor MCP authable → **ABORT loudly**, never silent degradation (C2) |
 | MCP up but silently wrong (`search_issues` clean `0` on a private repo) | Empty/zero read is INCONCLUSIVE; corroborate via a second MCP signal or report unavailable; log the attempt as its own state (D12) |
 | Adopt mode collapses worktree isolation (`WORKTREE_PATH == REPO_ROOT`) | Accepted; the existing `.lock` is the only concurrency guard (repo doctrine forbids concurrent workflows on one clone) |

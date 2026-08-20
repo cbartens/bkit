@@ -22,16 +22,17 @@ Related: **#134** (design→ship branch / artifact-trail model).
 
 ## 1. The three runtimes
 
-| Dimension                        | **1. local** (laptop)                               | **2. gh-action runner** (bkit install cloud option)                                          | **3. claude.ai runner** (`.claude/cloud.md`)                             |
-| -------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **Triggered by**                 | dev runs `/bkit-*` in IDE                           | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest`     | user starts a session at claude.ai/code (or Auto-fix webhook)            |
-| **gh CLI auth**                  | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport**                         | **fragile** (see §2)                                                     |
-| **Write / merge token**          | dev's own creds (full)                              | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
-| **GitHub MCP / built-in**        | usually not configured                              | optional                                                                                     | **proxy-managed → auth-reliable, but see §5 downsides**                  |
-| **git push**                     | unrestricted                                        | standard runner (branch-protection only)                                                     | **proxy-restricted to the current working branch**                       |
-| **Worktree `.worktrees/{FID}`**  | native                                              | works                                                                                        | breaks — session is on `claude/…`, no worktrees                          |
-| **Network egress (debug-fetch)** | full                                                | full                                                                                         | **Trusted allowlist**; app backends need a **Custom** allowlist          |
-| **Autonomous merge to `dev`**    | ✅ gh                                               | ✅ gh (GH_BKIT_TOKEN/App)                                                                    | ✅ gh if authed, else MCP fallback (both server-side)                    |
+<!-- prettier-ignore -->
+| Dimension | **1. local** (laptop) | **2. gh-action runner** (bkit install cloud option) | **3. claude.ai runner** (`.claude/cloud.md`) |
+| --- | --- | --- | --- |
+| **Triggered by** | dev runs `/bkit-*` in IDE | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on `ubuntu-latest` | user starts a session at claude.ai/code (or Auto-fix webhook) |
+| **gh CLI auth** | `gh auth login` keychain — **real token, reliable** | default `GITHUB_TOKEN` present, gh reads it — **reliable transport** | **fragile** (see §2) |
+| **Write / merge token** | dev's own creds (full) | **GH_BKIT_TOKEN** (PAT/App) or Claude App — _not_ `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
+| **GitHub MCP / built-in** | usually not configured | optional | **proxy-managed → auth-reliable, but see §5 downsides** |
+| **git push** | unrestricted | standard runner (branch-protection only) | **proxy-restricted to the current working branch** |
+| **Worktree `.worktrees/{FID}`** | native | works | breaks — session is on `claude/…`, no worktrees |
+| **Network egress (debug-fetch)** | full | full | **Trusted allowlist**; app backends need a **Custom** allowlist |
+| **Autonomous merge to `dev`** | ✅ gh | ✅ gh (GH_BKIT_TOKEN/App) | ✅ gh if authed, else MCP fallback (both server-side) |
 
 Detection primitives exist: `CLAUDE_CODE_REMOTE=true` (mode 3), `GITHUB_ACTIONS`/`CI` (mode 2), neither (mode 1).
 
@@ -97,19 +98,20 @@ Research on the GitHub MCP server surfaced three real cost centres — the reaso
 
 **6c. gh → MCP tool map** (reference):
 
-| gh command                                      | MCP fallback                            | Notes                                                          |
-| ----------------------------------------------- | --------------------------------------- | -------------------------------------------------------------- |
-| `gh repo view --json nameWithOwner`             | `get_me` + context / parse `git remote` | identity                                                       |
-| `gh pr create`                                  | `create_pull_request`                   |                                                                |
-| `gh pr view {N} --json …`                       | `pull_request_read` (get)               | request minimal fields                                         |
-| `gh pr list --head X`                           | `list_pull_requests`                    |                                                                |
-| `gh pr merge {N} --squash`                      | `merge_pull_request`                    | ⚠ **pass explicit skip-free `commit_message`** (D1)            |
-| `gh pr edit {N} --title`                        | `update_pull_request`                   |                                                                |
-| `gh pr update-branch {N}`                       | `update_pull_request_branch`            |                                                                |
-| `gh run list --branch X`                        | `actions_list`                          |                                                                |
-| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs`          |                                                                |
-| `gh run download -n playwright-report`          | **— none —**                            | keep gh/`gh api` (§4 seam)                                     |
-| `git push origin dev` (docs/status tail)        | `push_files` / `create_or_update_file`  | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
+<!-- prettier-ignore -->
+| gh command | MCP fallback | Notes |
+| --- | --- | --- |
+| `gh repo view --json nameWithOwner` | `get_me` + context / parse `git remote` | identity |
+| `gh pr create` | `create_pull_request` |  |
+| `gh pr view {N} --json …` | `pull_request_read` (get) | request minimal fields |
+| `gh pr list --head X` | `list_pull_requests` |  |
+| `gh pr merge {N} --squash` | `merge_pull_request` | ⚠ **pass explicit skip-free `commit_message`** (D1) |
+| `gh pr edit {N} --title` | `update_pull_request` |  |
+| `gh pr update-branch {N}` | `update_pull_request_branch` |  |
+| `gh run list --branch X` | `actions_list` |  |
+| `gh run view {id} --json jobs` / `--log-failed` | `actions_get` / `get_job_logs` |  |
+| `gh run download -n playwright-report` | **— none —** | keep gh/`gh api` (§4 seam) |
+| `git push origin dev` (docs/status tail) | `push_files` / `create_or_update_file` | mode-3 only (git push to `dev` blocked); or land via PR (#134) |
 
 **6d. D1 fix (all paths):** guarantee a skip-token-free merge body and extend Step 6.3 to scan the **resulting squash body**, not just the PR title; consider dropping `[skip ci]` from intermediate status-commit **subjects**.
 
@@ -193,12 +195,13 @@ The build-challenge routed to Failure Path at Step 11 because finding **F4** was
 
 **Fix** (commit `75434b0c`, branch `feat/341-three-runtimes`):
 
-| Exit point              | Guard                        |
-| ----------------------- | ---------------------------- |
-| step 9 — github         | `^[0-9]+-[a-z0-9-]+$`        |
-| step 9 — linear         | `^[a-z]+-[0-9]+-[a-z0-9-]+$` |
-| step 9 — no-tracker     | `^[a-z0-9][a-z0-9-]*$`       |
-| step 10 — branch-derive | `^[a-z0-9][a-z0-9-]*$`       |
+<!-- prettier-ignore -->
+| Exit point | Guard |
+| --- | --- |
+| step 9 — github | `^[0-9]+-[a-z0-9-]+$` |
+| step 9 — linear | `^[a-z]+-[0-9]+-[a-z0-9-]+$` |
+| step 9 — no-tracker | `^[a-z0-9][a-z0-9-]*$` |
+| step 10 — branch-derive | `^[a-z0-9][a-z0-9-]*$` |
 
 All reject `/`, `.`, `..`, and shell metacharacters. Marker failing the assert → branch-derive fallback; branch-derive failing it → Failure Path.
 
@@ -336,13 +339,14 @@ Extracted from the current branch state. Every divergence point is a `CAN_*`/`GH
 
 `.bkit/scripts/bkit-runtime.sh` classifies once per Bash block and writes a durable `runtime-resolved` row at Step 2:
 
-|                | **1. local** (laptop) | **2. gh-action runner**      | **3. claude.ai / cursor cloud** |
-| -------------- | --------------------- | ---------------------------- | ------------------------------- |
-| detected by    | neither primitive     | `GITHUB_ACTIONS`/`CI` = true | `CLAUDE_CODE_REMOTE=true`       |
-| `CAN_WORKTREE` | true                  | true                         | **false**                       |
-| `CAN_PUSH_DEV` | true                  | true                         | **false**                       |
-| `CAN_SLEEP`    | true                  | true                         | **false**                       |
-| `GH_OK`        | probed                | probed (token present)       | probed (**often false**)        |
+<!-- prettier-ignore -->
+|  | **1. local** (laptop) | **2. gh-action runner** | **3. claude.ai / cursor cloud** |
+| --- | --- | --- | --- |
+| detected by | neither primitive | `GITHUB_ACTIONS`/`CI` = true | `CLAUDE_CODE_REMOTE=true` |
+| `CAN_WORKTREE` | true | true | **false** |
+| `CAN_PUSH_DEV` | true | true | **false** |
+| `CAN_SLEEP` | true | true | **false** |
+| `GH_OK` | probed | probed (token present) | probed (**often false**) |
 
 **Modes 1 and 2 resolve identically at every flag.** They take the same branch of every conditional in every workflow — mode 2 is not a separate path, it's mode 1 on someone else's machine. Only mode 3 (and the `unknown` fallback) diverges.
 
@@ -403,15 +407,16 @@ Both gained a `bkit_worktree_helper_guard` self-skip at the top: `CAN_WORKTREE=f
 
 ## Divergence total
 
-| workflow            | divergence points            | steps identical in all 3 modes |
-| ------------------- | ---------------------------- | ------------------------------ |
-| design              | 2 (Steps 2, 10)              | 8 of 10                        |
-| plan                | 2 (Steps 2, 12)              | 10 of 12                       |
-| build               | 2 (Steps 2, 17)              | 15 of 17                       |
-| debug               | 3 (Steps 2, 4, 10)           | 7 of 10                        |
-| ship                | 4 (Steps 2, 9, 13 — 9 twice) | 10 of 13                       |
-| auto                | 0                            | 2 of 2                         |
-| worktree-sync/prune | 1 each (self-skip)           | —                              |
+<!-- prettier-ignore -->
+| workflow | divergence points | steps identical in all 3 modes |
+| --- | --- | --- |
+| design | 2 (Steps 2, 10) | 8 of 10 |
+| plan | 2 (Steps 2, 12) | 10 of 12 |
+| build | 2 (Steps 2, 17) | 15 of 17 |
+| debug | 3 (Steps 2, 4, 10) | 7 of 10 |
+| ship | 4 (Steps 2, 9, 13 — 9 twice) | 10 of 13 |
+| auto | 0 | 2 of 2 |
+| worktree-sync/prune | 1 each (self-skip) | — |
 
 Three recurring shapes cover all of it: **mint-vs-adopt** the worktree, **local push vs server-side merge** for `dev`, and **bash poll vs agent turn-loop** for CI waits. Mode 1 and mode 2 take the left side of every one.
 

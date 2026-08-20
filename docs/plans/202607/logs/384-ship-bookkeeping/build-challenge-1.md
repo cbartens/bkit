@@ -15,16 +15,17 @@ Partial-diff coverage: none — full diff reviewed with focus on the 6 remediate
 
 ## Remediation Verification (8/8 fixes confirmed correct)
 
-| #   | Finding                                                 | Fix                                                                                                                              | Verified                                                                                                                                  |
-| --- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | B2 conflict staging lost                                | `git add -u && git add $BOOK_PATHS` + pathspec-free commit                                                                       | ✅ `.bkit/workflows/bkit-ship.md:470-472` + 3 mirrors identical; Tier-2 F1 regression test (`bkit-ship-invariants.test.ts:336-354`) GREEN |
-| 2   | jq telemetry literal                                    | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` in object                                                     | ✅ `:539-541` + 3 mirrors; F2 regression test GREEN                                                                                       |
-| 3   | `gh pr update-branch` no guard                          | `\|\| { echo …; exit 1; }`                                                                                                       | ✅ `:451` + 3 mirrors; F3 regression test GREEN                                                                                           |
-| 4   | STATUS_PATH not exported / set -u crash / audit silence | (a) `export STATUS_PATH=…` `:641`; (b) `local status="${STATUS_PATH:-}"` `bkit-ship-gate.sh:148`; (c) stderr fallback `:156-160` | ✅ F4a regression test (invariants:399-407) + F4b/F4c bats (`ship-gate.bats:219-236`) GREEN                                               |
-| 5   | Code 11 dead branch                                     | Routes 11 → Step 5 alongside 10/14                                                                                               | ✅ `:653` + 3 mirrors; F5 regression test GREEN — **but see Finding 1 (incomplete)**                                                      |
-| 6   | `2>&1` stderr merge                                     | Dropped from both `gh api` captures                                                                                              | ✅ `bkit-ship-gate.sh:182,290` + template byte-identical; F6 bats GREEN                                                                   |
-| 7   | `set -e` gate routing                                   | `GATE_EXIT=0` + `\|\| GATE_EXIT=$?`                                                                                              | ✅ `:644-645` + 3 mirrors; F7 regression test GREEN                                                                                       |
-| 8   | Test stub SHA unsanitized                               | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]`                                                                                              | ✅ `tests/fixtures/gh/bin/gh:112`; F8 bats GREEN                                                                                          |
+<!-- prettier-ignore -->
+| # | Finding | Fix | Verified |
+| --- | --- | --- | --- |
+| 1 | B2 conflict staging lost | `git add -u && git add $BOOK_PATHS` + pathspec-free commit | ✅ `.bkit/workflows/bkit-ship.md:470-472` + 3 mirrors identical; Tier-2 F1 regression test (`bkit-ship-invariants.test.ts:336-354`) GREEN |
+| 2 | jq telemetry literal | `--argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}"` + `$timeout` in object | ✅ `:539-541` + 3 mirrors; F2 regression test GREEN |
+| 3 | `gh pr update-branch` no guard | `\|\| { echo …; exit 1; }` | ✅ `:451` + 3 mirrors; F3 regression test GREEN |
+| 4 | STATUS_PATH not exported / set -u crash / audit silence | (a) `export STATUS_PATH=…` `:641`; (b) `local status="${STATUS_PATH:-}"` `bkit-ship-gate.sh:148`; (c) stderr fallback `:156-160` | ✅ F4a regression test (invariants:399-407) + F4b/F4c bats (`ship-gate.bats:219-236`) GREEN |
+| 5 | Code 11 dead branch | Routes 11 → Step 5 alongside 10/14 | ✅ `:653` + 3 mirrors; F5 regression test GREEN — **but see Finding 1 (incomplete)** |
+| 6 | `2>&1` stderr merge | Dropped from both `gh api` captures | ✅ `bkit-ship-gate.sh:182,290` + template byte-identical; F6 bats GREEN |
+| 7 | `set -e` gate routing | `GATE_EXIT=0` + `\|\| GATE_EXIT=$?` | ✅ `:644-645` + 3 mirrors; F7 regression test GREEN |
+| 8 | Test stub SHA unsanitized | `[[ "$SHA" =~ ^[A-Za-z0-9._-]+$ ]]` | ✅ `tests/fixtures/gh/bin/gh:112`; F8 bats GREEN |
 
 All 8 fixes are mechanically correct at their remediated surface. The gate script's two copies (installed + template) are byte-identical. All 4 workflow mirrors carry the same shell/routing content at the edited offsets. The Tier-2 invariant file gained 6 new regression assertions (one per markdown-resident finding) and the bats suite gained 4 (one per gate/stub-resident finding).
 

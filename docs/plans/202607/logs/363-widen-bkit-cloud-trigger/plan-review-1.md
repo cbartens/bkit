@@ -19,17 +19,18 @@ The plan is **not buildable as written** without fixes, however. The single most
 
 ## Design-Coverage Checklist (settled decisions → tasks)
 
-| #   | Settled decision (source)                                                                       | Covered?                                          | Task(s)        |
-| --- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------- |
-| a   | Filter widens to `['feat/**','fix/**','dev']`, NOT `main` (Comment 6)                           | ✅                                                | Task 1         |
-| b   | Branch-aware routing: feat/fix→ship/debug; dev→no-op/debug; main→manual/excluded (Comments 4,6) | ✅                                                | Task 2         |
-| c   | FID recovery from squash-merge commit scope on dev (Comment 4 §Scope-IN 3)                      | ✅                                                | Task 2         |
-| d   | Option A — `AUTO_ROUTE_SUFFIX` on PR squash-merge `--subject`, gated `bkit:auto` (Comment 5)    | ✅                                                | Task 6         |
-| e1  | `cancel-in-progress: false` queue semantic for dev (Comment 7)                                  | ✅                                                | Task 1         |
-| e2  | Cross-session loop cap `MAX_DEV_DISPATCH_ATTEMPTS` (Comment 7)                                  | ⚠️ Partial — see H1 (writer has no CI_DEV signal) | Tasks 2,3,5    |
-| e3  | Stale-run guard for no-PR dev case (Comment 7)                                                  | ✅                                                | Task 2         |
-| f   | #397 cross-surface arbitration explicitly out of scope (Comment 7)                              | ✅                                                | Out of Scope § |
-| g   | DROPPED items not re-introduced (ship-verify, preflight, #80) (Comment 4 §DROPPED)              | ✅                                                | Out of Scope § |
+<!-- prettier-ignore -->
+| # | Settled decision (source) | Covered? | Task(s) |
+| --- | --- | --- | --- |
+| a | Filter widens to `['feat/**','fix/**','dev']`, NOT `main` (Comment 6) | ✅ | Task 1 |
+| b | Branch-aware routing: feat/fix→ship/debug; dev→no-op/debug; main→manual/excluded (Comments 4,6) | ✅ | Task 2 |
+| c | FID recovery from squash-merge commit scope on dev (Comment 4 §Scope-IN 3) | ✅ | Task 2 |
+| d | Option A — `AUTO_ROUTE_SUFFIX` on PR squash-merge `--subject`, gated `bkit:auto` (Comment 5) | ✅ | Task 6 |
+| e1 | `cancel-in-progress: false` queue semantic for dev (Comment 7) | ✅ | Task 1 |
+| e2 | Cross-session loop cap `MAX_DEV_DISPATCH_ATTEMPTS` (Comment 7) | ⚠️ Partial — see H1 (writer has no CI_DEV signal) | Tasks 2,3,5 |
+| e3 | Stale-run guard for no-PR dev case (Comment 7) | ✅ | Task 2 |
+| f | #397 cross-surface arbitration explicitly out of scope (Comment 7) | ✅ | Out of Scope § |
+| g | DROPPED items not re-introduced (ship-verify, preflight, #80) (Comment 4 §DROPPED) | ✅ | Out of Scope § |
 
 ---
 

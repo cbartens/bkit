@@ -69,42 +69,45 @@ Three facets, two tested in bats (gate script behaviour), one in vitest (workflo
 
 ## Files Created / Modified
 
-| File                                     | Change                                                                                                                                                                                                                | Tier                                             |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `.bkit/src/bkit-ship-invariants.test.ts` | +6 `it` blocks in a new `describe("build-challenge remediation regressions")` block (Findings F1, F2, F3, F4a, F5, F7)                                                                                                | Unit (markdown-invariant)                        |
-| `tests/ship-gate.bats`                   | +4 `@test` cases (Findings F4b, F4c, F6, F8)                                                                                                                                                                          | Shell (cross-process, `tests/fixtures/gh/` stub) |
-| `tests/fixtures/gh/bin/gh`               | +`BKIT_FAKE_GH_STDERR_NOISE=1` knob (test infrastructure for F6 — injects deprecation-header-shaped stderr noise before successful JSON; mirrors existing `BKIT_FAKE_GH_API_ERROR` / `BKIT_FAKE_RATELIMITED` pattern) | Test fixture                                     |
+<!-- prettier-ignore -->
+| File | Change | Tier |
+| --- | --- | --- |
+| `.bkit/src/bkit-ship-invariants.test.ts` | +6 `it` blocks in a new `describe("build-challenge remediation regressions")` block (Findings F1, F2, F3, F4a, F5, F7) | Unit (markdown-invariant) |
+| `tests/ship-gate.bats` | +4 `@test` cases (Findings F4b, F4c, F6, F8) | Shell (cross-process, `tests/fixtures/gh/` stub) |
+| `tests/fixtures/gh/bin/gh` | +`BKIT_FAKE_GH_STDERR_NOISE=1` knob (test infrastructure for F6 — injects deprecation-header-shaped stderr noise before successful JSON; mirrors existing `BKIT_FAKE_GH_API_ERROR` / `BKIT_FAKE_RATELIMITED` pattern) | Test fixture |
 
 **No implementation files changed.** All edits are test files or test fixtures. The gate script, workflow markdown, and rendered mirrors are untouched.
 
 ## Test Results
 
-| Suite                 | Command                                                 | Result                                                                             |
-| --------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Targeted vitest       | `npx vitest run .bkit/src/bkit-ship-invariants.test.ts` | **20/20 GREEN** (14 existing + 6 new)                                              |
-| Targeted bats         | `bats tests/ship-gate.bats`                             | **20/20 GREEN** (16 existing + 4 new)                                              |
-| Full bats suite       | `bats tests/*.bats`                                     | **144/144 GREEN** (was 140; +4 new; 0 failed)                                      |
-| Full vitest suite     | `pnpm test`                                             | **75 files, 2657 passed, 2 skipped, 1 todo — exit 0** (was 2651; +6 new; 0 failed) |
-| Typecheck             | `pnpm typecheck`                                        | exit 0                                                                             |
-| Format check          | `pnpm format:check`                                     | clean (only this in-progress report stub flagged)                                  |
-| Mutation verification | manual (6 vitest + 4 bats)                              | all 10 tests confirmed to FAIL against their respective buggy code                 |
+<!-- prettier-ignore -->
+| Suite | Command | Result |
+| --- | --- | --- |
+| Targeted vitest | `npx vitest run .bkit/src/bkit-ship-invariants.test.ts` | **20/20 GREEN** (14 existing + 6 new) |
+| Targeted bats | `bats tests/ship-gate.bats` | **20/20 GREEN** (16 existing + 4 new) |
+| Full bats suite | `bats tests/*.bats` | **144/144 GREEN** (was 140; +4 new; 0 failed) |
+| Full vitest suite | `pnpm test` | **75 files, 2657 passed, 2 skipped, 1 todo — exit 0** (was 2651; +6 new; 0 failed) |
+| Typecheck | `pnpm typecheck` | exit 0 |
+| Format check | `pnpm format:check` | clean (only this in-progress report stub flagged) |
+| Mutation verification | manual (6 vitest + 4 bats) | all 10 tests confirmed to FAIL against their respective buggy code |
 
 ## Mutation Verification Summary
 
 Each test was verified to catch its bug by feeding the OLD buggy code to the test's assertion logic:
 
-| Finding | Method                                                                                    | Result    |
-| ------- | ----------------------------------------------------------------------------------------- | --------- |
-| F1      | node script: old content (`git add $BOOK_PATHS`, no `-u`) → regex fails                   | ✓ catches |
-| F2      | node script: old content (literal `${...}` in jq, no `--argjson`) → `toContain` fails     | ✓ catches |
-| F3      | node script: old content (bare call, no `\|\|`) → regex fails                             | ✓ catches |
-| F4a     | node script: old content (no `export STATUS_PATH`) → regex fails                          | ✓ catches |
-| F4b     | temp gate copy (`$STATUS_PATH` → `${STATUS_PATH:-}` reverted) → `unbound variable` exit 1 | ✓ catches |
-| F4c     | logic trace: old code silences write (`2>/dev/null \|\| true`) → no stderr audit          | ✓ catches |
-| F5      | node script: old routing (11 on Failure-Path line) → `find` returns undefined             | ✓ catches |
-| F6      | temp gate copy (`2>&1` re-added) + stderr noise → `total_count=0` exit 10                 | ✓ catches |
-| F7      | node script: old content (bare invocation) → regex fails                                  | ✓ catches |
-| F8      | temp stub copy (sanitization removed) → `../` SHA accepted, exit 0                        | ✓ catches |
+<!-- prettier-ignore -->
+| Finding | Method | Result |
+| --- | --- | --- |
+| F1 | node script: old content (`git add $BOOK_PATHS`, no `-u`) → regex fails | ✓ catches |
+| F2 | node script: old content (literal `${...}` in jq, no `--argjson`) → `toContain` fails | ✓ catches |
+| F3 | node script: old content (bare call, no `\|\|`) → regex fails | ✓ catches |
+| F4a | node script: old content (no `export STATUS_PATH`) → regex fails | ✓ catches |
+| F4b | temp gate copy (`$STATUS_PATH` → `${STATUS_PATH:-}` reverted) → `unbound variable` exit 1 | ✓ catches |
+| F4c | logic trace: old code silences write (`2>/dev/null \|\| true`) → no stderr audit | ✓ catches |
+| F5 | node script: old routing (11 on Failure-Path line) → `find` returns undefined | ✓ catches |
+| F6 | temp gate copy (`2>&1` re-added) + stderr noise → `total_count=0` exit 10 | ✓ catches |
+| F7 | node script: old content (bare invocation) → regex fails | ✓ catches |
+| F8 | temp stub copy (sanitization removed) → `../` SHA accepted, exit 0 | ✓ catches |
 
 ## Blockers
 

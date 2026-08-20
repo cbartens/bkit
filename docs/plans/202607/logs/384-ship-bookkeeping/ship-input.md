@@ -29,11 +29,12 @@ Surfaced by consumer-agent feedback during a live ship: the agent deliberately w
 
 ### Artifact capture is lossy, and the loss tracks the push-dependency
 
-| repo                 | log dirs | `ship-deferred-sweep.md` | Steps 1–8 records                      | Steps 9–13 records |
-| -------------------- | -------- | ------------------------ | -------------------------------------- | ------------------ |
-| bkit                 | 21       | 0                        | 0                                      | 6                  |
-| app-gether-life      | 70       | 17                       | start 22, guard 21, sweep 18, merge 16 | 31–34              |
-| visitfrasercoast-com | 57       | 7                        | start 11, guard 9, sweep 6, merge 4    | 13–16              |
+<!-- prettier-ignore -->
+| repo | log dirs | `ship-deferred-sweep.md` | Steps 1–8 records | Steps 9–13 records |
+| --- | --- | --- | --- | --- |
+| bkit | 21 | 0 | 0 | 6 |
+| app-gether-life | 70 | 17 | start 22, guard 21, sweep 18, merge 16 | 31–34 |
+| visitfrasercoast-com | 57 | 7 | start 11, guard 9, sweep 6, merge 4 | 13–16 |
 
 Dev-side steps (9–13) land ~100%. Branch-side steps (1–8) land 55–65% in app-gether-life and 25–70% in visitfrasercoast-com — `ship-merge-pr` appears only 4 times against 16 `ship-worktree-cleanup`. Every run that closes without a `ship-merge-pr` record is a run whose branch-side commits never reached dev.
 
@@ -526,17 +527,18 @@ All 3 sub-plan gates verified:
 
 **plan close** · cbartens/bkit
 
-| metric          | this run                       | med·5 |
-| --------------- | ------------------------------ | ----- |
-| durationSeconds | 51033 (14h11m)                 | —     |
-| linesChanged    | 2441 (+932/-1509)              | —     |
-| filesChanged    | 53                             | —     |
-| taskCount       | 55                             | —     |
-| frictionAdded   | 0                              | —     |
-| deferralsAdded  | 0                              | —     |
-| failuresAdded   | 0                              | —     |
-| compliance      | 2 pass · 0 fail · 0 n/a (100%) | —     |
-| attempts        | PLAN_ATTEMPT 1                 | —     |
+<!-- prettier-ignore -->
+| metric | this run | med·5 |
+| --- | --- | --- |
+| durationSeconds | 51033 (14h11m) | — |
+| linesChanged | 2441 (+932/-1509) | — |
+| filesChanged | 53 | — |
+| taskCount | 55 | — |
+| frictionAdded | 0 | — |
+| deferralsAdded | 0 | — |
+| failuresAdded | 0 | — |
+| compliance | 2 pass · 0 fail · 0 n/a (100%) | — |
+| attempts | PLAN_ATTEMPT 1 | — |
 
 `med·5` = median of the previous 5 plan runs (— if < 3) · ledger 27 rows, 0 malformed
 
@@ -746,16 +748,17 @@ Parent design: [384-ship-bookkeeping-design.md](https://github.com/cbartens/bkit
 
 **design close** · cbartens/bkit
 
-| metric          | this run                       | med·5 |
-| --------------- | ------------------------------ | ----- |
-| durationSeconds | 38527 (10h42m)                 | —     |
-| linesChanged    | 8428 (+7770/-658)              | —     |
-| filesChanged    | 154                            | —     |
-| frictionAdded   | 0                              | —     |
-| deferralsAdded  | 6                              | —     |
-| failuresAdded   | 0                              | —     |
-| compliance      | 2 pass · 0 fail · 0 n/a (100%) | —     |
-| attempts        | DESIGN_ATTEMPT 1               | —     |
+<!-- prettier-ignore -->
+| metric | this run | med·5 |
+| --- | --- | --- |
+| durationSeconds | 38527 (10h42m) | — |
+| linesChanged | 8428 (+7770/-658) | — |
+| filesChanged | 154 | — |
+| frictionAdded | 0 | — |
+| deferralsAdded | 6 | — |
+| failuresAdded | 0 | — |
+| compliance | 2 pass · 0 fail · 0 n/a (100%) | — |
+| attempts | DESIGN_ATTEMPT 1 | — |
 
 `med·5` = median of the previous 5 design runs (— if < 3) · ledger 17 rows, 0 malformed
 
@@ -913,13 +916,14 @@ Agreed direction (Path A/B + bookkeeping off the branch) stands. No design/plan 
 
 ### Gaps to absorb into the design (mostly already in comments; must not be left implicit)
 
-| Gap                                 | Constraint                                                                                                                                                                                                                                                                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **#341 / `RUNTIME_DEVPUSHES`**      | "Bookkeeping to the dev tree from Step 1" is wrong for cloud runtimes that cannot write the main checkout. Rule must be: write to the dev tree when `RUNTIME_DEVPUSHES = true`, else to the current branch. Easier after #341 lands (flag already exists); folding 384 in early re-opens the byte-identical local-path question #341 closed. |
-| **Path B dispatch**                 | Wait-then-dispatch is too soft for CONFLICTING PRs — nothing fires by construction (no merge ref). B2 needs **unconditional** `gh workflow run` after the head moves, not a timeout fallback. Same for buried `[skip ci]` history poisoning auto-dispatch.                                                                                   |
-| **Path-scoped staging**             | Relocating ship bookkeeping onto the dev tree increases exposure to the Step 10 blanket `git add docs/` race with concurrent sessions. Staging must be path-scoped to `docs/plans/{YYYYMM}/logs/{FID}/` plus explicitly named ledgers — never blanket `docs/` or `-A`.                                                                       |
-| **Finding 2 (`.deferred-blocked`)** | Independent of the Path A/B rewrite. Design must decide: in-scope for 384, or split to a follow-up issue. Leaving it ambiguous means a sweep FAIL still falls through with no handover.                                                                                                                                                      |
-| **Verification gap**                | A check that folds each `status.jsonl` and flags runs whose step set has holes is the detector that would have caught this. Design must decide: in-scope vs deferred.                                                                                                                                                                        |
+<!-- prettier-ignore -->
+| Gap | Constraint |
+| --- | --- |
+| **#341 / `RUNTIME_DEVPUSHES`** | "Bookkeeping to the dev tree from Step 1" is wrong for cloud runtimes that cannot write the main checkout. Rule must be: write to the dev tree when `RUNTIME_DEVPUSHES = true`, else to the current branch. Easier after #341 lands (flag already exists); folding 384 in early re-opens the byte-identical local-path question #341 closed. |
+| **Path B dispatch** | Wait-then-dispatch is too soft for CONFLICTING PRs — nothing fires by construction (no merge ref). B2 needs **unconditional** `gh workflow run` after the head moves, not a timeout fallback. Same for buried `[skip ci]` history poisoning auto-dispatch. |
+| **Path-scoped staging** | Relocating ship bookkeeping onto the dev tree increases exposure to the Step 10 blanket `git add docs/` race with concurrent sessions. Staging must be path-scoped to `docs/plans/{YYYYMM}/logs/{FID}/` plus explicitly named ledgers — never blanket `docs/` or `-A`. |
+| **Finding 2 (`.deferred-blocked`)** | Independent of the Path A/B rewrite. Design must decide: in-scope for 384, or split to a follow-up issue. Leaving it ambiguous means a sweep FAIL still falls through with no handover. |
+| **Verification gap** | A check that folds each `status.jsonl` and flags runs whose step set has holes is the detector that would have caught this. Design must decide: in-scope vs deferred. |
 
 ### Issue-body hygiene (optional, Design can do it)
 
@@ -1200,10 +1204,11 @@ All seven findings reduce to one defect class — a load-bearing rule that lives
 
 `bkit-tests-check` is hard-coded in `docs/deployments.md`, in `bkit-protect-main.sh`, and would be a third copy in the gate. The CI workflow filename is the same class of literal. Both resolve from `package.json` (read by `jq`, survive `stripManagedKeys` because it touches only `scripts` + `devDependencies`):
 
-| Key                | Default            | Read by                      |
-| ------------------ | ------------------ | ---------------------------- |
+<!-- prettier-ignore -->
+| Key | Default | Read by |
+| --- | --- | --- |
 | `bkit.capstoneJob` | `bkit-tests-check` | gate; `bkit-protect-main.sh` |
-| `bkit.ciWorkflow`  | `ci.yml`           | gate's run-selection query   |
+| `bkit.ciWorkflow` | `ci.yml` | gate's run-selection query |
 
 **Config-home rule:** `.bkit/scripts/*` is Tier 1 (bkit-owned, force-overwritten on `bkit upgrade`) — anything a consumer may tune lives in `package.json`; only bkit-owned defaults live in a managed config script. Timeouts/limits are bkit-owned → one managed config script (`bkit-ship-timeouts.sh`) with units in identifiers, matching the `bkit-counter-bus-config.sh` precedent.
 
@@ -1213,17 +1218,18 @@ A head SHA legitimately carries several runs. Query `GET /repos/{o}/{r}/actions/
 
 ### Gate exit codes — one per condition, never collapsed
 
-| Code | Condition                                                | Merge                              |
-| ---- | -------------------------------------------------------- | ---------------------------------- |
-| 0    | Capstone present in selected run, concluded `success`    | proceed                            |
-| 10   | No run of the CI workflow exists at head                 | refuse                             |
-| 11   | Runs exist at head but none completed                    | refuse (caller may poll)           |
-| 12   | Selected run concluded failure                           | refuse                             |
-| 13   | Selected run exists but capstone job **absent**          | refuse — never vacuous pass        |
-| 14   | Green run exists, but at a **superseded** SHA            | refuse, print both SHAs + run URL  |
-| 15   | Selected run concluded `cancelled`                       | refuse — "dispatch, do not push"   |
-| 16   | Capstone green but a lane concluded `skipped` (not full) | refuse — vacuous green             |
-| 20   | API error / rate limit / auth                            | refuse, **distinct from "no run"** |
+<!-- prettier-ignore -->
+| Code | Condition | Merge |
+| --- | --- | --- |
+| 0 | Capstone present in selected run, concluded `success` | proceed |
+| 10 | No run of the CI workflow exists at head | refuse |
+| 11 | Runs exist at head but none completed | refuse (caller may poll) |
+| 12 | Selected run concluded failure | refuse |
+| 13 | Selected run exists but capstone job **absent** | refuse — never vacuous pass |
+| 14 | Green run exists, but at a **superseded** SHA | refuse, print both SHAs + run URL |
+| 15 | Selected run concluded `cancelled` | refuse — "dispatch, do not push" |
+| 16 | Capstone green but a lane concluded `skipped` (not full) | refuse — vacuous green |
+| 20 | API error / rate limit / auth | refuse, **distinct from "no run"** |
 
 Codes 10–16 mean "not validated". Code 20 means "unknown". Conflating them lets a degraded API read as an unvalidated head, and lets an unvalidated head read as an API blip. Distinguish a `skipped` lane (code 16) from a `cache_skip` sentinel green (code 0 + `--explain` note) — the SHA-cache short-circuit is keyed to the exact commit SHA and is sound.
 

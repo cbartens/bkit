@@ -59,11 +59,12 @@ WHEN the run ends by any route -> THEN one complete, path-scoped step record set
 
 All seven findings are one defect class — a load-bearing rule that lives only in prose, that no gate can check, and that each agent resolves differently. The three exploration lenses disagreed on the remedy: rewrite the prose (pragmatic, optimal-tradeoff) versus extract it into a tested executable (risk premortem). That disagreement resolves by **not applying one carrier uniformly**, because the rules do not share a blast radius:
 
-| Tier | Rule class                                                           | Worst outcome if violated                                                                                                                                    | Carrier                                                                                                 |
-| ---- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| 1    | The merge gate — capstone present + `success` at the current PR head | **Unrecoverable.** The squash lands; `ci.yml:130-131` gives merged-PR dev pushes only `run_level=light`, so the change never receives full validation at all | Executable: `.bkit/scripts/bkit-ship-gate.sh` + `tests/ship-gate.bats` with captured `gh` JSON fixtures |
-| 2    | Push contract, staging scope, step-key stability                     | Recoverable but silently drifting — misattributed commits, lost artifacts, orphaned counters                                                                 | Prose in `bkit-ship.md`, mechanically constrained by a vitest markdown-invariant test                   |
-| 3    | Step-set completeness across a run                                   | Post-hoc; detectable days later                                                                                                                              | Advisory detector over the existing `status.jsonl` fold                                                 |
+<!-- prettier-ignore -->
+| Tier | Rule class | Worst outcome if violated | Carrier |
+| --- | --- | --- | --- |
+| 1 | The merge gate — capstone present + `success` at the current PR head | **Unrecoverable.** The squash lands; `ci.yml:130-131` gives merged-PR dev pushes only `run_level=light`, so the change never receives full validation at all | Executable: `.bkit/scripts/bkit-ship-gate.sh` + `tests/ship-gate.bats` with captured `gh` JSON fixtures |
+| 2 | Push contract, staging scope, step-key stability | Recoverable but silently drifting — misattributed commits, lost artifacts, orphaned counters | Prose in `bkit-ship.md`, mechanically constrained by a vitest markdown-invariant test |
+| 3 | Step-set completeness across a run | Post-hoc; detectable days later | Advisory detector over the existing `status.jsonl` fold |
 
 Tier 2's carrier is cheap because the harness already exists and the exploration surfaced it: `.bkit/src/` carries `bkit-counter-prose-audit.test.ts`, `bkit-telemetry-workflow-writers.test.ts`, `bkit-ci-dispatch-gate-alignment.test.ts`, `bkit-comply-gate-wiring.test.ts` — vitest files that grep the workflow markdown for structural invariants. **The issue's claim that `tests/` is five `.bats` files and "no test parses workflow markdown" is false.** Asserting a rule about `bkit-ship.md` costs one new `*.test.ts`, not a test framework.
 
@@ -146,10 +147,11 @@ That is true in every runtime, needs no capability flag, and demotes _where_ `BO
 
 `BOOK_ROOT`'s _value_ is then selected by #341's `CAN_PUSH_DEV`, named exactly as #341's capability table names it:
 
-| `CAN_PUSH_DEV`                        | `BOOK_ROOT`                         | Flush                                                                   |
-| ------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------- |
-| `true` (worktree exists — modes 1, 2) | main checkout / dev tree            | Step 13's single `[skip ci]` commit + push, path-scoped to `BOOK_PATHS` |
-| `false` (mode 3, unknown)             | current working branch (adopt tree) | Landed with the phase-close PR, per #341 shape A                        |
+<!-- prettier-ignore -->
+| `CAN_PUSH_DEV` | `BOOK_ROOT` | Flush |
+| --- | --- | --- |
+| `true` (worktree exists — modes 1, 2) | main checkout / dev tree | Step 13's single `[skip ci]` commit + push, path-scoped to `BOOK_PATHS` |
+| `false` (mode 3, unknown) | current working branch (adopt tree) | Landed with the phase-close PR, per #341 shape A |
 
 **The `git push --dry-run origin dev` probe is rejected.** #341's design already rejected it with a mechanism: `--dry-run` performs auth and ref advertisement but sends no ref-update, so the server-side pre-receive hook never runs and branch protection is never evaluated — it returns success where a real push would be rejected. A false-positive `CAN_PUSH_DEV=true` in mode 3 then fires `git checkout dev` on the live session. Until #341 lands, 384 uses `CAN_PUSH_DEV`'s identity-derived default (worktree present ⇒ `true`, optimistic; the real push fails loud) so that #341 replaces a default with a table lookup and touches nothing else.
 
@@ -198,17 +200,18 @@ The single capstone assertion is only load-bearing while `pull_request ⇒ run_l
 
 Today `:596-602` collapses six distinct conditions into two strings, and bakes in a misdiagnosis: it prints `query failed (403 = PAT scope)` for any empty result, so a secondary-rate-limit 403 reads as a permissions problem forever.
 
-| Code | Condition                                                 | Merge                              |
-| ---- | --------------------------------------------------------- | ---------------------------------- |
-| 0    | Capstone present in the selected run, concluded `success` | proceed                            |
-| 10   | No run of the CI workflow exists at head                  | refuse                             |
-| 11   | Runs exist at head but none has completed                 | refuse (caller may poll)           |
-| 12   | Selected run concluded failure                            | refuse                             |
-| 13   | Selected run exists but capstone job **absent**           | refuse — never vacuous pass        |
-| 14   | Green run exists, but at a **superseded** SHA             | refuse, print both SHAs + run URL  |
-| 15   | Selected run concluded `cancelled`                        | refuse — "dispatch, do not push"   |
-| 16   | Capstone green but a lane concluded `skipped` (not full)  | refuse — vacuous green             |
-| 20   | API error / rate limit / auth                             | refuse, **distinct from "no run"** |
+<!-- prettier-ignore -->
+| Code | Condition | Merge |
+| --- | --- | --- |
+| 0 | Capstone present in the selected run, concluded `success` | proceed |
+| 10 | No run of the CI workflow exists at head | refuse |
+| 11 | Runs exist at head but none has completed | refuse (caller may poll) |
+| 12 | Selected run concluded failure | refuse |
+| 13 | Selected run exists but capstone job **absent** | refuse — never vacuous pass |
+| 14 | Green run exists, but at a **superseded** SHA | refuse, print both SHAs + run URL |
+| 15 | Selected run concluded `cancelled` | refuse — "dispatch, do not push" |
+| 16 | Capstone green but a lane concluded `skipped` (not full) | refuse — vacuous green |
+| 20 | API error / rate limit / auth | refuse, **distinct from "no run"** |
 
 Codes 10–16 mean "not validated". Code 20 means "unknown". Conflating them lets a degraded API read as an unvalidated head, and — far worse — lets an unvalidated head read as an API blip.
 
@@ -220,10 +223,11 @@ Code 20 prints the remaining quota from `gh api rate_limit` when it can get it, 
 
 `bkit-tests-check` is hard-coded in `docs/deployments.md`, in `bkit-protect-main.sh`, and would be hard-coded a third time in the gate — while `ci-legacy-scaffold-job-names` already advises that consumers on older scaffolds have different names. The CI workflow file name is the same class of literal, newly introduced by the run-selection rule. Both resolve from `package.json`:
 
-| Key                | Default            | Read by                      |
-| ------------------ | ------------------ | ---------------------------- |
+<!-- prettier-ignore -->
+| Key | Default | Read by |
+| --- | --- | --- |
 | `bkit.capstoneJob` | `bkit-tests-check` | gate; `bkit-protect-main.sh` |
-| `bkit.ciWorkflow`  | `ci.yml`           | gate's run-selection query   |
+| `bkit.ciWorkflow` | `ci.yml` | gate's run-selection query |
 
 Neither needs install-side plumbing: `stripManagedKeys` only touches `scripts` and `devDependencies`, so read-only keys written by hand and read by `jq` survive install, upgrade and uninstall untouched.
 

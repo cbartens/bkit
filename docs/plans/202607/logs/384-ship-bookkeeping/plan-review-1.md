@@ -100,13 +100,14 @@ No additional out-of-scope findings. The plan's `Out of Scope` table correctly t
 
 Surfaced from `related-deferrals.md` (advisory only — never tasks):
 
-| Candidate                                                      | Source                 | Overlaps                                             | Recommendation                                                                                             |
-| -------------------------------------------------------------- | ---------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `384-extract-ship-git-ci-mechanics-into-a-tested-kernel`       | `docs/deferrals.jsonl` | Out-of-Scope "Executable ship kernel" row            | Keep deferred — already in Out of Scope (`:204`); ensure Task 9 does not duplicate the ledger row          |
-| `384-promote-status-hole-detector-from-advisory-to-gate`       | `docs/deferrals.jsonl` | Task 10 (Tier-3 advisory); Task 9 promotion criteria | Keep deferred — promotion gated on clean watermark; cross-link from Task 9/10                              |
-| `384-ship-without-a-writable-branch-checkout-outside-b2`       | `docs/deferrals.jsonl` | Task 5 Step 12 ownership; push-timing invariant      | Keep deferred — design rejected full removal; two findings already absorbed                                |
-| `per-workflow-rollback-path-for-shipped-bkit-workflow-changes` | `docs/deferrals.jsonl` | Task 9 `docs/deployments.md` manual rollback path    | Keep deferred — manual path is in scope; mechanism is the follow-up                                        |
-| `384-ship-redesign-sequence-after-341`                         | `docs/deferrals.jsonl` | Task 0 serialisation decision                        | Keep deferred / close after Task 0 — remediation ("design/plan #384 after #341") is satisfied by this plan |
+<!-- prettier-ignore -->
+| Candidate | Source | Overlaps | Recommendation |
+| --- | --- | --- | --- |
+| `384-extract-ship-git-ci-mechanics-into-a-tested-kernel` | `docs/deferrals.jsonl` | Out-of-Scope "Executable ship kernel" row | Keep deferred — already in Out of Scope (`:204`); ensure Task 9 does not duplicate the ledger row |
+| `384-promote-status-hole-detector-from-advisory-to-gate` | `docs/deferrals.jsonl` | Task 10 (Tier-3 advisory); Task 9 promotion criteria | Keep deferred — promotion gated on clean watermark; cross-link from Task 9/10 |
+| `384-ship-without-a-writable-branch-checkout-outside-b2` | `docs/deferrals.jsonl` | Task 5 Step 12 ownership; push-timing invariant | Keep deferred — design rejected full removal; two findings already absorbed |
+| `per-workflow-rollback-path-for-shipped-bkit-workflow-changes` | `docs/deferrals.jsonl` | Task 9 `docs/deployments.md` manual rollback path | Keep deferred — manual path is in scope; mechanism is the follow-up |
+| `384-ship-redesign-sequence-after-341` | `docs/deferrals.jsonl` | Task 0 serialisation decision | Keep deferred / close after Task 0 — remediation ("design/plan #384 after #341") is satisfied by this plan |
 
 ## Summary
 
