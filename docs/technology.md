@@ -40,7 +40,7 @@
 | Technology | Config | Usage |
 | --- | --- | --- |
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/src/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
-| `check:dist` npm script | `bkit-tests-static` lane ("Verify Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
+| `check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
 | `picomatch` | `^4.0.4` — the ONLY runtime `dependency` | `.bkitignore` glob matching. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
 ## Execution Hosts

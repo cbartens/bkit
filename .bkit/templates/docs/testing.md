@@ -87,6 +87,48 @@ A declared tier therefore emits an **executed count** (a runner's machine summar
 
 **Never manufacture a vacuous green.** `passWithNoTests: true` (or `--passWithNoTests`) makes a runner report PASS with zero tests run — the exact hole the executed-count gate exists to close; it is a **banned override** in any bkit-managed test config. Two adjacent guards: emit the executed count as a build **output** (not a log line) so a build-cache replay (e.g. a task runner like turbo) restores the real number, and let a cache short-circuit report a `cached` sentinel (validated-on-cache, not a hollow 0); assert unit / integration counts only on **non-PR full runs** — a PR run is affected-scoped and can legitimately resolve to 0 affected tests.
 
+### Step names say whether a red is real
+
+One verb scheme across every step in `ci.yml`, so a red run can be triaged from the step name alone before opening a log:
+
+<!-- prettier-ignore -->
+| Verb | Means |
+|---|---|
+| `Assert` | a red here is a real failure |
+| `Check` | looks and reports, cannot red the lane |
+| `Run` | invokes a named tool or suite |
+| `Report` / `Upload` / `Count` / `Merge` / `Fetch` | move or publish results |
+
+`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme. Each of them meant "fail the job if this isn't true" — which is what `Assert` means — so four spellings of one idea taught the reader nothing and hid the one distinction that matters. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
+
+Two smaller rules that follow from the same idea:
+
+- **Name the tool the way the tool is named.** `Run actionlint`, not `Run Actionlint`; `Run bkit Check`, not `Run Bkit Check`. A step name that misspells its own tool is a step name you cannot grep for.
+- **Drop a qualifier the job name already carries.** Inside `bkit-tests-unit`, `Run Unit Tests` beats `Run Vitest Unit Tests` — the lane already said which tier, and the runner is visible in the command. Keep a bracket only when it disambiguates two steps that would otherwise share a name and mirrors a literal flag or tool: `Run Slop Scan (full)` / `(delta)`, `Run Shell Tests (bats)`.
+
+### A guard asserts the rule, not the sentence that explains it
+
+A shape guard over a config file reads that file as text, so it is easy to anchor it on whatever string happens to be nearby. Anchor on the **rule**; a guard pinned to the prose around the rule fails the moment someone improves the comment, and passes for years after the rule itself is deleted.
+
+The failure mode is specific and it is not hypothetical: a guard asserting `expect(content).toMatch(/bootstrap paradox/)` was protecting a real invariant — that a lane checks the repo out before calling a local composite. Tidying the phrase "bootstrap paradox" out of the comment reddened the guard while the invariant was untouched. Assert the thing that must hold (`must already be checked out`, a step id, a flag, an `if:` shape), not the words chosen to describe it.
+
+Three practical rules:
+
+- **Pin the mechanism, not the wording.** `expect(step).not.toMatch(/exit [1-9]/)` proves a step is non-blocking; matching a comment that says "this only warns" proves nothing about the code.
+- **Derive the list, never hand-write it.** A guard that enumerates lanes goes stale the day a lane is added. Derive the set from the file under test — count the `VERBOSE_CI` declarations, read the `needs:` array — so a new lane is covered without editing the guard.
+- **Prove it can fail.** Put the bug back and watch the guard red before you trust it. A guard that has never failed is indistinguishable from a guard that cannot.
+
+**The exception, stated so it is not mistaken for the rule.** When the shipped artefact _is_ prose — a rules file an agent reads, a CLI help string, an advisory message — the wording is the behaviour, and asserting on it is correct. The distinction is whether the text is the deliverable or a description of one.
+
+### Composite actions: two things that cost a red CI to learn
+
+A composite action (`uses: ./.github/actions/setup`) is the right way to stop copy-pasting a setup block across lanes. Two of its rules are not obvious and neither fails loudly:
+
+- **A composite cannot own the checkout that fetches it.** A local `uses: ./…` path is resolved from the runner's own filesystem, so the repo must already be checked out before the runner can read the composite's `action.yml` at all. Putting `actions/checkout` inside the composite and making the composite each lane's first step is a bootstrap paradox — the lane reds with "can't find action.yml". Every adopting lane runs `actions/checkout` as its **own** first step, with its own explicit `fetch-depth`, before it calls the composite.
+- **Job-level `env:` reaches a composite step's process, but not its `env` expression context.** The `env` context inside a composite reflects only what the composite itself declares, so `if: env.VERBOSE_CI == '1'` on a composite step is **permanently false** — the step silently never runs, and nothing reds. Gate in the shell instead (`if [ "${VERBOSE_CI:-}" != "1" ]; then exit 0; fi`) and say so in a comment, or the next person tidies it back into an `if:`.
+
+The same expression-context trap has a neighbour outside composites: the `env` context is not available to a **job-level `env:` value** either, so `NODE_OPTIONS: ${{ env.VERBOSE_CI && '…' || '' }}` resolves empty on every run. Spell the marker test out — see § CI verbosity.
+
 ### E2E on PRs: run the full suite, watch which DB it hits
 
 Two PR-time E2E concerns, both gated on **real preconditions** (event, head ref), never a kill-switch flag:

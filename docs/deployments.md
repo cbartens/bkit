@@ -501,7 +501,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 | --- | --- | --- | --- | --- |
 | 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
 | 2 | Unit and integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
-| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
+| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
 | 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
 | 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `.bkit/scripts/bkit-slop-delta.sh` materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
 | 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
@@ -521,7 +521,7 @@ Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed
 Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
 - Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
-- CI `bkit-tests-static` "Verify Dist Freshness" (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
+- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
 - Consumer template `.bkit/templates/.github/workflows/ci.yml` omits freshness (tarball install, no recompile). Do not add there.
 
 ### `.husky/pre-push` bkit check gate

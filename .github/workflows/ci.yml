@@ -342,7 +342,7 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
 
-      - name: Run Prettier Format Check
+      - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
         run: pnpm format:check
 
@@ -388,7 +388,7 @@ jobs:
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
-      - name: Run Actionlint
+      - name: Run actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
@@ -406,11 +406,11 @@ jobs:
       # regenerated and committed whenever .bkit/src/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
-      - name: Verify Dist Freshness
+      - name: Assert Dist Freshness
         if: steps.cache.outputs.skip != 'true'
         run: pnpm check:dist
 
-      - name: Run Bkit Check
+      - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
@@ -419,7 +419,7 @@ jobs:
       # blocking gate on one release of fail-open signal without muting; that
       # signal only accrues if something actually runs it, so it runs here.
       # `|| true` is belt-and-braces: the CLI's own contract is exit 0 always.
-      - name: Status-Hole Detector (advisory)
+      - name: Check Status Holes
         if: steps.cache.outputs.skip != 'true'
         run: pnpm audit:status-holes || true
 
@@ -493,7 +493,7 @@ jobs:
       # integration tier (report-only) — SEPARATE lanes so each tier has its own honest number and
       # executed-count, mirroring how consumers (gether/fraser) run them. Dogfoods the per-tier
       # bkit-stub:coverage scaffold shipped to consumers. See testing.md § Coverage on PRs.
-      - name: Run Vitest Unit Tests
+      - name: Run Unit Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -586,7 +586,7 @@ jobs:
       # INTEGRATION coverage run, scoped via --coverage.include to the engine surface
       # (modules/install/upgrade/uninstall) so the number reflects the flows integration is meant to
       # drive, not a whole-repo denominator. Report-only — NO --coverage.thresholds (see job header).
-      - name: Run Vitest Integration Tests
+      - name: Run Integration Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -627,7 +627,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Check Test Plan Followed
+      - name: Assert Test Plan Followed
         env:
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
           SCOPE_RESULT: ${{ needs.bkit-tests-scope.result }}

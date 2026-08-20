@@ -2049,10 +2049,10 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
   };
 
   it("no drift when a step OUTSIDE any named block is removed (consumer owns unmarked regions)", () => {
-    // The `Run Bkit Check` step is a plain step, not inside a bkit:start/end block, so the
+    // The `Run bkit Check` step is a plain step, not inside a bkit:start/end block, so the
     // consumer owns it — removing it is NOT drift. Only bkit-owned named blocks are compared.
     const consumer = readTemplate().replace(
-      /\n      - name: Run Bkit Check\n        if: steps\.cache\.outputs\.skip != 'true'\n        run: pnpm bkit check\n/,
+      /\n      - name: Run bkit Check\n        if: steps\.cache\.outputs\.skip != 'true'\n        run: pnpm bkit check\n/,
       "\n",
     );
     writeConsumer(consumer);

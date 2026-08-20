@@ -1,6 +1,6 @@
 name: bkit-cloud
 
-# Phase-routed cloud-agent workflow (issue #119 + #245). A single workflow carries
+# Phase-routed cloud-agent workflow. A single workflow carries
 # TWO dispatch jobs — `claude` (via claude-code-action@v1) and `opencode` (via the
 # opencode CLI `run` subcommand). Both run the same `/bkit-auto <phase> <arg>`
 # orchestrator against the committed `.claude/` / `.opencode/` config respectively.
@@ -80,7 +80,7 @@ concurrency:
   # pendings are cancelled as newer ones arrive); the queued run re-evaluates the
   # dispatch cap at its ctx step when it starts — the operator does not need to
   # manually re-trigger for the SAME FID. feat/** keeps true (latest-wins,
-  # current behaviour). #363. NOTE (#363 M6): `bkit-auto-dev` is ONE group shared
+  # current behaviour). NOTE: `bkit-auto-dev` is ONE group shared
   # by ALL FIDs (the group cannot key on FID — it is evaluated from trigger-
   # payload context alone, before the ctx step derives the FID). If two DIFFERENT
   # FIDs' dev CI runs fail near-simultaneously, GHA's queue-collapse keeps only
@@ -137,7 +137,7 @@ jobs:
           fi
 
       # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` fences this file off
-      # from consumer-side Renovate; new SHAs arrive via `bkit install`. See issue #124.
+      # from consumer-side Renovate; new SHAs arrive via `bkit install`.
       - uses: actions/checkout@v4
         if: steps.gate.outputs.enabled == 'true'
         with:
@@ -209,14 +209,14 @@ jobs:
             # surface (dev CI failure). One post-feat/** debug budget per FID.
             # Returns 1 (caller must skip) once the FID has MAX_DEV_DISPATCH_
             # ATTEMPTS distinct failed-CI SHAs recorded, or if the counter row
-            # cannot be durably landed on origin/dev (fail-closed — #363 P6: a
+            # cannot be durably landed on origin/dev (fail-closed — a
             # rejected push is NOT assumed to be the benign dual-job race; ANY
             # non-fast-forward leaves the row nowhere durable, so retry once
             # against a re-fetched dev and then VERIFY landing before
             # proceeding). Returns 0 to proceed to dispatch.
             bkit_dev_dispatch_guard() {
               local guard_fid="$1" guard_head_sha="$2"
-              # #363 H1: assert the FID against the same slug allowlist the dev arm
+              # assert the FID against the same slug allowlist the dev arm
               # already enforces BEFORE it's used to build any path (find -path /
               # mkdir -p / git commit -m). Defence-in-depth re-check for the
               # PR-body marker path (bkit:fid=<anything up to whitespace/'>'>
@@ -225,7 +225,7 @@ jobs:
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
               fi
-              # #363 F10: the caller invokes this function as `... || { skip }`,
+              # the caller invokes this function as `... || { skip }`,
               # which suppresses `set -e` for the whole body — so a failed
               # source (stale `bkit install`, partial checkout, renamed script)
               # would fall through to `set -u` killing the entire step on an
@@ -244,7 +244,7 @@ jobs:
                 return 1
               fi
               local status_dir status_file dev_count parent_sha landed
-              # #363 F9: `sort` makes the month-bucket choice deterministic. An
+              # `sort` makes the month-bucket choice deterministic. An
               # unsorted `find` takes readdir order, so a FID whose logs span
               # two YYYYMM buckets could read the cap counter from one file and
               # write it to another across cycles — silently unbounding it.
@@ -256,7 +256,7 @@ jobs:
               mkdir -p "$status_dir"
               status_file="${status_dir}status.jsonl"
               dev_count=0
-              # #363 M1: distinguish "no rows" from "cannot parse" — a truncated
+              # distinguish "no rows" from "cannot parse" — a truncated
               # line, stray non-JSON row, or merge=union conflict artefact in the
               # shared status.jsonl must NOT silently degrade to dev_count=0
               # (which would defeat the cap entirely, unbounded). Only an absent
@@ -312,7 +312,7 @@ jobs:
               fi
               # PHASE=debug below.
               # Primary: parse FID from commit scope: feat(363-widen-bkit-cloud-trigger): ...
-              # Shape-tolerant (#363 P5/L3): the regex accepts BOTH GitHub
+              # Shape-tolerant: the regex accepts BOTH GitHub
               # (363-slug) and Linear (bar-123-slug) FID SHAPES, mirroring the
               # alternation the feat/** fallback below already uses, so a
               # Linear-shaped FID is not rejected here on shape alone. This does
@@ -322,7 +322,7 @@ jobs:
               # still no-ops at that check (empty labels -> bkit:auto absent).
               # Kept for forward-compatibility with a future MCP-based kill-
               # switch, not as a present end-to-end guarantee.
-              # #363 F8: `head -1` FIRST — head_commit.message is subject+body and
+              # `head -1` FIRST — head_commit.message is subject+body and
               # grep's `^` anchors per line, so without it a squash body line
               # (GitHub's default body is the list of source commit subjects)
               # like "feat(999-other): ..." would win and key the cap counter,
@@ -330,7 +330,7 @@ jobs:
               FID=$(printf '%s' "$COMMIT_MSG" | head -1 | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
               if [ -z "$FID" ]; then
                 # Fallback: gh api merge-commit linked PR -> PR body bkit:fid marker.
-                # #363 F4: filter to same-repo MERGED PRs. This endpoint returns
+                # filter to same-repo MERGED PRs. This endpoint returns
                 # PRs *associated* with the commit, and for a non-default-branch
                 # commit (dev; bkit's default is main) that includes OPEN fork
                 # PRs branched at this SHA. The job-level head_repository guard
@@ -349,7 +349,7 @@ jobs:
                 echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # `|| true` is load-bearing under `set -euo pipefail` —
               # this runs BEFORE the slug allowlist, so a non-FID branch
               # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
@@ -357,11 +357,11 @@ jobs:
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
               ARG="$FID"
               # Kill switch: re-check bkit:auto on the issue (live revocation).
-              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # exact label match, not substring — `grep -q 'bkit:auto'`
               # over a joined list would also match `bkit:auto-disabled` /
               # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
               # an operator who believes such a label revokes automation.
-              # #363 F7: this MUST precede the stale-run guard below. That guard
+              # this MUST precede the stale-run guard below. That guard
               # mkdir -p's, commits and pushes a telemetry row to dev before
               # exiting, so with the old ordering an operator who removed
               # bkit:auto to halt a misbehaving loop still got uncapped
@@ -383,7 +383,7 @@ jobs:
               # name is consumer-editable free text.
               LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
                 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
-              # #363 L4: an empty LATEST_CI_SHA silently disables the staleness
+              # an empty LATEST_CI_SHA silently disables the staleness
               # check (deliberate fail-open — better to dispatch than to
               # silently swallow the feature on a transient API hiccup). But a
               # PERMANENT misconfiguration (the consumer's CI workflow file is
@@ -394,19 +394,19 @@ jobs:
                 echo "::warning::gh run list --branch dev --workflow ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named ci.yml (\`gh workflow view ci.yml\`)."
               fi
               if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
-                # #363 M6: `bkit-auto-dev` is a SINGLE concurrency group shared by
+                # `bkit-auto-dev` is a SINGLE concurrency group shared by
                 # EVERY FID (the group cannot key on FID — GHA evaluates
                 # concurrency.group from trigger-payload context only, before the
                 # FID is known). If a DIFFERENT FID's dev CI failure superseded
                 # this run via GHA's queue-collapse (cancel-in-progress: false
                 # keeps at most one pending run per group), this FID's post-merge
                 # failure is dropped here — surface it where it cannot be lost.
-                # #363 F6: this used to commit a status.jsonl row and
-                # `git push origin dev || true`. This branch is only reached
-                # because dev ALREADY advanced, so that push was usually a
-                # non-fast-forward and was silently discarded — the row went
+                # Record the drop in the RUN SUMMARY, never as a committed
+                # status.jsonl row pushed to dev. This branch is only reached
+                # because dev ALREADY advanced, so such a push is a
+                # non-fast-forward and is silently discarded — the row would go
                 # missing in exactly the scenario it exists to record, while
-                # the warning below told the operator to go read it. The run
+                # the warning below sends the operator to read it. The run
                 # summary is written to the run itself and cannot race.
                 DROP_ROW=$(jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$FID" --arg h "$HEAD_SHA" --arg latest "$LATEST_CI_SHA" \
                   '{type:"dev-dispatch-dropped", workflow:"auto", at:$t, fid:$f, headSha:$h, latestSha:$latest}')
@@ -435,7 +435,7 @@ jobs:
               ARG="$PR_NUMBER"
 
               # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every
-              # bkit-build PR body. #363 H1: also assert the marker-derived FID
+              # bkit-build PR body. Also assert the marker-derived FID
               # against the slug allowlist here — bkit:fid=[^[:space:]>]+ admits
               # '/', '.', '..' and glob metacharacters, so an unvalidated match
               # falls through to path construction (find -path / mkdir -p / git
@@ -447,7 +447,7 @@ jobs:
               if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
                 # FALLBACK: extract FID from the branch name (feat/{FID}) when the
                 # PR body carries no usable bkit:fid= marker.
-                # #363 H1: keep the FULL slug (do NOT collapse to the leading
+                # keep the FULL slug (do NOT collapse to the leading
                 # numeric/alpha id) — a truncated FID (e.g. '363' instead of
                 # '363-widen-bkit-cloud-trigger') would count against a DIFFERENT
                 # status.jsonl/status_dir key than the dev-path FID, breaking the
@@ -458,7 +458,7 @@ jobs:
                 # delimiter: with '|' the alternation would need escaping and is
                 # ambiguous under -E.
                 FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
-                # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+                # `|| true` is load-bearing under `set -euo pipefail` —
               # this runs BEFORE the slug allowlist, so a non-FID branch
               # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
@@ -472,7 +472,7 @@ jobs:
               fi
 
               # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
-              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # exact label match, not substring — `grep -q 'bkit:auto'`
               # over a joined list would also match `bkit:auto-disabled` /
               # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
               # an operator who believes such a label revokes automation.
@@ -601,7 +601,7 @@ jobs:
             # step for the fully-commented version of this block — identical logic.
             bkit_dev_dispatch_guard() {
               local guard_fid="$1" guard_head_sha="$2"
-              # #363 H1: assert the FID against the same slug allowlist the dev arm
+              # assert the FID against the same slug allowlist the dev arm
               # already enforces BEFORE it's used to build any path (find -path /
               # mkdir -p / git commit -m). Defence-in-depth re-check for the
               # PR-body marker path (bkit:fid=<anything up to whitespace/'>'>
@@ -610,7 +610,7 @@ jobs:
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
               fi
-              # #363 F10: the caller invokes this function as `... || { skip }`,
+              # the caller invokes this function as `... || { skip }`,
               # which suppresses `set -e` for the whole body — so a failed
               # source (stale `bkit install`, partial checkout, renamed script)
               # would fall through to `set -u` killing the entire step on an
@@ -629,7 +629,7 @@ jobs:
                 return 1
               fi
               local status_dir status_file dev_count parent_sha landed
-              # #363 F9: `sort` makes the month-bucket choice deterministic. An
+              # `sort` makes the month-bucket choice deterministic. An
               # unsorted `find` takes readdir order, so a FID whose logs span
               # two YYYYMM buckets could read the cap counter from one file and
               # write it to another across cycles — silently unbounding it.
@@ -641,7 +641,7 @@ jobs:
               mkdir -p "$status_dir"
               status_file="${status_dir}status.jsonl"
               dev_count=0
-              # #363 M1: distinguish "no rows" from "cannot parse" — a truncated
+              # distinguish "no rows" from "cannot parse" — a truncated
               # line, stray non-JSON row, or merge=union conflict artefact in the
               # shared status.jsonl must NOT silently degrade to dev_count=0
               # (which would defeat the cap entirely, unbounded). Only an absent
@@ -687,14 +687,14 @@ jobs:
                 echo "::notice::dev CI passed — post-merge regression check OK, no-op exit."
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              # #363 F8: `head -1` FIRST — head_commit.message is subject+body and
+              # `head -1` FIRST — head_commit.message is subject+body and
               # grep's `^` anchors per line, so without it a squash body line
               # (GitHub's default body is the list of source commit subjects)
               # like "feat(999-other): ..." would win and key the cap counter,
               # status path and /bkit-debug dispatch to an unrelated feature.
               FID=$(printf '%s' "$COMMIT_MSG" | head -1 | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
               if [ -z "$FID" ]; then
-                # #363 F4: same-repo MERGED PRs only — see the claude job for the
+                # same-repo MERGED PRs only — see the claude job for the
                 # full rationale (this endpoint also returns OPEN fork PRs).
                 PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
                   --jq '[.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY and .merged_at != null)] | .[0].body // empty' 2>/dev/null || echo "")
@@ -704,14 +704,14 @@ jobs:
                 echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+              # `|| true` is load-bearing under `set -euo pipefail` —
               # this runs BEFORE the slug allowlist, so a non-FID branch
               # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
               ARG="$FID"
-              # Kill switch: re-check bkit:auto (live revocation). #363 F7: MUST
+              # Kill switch: re-check bkit:auto (live revocation). MUST
               # precede the stale-run guard below — that guard writes telemetry
               # and exits, so a later check let a revoked FID keep producing
               # side effects. See the claude job for the full rationale.
@@ -721,7 +721,7 @@ jobs:
               fi
               LATEST_CI_SHA=$(gh run list --branch dev --workflow ci.yml --status completed --limit 10 \
                 --json headSha --jq '.[0].headSha // empty' 2>/dev/null || echo "")
-              # #363 L4: an empty LATEST_CI_SHA silently disables the staleness
+              # an empty LATEST_CI_SHA silently disables the staleness
               # check (deliberate fail-open — better to dispatch than to
               # silently swallow the feature on a transient API hiccup). But a
               # PERMANENT misconfiguration (the consumer's CI workflow file is
@@ -732,19 +732,19 @@ jobs:
                 echo "::warning::gh run list --branch dev --workflow ci.yml returned no completed runs — stale-run guard disabled for this dispatch (proceeding, fail-open). If this persists, verify the consumer CI workflow file is named ci.yml (\`gh workflow view ci.yml\`)."
               fi
               if [ -n "$LATEST_CI_SHA" ] && [ "$HEAD_SHA" != "$LATEST_CI_SHA" ]; then
-                # #363 M6: `bkit-auto-dev` is a SINGLE concurrency group shared by
+                # `bkit-auto-dev` is a SINGLE concurrency group shared by
                 # EVERY FID (the group cannot key on FID — GHA evaluates
                 # concurrency.group from trigger-payload context only, before the
                 # FID is known). If a DIFFERENT FID's dev CI failure superseded
                 # this run via GHA's queue-collapse (cancel-in-progress: false
                 # keeps at most one pending run per group), this FID's post-merge
                 # failure is dropped here — surface it where it cannot be lost.
-                # #363 F6: this used to commit a status.jsonl row and
-                # `git push origin dev || true`. This branch is only reached
-                # because dev ALREADY advanced, so that push was usually a
-                # non-fast-forward and was silently discarded — the row went
+                # Record the drop in the RUN SUMMARY, never as a committed
+                # status.jsonl row pushed to dev. This branch is only reached
+                # because dev ALREADY advanced, so such a push is a
+                # non-fast-forward and is silently discarded — the row would go
                 # missing in exactly the scenario it exists to record, while
-                # the warning below told the operator to go read it. The run
+                # the warning below sends the operator to read it. The run
                 # summary is written to the run itself and cannot race.
                 DROP_ROW=$(jq -nc --arg t "$(date -u +%FT%TZ)" --arg f "$FID" --arg h "$HEAD_SHA" --arg latest "$LATEST_CI_SHA" \
                   '{type:"dev-dispatch-dropped", workflow:"auto", at:$t, fid:$f, headSha:$h, latestSha:$latest}')
@@ -772,16 +772,16 @@ jobs:
               PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
               ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
               FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
-              # #363 H1: assert the marker-derived FID before use too — see the
+              # assert the marker-derived FID before use too — see the
               # claude job's ctx step for the fully-commented rationale.
               if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
                 # FALLBACK: derive the FID from the branch name when the PR body
                 # carries no usable bkit:fid= marker.
-                # #363 H1: keep the FULL slug (do not truncate to the leading id) —
+                # keep the FULL slug (do not truncate to the leading id) —
                 # a truncated FID would count against a different status.jsonl key
                 # than the dev-path FID, breaking the shared-budget invariant.
                 FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
-                # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
+                # `|| true` is load-bearing under `set -euo pipefail` —
               # this runs BEFORE the slug allowlist, so a non-FID branch
               # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
@@ -793,7 +793,7 @@ jobs:
                 echo "skip=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-              # #363 L1: exact label match, not substring — `grep -q 'bkit:auto'`
+              # exact label match, not substring — `grep -q 'bkit:auto'`
               # over a joined list would also match `bkit:auto-disabled` /
               # `bkit:auto-paused` / `no-bkit:auto`, defeating the kill switch for
               # an operator who believes such a label revokes automation.

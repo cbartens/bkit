@@ -417,7 +417,6 @@ export const BKIT_SHIPPED_NETWORK_DOMAINS = [
     "moonshot.ai",
     "kimi.com",
     "npmjs.com",
-    "tavily.com",
 ];
 /**
  * Apex-only unique bases from an expanded (apex + `*.`) domain list.

@@ -72,7 +72,7 @@ jobs:
           fetch-depth: 0
 
       # bkit:start ts-ci-steps optional
-      # Node/TS toolchain region (bkit #265). bkit seeds these step bodies ACTIVE when you
+      # Node/TS toolchain region. bkit seeds these step bodies ACTIVE when you
       # install \`--typescript\` (or \`--tooling\`), and COMMENTED OUT when you install \`--ci\`
       # alone (stack-agnostic skeleton). On a non-Node repo, adapt the commented examples to
       # your stack's setup / install / typecheck / lint / test commands.
@@ -189,7 +189,7 @@ jobs:
       # bkit:end main-lag-warning
 
       # bkit-stub:migrations-immutable — Block PRs modifying previously-merged migrations. To enable: uncomment the step below and delete this stub header.
-      # - name: Migrations Immutability Guard
+      # - name: Assert Migrations Immutable
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
       #   run: |
       #     git fetch origin "\${{ github.base_ref }}" --depth=50 2>/dev/null || true
@@ -225,7 +225,7 @@ jobs:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
 
-      - name: Run Prettier Format Check
+      - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
@@ -274,7 +274,7 @@ jobs:
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (\${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
-      - name: Run Actionlint
+      - name: Run actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
@@ -289,7 +289,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
 
       # bkit:start ts-ci-steps optional
-      - name: Run Bkit Check
+      - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
       # bkit:end ts-ci-steps
@@ -401,7 +401,7 @@ jobs:
       # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — REMOTE \`db push\` belongs in \`bkit-tests-migration\`, NOT here
-      # and NOT in \`bkit-tests-e2e\` (#385 / consumer #451). Prefer the migration-lane stub below
+      # and NOT in \`bkit-tests-e2e\`. Prefer the migration-lane stub below
       # (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live \`needs:\` it).
       # Leaving the push inside e2e while live runs parallel to e2e is the PGRST202 race: @live can
       # hit a shared remote whose new RPCs/schema the push has not applied yet. To enable the
@@ -433,7 +433,7 @@ jobs:
       # REST — direct port-5432 from CI runners is IPv4-flaky. See JOB 3 and docs/testing.md § Schema-invariant DB checks.
 
       # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
-      # - name: Test Presence Audit
+      # - name: Check Test Presence
       #   if: steps.cache.outputs.skip != 'true'
       #   run: |
       #     for pkg in $(jq -r '.workspaces // [] | .[]' package.json 2>/dev/null) $(ls -d packages/*/ apps/*/ 2>/dev/null); do
@@ -445,13 +445,13 @@ jobs:
       #     done
 
       # bkit:start ts-ci-steps optional
-      - name: Run Vitest Tests
+      - name: Run Unit Tests
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm test
 
-      - name: Run Vitest Integration Tests
+      - name: Run Integration Tests
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
@@ -474,7 +474,7 @@ jobs:
       #      so a line covered only by integration reads as covered and hides a missing unit test):
       #        unit:        vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'
       #        integration: vitest run --coverage --coverage.reportsDirectory=coverage/integration <your integration selection>
-      #      Wire these into the "Run Vitest Tests" step(s) above (or your test / test:integration scripts). Separate dirs
+      #      Wire these into the "Run Unit Tests" step(s) above (or your test / test:integration scripts). Separate dirs
       #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
       #   3. Thresholds (opt-in) live PER TIER, never merged:
       #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
@@ -651,7 +651,6 @@ jobs:
 # =============================================================================
 # FULL CI SCAFFOLD REFERENCE — every step, in execution order. Reference impl:
 # gether app-gether-life (proven turbo + Vercel + Supabase + Playwright monorepo).
-# Concept: bkit #203.
 #
 # The parallel bkit-tests-static + bkit-tests-unit jobs ABOVE are the any-repo
 # starter. Below is the complete proven scaffold. To adopt a tier, lift its steps KEEPING THIS ORDER (load-bearing:
@@ -669,7 +668,7 @@ jobs:
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
 #
 # The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.
-# ONE deliberate exception (#385 / consumer #451): when the migration lane owns the shared-remote
+# ONE deliberate exception: when the migration lane owns the shared-remote
 # \`db push\`, \`bkit-tests-e2e\` and \`bkit-tests-live\` \`needs:\` that lane so they cannot hit a schema
 # the push has not applied yet (and a from-empty replay failure cannot reach remote). Do NOT add
 # edges from live/e2e back onto static/unit/build — those remain the expensive wall-clock trap.
@@ -753,9 +752,9 @@ jobs:
 #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
 #       - name: Decide Run Level             # [U] Layer 2 (how-much): force-build/PR/dispatch/push-main -> full; push-dev ->
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
-#       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (#291; emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
+#       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
-#       #     run_migration (#385): true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
+#       #     run_migration: true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
 #       - name: Generate Test Plan           # [U] id: scope. jq bkit-test-plan; validate with has()/!=null
 #       #     (NOT \`// empty\` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
@@ -782,7 +781,7 @@ jobs:
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
 #       - name: Fetch Base Branch            # [M/PR] if: pull_request — base for --filter/diffs
-#       - name: Guard Migration Immutability # [DB] if: PR — fail if an already-merged migration was edited (write a new one)
+#       - name: Assert Migrations Immutable # [DB] if: PR — fail if an already-merged migration was edited (write a new one)
 #       - name: Materialise Base Worktree    # [PR] base as detached worktree for slop-delta; loud-fail if it resolves to HEAD
 #       - name: Setup pnpm                    # [U]
 #       - name: Setup Node                    # [U] node-version: {{NODE_VERSION}}, cache: pnpm
@@ -796,14 +795,14 @@ jobs:
 #       - name: Install Vale                  # [U] pinned tarball + \`vale sync\` (else E100: write-good missing)
 #       - name: Run Lint                      # [U] static checks FAIL-FAST before env pull; PRs scope --filter=...[origin/<base>]
 #       - name: Run Typecheck                 # [U]
-#       - name: Run Prettier Format Check     # [U] CI-side format gate (hook-bypass net)
+#       - name: Run Prettier     # [U] CI-side format gate (hook-bypass net)
 #       - name: Run Vale Prose Lint           # [U] same root lint:prose pre-push runs (local==CI)
 #       - name: Run Slop Scan (full)          # [U] advisory baseline
 #       - name: Run Slop Scan (delta)         # [PR] the real gate — blocks new/worsened vs base worktree
 #       - name: Tear Down Base Worktree       # [PR] if: always() && pull_request
-#       - name: Run Bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
+#       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
 #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
-#       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
+#       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
 #       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
 #       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
 #       #     [DB] BUILD-vs-MIGRATION RACE if the host auto-deploys on this push (build races this step; PG
@@ -813,13 +812,13 @@ jobs:
 #       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
 #       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
-#       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
+#       - name: Run Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
 #       - name: Report Coverage on PR # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e). With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
 #       - name: Build All Packages            # [D] source env first
-#       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
+#       - name: Run Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
 #       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
-#       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
+#       - name: Run E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
 #       #     [E/PR] run the full suite on PR and push (parity; shard a slow suite) AND, for migration-coupled
 #       #     PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
@@ -859,7 +858,7 @@ jobs:
 # bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
 #   bkit-tests-integration:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
 #   #   own job-level permissions: { actions: read, contents: read, pull-requests: write } for the coverage comment.
-#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Vitest Integration Tests
+#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Integration Tests
 #       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
 #       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
 #
@@ -879,7 +878,7 @@ jobs:
 # browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
 # READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
 # bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
-# Do NOT put remote \`db push\` in this lane — that lives in bkit-tests-migration (#385).
+# Do NOT put remote \`db push\` in this lane — that lives in bkit-tests-migration.
 #   bkit-tests-e2e:
 #     needs: [bkit-tests-scope, bkit-tests-migration]
 #     if: >-
@@ -889,7 +888,7 @@ jobs:
 #       && needs.bkit-tests-migration.result != 'failure' }}
 #     timeout-minutes: 30
 #   #   own job-level permissions block (same three) for the coverage comment.
-#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
+#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run E2E Tests
 #       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
 #       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
 #
@@ -897,7 +896,7 @@ jobs:
 # bkit-stub:bkit-tests-migration — [DB] ALWAYS-ON lane that owns BOTH halves of migration handling:
 # (1) prove every migration replays from an EMPTY database (+ seed loads) on a fresh ephemeral
 # instance; (2) on every push to \`dev\`/\`main\`, \`db push --linked --include-all\` to the shared remote
-# (moved here out of e2e / the legacy supabase-migrate stub — #385 / consumer #451). WHEN: you have
+# (it belongs in neither e2e nor the supabase-migrate stub). WHEN: you have
 # a migrations dir. Catches what a warm \`start\` / remote-only push cannot: a stale-volume migration,
 # a seed that aborts on empty, OR a from-empty failure that would still have been pushed to shared
 # remote when replay and push lived in different jobs. bkit owns the always-on scaffold; you supply
@@ -934,7 +933,7 @@ jobs:
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
 # want post-deploy @live smoke. Parallel to static/unit/build; waits on migration when that lane
-# owns the remote push (#385). DROP if no deploy (bkit does).
+# owns the remote push. DROP if no deploy (bkit does).
 #   bkit-tests-live:
 #     needs: [bkit-tests-scope, bkit-tests-migration]
 #     if: >-
@@ -1012,7 +1011,7 @@ jobs:
 #       #   exempt scope BY NAME and point the exemption at this assertion site.
 #       #   bkit-tests-scope==success; run_level!=none => static+unit+build==success (build is a lane result, no *_ran count); web_affected => bkit-tests-integration==success (its LANE result);
 #       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
-#       #   bkit-tests-migration==success whenever SCOPE succeeded (always-on ordering + push/replay lane #385 —
+#       #   bkit-tests-migration==success whenever SCOPE succeeded (always-on ordering + push/replay lane —
 #       #   independent of run_level / run_migration; a failed replay OR remote push reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),

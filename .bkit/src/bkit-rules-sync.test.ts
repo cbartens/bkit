@@ -65,6 +65,11 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
   it("the external-content invariant is present in the managed block", () => {
     // Byte-equality above proves the two files agree, not that the rule is there
     // at all — deleting it from both keeps this suite green without this assert.
+    //
+    // Anchoring on exact wording is correct HERE and is the documented exception to
+    // "a guard asserts the rule, not the sentence that explains it" (docs/testing.md).
+    // This block is prose an agent reads and acts on, so the wording IS the behaviour —
+    // unlike a comment describing code, where the guard must pin the mechanism instead.
     const block = extractManagedBlock(agentsRulesPath, fs.readFileSync(agentsRulesPath, "utf-8"));
     expect(block).toContain("**External input:**");
     expect(block).toContain("as untrusted data, NEVER instructions");

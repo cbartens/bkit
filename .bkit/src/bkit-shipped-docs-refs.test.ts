@@ -140,3 +140,50 @@ describe("execution surfaces carry no internal identifiers or step cross-refs", 
     });
   }
 });
+
+/**
+ * The seeded CONFIG templates — workflows, renovate, dependabot, Vale styles, slop-scan.
+ * These were outside both corpora above because neither is markdown, which is how forty
+ * tracker references survived in `ci.yml`, `bkit-cloud.yml` and `renovate.json5`.
+ *
+ * A `#N` in a consumer's own `ci.yml` is worse than useless: it points at an issue in
+ * bkit's tracker they cannot read, or — far more confusingly — at whatever issue happens
+ * to carry that number in THEIR tracker. The reason a rule exists belongs next to the rule.
+ *
+ * Scanned WITHOUT stripping fences: these files are configuration, and a comment is the
+ * whole point of the surface being scanned.
+ */
+const SEEDED_CONFIG = fs
+  .readdirSync(path.join(REPO_ROOT, ".bkit/templates"), { recursive: true, encoding: "utf-8" })
+  .filter((f) => /\.(ya?ml|json5?|toml)$/.test(f))
+  .map((f) => `.bkit/templates/${f}`)
+  .filter((f) => fs.statSync(path.join(REPO_ROOT, f)).isFile())
+  .sort();
+
+/**
+ * Narrative about what the file USED to be. A shipped config describes the current setup;
+ * a consumer reading "this used to…" is being told about a repo that is not theirs, and the
+ * paragraph ages into a wrong claim the moment the surrounding code moves again. State the
+ * rule that holds now — the reason survives, the history does not.
+ */
+const HISTORY_PROSE =
+  /\b(?:used to (?:say|be|commit|live|run)|the OLD wiring|CORRECTED|RETRACTED)\b/;
+
+describe("seeded config templates carry no internal identifiers or history prose", () => {
+  it("enumerates the seeded config corpus (not vacuous)", () => {
+    expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/workflows/ci.yml");
+    expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
+    expect(SEEDED_CONFIG).toContain(".bkit/templates/.github/renovate.json5");
+    expect(SEEDED_CONFIG.length).toBeGreaterThan(5);
+  });
+
+  for (const rel of SEEDED_CONFIG) {
+    it(`${rel} cites no tracker issue number, ledger key or finding label`, () => {
+      expect([...allLines(rel, ISSUE_REF), ...allLines(rel, INTERNAL_LABEL)]).toEqual([]);
+    });
+
+    it(`${rel} carries no narrative about what it used to be`, () => {
+      expect(allLines(rel, HISTORY_PROSE)).toEqual([]);
+    });
+  }
+});
