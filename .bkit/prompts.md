@@ -116,7 +116,7 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | Stub-replace + log-append reviewer | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-build-plan-verify`, `bkit-ship-deferred-sweep` |
 | Doc rewriter (cp + Edit) | `Read, Grep, Glob, Edit, Bash` | `bkit-design-update`, `bkit-plan-update`, `bkit-build-challenge-reconcile` |
 | Doc writer (with shell) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-design-organise`, `bkit-ship-update-docs`, `bkit-utility-audit-codebase`, `bkit-utility-audit-security`, `bkit-utility-audit-tests` |
-| Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`, `bkit-utility-audit-logs`, `bkit-utility-audit-logs-ship` |
+| Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`, `bkit-utility-audit-logs`, `bkit-utility-audit-logs-ship`, `bkit-utility-dependency-triage` |
 | Reference fixer | `Read, Glob, Write, Edit` | `bkit-utility-update-references` |
 | Skill-installer / Bash-only utility | `Read, Grep, Glob, Bash` | `bkit-build-install-skills` |
 | Investigator (web access) | `Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch` | `bkit-design-review-1`, `bkit-design-review-2`, `bkit-design-spike`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak` |
@@ -132,7 +132,7 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | --- | --- | --- | --- | --- |
 | **S** | **25** | 3-10 turns | Pure synthesizers, scope checks, single-pass utilities, install / cleanup, summary writers. | `*-summary`, `bkit-debug-abort-handover`, `bkit-plan-complexity-check`, `bkit-plan-scope-check-*`, `bkit-build-install-skills`, `bkit-utility-audit-logs-ship`, `bkit-utility-audit-logs`, `bkit-utility-compress-markdown` |
 | **M** | **50** | 5-25 turns | Reviewers, doc writers, multi-doc, web investigators, audits, surgical-edit appliers, single-pass source modifiers (no test loop). | `bkit-design-brainstorm-ideate-*`, `bkit-design-review-*`, `bkit-design-spike`, `bkit-design-generate`, `bkit-design-organise`, `bkit-design-update`, `bkit-plan-review-*`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-build-challenge-tests`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-ship-update-docs`, `bkit-ship-deferred-sweep`, `bkit-utility-audit-*` (codebase / security / tests), `bkit-utility-update-*` |
-| **L** | **100** | 30-60 turns | Source modifiers with test loops, plan executor — iterative edit→`pnpm turbo lint typecheck test`→edit cycles. | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak` |
+| **L** | **100** | 30-60 turns | Source modifiers with test loops, plan executor — iterative edit→`pnpm turbo lint typecheck test`→edit cycles. | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`, `bkit-ship-conflict-resolve`, `bkit-utility-dependency-triage` |
 
 **Tier assignment is canonical** — per-agent rows in § Models. Cap hit at any tier → agent stuck (retry loop, infinite re-read) — orchestrator verdict-validation retry handles partial recovery.
 
@@ -198,6 +198,7 @@ Canonical per-agent metadata — **single source of truth for model per agent on
 | `bkit-utility-update-documentation` | `claude-sonnet-5` | `composer-2.5` | `nvidia/moonshotai/kimi-k2.6` | `ollama-local/qwen3-coder:30b` | `groq/qwen/qwen3.6-27b` | `cerebras/zai-glm-4.7` | `openrouter/moonshotai/kimi-k3` | `ollama/kimi-k2.7-code` | `zai/glm-5.2` | `moonshot/kimi-k3` | `opencode/kimi-k2.7-code` | `opencode-go/deepseek-v4-pro` | `medium` | 50 | doc sync (multi-doc writer) |
 | `bkit-utility-update-references` | `claude-sonnet-5` | `composer-2.5` | `nvidia/moonshotai/kimi-k2.6` | `ollama-local/qwen3-coder:30b` | `groq/qwen/qwen3.6-27b` | `cerebras/zai-glm-4.7` | `openrouter/moonshotai/kimi-k3` | `ollama/kimi-k2.7-code` | `zai/glm-5.2` | `moonshot/kimi-k3` | `opencode/kimi-k2.7-code` | `opencode-go/deepseek-v4-pro` | `medium` | 50 | fix broken refs |
 | `bkit-utility-audit-logs-ship` | `claude-sonnet-5` | `composer-2.5` | `nvidia/moonshotai/kimi-k2.6` | `ollama-local/qwen3-coder:30b` | `groq/qwen/qwen3.6-27b` | `cerebras/zai-glm-4.7` | `openrouter/moonshotai/kimi-k3` | `ollama/kimi-k2.7-code` | `zai/glm-5.2` | `moonshot/kimi-k3` | `opencode/kimi-k2.7-code` | `opencode-go/deepseek-v4-pro` | `medium` | 25 | post-deploy verify |
+| `bkit-utility-dependency-triage` | `claude-sonnet-5` | `composer-2.5` | `nvidia/moonshotai/kimi-k2.6` | `ollama-local/qwen3-coder:30b` | `groq/qwen/qwen3.6-27b` | `cerebras/zai-glm-4.7` | `openrouter/moonshotai/kimi-k3` | `ollama/kimi-k2.7-code` | `zai/glm-5.2` | `moonshot/kimi-k3` | `opencode/kimi-k2.7-code` | `opencode-go/deepseek-v4-pro` | `medium` | 100 | dependency PR batch merge (source modifier with test loop) |
 
 **Effort vs maxTurns vs model — three independent knobs:**
 
@@ -334,6 +335,7 @@ Canonical per-agent metadata — **single source of truth for model per agent on
 | `bkit-utility-update-documentation` | Sync every doc in `.agents/docs.md` with system state — drift cleanup across multiple plans. |
 | `bkit-utility-update-references` | Fix broken paths / links in markdown; locator-only (no content change). |
 | `bkit-utility-audit-logs-ship` | Post-deploy health check (`audit-gcp-errors.sh 1h` + smoke + baseline diff). |
+| `bkit-utility-dependency-triage` | Classify open dependency PRs (infrastructure / stale / real) and batch the safe ones onto one branch for a single verified CI run; reports to caller, writes no file. **Mutating** (creates a batch branch, pushes, squash-merges into the integration branch). |
 
 ## Special Behaviors (frontmatter-adjacent contracts)
 
