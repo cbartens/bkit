@@ -1,12 +1,12 @@
 // bkit-cloud-ctx-step.integration.test.ts — #363 build-challenge test-gap closure.
 //
-// #363 widened bkit-cloud.yml's `workflow_run` trigger to post-merge dev/fix/**
-// CI, adding FID recovery, a cross-session loop-bound cap, a stale-run guard,
+// #363 widened bkit-cloud.yml's `workflow_run` trigger to post-merge dev CI,
+// adding FID recovery, a cross-session loop-bound cap, a stale-run guard,
 // and marker-based gating in the "Resolve phase + brief context" (ctx) step.
 // The plan's own Derived Test Matrix (T1-T17) called for bash-unit-style
 // verification of this logic, but no test files were created during
-// plan-execute — build-challenge caught the C1 (fix/** ship routing), H1 (FID
-// slug validation / full-slug retention), and M1 (jq fail-open) defects via
+// plan-execute — build-challenge caught the H1 (FID
+// slug validation / full-slug retention) and M1 (jq fail-open) defects via
 // manual dry-run harnesses, not committed tests. This file spawns the REAL
 // extracted ctx-step bash (dedented straight out of the rendered YAML, not a
 // re-typed approximation) against a real git fixture + a stubbed `gh`, so a
@@ -395,66 +395,74 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // Regression — build-challenge C1: fix/** CI success used to route into
-  // /bkit-ship, which is structurally feat/{FID}-only and would fail the
-  // issue on a green fix PR. Fixed with a no-op guard in the else arm.
+  // `fix/**` is no longer a bkit surface. /bkit-debug creates no branch — it
+  // adopts an existing feat/{FID} or works in place on the branch that went
+  // red — so nothing mints fix/{FID} any more. The trigger filter drops it,
+  // and a fix/ branch that reaches the ctx step anyway (a hand-named branch, a
+  // consumer who re-widened the filter) must fail SAFE, not dispatch.
   // -------------------------------------------------------------------------
-  it("C1 regression: fix/** CI SUCCESS no-ops — never routes to ship (ship is not fix/**-aware)", () => {
-    const result = runCtxStep(fixture, {
-      EVENT: "workflow_run",
-      CONCLUSION: "success",
-      BRANCH: "fix/363-widen-bkit-cloud-trigger",
-      COMMIT_MSG: "fix(363-widen-bkit-cloud-trigger): repair regression bkit [auto route]",
-      HEAD_SHA: "fix-sha-1",
+  describe("fix/** is retired as a routed surface", () => {
+    it("the workflow_run trigger filter covers feat/** and dev only", () => {
+      expect(rawTemplate).toContain("branches: ['feat/**', 'dev']");
+      expect(rawTemplate).not.toContain("fix/");
     });
-    expect(result.outputs.skip).toBe("true");
-    expect(result.outputs.phase).not.toBe("ship");
-    expect(result.stdout).toContain("ship not wired for fix branches");
+
+    it.each([["success"], ["failure"]])(
+      "a fix/ branch reaching the ctx step (CI %s) no-ops — no dispatch, no counter row",
+      (conclusion) => {
+        const result = runCtxStep(fixture, {
+          EVENT: "workflow_run",
+          CONCLUSION: conclusion,
+          BRANCH: "fix/363-widen-bkit-cloud-trigger",
+          COMMIT_MSG: "fix(363-widen-bkit-cloud-trigger): repair regression bkit [auto route]",
+          HEAD_SHA: `fix-sha-${conclusion}`,
+          STUB_PR_NUMBER: "77",
+          STUB_PR_BODY: "",
+          STUB_ISSUE_LABELS: "bkit:auto",
+        });
+        expect(result.status, `step aborted: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip).toBe("true");
+        expect(result.outputs.phase).toBeUndefined();
+        expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toEqual([]);
+      },
+    );
   });
 
   // -------------------------------------------------------------------------
-  // T13 / Regression — build-challenge H1: the fix/** branch-fallback FID
-  // derivation used to truncate to the leading numeric/alpha id (e.g. '363'),
-  // which (a) orphaned a wrong status.jsonl directory and (b) broke the
-  // "one shared dispatch budget per FID" invariant with the dev path. Fixed
+  // T13 / Regression — build-challenge H1: the branch-fallback FID derivation
+  // used to truncate to the leading numeric/alpha id (e.g. '363'), which
+  // (a) orphaned a wrong status.jsonl directory and (b) broke the
+  // "one dispatch budget per FID" invariant with the dev path. Fixed
   // by keeping the FULL slug.
   // -------------------------------------------------------------------------
-  describe("fix/** path — FID recovery + shared budget (T13, T15, H1 regression)", () => {
-    it("T13/H1: fix/** CI failure recovers the FULL FID slug from the branch (not truncated to '363')", () => {
+  describe("feat/** path — FID recovery + cap exemption (T13, H1 regression)", () => {
+    it("T13/H1: a marker-less feat/** PR recovers the FULL FID slug from the branch (not truncated to '363')", () => {
       const result = runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
-        BRANCH: "fix/363-widen-bkit-cloud-trigger",
-        COMMIT_MSG: "fix(363-widen-bkit-cloud-trigger): repair regression bkit [auto route]",
-        HEAD_SHA: "fix-sha-2",
+        BRANCH: "feat/363-widen-bkit-cloud-trigger",
+        COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): widen trigger bkit [auto route]",
+        HEAD_SHA: "feat-sha-2",
         STUB_PR_NUMBER: "77",
-        STUB_PR_BODY: "", // bkit-debug fix-PR bodies carry no bkit:fid= marker
+        STUB_PR_BODY: "", // no bkit:fid= marker — forces the branch fallback
         STUB_ISSUE_LABELS: "bkit:auto",
       });
-      // ship/debug dispatch takes the PR number as arg on this surface — the FID
-      // is only observable via the dispatch-cap counter row it keys on.
       expect(result.outputs.skip).toBe("false");
       expect(result.outputs.phase).toBe("debug");
       expect(result.outputs.arg).toBe("77");
-      const rows = readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger") as Array<{
-        fid: string;
-        headSha: string;
-      }>;
-      expect(rows).toHaveLength(1);
-      expect(rows[0].fid).toBe("363-widen-bkit-cloud-trigger");
-      expect(rows[0].headSha).toBe("fix-sha-2");
-      // The truncated-id directory (the pre-H1 bug) must NOT have been created
-      // in ANY month bucket.
+      // feat/** is uncapped, so no counter row is written for EITHER the full
+      // slug or the truncated id — the pre-H1 bug would have created the
+      // truncated status directory on its way past.
       expect(statusDirs(fixture.workspaceDir, "363")).toEqual([]);
     });
 
-    // #363 F3 — the fix/** arm derives ISSUE from FID BEFORE the slug
-    // allowlist runs, so a branch with no numeric/alpha id yields no grep
-    // match. Without `|| true`, pipefail propagates exit 1 under
-    // `set -euo pipefail` and the step dies red instead of reaching the
-    // fail-safe no-op three lines below — training operators to ignore red
-    // bkit-cloud runs. Reachable on any Renovate/hotfix/hand-named branch.
-    it.each([["feat/add-oauth"], ["fix/hotfix-login"], ["fix/renovate-bump"]])(
+    // #363 F3 — ISSUE is derived from FID BEFORE the slug allowlist runs, so a
+    // branch with no numeric/alpha id yields no grep match. Without `|| true`,
+    // pipefail propagates exit 1 under `set -euo pipefail` and the step dies
+    // red instead of reaching the fail-safe no-op three lines below — training
+    // operators to ignore red bkit-cloud runs. Reachable on any
+    // Renovate/hotfix/hand-named branch.
+    it.each([["feat/add-oauth"], ["feat/hotfix-login"], ["feat/renovate-bump"]])(
       "F3: a non-FID-shaped branch (%s) no-ops cleanly instead of aborting the step",
       (branch) => {
         const result = runCtxStep(fixture, {
@@ -472,29 +480,6 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         expect(result.stdout).toContain("Cannot derive FID/ISSUE for branch");
       },
     );
-
-    it("T15: fix/** failure loop is capped, sharing ONE budget with the dev path for the same FID", () => {
-      // Pre-existing rows written by the DEV surface for this FID.
-      seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
-        "dev-sha-1",
-        "dev-sha-2",
-        "dev-sha-3",
-      ]);
-      const result = runCtxStep(fixture, {
-        EVENT: "workflow_run",
-        CONCLUSION: "failure",
-        BRANCH: "fix/363-widen-bkit-cloud-trigger",
-        COMMIT_MSG: "fix(363-widen-bkit-cloud-trigger): repair regression bkit [auto route]",
-        HEAD_SHA: "fix-sha-3",
-        STUB_PR_NUMBER: "78",
-        STUB_PR_BODY: "",
-        STUB_ISSUE_LABELS: "bkit:auto",
-      });
-      expect(result.outputs.skip).toBe("true");
-      expect(result.stdout).toContain("exhausted");
-      const rows = readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger");
-      expect(rows).toHaveLength(3); // no 4th row written — cap enforced before write
-    });
 
     it("feat/** failure dispatches debug and is NOT subject to the dispatch cap", () => {
       seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", ["s1", "s2", "s3"]); // would exhaust the cap if consulted

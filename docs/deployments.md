@@ -189,11 +189,11 @@ Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` 
 
 ## Post-merge dev CI auto-routing
 
-`bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**`, `fix/**`, AND `dev` CI completion (never `main`) — the per-branch success/failure matrix is canonical in `.bkit/cloud.md` § Branch-aware routing. What the post-merge surfaces add on top of it:
+`bkit-cloud.yml`'s `workflow_run` trigger fires on `feat/**` AND `dev` CI completion (never `main`) — the per-branch success/failure matrix is canonical in `.bkit/cloud.md` § Branch-aware routing. What the post-merge surfaces add on top of it:
 
 - **Trigger scope.** Dispatch jobs gate on `workflow_run.head_repository` being this repo, so a fork PR's CI completion never boots one; on `dev` the same gate excludes `conclusion == 'success'` outright, so a green post-merge run costs zero runner minutes (the merge already happened — that run only confirms the regression check passed).
 - **FID recovery on `dev`.** No open PR exists, so `{FID}` comes from the squash-merge commit scope (`feat({FID}): …`, primary), falling back to the `bkit:fid` marker in the body of the merged same-repo PR for that SHA. Neither resolving → no-op, no dispatch.
-- **Loop bound.** `dev` and `fix/**` CI failures both dispatch `/bkit-debug` under `MAX_DEV_DISPATCH_ATTEMPTS` — distinct failed CI SHAs per `{FID}`, one budget shared by the two surfaces. `feat/**` is not capped here (in-session `MAX_DEBUG_ATTEMPT` bounds it). `fix/**` green CI is a no-op: `/bkit-ship` has no `fix/{FID}` arm, so dispatching it would fail an actually-green fix PR.
+- **Loop bound.** A `dev` CI failure dispatches `/bkit-debug` under `MAX_DEV_DISPATCH_ATTEMPTS` — distinct failed CI SHAs per `{FID}`. `/bkit-debug` creates no branch of its own, so on this surface it remediates on `dev` itself and its push re-triggers this same router; the cap is what terminates that loop. `feat/**` is not capped here (in-session `MAX_DEBUG_ATTEMPT` bounds it).
 
 **Auto-route contract:** the `bkit [auto route]` free-tier gate marker is threaded by `/bkit-ship` onto the squash-merge `--subject` (not just the sync-merge commit) whenever the issue carries `bkit:auto` — this is what admits `dev`-triggered runs through the existing `bkit-cloud.yml` gate; there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger. Trust surface, kill switch and the cap's tamper caveat → `docs/security.md` § CI Auto-Route Trust.
 

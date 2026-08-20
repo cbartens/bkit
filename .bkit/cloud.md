@@ -413,13 +413,12 @@ Neither job needs `GH_BKIT_TOKEN_INSTALL`. Slash command body already in checked
 
 ## Branch-aware routing
 
-`bkit-cloud.yml`'s `workflow_run` trigger covers `feat/**`, `fix/**`, and `dev`. `main` is never auto-routed — `dev` -> `main` promotion stays manual.
+`bkit-cloud.yml`'s `workflow_run` trigger covers `feat/**` and `dev`. `main` is never auto-routed — `dev` -> `main` promotion stays manual.
 
 <!-- prettier-ignore -->
 | CI trigger | success | failure |
 | --- | --- | --- |
 | `feat/**` (pre-merge) | -> `/bkit-ship` | -> `/bkit-debug` |
-| `fix/**` (pre-merge) | no-op — ship is not `fix/**`-aware | -> `/bkit-debug` (capped) |
 | `dev` (post-merge) | no-op — the merge already happened | -> `/bkit-debug {FID}` (capped) |
 | `main` | manual only | manual only |
 
@@ -430,7 +429,7 @@ The post-merge `dev` surface reuses the same free-tier gate: `/bkit-ship` thread
 Slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fail}` (normalised) and `$ARG` — a PR number (pre-merge) or a `{FID}` slug (post-merge `dev`, no open PR). Then:
 
 1. PR-number arg: reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`. Refuses non-OPEN PRs. Slug arg: skips the PR lookup entirely.
-2. Extracts `{FID}` from the head branch (`feat/{FID}` / `fix/{FID}` convention). Slug arg: `{ARG}` IS the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), falling back to the linked PR body's `bkit:fid=` marker; either path failing → no-op, no dispatch.
+2. Extracts `{FID}` from the head branch (`feat/{FID}` convention). Slug arg: `{ARG}` IS the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), falling back to the linked PR body's `bkit:fid=` marker; either path failing → no-op, no dispatch.
 3. Stale-run guard. Pre-merge: compares latest CI run's `headSha` against the PR's current `headRefOid`. Post-merge `dev`: compares the most recently COMPLETED `dev` CI run's `headSha` against the triggering run's head SHA — a `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch, because ship's terminal close commit lands on `dev` while that CI run is still going. Close commits carry `[skip ci]`, so they never trigger CI and never become that most-recent-completed head. An empty run list fails OPEN (dispatches).
 4. Opt-in gate: refuses dispatch unless linked GitHub issue carries `bkit:auto` label.
 5. Appends `bkit-auto → /bkit-{ship,debug}` line to GitHub issue / PR comment thread.
@@ -441,9 +440,9 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 ## Operating notes
 
 - **Loop bound (pre-merge `feat/**`):** `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT = 3` internally; router never counts attempts. After three red CI runs, debug fires handover path and stops dispatching.
-- **Loop bound (`dev` + `fix/**`):** `MAX_DEV_DISPATCH_ATTEMPTS = 3` distinct failed CI SHAs per `{FID}`, all-time, one budget shared across both surfaces. Checked AND written by `bkit-cloud.yml`'s ctx step immediately before dispatch — the in-session counters reset on every new cloud dispatch and cannot bound a cross-session loop. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
+- **Loop bound (`dev`):** `MAX_DEV_DISPATCH_ATTEMPTS = 3` distinct failed CI SHAs per `{FID}`, all-time. This is the surface that needs a cross-session cap: `/bkit-debug` adopts `dev` in place, so its fix push re-reds `dev` CI and re-triggers this same router. Checked AND written by `bkit-cloud.yml`'s ctx step immediately before dispatch — the in-session counters reset on every new cloud dispatch and cannot bound a cross-session loop. The counter row (`type: "dev-dispatch"`) is committed to `dev` with `[skip ci]` before dispatch, and its presence on `origin/dev` is verified after one retry — a row landing nowhere durable would degrade the cap to unbounded. Exhausted → no-op + `::notice::` for operator review (delete the rows in `status.jsonl` to reset).
 - **GHA 6 h cap:** `3 x ~3600s` per debug attempt = well under GHA runner ceiling. Ship is short.
-- **Concurrency:** `cancel-in-progress` is `true` for `feat/**` / `fix/**` (latest-wins) and `false` for `dev`, so an in-flight `/bkit-debug` finishes instead of being cancelled mid-run with a half-written `status.jsonl` or a held worktree lock. GHA queues at most one pending run per group; the queued run re-checks the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. Cursor dashboard trigger → "latest-supersedes." Ship squash-merge atomic — mid-run cancels cannot corrupt PR state.
+- **Concurrency:** `cancel-in-progress` is `true` for `feat/**` (latest-wins) and `false` for `dev`, so an in-flight `/bkit-debug` finishes instead of being cancelled mid-run with a half-written `status.jsonl` or a held worktree lock. GHA queues at most one pending run per group; the queued run re-checks the dispatch cap when it starts, so the same `{FID}` needs no manual re-trigger. Cursor dashboard trigger → "latest-supersedes." Ship squash-merge atomic — mid-run cancels cannot corrupt PR state.
 - **`bkit-auto-dev` is ONE concurrency group for ALL FIDs.** GHA resolves `concurrency.group` from trigger-payload context before the ctx step derives the `{FID}`, so the group cannot be keyed on it. Two different FIDs failing `dev` CI near-simultaneously → queue-collapse can drop the older, different FID's pending run. The stale-run guard detects it (its head SHA no longer matches the most-recent-completed `dev` CI run) and writes a `dev-dispatch-dropped` row to the job summary plus a `::warning::`, rather than discarding it silently. Job summary, not a committed `status.jsonl`: this branch is only reached because `dev` already advanced, so committing the row would usually be a non-fast-forward and be lost in exactly the case it records.
 - **Both clouds together:** nothing stops Claude + Cursor dispatching against same PR — they'd race. Pick one IDE per repo as auto-router (recommended: Claude via GHA, runner-resident and Anthropic-maintained). Leave Cursor for ad-hoc Linear-dispatch work.
 

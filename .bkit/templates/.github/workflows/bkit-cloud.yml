@@ -14,9 +14,6 @@ name: bkit-cloud
 # Phase 1 wires three trigger surfaces:
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
 #     (preserves the previous bkit-ci-router behaviour exactly).
-#   - workflow_run (CI completion on fix/**): success -> no-op, failure -> debug
-#     (newly folded, failure side only — /bkit-ship Step 2 has feat/{FID} worktree
-#     arms only, so a fix/** ship dispatch cannot merge; capped like dev).
 #   - workflow_run (CI completion on dev): success -> no-op (regression check passed),
 #     failure -> /bkit-debug {FID} (FID recovered from squash-merge commit scope;
 #     loop-bounded by MAX_DEV_DISPATCH_ATTEMPTS). [skip ci] close commits never trigger CI.
@@ -34,7 +31,7 @@ name: bkit-cloud
 on:
   workflow_run:
     workflows: [CI]
-    branches: ['feat/**', 'fix/**', 'dev']
+    branches: ['feat/**', 'dev']
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -82,7 +79,7 @@ concurrency:
   # cancel-in-progress: false, GHA queues at most one pending run per group (older
   # pendings are cancelled as newer ones arrive); the queued run re-evaluates the
   # dispatch cap at its ctx step when it starts — the operator does not need to
-  # manually re-trigger for the SAME FID. feat/**/fix/** keep true (latest-wins,
+  # manually re-trigger for the SAME FID. feat/** keeps true (latest-wins,
   # current behaviour). #363. NOTE (#363 M6): `bkit-auto-dev` is ONE group shared
   # by ALL FIDs (the group cannot key on FID — it is evaluated from trigger-
   # payload context alone, before the ctx step derives the FID). If two DIFFERENT
@@ -204,14 +201,12 @@ jobs:
             esac
 
             # bkit:start shared-deriv
-            # SHARED-DERIV: FID/ISSUE recovery + dispatch-cap machinery for all
-            # CI-driven trigger surfaces (feat/** pre-merge, fix/** debug-fix,
-            # dev post-merge). #363.
+            # SHARED-DERIV: FID/ISSUE recovery + dispatch-cap machinery for both
+            # CI-driven trigger surfaces (feat/** pre-merge, dev post-merge).
 
-            # bkit_dev_dispatch_guard <FID> <HEAD_SHA> — shared cap-check +
-            # counter-write + fail-closed-verify for the two post-feat/** debug
-            # surfaces (dev CI failure, fix/** CI failure). One post-feat/**
-            # debug budget per FID however the failure surfaced (#363 P3).
+            # bkit_dev_dispatch_guard <FID> <HEAD_SHA> — cap-check +
+            # counter-write + fail-closed-verify for the post-merge debug
+            # surface (dev CI failure). One post-feat/** debug budget per FID.
             # Returns 1 (caller must skip) once the FID has MAX_DEV_DISPATCH_
             # ATTEMPTS distinct failed-CI SHAs recorded, or if the counter row
             # cannot be durably landed on origin/dev (fail-closed — #363 P6: a
@@ -223,10 +218,9 @@ jobs:
               local guard_fid="$1" guard_head_sha="$2"
               # #363 H1: assert the FID against the same slug allowlist the dev arm
               # already enforces BEFORE it's used to build any path (find -path /
-              # mkdir -p / git commit -m). This is the sole gate for the fix/**-
-              # branch fallback (never asserted before reaching here) and a
-              # defence-in-depth re-check for the PR-body marker path (bkit:fid=
-              # <anything up to whitespace/'>'> admits '/', '.', '..').
+              # mkdir -p / git commit -m). Defence-in-depth re-check for the
+              # PR-body marker path (bkit:fid=<anything up to whitespace/'>'>
+              # admits '/', '.', '..').
               if ! [[ "$guard_fid" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
@@ -356,8 +350,8 @@ jobs:
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
               # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
-              # on the fix/** arm this runs BEFORE the slug allowlist, so a
-              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # this runs BEFORE the slug allowlist, so a non-FID branch
+              # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
@@ -428,25 +422,10 @@ jobs:
                 echo "::warning::Stale dev CI (head_sha=$HEAD_SHA, latest completed dev CI head=$LATEST_CI_SHA) for FID $FID — no-op exit. This FID's post-merge CI failure may have been superseded by a DIFFERENT FID's dev push under the shared bkit-auto-dev concurrency group; see this run's job summary (dev-dispatch-dropped) if this FID does not otherwise recover."
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              # Loop cap + counter write (fail-closed) — shared with fix/** below.
+              # Loop cap + counter write (fail-closed).
               bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
             else
-              # #363 C1: fix/** CI success has no ship counterpart yet — /bkit-ship
-              # Step 2's worktree logic only has feat/{FID} arms, so a fix/{FID}
-              # ship dispatch would create an EMPTY feat/{FID} off dev (none of the
-              # fix commits), find no matching PR, and hit the Failure Path on an
-              # actually-green fix PR — worse than the pre-#363 silence. No-op
-              # until bkit-ship is branch-prefix aware.
-              case "$BRANCH" in
-                fix/*)
-                  if [ "$PHASE" = "ship" ]; then
-                    echo "::notice::fix/** CI passed — ship not wired for fix branches yet, no-op exit."
-                    echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-                  fi
-                  ;;
-              esac
-
-              # Existing feat/** / fix/** path (PR-backed FID recovery).
+              # feat/** pre-merge path (PR-backed FID recovery).
               PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
               if [ -z "$PR_NUMBER" ]; then
                 echo "::notice::No open PR for branch $BRANCH — no-op exit."
@@ -466,9 +445,8 @@ jobs:
               ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
               FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
               if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                # FALLBACK: extract FID from branch (feat/{FID} or fix/{FID}). #363
-                # P2: strip fix/ as well as feat/ — bkit-debug's fix PR body
-                # carries NO bkit:fid= marker, so fix/** ALWAYS lands here.
+                # FALLBACK: extract FID from the branch name (feat/{FID}) when the
+                # PR body carries no usable bkit:fid= marker.
                 # #363 H1: keep the FULL slug (do NOT collapse to the leading
                 # numeric/alpha id) — a truncated FID (e.g. '363' instead of
                 # '363-widen-bkit-cloud-trigger') would count against a DIFFERENT
@@ -479,10 +457,10 @@ jobs:
                 # FROM the full FID, not the other way round. NOTE the '#' sed
                 # delimiter: with '|' the alternation would need escaping and is
                 # ambiguous under -E.
-                FID=$(echo "$BRANCH" | sed -E 's#^(feat|fix)/##')
+                FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
                 # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
-              # on the fix/** arm this runs BEFORE the slug allowlist, so a
-              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # this runs BEFORE the slug allowlist, so a non-FID branch
+              # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
@@ -504,21 +482,10 @@ jobs:
                 exit 0
               fi
 
-              # #363 P3 — bound the fix/** debug loop. A fix/** CI FAILURE
-              # dispatches /bkit-debug, whose fix push re-reds CI, which
-              # dispatches again: the same cross-session loop
-              # MAX_DEV_DISPATCH_ATTEMPTS exists to bound, on a surface this
-              # plan newly opens. The counter is keyed on the FID (shared with
-              # the dev path). feat/** is deliberately NOT capped: pre-merge,
-              # PR-scoped, already bounded by the in-session
-              # MAX_DEBUG_ATTEMPT / MAX_NORMAL_ATTEMPT counters.
-              case "$BRANCH" in
-                fix/*)
-                  if [ "$PHASE" = "debug" ]; then
-                    bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
-                  fi
-                  ;;
-              esac
+              # feat/** is deliberately NOT capped by MAX_DEV_DISPATCH_ATTEMPTS:
+              # pre-merge, PR-scoped, already bounded by the in-session
+              # MAX_DEBUG_ATTEMPT / MAX_NORMAL_ATTEMPT counters. The dev arm
+              # above is the only capped surface.
             fi
             # bkit:end shared-deriv
           fi
@@ -629,17 +596,16 @@ jobs:
             esac
 
             # bkit:start shared-deriv
-            # #363: FID/ISSUE recovery + dispatch-cap machinery for all CI-driven
-            # trigger surfaces (feat/**, fix/**, dev). See the claude job's ctx
+            # FID/ISSUE recovery + dispatch-cap machinery for both CI-driven
+            # trigger surfaces (feat/**, dev). See the claude job's ctx
             # step for the fully-commented version of this block — identical logic.
             bkit_dev_dispatch_guard() {
               local guard_fid="$1" guard_head_sha="$2"
               # #363 H1: assert the FID against the same slug allowlist the dev arm
               # already enforces BEFORE it's used to build any path (find -path /
-              # mkdir -p / git commit -m). This is the sole gate for the fix/**-
-              # branch fallback (never asserted before reaching here) and a
-              # defence-in-depth re-check for the PR-body marker path (bkit:fid=
-              # <anything up to whitespace/'>'> admits '/', '.', '..').
+              # mkdir -p / git commit -m). Defence-in-depth re-check for the
+              # PR-body marker path (bkit:fid=<anything up to whitespace/'>'>
+              # admits '/', '.', '..').
               if ! [[ "$guard_fid" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
@@ -739,8 +705,8 @@ jobs:
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
               # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
-              # on the fix/** arm this runs BEFORE the slug allowlist, so a
-              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # this runs BEFORE the slug allowlist, so a non-FID branch
+              # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
@@ -796,17 +762,6 @@ jobs:
               fi
               bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
             else
-              # #363 C1: fix/** CI success has no ship counterpart yet — see the
-              # claude job's ctx step for the fully-commented rationale. No-op
-              # until bkit-ship is branch-prefix aware.
-              case "$BRANCH" in
-                fix/*)
-                  if [ "$PHASE" = "ship" ]; then
-                    echo "::notice::fix/** CI passed — ship not wired for fix branches yet, no-op exit."
-                    echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-                  fi
-                  ;;
-              esac
               PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
               if [ -z "$PR_NUMBER" ]; then
                 echo "::notice::No open PR for branch $BRANCH — no-op exit."
@@ -820,15 +775,15 @@ jobs:
               # #363 H1: assert the marker-derived FID before use too — see the
               # claude job's ctx step for the fully-commented rationale.
               if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                # #363 P2: strip fix/ as well as feat/ — bkit-debug's fix PR body
-                # carries no bkit:fid= marker, so fix/** always lands here.
+                # FALLBACK: derive the FID from the branch name when the PR body
+                # carries no usable bkit:fid= marker.
                 # #363 H1: keep the FULL slug (do not truncate to the leading id) —
                 # a truncated FID would count against a different status.jsonl key
                 # than the dev-path FID, breaking the shared-budget invariant.
-                FID=$(echo "$BRANCH" | sed -E 's#^(feat|fix)/##')
+                FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
                 # #363 F3: `|| true` is load-bearing under `set -euo pipefail` —
-              # on the fix/** arm this runs BEFORE the slug allowlist, so a
-              # non-FID branch (Renovate, a hand-named hotfix) yields no match,
+              # this runs BEFORE the slug allowlist, so a non-FID branch
+              # (Renovate, a hand-named hotfix) yields no match,
               # pipefail propagates grep's exit 1, and the step dies red
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
@@ -847,15 +802,9 @@ jobs:
                 echo "skip=true" >> "$GITHUB_OUTPUT"
                 exit 0
               fi
-              # #363 P3 — bound the fix/** debug loop (shared FID budget with dev).
-              # feat/** deliberately NOT capped (pre-merge, in-session-bounded).
-              case "$BRANCH" in
-                fix/*)
-                  if [ "$PHASE" = "debug" ]; then
-                    bkit_dev_dispatch_guard "$FID" "$HEAD_SHA" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
-                  fi
-                  ;;
-              esac
+              # feat/** deliberately NOT capped by MAX_DEV_DISPATCH_ATTEMPTS
+              # (pre-merge, in-session-bounded). The dev arm is the only capped
+              # surface.
             fi
             # bkit:end shared-deriv
           fi
