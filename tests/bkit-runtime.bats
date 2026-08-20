@@ -683,3 +683,135 @@ EOF
   run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Anchor block (#431 Part 1) — the `baseSha` field on the `runtime-resolved`
+# row, and the `bkit_anchor_stamp` / `bkit_anchor_read` helpers that write and
+# read the design/plan canonical docs' `<!-- bkit:anchor -->` prelude.
+# ---------------------------------------------------------------------------
+
+@test "anchor: bkit_runtime_row emits baseSha when RUNTIME_BASESHA is set" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x RUNTIME_BASESHA=deadbeef1234 bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row design '2026-08-20T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . >/dev/null
+  [ "$(printf '%s' "$output" | jq -r '.baseSha')" = "deadbeef1234" ]
+}
+
+@test "anchor: bkit_runtime_row emits an empty baseSha when RUNTIME_BASESHA is unset, and stays valid JSON" {
+  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 REPO_ROOT=/tmp/repo FID=42-x bash -c ". '$RUNTIME_SH' && bkit_runtime_detect >/dev/null 2>&1 && bkit_runtime_row design '2026-08-20T00:00:00Z'"
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | jq -e . >/dev/null
+  [ "$(printf '%s' "$output" | jq -r '.baseSha')" = "" ]
+}
+
+@test "anchor: bkit_anchor_stamp prepends a well-formed block to an unstamped file" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/design.md"
+  printf '# Some Design\n\nBody.\n' > "$FILE"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' abc123def"
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 "$FILE")" = "<!-- bkit:anchor" ]
+  grep -q '^baseSha: abc123def$' "$FILE"
+  grep -q '^baseRef: origin/dev$' "$FILE"
+  grep -q '^-->$' "$FILE"
+  grep -q '^# Some Design$' "$FILE"
+  rm -rf "$DIR"
+}
+
+@test "anchor: stamping twice with the same args is idempotent (byte-identical)" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/design.md"
+  printf '# Some Design\n\nBody.\n' > "$FILE"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' abc123def"
+  cp "$FILE" "$DIR/once.md"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' abc123def"
+  [ "$status" -eq 0 ]
+  cmp -s "$FILE" "$DIR/once.md"
+  rm -rf "$DIR"
+}
+
+@test "anchor: re-stamping with a different BASE_SHA replaces the block, not appends a second one" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/design.md"
+  printf '# Some Design\n\nBody.\n' > "$FILE"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' abc123"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' zzz999"
+  [ "$status" -eq 0 ]
+  [ "$(grep -c '^<!-- bkit:anchor$' "$FILE")" -eq 1 ]
+  grep -q '^baseSha: zzz999$' "$FILE"
+  ! grep -q '^baseSha: abc123$' "$FILE"
+  rm -rf "$DIR"
+}
+
+@test "anchor: plan form (DESIGN_PATH set) emits designPath+designBaseSha; design form (omitted) emits neither" {
+  DIR="$(mktemp -d)"
+  PLAN="$DIR/plan.md"
+  DESIGN="$DIR/design.md"
+  printf '# Plan\n' > "$PLAN"
+  printf '# Design\n' > "$DESIGN"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$PLAN' abc123 docs/plans/202608/x-design.md def456"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$DESIGN' abc123"
+  grep -q '^designPath: docs/plans/202608/x-design.md$' "$PLAN"
+  grep -q '^designBaseSha: def456$' "$PLAN"
+  ! grep -q '^designPath:' "$DESIGN"
+  ! grep -q '^designBaseSha:' "$DESIGN"
+  rm -rf "$DIR"
+}
+
+@test "anchor: bkit_anchor_read round-trips every field" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/plan.md"
+  printf '# Plan\n' > "$FILE"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' abc123 docs/plans/202608/x-design.md def456"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_read '$FILE' baseSha"
+  [ "$status" -eq 0 ]
+  [ "$output" = "abc123" ]
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_read '$FILE' baseRef"
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/dev" ]
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_read '$FILE' designPath"
+  [ "$status" -eq 0 ]
+  [ "$output" = "docs/plans/202608/x-design.md" ]
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_read '$FILE' designBaseSha"
+  [ "$status" -eq 0 ]
+  [ "$output" = "def456" ]
+  rm -rf "$DIR"
+}
+
+@test "anchor: bkit_anchor_read on an unstamped file is silent (rc=0) — a baseSha-shaped body string is not mistaken for the anchor" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/plan.md"
+  printf '# Plan\n\nbaseSha: not-really-an-anchor\n' > "$FILE"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_read '$FILE' baseSha"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  rm -rf "$DIR"
+}
+
+@test "anchor: bkit_anchor_stamp fails closed (rc=2) on empty BASE_SHA and writes nothing" {
+  DIR="$(mktemp -d)"
+  FILE="$DIR/plan.md"
+  printf '# Plan\n' > "$FILE"
+  cp "$FILE" "$DIR/before.md"
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$FILE' ''"
+  [ "$status" -eq 2 ]
+  cmp -s "$FILE" "$DIR/before.md"
+  rm -rf "$DIR"
+}
+
+@test "anchor: bkit_anchor_stamp fails closed (rc=2) on a missing FILE" {
+  run env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '/tmp/does-not-exist-$$.md' abc123"
+  [ "$status" -eq 2 ]
+}
+
+@test "anchor: stamping two identical-content files with the same base yields cmp -s equal output (Close Workflow re-run regression guard)" {
+  DIR="$(mktemp -d)"
+  A="$DIR/a.md"
+  B="$DIR/b.md"
+  printf '# Same content\n\nBody.\n' > "$A"
+  cp "$A" "$B"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$A' abc123"
+  env -i PATH="$PATH" bash -c ". '$RUNTIME_SH' && bkit_anchor_stamp '$B' abc123"
+  cmp -s "$A" "$B"
+  rm -rf "$DIR"
+}

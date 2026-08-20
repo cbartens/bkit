@@ -191,6 +191,7 @@
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
+   RUNTIME_BASESHA=$(git merge-base origin/dev HEAD 2>/dev/null || echo "")
    bkit_runtime_row plan "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
@@ -647,6 +648,18 @@
    PLAN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
    [ -z "$PLAN_FINAL" ] && { echo "No plan version found" >&2; exit 1; }
    mkdir -p "docs/plans/$YYYYMM"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   BASE_SHA=$(jq -s -r '[.[] | select(.type=="runtime-resolved")] | last | .baseSha // ""' \
+     "docs/plans/$YYYYMM/logs/{FID}/status.jsonl" 2>/dev/null || echo "")
+   DESIGN_DOC="docs/plans/$YYYYMM/{FID}-design.md"
+   DESIGN_BASE=""
+   if [ -f "$DESIGN_DOC" ]; then
+     DESIGN_BASE=$(bkit_anchor_read "$DESIGN_DOC" baseSha)
+   else
+     DESIGN_DOC=""
+   fi
+   [ -n "$BASE_SHA" ] && bkit_anchor_stamp "$PLAN_FINAL" "$BASE_SHA" "$DESIGN_DOC" "$DESIGN_BASE"
    if [ -f "docs/plans/$YYYYMM/{FID}-plan.md" ] && ! cmp -s "docs/plans/$YYYYMM/{FID}-plan.md" "$PLAN_FINAL"; then
      TS=$(date -u +%Y%m%dT%H%M%SZ)
      mkdir -p "docs/plans/$YYYYMM/archive"
@@ -658,6 +671,7 @@
    cp "$PLAN_FINAL" "docs/plans/$YYYYMM/{FID}-plan.md"
    for child in docs/plans/$YYYYMM/logs/{FID}/plan-v4-[0-9]*.md; do
      [ -f "$child" ] || continue
+     [ -n "$BASE_SHA" ] && bkit_anchor_stamp "$child" "$BASE_SHA" "$DESIGN_DOC" "$DESIGN_BASE"
      N=$(basename "$child" | sed -E 's/plan-v4-([0-9]+)\.md/\1/')
      cp "$child" "docs/plans/$YYYYMM/{FID}-plan-${N}.md"
    done

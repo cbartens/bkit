@@ -32,6 +32,7 @@ maxTurns: 50
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Generate plan only; do NOT build, install, or write code.
 - **Workstreams:** **If** input includes Workstream directives → plan MUST cover ONLY specified workstream scopes. Treat any provided parent design as context ONLY, NOT backlog. Surface required workstream dependencies at top of plan.
+- **No anchor authoring:** Do NOT author `<!-- bkit:anchor` block.
 
 **Process:**
 

@@ -35,9 +35,18 @@ afterEach(() => {
   while (roots.length) fs.rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
+const RUNTIME_SH = path.resolve(".bkit/scripts/bkit-runtime.sh");
+
+// The extracted close-workflow block now sources bkit-runtime.sh (via
+// `git rev-parse --path-format=absolute --git-common-dir`) to read/stamp the
+// `bkit:anchor` block (#431 Part 1) — so `root` must be a real git repo
+// carrying the shim, the same as any actual workflow worktree.
 function makeRoot(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-archive-"));
   roots.push(dir);
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  fs.mkdirSync(path.join(dir, ".bkit", "scripts"), { recursive: true });
+  fs.copyFileSync(RUNTIME_SH, path.join(dir, ".bkit", "scripts", "bkit-runtime.sh"));
   return dir;
 }
 

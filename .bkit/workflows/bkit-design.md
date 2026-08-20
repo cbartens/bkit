@@ -254,6 +254,7 @@ description: "Design Feature — Autonomous design phase"
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
+   RUNTIME_BASESHA=$(git merge-base origin/dev HEAD 2>/dev/null || echo "")
    bkit_runtime_row design "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
@@ -814,6 +815,11 @@ description: "Design Feature — Autonomous design phase"
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    DESIGN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   BASE_SHA=$(jq -s -r '[.[] | select(.type=="runtime-resolved")] | last | .baseSha // ""' \
+     "docs/plans/$YYYYMM/logs/{FID}/status.jsonl" 2>/dev/null || echo "")
+   [ -n "$BASE_SHA" ] && bkit_anchor_stamp "$DESIGN_FINAL" "$BASE_SHA"
    CANONICAL="docs/plans/$YYYYMM/{FID}-design.md"
    if [ -f "$CANONICAL" ] && ! cmp -s "$CANONICAL" "$DESIGN_FINAL"; then
      mkdir -p "docs/plans/$YYYYMM/archive"

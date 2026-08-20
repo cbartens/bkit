@@ -240,7 +240,7 @@ Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source
 | `workflow-meta` | `{type, workflow, at, …fields}` | Workflow-level metadata merged onto the run (e.g. `debugAttempt`). |
 | `workflow-done` | `{type, workflow, at}` | Terminal — sets the run's `status` to `DONE`. |
 | `workflow-failed` | `{type, workflow, at}` | Terminal — sets the run's `status` to `FAILED`. |
-| `runtime-resolved` | `{type, workflow, at, runtime, runtimeWorktrees, runtimeDevPushes, runtimeGithubCli, runtimeGithubCliExit, runtimeGithubCliErr}` | Step-2 (Worktree Setup) record of `bkit_runtime_detect`'s capability table for this run — the first step `{FID}`/`WORKTREE_PATH` are resolved. Not folded by `BKIT_STATUS_FOLD` (unrecognised `type` — ignored, no-op) — later steps re-read `RUNTIME_GITHUBCLI` from THIS row instead of re-probing `gh` (the shim's shell state does not survive a Bash-tool-call boundary, so this row is the durable cross-block record). Emitted by `.bkit/scripts/bkit-runtime.sh`'s `bkit_runtime_row`, called in the SAME block as `bkit_runtime_detect`. |
+| `runtime-resolved` | `{type, workflow, at, runtime, runtimeWorktrees, runtimeDevPushes, runtimeGithubCli, runtimeGithubCliExit, runtimeGithubCliErr, baseSha}` | Step-2 (Worktree Setup) record of `bkit_runtime_detect`'s capability table for this run — the first step `{FID}`/`WORKTREE_PATH` are resolved. Not folded by `BKIT_STATUS_FOLD` (unrecognised `type` — ignored, no-op) — later steps re-read `RUNTIME_GITHUBCLI` from THIS row instead of re-probing `gh` (the shim's shell state does not survive a Bash-tool-call boundary, so this row is the durable cross-block record). Emitted by `.bkit/scripts/bkit-runtime.sh`'s `bkit_runtime_row`, called in the SAME block as `bkit_runtime_detect`. `baseSha` = `git merge-base origin/dev HEAD` for the design/plan worktree, captured into `RUNTIME_BASESHA` after Step 2's worktree/rebase arm settles; Close Workflow reads it back to stamp the canonical doc's `bkit:anchor` block (§ Anchor block below) rather than recomputing against a `dev` that has since advanced. Empty string for callers that do not set `RUNTIME_BASESHA` (build, debug, ship — not yet wired). |
 | `transport-fallback` | `{type, from, to, reason, assertedBy, at}` | One gh->MCP transition (bounded max 1/run). `from` = the gh command that was unavailable/unauthed; `to` = the mapped MCP tool used instead; `assertedBy` = how the fallback's success was independently re-read. Not folded. Emitted by `bkit_transport_fallback_row`; read back by `bkit_close_guard_cross_check` at Close Workflow — a mapped-tool close with `runtime-resolved.runtimeGithubCli=false` and NO row here is a Failure Path. |
 | `close-transport` | `{type, shape, sha, scanResult, at}` | Close Workflow's own audit-trail entry. `shape` = which close shape ran — `local` (design/plan local squash-merge + `dev` push), `pr` (design/plan PR squash-merge when `RUNTIME_DEVPUSHES` != true), `push` (build/debug direct push to the feature branch); `sha` = the commit landed on `dev`; `scanResult` = `bkit_close_guard_scan_body`'s post-close outcome on the LANDED commit BODY (subject excluded), transport-agnostic. Not folded. Emitted by `bkit_close_transport_row`. |
 
@@ -502,6 +502,25 @@ Mid-stream termination after verdict line → usable verdict + truncated body (d
 ```
 [ ] `Verdict` valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})
 ```
+
+### Anchor Block
+
+Design/plan canonical docs (`{FID}-design.md`, `{FID}-plan.md` + `-plan-N.md`) carry a second machine-readable prelude, same logic as Verdict above — invisible on GitHub, parseable without the body:
+
+```
+<!-- bkit:anchor
+baseSha: <merge-base origin/dev HEAD at Step 2>
+baseRef: origin/dev
+-->
+```
+
+Plan docs add 2 fields, read from the design doc's own anchor: `designPath` (design this plan targets), `designBaseSha` (that doc's own `baseSha`).
+
+**Orchestrator-owned:** generate subagents have no `Bash` → can't compute a SHA. Orchestrator captures `RUNTIME_BASESHA` at Step 2 (→ `runtime-resolved.baseSha`), stamps canonical at Close Workflow via `bkit_anchor_stamp`/`bkit_anchor_read` (`.bkit/scripts/bkit-runtime.sh`). Hand-written block from either subagent → stripped, replaced, never trusted.
+
+**May be empty:** `baseSha` empty = `merge-base` unresolvable, NOT a failure. `designPath`/`designBaseSha` empty = no design, or design predates this mechanism. Pre-change docs carry no block — `bkit_anchor_read` returns nothing, not an error.
+
+**Truth, not intent:** stale `origin/dev` at fetch → recorded `baseSha` is the stale base actually branched from; later diff surfaces that honestly rather than papering over it.
 
 ### Gates
 

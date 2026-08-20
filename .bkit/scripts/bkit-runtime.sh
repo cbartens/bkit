@@ -22,6 +22,11 @@
 # table. The `runtime-resolved` status.jsonl row (`bkit_runtime_row`) is the
 # durable, cross-block record — Step 1 writes it once per workflow run and
 # later steps read `RUNTIME_GITHUBCLI` back from that row, not by re-probing.
+# The same row also carries `baseSha` — the design/plan worktree's
+# `git merge-base origin/dev HEAD`, set by the caller into `RUNTIME_BASESHA`
+# before calling `bkit_runtime_row` — for the same reason: Close Workflow
+# reads it back rather than recomputing it against a `dev` that has since
+# advanced.
 #
 # CAPABILITY TABLE IS A DEFAULT, NOT A TRUTH: this shim maps a runtime
 # classification to a conservative DEFAULT capability set. It is not a live,
@@ -261,7 +266,11 @@ bkit_runtime_assert_resolved() {
 # `bkit_runtime_detect` (+ `bkit_runtime_assert_resolved`) in the same block.
 #
 # Args: WORKFLOW (e.g. "build"), AT (ISO-8601 timestamp string; caller's
-# responsibility, same as every other row emitter in the corpus).
+# responsibility, same as every other row emitter in the corpus). Also reads
+# `RUNTIME_BASESHA` from the current process (optional, caller-set — the
+# `git merge-base origin/dev HEAD` the design/plan worktree branched from).
+# Callers that do not set it (build, debug, ship — out of scope for this
+# change) get an empty `baseSha` in the emitted row, not an error.
 # Returns 2 (nothing on stdout) if WORKFLOW or AT is empty, or if the
 # capability globals are not resolved (delegates to bkit_runtime_assert_resolved).
 # ---------------------------------------------------------------------------
@@ -300,7 +309,120 @@ bkit_runtime_row() {
     --argjson gc "${RUNTIME_GITHUBCLI:-false}" \
     --argjson ge "${RUNTIME_GITHUBCLI_EXIT:-0}" \
     --arg er "${RUNTIME_GITHUBCLI_ERR:-}" \
-    '{type:"runtime-resolved",workflow:$w,at:$at,runtime:$rt,runtimeWorktrees:$wt,runtimeDevPushes:$dp,runtimeGithubCli:$gc,runtimeGithubCliExit:$ge,runtimeGithubCliErr:$er}'
+    --arg bs "${RUNTIME_BASESHA:-}" \
+    '{type:"runtime-resolved",workflow:$w,at:$at,runtime:$rt,runtimeWorktrees:$wt,runtimeDevPushes:$dp,runtimeGithubCli:$gc,runtimeGithubCliExit:$ge,runtimeGithubCliErr:$er,baseSha:$bs}'
+}
+
+# ---------------------------------------------------------------------------
+# bkit_anchor_stamp FILE BASE_SHA [DESIGN_PATH DESIGN_BASE_SHA]
+#
+# WRITES FILE — unlike every emitter above, which only print to stdout for
+# the caller to redirect, this one mutates FILE in place. Via a temp file +
+# `mv`, never in-place `sed -i`: BSD and GNU `sed -i` take incompatible
+# argument shapes, and this shim ships to consumers on both (the corpus's
+# existing workaround is `sed -i.bak` + `rm`, e.g. bkit-plan.md; temp file +
+# `mv` sidesteps the divergence entirely rather than working around it).
+#
+# Prepends (after first stripping any existing one, so re-stamping is safe)
+# a `<!-- bkit:anchor -->` HTML-comment block recording the base commit a
+# design/plan doc was written against:
+#
+#   <!-- bkit:anchor
+#   baseSha: <BASE_SHA>
+#   baseRef: origin/dev
+#   -->
+#
+# When DESIGN_PATH is non-empty (plan docs only), two more lines are added
+# before the closing `-->`:
+#
+#   designPath: <DESIGN_PATH>
+#   designBaseSha: <DESIGN_BASE_SHA>
+#
+# IDEMPOTENT: stamping a file that already carries a block replaces it
+# rather than appending a second one — calling this twice with the same args
+# produces a byte-identical file to calling it once. This is load-bearing
+# for the `cmp -s` re-run check in bkit-design.md/bkit-plan.md Close
+# Workflow: a re-run against an unchanged base must not manufacture a
+# spurious diff just because the anchor was re-stamped.
+#
+# Args: FILE (path to stamp, required, must already exist and be
+# readable/writable — this function does not create new files). BASE_SHA
+# (required, non-empty). DESIGN_PATH / DESIGN_BASE_SHA (optional; only
+# DESIGN_PATH gates whether the two design-anchor lines are emitted).
+#
+# Returns 0 on success. Returns 2 (loud, `[bkit-anchor]` on stderr) if FILE
+# is missing/unreadable or BASE_SHA is empty — writes nothing in that case.
+# ---------------------------------------------------------------------------
+bkit_anchor_stamp() {
+  _bas_file="${1:-}"
+  _bas_base_sha="${2:-}"
+  _bas_design_path="${3:-}"
+  _bas_design_base_sha="${4:-}"
+
+  if [ -z "$_bas_file" ] || [ ! -f "$_bas_file" ] || [ ! -r "$_bas_file" ]; then
+    echo "[bkit-anchor] bkit_anchor_stamp: FILE '${_bas_file}' is missing or unreadable" >&2
+    return 2
+  fi
+  if [ -z "$_bas_base_sha" ]; then
+    echo "[bkit-anchor] bkit_anchor_stamp: BASE_SHA must be non-empty" >&2
+    return 2
+  fi
+
+  _bas_tmp="${_bas_file}.bkit-anchor.tmp"
+
+  {
+    printf '%s\n' '<!-- bkit:anchor'
+    printf 'baseSha: %s\n' "$_bas_base_sha"
+    printf '%s\n' 'baseRef: origin/dev'
+    if [ -n "$_bas_design_path" ]; then
+      printf 'designPath: %s\n' "$_bas_design_path"
+      printf 'designBaseSha: %s\n' "$_bas_design_base_sha"
+    fi
+    printf '%s\n' '-->'
+    # Strip any existing anchor block first — idempotency (see header).
+    sed '/^<!-- bkit:anchor$/,/^-->$/d' "$_bas_file"
+  } >"$_bas_tmp"
+
+  mv "$_bas_tmp" "$_bas_file"
+}
+
+# ---------------------------------------------------------------------------
+# bkit_anchor_read FILE FIELD
+#
+# Prints the value of one field (`baseSha` | `baseRef` | `designPath` |
+# `designBaseSha`) from FILE's `<!-- bkit:anchor -->` block, if any. Pure —
+# does not modify FILE.
+#
+# Matches ONLY inside the anchor block (the block bounded by
+# `^<!-- bkit:anchor$` and `^-->$`), so a `baseSha:`-shaped string elsewhere
+# in the doc body can never be mistaken for the anchor.
+#
+# ABSENCE IS NORMAL, NOT AN ERROR: a FILE with no anchor block, or a block
+# missing FIELD, prints nothing and returns 0 — every design/plan doc
+# written before this change has neither.
+#
+# Args: FILE (required, must exist). FIELD (required — the field name
+# without its trailing colon, e.g. "baseSha").
+#
+# Returns 0 whether or not a value was found (prints nothing on the
+# not-found path). Returns 2 (loud, `[bkit-anchor]` on stderr) if FILE or
+# FIELD is empty, or FILE does not exist.
+# ---------------------------------------------------------------------------
+bkit_anchor_read() {
+  _bard_file="${1:-}"
+  _bard_field="${2:-}"
+
+  if [ -z "$_bard_file" ] || [ -z "$_bard_field" ]; then
+    echo "[bkit-anchor] bkit_anchor_read: FILE and FIELD must both be non-empty" >&2
+    return 2
+  fi
+  if [ ! -f "$_bard_file" ]; then
+    echo "[bkit-anchor] bkit_anchor_read: FILE '${_bard_file}' not found" >&2
+    return 2
+  fi
+
+  sed -n '/^<!-- bkit:anchor$/,/^-->$/p' "$_bard_file" |
+    sed -n "s/^${_bard_field}: //p" | head -n 1
 }
 
 # ---------------------------------------------------------------------------
