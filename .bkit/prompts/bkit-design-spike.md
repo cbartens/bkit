@@ -51,7 +51,7 @@ maxTurns: 50
    - **If** claim needs credentials, services, hosts or sessions run lacks → mark it `BLOCKED`; state what it needs.
    - **If** probes need uninstalled libraries → install in spike directory only; delete dependency trees and every build output before setting `Verdict`.
 7. Classify each claim:
-   — SETTLED = held under honest attempt.
+   - SETTLED = held under honest attempt.
    - DISPROVEN = captured evidence contradicts it.
    - BLOCKED = neither settled nor disproven.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
