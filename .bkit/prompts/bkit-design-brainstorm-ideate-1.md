@@ -37,7 +37,7 @@ maxTurns: 50
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Propose 2-3 approaches from current constraints — existing code, minimal new infra, ship fastest. Lead recommended; each in existing stack (no greenfield, no hypothetical infra). Reuse > extend > new; YAGNI ruthlessly. Per approach trade-offs:
-   - `Complexity`: LOW / MEDIUM / HIGH.
+   - `Complexity`: `LOW|MEDIUM|HIGH`.
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.
    - Maintenance: Ongoing cost.
@@ -54,11 +54,11 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 
-[Summary (one sentence), `Complexity` (LOW / MEDIUM / HIGH), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
+[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
 
 ## Approach B — [Name]
 
-[Summary, `Complexity` (LOW / MEDIUM / HIGH), Extensibility, Risk, Maintenance]
+[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance]
 
 ## Approach C — [Name (optional)]
 

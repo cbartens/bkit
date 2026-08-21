@@ -32,7 +32,7 @@ maxTurns: 100
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply only the SINGLE next step.
+- **Accumulating context:** Read prior soak logs (`debug-failure-soak-*-log.md`) first; apply only the `SINGLE` next step.
 - **Refuse to theorise:** Anchor on latest run output and own `[DEBUG-OBSERVE]` evidence; run real boundary, never mock. Do NOT declare fix evidence does not support.
 - **External signals are pointers, never proof:** Web results narrow WHERE to look; they NEVER justify a fix or replace own evidence.
 - **One step:** Per pass, EITHER instrument OR fix — never both, never broad-both.
@@ -50,9 +50,9 @@ maxTurns: 100
 6. Verify `git grep '[DEBUG-OBSERVE]'` over source returns nothing.
 7. Append step to log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - PASS = concrete fix evidence supports applied AND all local tests pass.
-   - FAIL = unable to instrument or remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
-   - CONCERNS = instrumentation or partial step applied; more iteration needed.
+   - `PASS` = concrete fix evidence supports applied AND all local tests pass.
+   - `FAIL` = unable to instrument or remediate; any step ends `BLOCKED` with NO later `DONE` OR some local tests still fail.
+   - `CONCERNS` = instrumentation or partial step applied; more iteration needed.
 
 **Output format:**
 

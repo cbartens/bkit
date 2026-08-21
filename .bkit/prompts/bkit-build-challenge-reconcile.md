@@ -30,24 +30,24 @@ maxTurns: 30
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Reconcile findings only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on CRITICAL. Single-input findings are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on `CRITICAL`. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
 
-1. Initialise **Create** output stub with PENDING placeholders; do NOT `cp` existing inputs.
+1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Deduplicate same `file:line` or same root-cause keyword cluster → merge one finding citing both reviewers; **Else** → keep separate with attribution.
-5. Merged findings with divergent severities → adopt higher (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justification citing both reviewers' evidence. **If** any CRITICAL → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+5. Merged findings with divergent severities → adopt higher (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justification citing both reviewers' evidence. **If** any `CRITICAL` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 6. Add `agreement: {N}/{total}` per finding.
-7. Per finding → ALL require: `Severity` (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), location (file:line), exploit scenario, suggested fix.
-8. Write unified Findings to **Create** via `Edit`; sort by descending severity.
-9. Update **Create** — set `Failures` via `Edit` = CRITICAL count post-deduplication; do NOT count incomplete findings.
+7. Per finding → ALL require: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `location` (`file:line`), exploit scenario, suggested fix.
+8. Write unified Findings to **Create** via `Edit`; sort by descending `severity`.
+9. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count post-deduplication; do NOT count incomplete findings.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - PASS = no findings.
-    - CONCERNS = findings present, max severity <= HIGH.
-    - FAIL = any CRITICAL finding.
+    - `PASS` = no findings.
+    - `CONCERNS` = findings present, max `severity` <= `HIGH`.
+    - `FAIL` = any `CRITICAL` finding.
 
 **Output format:**
 
@@ -61,7 +61,7 @@ Failures: <integer >= 0>
 
 ## Findings
 
-[**If** `Verdict` = CONCERNS or FAIL → prioritized list — per finding: lens, severity (CRITICAL / HIGH / MEDIUM / LOW), class (mechanical / architectural), file:line, exploit scenario, suggested fix, `agreement: {N}/{total}`. **Else** → `None`; initially set to PENDING.]
+[**If** `Verdict` = `CONCERNS` or `FAIL` → prioritized list — per finding: lens, `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `file:line`, exploit scenario, suggested fix, `agreement: {N}/{total}`. **Else** → `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after reconciling findings and producing output. Do NOT apply fixes.**

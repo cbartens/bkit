@@ -18,6 +18,7 @@ description: "Worktree Sync — Pull agent worktree changes into the IDE's curre
 2. `git rev-parse --show-toplevel` → extract `REPO_ROOT`. Assert non-empty.
 3. Self-skip check:
    ```bash
+   REPO_ROOT="{REPO_ROOT}"
    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    bkit_worktree_helper_guard "$REPO_ROOT" "worktree-sync"
    BKIT_WHG_RC=$?
@@ -34,6 +35,7 @@ description: "Worktree Sync — Pull agent worktree changes into the IDE's curre
 3. Auto-commit dirty paths on the IDE's current branch, excluding junk:
 
    ```bash
+   REPO_ROOT="{REPO_ROOT}"
    git -C "$REPO_ROOT" status --short
    git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
    git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes"

@@ -35,10 +35,10 @@ maxTurns: 50
 
 **Process:**
 
-1. Initialise **Create** output stub with PENDING placeholders; do NOT `cp` existing inputs.
+1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer onto selected approach, NOT as separate approach.
 6. Each conflict → pick stronger, justify.
 7. Preserve strongest approaches. Consolidate Decisions.
@@ -51,55 +51,55 @@ maxTurns: 50
 
 ## Related Issues
 
-[Related issues, one `- #N — title (state)` entry per prior-incident match. **If** none → `None`; initially set to PENDING.]
+[Related issues, one `- #N — title (state)` entry per prior-incident match. **If** none → `None`; initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Initial draft only (expanded later); NO Test Matrix (added later); initially set to PENDING.]
+[Initial draft only (expanded later); NO Test Matrix (added later); initially set to `PENDING`.]
 
 ### Narrative
 
-[2-3 sentences, user POV (NOT system POV); initially set to PENDING.]
+[2-3 sentences, user POV (NOT system POV); initially set to `PENDING`.]
 
 ### Success Criteria
 
-[<=5 high-level measurable outcomes. NO tests. NO implementation steps; initially set to PENDING.]
+[<=5 high-level measurable outcomes. NO tests. NO implementation steps; initially set to `PENDING`.]
 
 ### Key Edge Cases
 
-[Design-shaping cases ONLY — concurrency, conflict resolution, failure modes, cross-feature interactions; initially set to PENDING.]
+[Design-shaping cases ONLY — concurrency, conflict resolution, failure modes, cross-feature interactions; initially set to `PENDING`.]
 
 ### Process Sketch
 
-[Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME `Acceptance Scenario` examples. Outcomes, NOT implementation steps. Initially set to PENDING.]
+[Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME `Acceptance Scenario` examples. Outcomes, NOT implementation steps. Initially set to `PENDING`.]
 
 ## Architecture
 
-[Components, boundaries, integration points; initially set to PENDING.]
+[Components, boundaries, integration points; initially set to `PENDING`.]
 
 ## Data Model
 
-[Schema, fields, relationships; initially set to PENDING.]
+[Schema, fields, relationships; initially set to `PENDING`.]
 
 ## Components / Flows
 
-[UI / service / job structure as relevant; initially set to PENDING.]
+[UI / service / job structure as relevant; initially set to `PENDING`.]
 
 ## Decisions
 
-[Table: Decided / Alternatives / Why; initially set to PENDING.]
+[Table: Decided / Alternatives / Why; initially set to `PENDING`.]
 
 ## Approaches Considered
 
-[Table: Approach / `Verdict` (KEPT | REJECTED | MERGED) / Why; initially set to PENDING.]
+[Table: Approach / `Verdict` (KEPT | REJECTED | `MERGED`) / Why; initially set to `PENDING`.]
 
 ## Trade-offs Accepted
 
-[Per chosen approach: what we gain, what we sacrifice vs alternatives; initially set to PENDING.]
+[Per chosen approach: what we gain, what we sacrifice vs alternatives; initially set to `PENDING`.]
 
 ## Risks & Open Questions
 
-[Unknowns, dependencies, assumptions; plain bullets. All open questions MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output; no options / recommendation = incomplete → resolve or drop. Initially set to PENDING.]
+[Unknowns, dependencies, assumptions; plain bullets. All open questions MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output; no options / recommendation = incomplete → resolve or drop. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after generating design and producing output. Do NOT write plans or code.**

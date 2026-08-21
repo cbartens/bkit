@@ -49,7 +49,7 @@ maxTurns: 50
    - `Executable` = landed changes leave task approach intact.
    - `Reword` = task approach holds; paths, symbols, or commands task names have moved and wording no longer matches.
    - `Broken` = task approach no longer executable; named symbols or files gone, signatures or contracts it depends on changed, or work already landed.
-9. Per finding, ALL four required: task name, class (`Reword` / `Broken`), landed change that decided it (`file:line`, symbol, commit subject), what a plan re-run must resolve. **If** incomplete → not counted in `Affected`.
+9. Per finding, ALL four required: task name, `class` (`Reword|Broken`), landed change that decided it (`file:line`, symbol, commit subject), what a plan re-run must resolve. **If** incomplete → not counted in `Affected`.
 10. Update **Create** — set `Affected` via `Edit` = `Reword` + `Broken` count; do NOT count incomplete findings.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no affected tasks.
@@ -68,7 +68,7 @@ Affected: <integer >= 0>
 
 ## Affected Tasks
 
-[**If** `Verdict` = CONCERNS or FAIL → prioritized list — per finding: task name, class (`Reword` / `Broken`), landed changes that decided it (`file:line`, symbol, commit subject), what plan re-run must resolve. **Else** → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[**If** `Verdict` = `CONCERNS` or `FAIL` → prioritized list — per finding: task name, `class` (`Reword` / `Broken`), landed changes that decided it (`file:line`, symbol, commit subject), what plan re-run must resolve. **Else** → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after judging plan and producing output. Do NOT revise plan or apply fixes.**
