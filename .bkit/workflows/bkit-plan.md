@@ -140,12 +140,12 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker false start -->
    Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
    <!-- bkit:tracker false end -->
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining, oldest → newest → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker false start -->
    No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
@@ -263,7 +263,7 @@ description: "Plan Feature — Autonomous plan generation"
    bkit_runtime_row plan "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Join `DESCRIPTION` then `COMMENTS` (oldest → newest) into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it and use the remainder in place of `DESCRIPTION` + `COMMENTS`. **Else** → use both unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `DESCRIPTION` + `COMMENTS`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
+4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
 5. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
@@ -375,10 +375,22 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces + feature nouns, no stopwords), space-separated. Derived here — tracker-independent — so the local-ledger scans below still have a query when no tracker is connected.
 2. <!-- bkit:tracker github start -->
-   `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → join `body` then the remaining comments (oldest → newest) into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it. **Else** → keep the stream unchanged → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading + the resulting stream; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+   - `body` → `RELATED_DESCRIPTION`.
+   - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
+   - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → join `description` then the remaining comments into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it. **Else** → keep the stream unchanged → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## {identifier} — {title} ({state.name})` heading + the resulting stream; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+   - `description` → `RELATED_DESCRIPTION`.
+   - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `RELATED_COMMENTS`.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Append `## {identifier} — {title} ({state.name})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
+   - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
 3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md` (matching lines verbatim; a line matches when it contains >=2 distinct query terms, or the sole term when only one — reduces single-common-word noise; case-insensitive substring; 0 matches / file absent → `None.`):
    ```bash

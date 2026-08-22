@@ -61,6 +61,7 @@
 - **Check gates first:** ALWAYS verify EVERY gate item BEFORE proceeding; skipped gates = invalid work. Gates inside `/bkit-*` workflows are self-verification, NOT human gates; STOP only for explicit HARD STOPs.
 - **Tracker MCP:** Issue update via configured MCP only; use CLI/HTTP shell-outs as backup only.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
+- **Tracker context cut:** Use `<!-- bkit:ignore-earlier -->` in issue body or comments to drop all previous content from workflow inputs; ALWAYS requires human confirmation.
 
 ### Git, CI & Merges
 

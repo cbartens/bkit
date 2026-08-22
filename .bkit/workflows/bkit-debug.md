@@ -171,12 +171,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker false start -->
    Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
    <!-- bkit:tracker false end -->
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining, oldest → newest → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker false start -->
    No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
@@ -354,7 +354,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. `git branch --show-current` → update `BRANCH` to the adopted branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
 4. **If** `BRANCH` = `main` → **Failure Path**. Every other branch is eligible (`feat/{FID}`, `dev`, any hand-named branch).
-5. Join `DESCRIPTION` then `COMMENTS` (oldest → newest) into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it and use the remainder in place of `DESCRIPTION` + `COMMENTS`. **Else** → use both unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+5. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 6. Update status and commit:
    ```bash
    DEBUG_MODE="{DEBUG_MODE}"
@@ -688,10 +688,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      || echo "[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean"
    ```
 5. <!-- bkit:tracker github start -->
-   `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → join `body` then the remaining comments (oldest → newest) into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it. **Else** → keep the stream unchanged → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading + the resulting stream; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+   - `body` → `RELATED_DESCRIPTION`.
+   - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
+   - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → join `description` then the remaining comments into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it. **Else** → keep the stream unchanged → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` → per hit `## {identifier} — {title} ({state.name})` heading + the resulting stream; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+   - `description` → `RELATED_DESCRIPTION`.
+   - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `RELATED_COMMENTS`.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Append `## {identifier} — {title} ({state.name})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
+   - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
 6. Update status and commit:
    ```bash
@@ -1118,10 +1130,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 2. Re-read labels → update status, write close telemetry, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining, oldest → newest → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
    <!-- bkit:tracker linear end -->
    ```bash
    TEST_SCOPE="{TEST_SCOPE}"
@@ -1379,10 +1391,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     <!-- bkit:tracker linear end -->
 10. **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
     <!-- bkit:tracker github start -->
-    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining, oldest → newest → `COMMENTS`.
+    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-    `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining → `COMMENTS`.
+    `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker true start -->
     After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).

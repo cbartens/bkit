@@ -328,12 +328,12 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker false start -->
    Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
    <!-- bkit:tracker false end -->
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining, oldest → newest → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → reverse to oldest → newest → drop each comment whose body contains `<!-- bkit:generated -->` or opens with `### Step {N} — ...` / `### Workflow Failure` / `### Workflow Handover` / `## {Design|Plan|Build|Ship|Debug|Auto} Workflow` / `## Workstream Delete — {FID}` → remaining → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker false start -->
    No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
@@ -370,7 +370,7 @@ description: "Ship Feature — Autonomous merge and archive"
      '{type:"step-done", workflow:"ship", step:"ship-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-input.md"]}' \
      >> "$STATUS"
    ```
-10. Join `DESCRIPTION` then `COMMENTS` (oldest → newest) into one stream and find the last `<!-- bkit:ignore-earlier -->` in it. **If** found → drop everything before it and use the remainder in place of `DESCRIPTION` + `COMMENTS`. **Else** → use both unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
