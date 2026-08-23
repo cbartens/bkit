@@ -820,10 +820,10 @@ describe("#58 DEBUG_ATTEMPT off-by-one regression: every cross-run-fold derive s
   }
   const plusOneRe = /DEBUG_ATTEMPT\s*=\s*\$\(\(\s*PRIOR_DEBUG_ATTEMPT\s*\+\s*1\s*\)\)/;
 
-  it("sanity: bkit-debug.md found, marker-write line found exactly once, and all 8 real fold-derive sites are located (3 pre-marker + 5 post-marker) — this test cannot silently see zero blocks", () => {
+  it("sanity: bkit-debug.md found, marker-write line found exactly once, and all 9 real fold-derive sites are located (3 pre-marker + 6 post-marker) — this test cannot silently see zero blocks", () => {
     expect(debugContent.length).toBeGreaterThan(0);
     expect(markerIndex).toBeGreaterThan(-1);
-    expect(foldBlocks.length).toBe(8);
+    expect(foldBlocks.length).toBe(9);
   });
 
   it("every PRE-marker fold-derive block (runs before :366) uses the +1 form — the fold still reflects the PRIOR invocation there", () => {
@@ -842,7 +842,7 @@ describe("#58 DEBUG_ATTEMPT off-by-one regression: every cross-run-fold derive s
 
   it("every POST-marker fold-derive block (runs after :366) does NOT use the +1 form — the fold already reflects THIS invocation's value there (the exact off-by-one build-plan-verify-2-2.md found)", () => {
     const postMarkerBlocks = foldBlocks.filter((f) => f.start > markerIndex);
-    expect(postMarkerBlocks.length).toBe(5);
+    expect(postMarkerBlocks.length).toBe(6);
     for (const { start, block } of postMarkerBlocks) {
       if (plusOneRe.test(block)) {
         expect.fail(

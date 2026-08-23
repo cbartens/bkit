@@ -292,44 +292,68 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🤖 Step 4 — Fetch Context
 
-1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces + feature nouns, no stopwords), space-separated. Derived here — tracker-independent — so the local-ledger scans below still have a query when no tracker is connected.
-2. `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces, feature nouns, no stopwords), space-separated.
+2. `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `body` → `RELATED_DESCRIPTION`.
    - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
    - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
    - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
-3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md` (matching lines verbatim; a line matches when it contains >=2 distinct query terms, or the sole term when only one — reduces single-common-word noise; case-insensitive substring; 0 matches / file absent → `None.`):
+3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → match lines verbatim; case-insensitive substrings; line matches when it contains >= 2 distinct query terms, or sole term when only one; strongest term-overlap first; top 40 kept and total footered; 0 matches / file absent → `None.` → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`; first writer resets clamp log:
    ```bash
    TERMS='{QUERY}'
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh" || { echo "[bkit] missing bkit-context-clamp.sh — run 'bkit install'" >&2; exit 2; }
+   CLAMP_LOG="$REPO_ROOT/tmp/bkit-clamp-{FID}-plan-fetch-context.jsonl"
+   clamp_log_reset "$CLAMP_LOG" || exit 2
    OUT="docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md"
    SRC="docs/deferrals.jsonl"
    if [ -f "$SRC" ]; then
-     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) print}' "$SRC")
-     if [ -n "$M" ]; then printf '%s\n' "$M" > "$OUT"; else printf 'None.\n' > "$OUT"; fi
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $0}' "$SRC")
+     TOTAL=$(printf '%s' "$M" | grep -c . || true)
+     if [ "$TOTAL" -gt 0 ]; then
+       printf '%s\n' "$M" | sort -k1,1nr -k2,2nr | head -40 | cut -f3- > "$OUT"
+       [ "$TOTAL" -gt 40 ] && printf '> [bkit] TRUNCATED — kept 40 of %s matching lines, strongest term-overlap first.\n> Dropped content was NOT read. Its absence is not evidence.\n' "$TOTAL" >> "$OUT"
+     else
+       printf 'None.\n' > "$OUT"
+     fi
    else
      printf 'None.\n' > "$OUT"
    fi
+   clamp_artifact "$OUT" ledger "$CLAMP_LOG" || exit 2
    ```
-4. Scan `docs/failures.jsonl` with the same rule → write `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`:
+4. Scan `docs/failures.jsonl` with same rule → write `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`:
    ```bash
    TERMS='{QUERY}'
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh" || { echo "[bkit] missing bkit-context-clamp.sh — run 'bkit install'" >&2; exit 2; }
+   CLAMP_LOG="$REPO_ROOT/tmp/bkit-clamp-{FID}-plan-fetch-context.jsonl"
    OUT="docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"
    SRC="docs/failures.jsonl"
    if [ -f "$SRC" ]; then
-     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) print}' "$SRC")
-     if [ -n "$M" ]; then printf '%s\n' "$M" > "$OUT"; else printf 'None.\n' > "$OUT"; fi
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $0}' "$SRC")
+     TOTAL=$(printf '%s' "$M" | grep -c . || true)
+     if [ "$TOTAL" -gt 0 ]; then
+       printf '%s\n' "$M" | sort -k1,1nr -k2,2nr | head -40 | cut -f3- > "$OUT"
+       [ "$TOTAL" -gt 40 ] && printf '> [bkit] TRUNCATED — kept 40 of %s matching lines, strongest term-overlap first.\n> Dropped content was NOT read. Its absence is not evidence.\n' "$TOTAL" >> "$OUT"
+     else
+       printf 'None.\n' > "$OUT"
+     fi
    else
      printf 'None.\n' > "$OUT"
    fi
+   clamp_artifact "$OUT" ledger "$CLAMP_LOG" || exit 2
    ```
 5. Update status and commit:
    ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"plan", step:"plan-fetch-context", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/related-issues.md","docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md","docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"]}' \
+   . "$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh" || { echo "[bkit] missing bkit-context-clamp.sh — run 'bkit install'" >&2; exit 2; }
+   CLAMPED=$(clamp_log_array "$REPO_ROOT/tmp/bkit-clamp-{FID}-plan-fetch-context.jsonl")
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson c "$CLAMPED" \
+     '{type:"step-done", workflow:"plan", step:"plan-fetch-context", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/related-issues.md","docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md","docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"], clamped:$c}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context"
    ```
@@ -347,7 +371,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Related-issues search attempted when a tracker is connected (or `None` / `Search unavailable`)
 - [ ] Artifacts written (`related-deferrals.md`, `related-failures.md`; `related-issues.md` when a tracker is connected)
-- [ ] Workflow status updated (step `plan-fetch-context` recorded with `parentSha`)
+- [ ] Workflow status updated (step `plan-fetch-context` recorded with `parentSha`, `clamped`)
 
 
 - [ ] Issue comment attempted (`Step 4` section)

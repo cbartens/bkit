@@ -248,7 +248,7 @@
 
 ## 🧠 Step 3 — Brainstorm & Ideate
 
-1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/design-input.md` (feature nouns, no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → set `RELATED_ISSUES` empty → per hit:
+1. `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `body` → `RELATED_DESCRIPTION`.
    - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
    - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.

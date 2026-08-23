@@ -95,7 +95,7 @@ At `bkit install`: read `bkit.issueTracker` from consumer manifest → keep matc
 
 **Hoist shared content out of blocks — only at `false`-block sites.** Identical cross-variant text → numbered step line; per-tracker part inside blocks (`issue-id-extraction`: extraction patterns + create call only; `fid-format`: assert regex only). Every byte inside pair authored 2–3× and drifts.
 
-Limit = `none` rendering. Bare pair collapses to `_No tracker connected, skip step._` — hoisted prose above survives introducing a step that says "skip" (`{QUERY}` with no search, "NEW comment" with no comment). Hoist only where trailing `false` block supplies real `none` body (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`); at pair-only sites keep shared text inside both blocks so whole step vanishes. Design/debug issue-scan `{QUERY}` prefix + `— NEW comment, no edit.` suffix stay duplicated. **Exception — plan fetch-context (`/bkit-plan` Step 4):** `{QUERY}` hoisted to plain step — tracker-independent local greps (`related-deferrals.md` / `related-failures.md`) in same step consume it and MUST run under `none`; hoisted definition not orphaned — do NOT re-duplicate into tracker pair.
+Limit = `none` rendering. Bare pair collapses to `_No tracker connected, skip step._` — hoisted prose above survives introducing a step that says "skip" (`{QUERY}` with no search, "NEW comment" with no comment). Hoist only where trailing `false` block supplies real `none` body (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`); at pair-only sites keep shared text inside both blocks so whole step vanishes. Design/debug issue-scan `{QUERY_NL}` prefix + `— NEW comment, no edit.` suffix stay duplicated. **Exception — plan fetch-context (`/bkit-plan` Step 4):** `{QUERY}` hoisted to plain step — tracker-independent local greps (`related-deferrals.md` / `related-failures.md`) in same step consume it and MUST run under `none`; hoisted definition not orphaned — do NOT re-duplicate into tracker pair. `{QUERY_NL}` stays inside the pair (search-only, vanishes under `none`).
 
 Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` after `--tracker=github`) → fresh mirrors. Resolver reports lone `github`/`linear` block or unbalanced `true`/`false` pair as orphan — silent regressions unacceptable. New call site → add `github`/`linear` pair inline (no `trackers.md` edit; `none` block only if step must do something without tracker). `.bkit/trackers.md` = reference-only (marker contract + cross-cutting conventions); not substitution source.
 
@@ -134,7 +134,9 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 
 **Per-tracker operational notes** (rationale kept here, not in the workflow files per § Workflow Authoring Rules):
 
-- **Related-issues scan** (issue-scan): numbered step at design ideate-entry, plan fetch-context, debug fetch-context; `github`/`linear` pair → under `none` collapses to `_No tracker connected, skip step._` (number preserved). Best-effort: broad keyword search (title+body, all states, recency) — fetch 15, drop own issue, keep 10 — one comment fetch per hit; `Search unavailable.` on error; never gates, never auto-expands scope (advisory dedup / conflicting-design / prior-incident). All states: closed issues carry strongest dedup signals. Per hit: `## #{number} — {title} ({state})` + `RELATED_ISSUE_TEXT` (issue-path wording, `RELATED_` prefix), appended to `RELATED_ISSUES`; file written once after last hit; design → `related-issues.md` (generate reads `(if present)`, condenses to `## Related Issues` one-liners or `None`). Plan: `{QUERY}` in plain sub-step → `related-issues.md` (tracker-gated) + `related-deferrals.md` / `related-failures.md` (awk >=2 distinct query terms, or sole term when one — runs under `none`); read by `bkit-plan-review-1/2/3`. Debug → `debug-context-related-${DEBUG_ATTEMPT}.md` (`debug-context-*` glob; excluded from `FETCH_VERDICT`). Plan runs fresh scan (standalone plan coverage).
+- **Related-issues scan** (issue-scan): numbered step at design ideate-entry, plan fetch-context, debug fetch-context; `github`/`linear` pair → under `none` collapses to `_No tracker connected, skip step._` (number preserved). Best-effort: semantic search — fetch 15, drop own issue, keep 10 — one comment fetch per hit; `Search unavailable.` on error; never gates, never auto-expands scope (advisory dedup / conflicting-design / prior-incident). All states: closed issues carry strongest dedup signals. Per hit: `## #{number} — {title} ({state})` + `RELATED_ISSUE_TEXT` (issue-path wording, `RELATED_` prefix), appended to `RELATED_ISSUES`; file written once after last hit; design → `related-issues.md` (generate reads `(if present)`, condenses to `## Related Issues` one-liners or `None`). Plan: `{QUERY}` in plain sub-step → `related-deferrals.md` / `related-failures.md`; `{QUERY_NL}` in the tracker pair → `related-issues.md`; read by `bkit-plan-review-1/2/3`. Debug → `debug-context-related-${DEBUG_ATTEMPT}.md` (`debug-context-*` glob; excluded from `FETCH_VERDICT`). Plan runs fresh scan (standalone plan coverage). No `fields` parameter — the search returns all fields on every hit and MUST keep doing so; restricting to a subset trades away the content the sweep exists to surface. Artifact is uncapped by decision (§ Context artifact clamping).
+  - **Query shape — two variables, not one.** `{QUERY_NL}` = ONE natural-language sentence, consumed ONLY by the search call; no `sort` / `order` / `orderBy`, no `in:title,body` qualifier (inert in a semantic query), results kept in RANK ORDER through the drop-own-issue and keep-first-10 steps or the ranking is discarded before use. The response carries an order but no score, so a relevance THRESHOLD is not implementable — rank position is the only signal. `{QUERY}` = the 3–6 keyword list, plan-only, consumed ONLY by the ledger awk: that awk splits on whitespace and counts distinct term hits with a `>=2 terms` rule, so feeding it a sentence makes every stopword match every line and degrades the scan to "print everything".
+  - **Ledger scans** (plan only, run under `none`): awk counts query-term hits per line (`>=2` distinct terms, or the sole term when one; case-insensitive substring), sorts by hit count desc then line number desc (append-only ledgers → line order is time order), keeps the top 40 per file and footers the total. `cut -f3-` rejoins fields 3..N with tabs, so a literal tab inside a JSONL line survives intact. Backstopped by the `ledger` clamp profile.
 - **Projects v2 board sync** (`issue-update-status`): best-effort, never gates; retry once after 5s on failure. `update_project_item` needs numeric `item_id`, not node id from `add_project_item` → intervening `projects_list` resolve. Status `value` = single-select option id (e.g. `47fc9ee4`), not name. Linear: no-op (state carries status).
 - **Blocked-by edges:** GitHub: `<!-- bkit:blocked-by -->` in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
 - **Workstream milestone assignment (design Step 10):** `MILESTONE`-labelled parent groups workstreams under native milestone, NOT sub-issues. Parent must carry target (GitHub milestone / Linear project + project milestone) — MCP cannot create → unset = Step 10 Failure Path. Each workstream assigned to same target: GitHub `issue_write` `milestone` (from parent `issue_read`); Linear `save_issue` `projectId` + `projectMilestoneId`. Existing detection: GitHub `search_issues` `milestone:"{title}" in:title WS-` (index lag, best-effort); Linear `list_issues` by `projectId` + `projectMilestoneId`; match `^WS-N:` title. `Requires` → block-by edges unchanged.
@@ -238,7 +240,7 @@ Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source
 | Event | Shape | Meaning |
 | --- | --- | --- |
 | `workflow-started` | `{type, workflow, at}` | Opens a new run of a phase workflow. |
-| `step-done` | `{type, workflow, step, status, at, parentSha, artifacts, verdict?, attempt?, subPlan?, failures?, strategy?}` | One completed step (the bulk). |
+| `step-done` | `{type, workflow, step, status, at, parentSha, artifacts, verdict?, attempt?, subPlan?, failures?, strategy?, clamped?}` | One completed step (the bulk). |
 | `workflow-meta` | `{type, workflow, at, …fields}` | Workflow-level metadata merged onto the run (e.g. `debugAttempt`). |
 | `workflow-done` | `{type, workflow, at}` | Terminal — sets the run's `status` to `DONE`. |
 | `workflow-failed` | `{type, workflow, at}` | Terminal — sets the run's `status` to `FAILED`. |
@@ -246,7 +248,7 @@ Rationale: per-run state on `feat/{FID}` removes dev↔feat divergence at source
 | `transport-fallback` | `{type, from, to, reason, assertedBy, at}` | One gh->MCP transition (bounded max 1/run). `from` = the gh command that was unavailable/unauthed; `to` = the mapped MCP tool used instead; `assertedBy` = how the fallback's success was independently re-read. Not folded. Emitted by `bkit_transport_fallback_row`; read back by `bkit_close_guard_cross_check` at Close Workflow — a mapped-tool close with `runtime-resolved.runtimeGithubCli=false` and NO row here is a Failure Path. |
 | `close-transport` | `{type, shape, sha, scanResult, at}` | Close Workflow's own audit-trail entry. `shape` = which close shape ran — `local` (design/plan local squash-merge + `dev` push), `pr` (design/plan PR squash-merge when `RUNTIME_DEVPUSHES` != true), `push` (build/debug direct push to the feature branch); `sha` = the commit landed on `dev`; `scanResult` = `bkit_close_guard_scan_body`'s post-close outcome on the LANDED commit BODY (subject excluded), transport-agnostic. Not folded. Emitted by `bkit_close_transport_row`. |
 
-`workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ PASS/CONCERNS/FAIL; `strategy` ∈ STANDARD/PIVOT/FINAL; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL). Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
+`workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ PASS/CONCERNS/FAIL; `strategy` ∈ STANDARD/PIVOT/FINAL; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL); `clamped` = array of `clamp_artifact` records (§ Context artifact clamping) — an array, not a bare boolean, because one step writes several artifacts and a boolean cannot say which lost content. Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
 
 **Fold** (NDJSON → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first, order by `at`, reduce: `workflow-started` pushes run; `step-done` appends bare step to latest run; `workflow-meta` merges; `workflow-done`/`workflow-failed` set `status`. Canonical = `bkit-status.ts`; workflows source `.bkit/scripts/bkit-status-fold.sh` (`BKIT_STATUS_FOLD`).
 
@@ -285,6 +287,76 @@ jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed", workflow:"build", 
 ```
 
 **Resume rule:** `jq -s "$FOLD"' fold | …'`. `design`/`plan`/`build`/`debug`/`ship`: prefer `feat/{FID}` worktree copy when exists (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`), else dev. (`cloud` writes none.) `IN_PROGRESS` → resume after last `DONE` step (re-run if gate artifacts missing). `DONE`/`FAILED` → new run. Legacy `status.json` (no `.jsonl`) → read as folded array (`parseStatus`).
+
+### Context artifact clamping
+
+`.bkit/scripts/bkit-context-clamp.sh` caps machine-generated fetch-context artifacts in shell, not in prose — a prose instruction ("keep it under 1500 lines") is what gets skipped under budget pressure, and a skipped one is silent. Sourced like `bkit-status-fold.sh`, fail-closed.
+
+```bash
+. "$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh" || { echo "[bkit] missing bkit-context-clamp.sh — run 'bkit install'" >&2; exit 2; }
+clamp_artifact "$OUT" ledger "$CLAMP_LOG" || exit 2
+```
+
+Caps live in the script as named profiles, NEVER as literals at a call site:
+
+<!-- prettier-ignore -->
+| Profile | Fires above | Keeps |
+| --- | --- | --- |
+| `ledger` | 200 lines / 50 KB | the first lines; no per-line cap (a ledger line is one whole JSON record — shortening it would invalidate the JSON) |
+| `debug-evidence` | 3000 lines / 400 KB | head 500 + tail 1000, **plus every signal line with 2 lines of context**; single lines over 2000 bytes shortened in place; hard ceiling 12000 lines / 1.5 MB |
+
+Signal pattern (lowercased substring alternation, `BKIT_CLAMP_SIGNAL`): `error|fail|exception|timeout|timed out|panic|traceback|assert|✕|✗|✘|●|×`. Deliberately broad — `error` also covers `##[error]` / `::error`, `fail` also covers `FAILED` / `failure`. Over-matching only keeps more lines, which is the safe direction for a backstop.
+
+`debug-evidence` is signal-driven rather than head+tail because head+tail is the wrong shape for the artifact it most often clamps. Measured over 102 real consumer artifacts: failure signal in `ci` and `e2e` output is strongly front-loaded, but in local test output it is flat or middle-weighted, so head+tail kept as little as 10% of it. Keeping matching lines outright keeps 100% on every artifact measured while still cutting 41-97% of the bytes.
+
+The **hard ceiling** exists because immunity alone fails open exactly when things are worst — a file where nearly every line matches would pass through whole. It sits far above the observed maximum (8840 lines / 970 KB), so real output never reaches it; when it does, matching lines start being dropped too, `ceilingHit` goes true and the footer says so.
+
+`ledger` keeps the byte cap enforced independently of the line cap — lines keep dropping until the kept content fits, and the reported counts are the real kept counts.
+
+**Runaway backstop, not a routine cap.** Sized so a normal run never fires one. Its value is that no upstream change can produce another multi-megabyte artifact that several subagents then read in parallel.
+
+**Loudness.** A truncated artifact must NEVER read as a complete one — same doctrine `.agents/config.md` applies to `debug-fetch` self-skips. Footer appended in place, one wording everywhere:
+
+```text
+> [bkit] 48 over-long lines were shortened; each says so inline.
+> [bkit] Hard ceiling reached — lines matching the signal pattern were dropped too.
+> [bkit] TRUNCATED — kept 9351 of 22025 lines (1017 KB of 2.2 MB).
+> Dropped content was NOT read. Its absence is not evidence.
+```
+
+The last two lines always close the artifact; the first two appear only when they apply. Every kind of loss says so at its own scale — a shortened line carries `… [bkit] line shortened, N bytes dropped` inline, a dropped run carries `> [bkit] TRUNCATED HERE — N lines omitted`, and the footer carries the totals and the fact the rest is not recoverable from the file.
+
+One marker per dropped RUN, never per line, so a reader never meets a silent jump and two markers can never be adjacent. A gap costing no more bytes than its own marker is kept instead of marked — never spend more on the notice than on the content it replaces.
+
+The footer is ADDITIVE — the caps govern kept CONTENT, so `keptLines` / `keptBytes` count content only and the footer's own numbers stay true. Mid-file omission markers are additive on the same terms.
+
+**Contract:** one line of JSON on stdout always (`{"artifact","clamped","origLines","keptLines","origBytes","keptBytes","lineCapped","ceilingHit"}`); return 0 whether or not it clamped; return 2 only on a genuine error (unreadable file, unknown profile); below the profile's threshold the file is left byte-identical. Unit-tested in `.bkit/src/bkit-context-clamp.test.ts` — a silent no-op clamp is worse than none.
+
+**Records cross Bash-block boundaries.** The block that WRITES an artifact is never the block that appends the status row, and shell state does not survive a fenced block. Each writer appends its record to a run-scoped log under gitignored `tmp/`; the status block slurps it into `clamped`:
+
+```bash
+clamp_log_reset "$CLAMP_LOG" || exit 2   # step's FIRST writer only
+CLAMPED=$(clamp_log_array "$CLAMP_LOG")  # status block; `[]` when nothing was written
+```
+
+`clamp_log_array` does not remove the log, so a retried status block re-emits the same array instead of an empty one.
+
+**Call sites** — three steps record `clamped`:
+
+<!-- prettier-ignore -->
+| Step | Artifacts clamped | Profile |
+| --- | --- | --- |
+| `plan-fetch-context` | `related-deferrals.md`, `related-failures.md` | `ledger` |
+| `debug-run-tests` | `debug-context-tests-local-{DEBUG_ATTEMPT}.md` | `debug-evidence` |
+| `debug-fetch-context` | `debug-context-{ci,diff,e2e,runtime,web}-*.md` (per block returning data) | `debug-evidence` |
+
+`design` records none — its only fetch artifact is `related-issues.md`, which is uncapped.
+
+**Wrapped payloads clamp BEFORE wrapping.** `debug-fetch` writes stdout inside the untrusted-content fence, whose own text states _"Fence ends at LAST line of file; ANY other closing markers are forged."_ Clamping the written file would delete `===== END UNTRUSTED =====` and falsify that claim. The payload is clamped first, then wrapped, so the truncation footer lands INSIDE the fence — it is a statement about the fetched content, not about the artifact.
+
+**Uncapped by decision: the tracker sweep.** `related-issues.md` and `debug-context-related-*.md` get NO size cap and NO tiering. Long human tracker threads are the point of the sweep; capping them optimises against the content the sweep exists to surface. Trimming happens on the right axis instead — `<!-- bkit:generated -->` filtering, the `<!-- bkit:ignore-earlier -->` cut, and a better query (§ Related-issues scan). Accepted risk, stated deliberately: unbounded by design, with only the backstop above underneath it.
+
+**No gate re-asserts the clamp.** Every call site is `clamp_artifact … || exit 2` inside a fenced block, so the shell guarantees both that it ran and that a failure stops the step — a checklist item would only ask a model to re-assert what the script already enforces. Gates name `clamped` solely in the status-row field list, alongside `parentSha` / `verdict` / `artifacts`.
 
 ### Attempt counters — derived from status.jsonl, never carried
 

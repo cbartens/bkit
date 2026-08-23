@@ -43,6 +43,8 @@ Unnamed block => omit the name segment (`debug-context-runtime-{DEBUG_ATTEMPT}.m
 
 **Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on credential/tool (`command -v <tool>` + token check; miss → `[debug-fetch:<name>] skipped — …` stderr, `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
 
+**Bound your own output.** Above 3000 lines / 400 KB bkit clamps the artifact and says so in a footer: it keeps head 500 + tail 1000 plus EVERY line matching `error|fail|exception|timeout|panic|traceback|assert|✕|✗|✘|●|×` with 2 lines of context, shortens single lines over 2000 bytes in place, and drops the quiet remainder. Hard ceiling 12000 lines / 1.5 MB. A block whose failure lines carry none of those words loses them, so name the failure in the line — and bound each block at the source anyway (severity filters, time windows, `--limit` / `head` on every listing, never a whole-run log dump).
+
 Shipped `ci` / `diff` / `e2e` examples are GitHub Actions + Playwright. Point each block at YOUR host and artifact. Fetch `e2e` from where that lane's evidence lives. One block per lane.
 
 **Formatting output (`jq`):** every example pipes JSON through `jq` → **PII-safe** field subset (projection keeps PII out of run artifact). bkit provisions `jq` (macOS dev, Cursor container, Claude-web cloud setup) — assume present, no self-gate. **Without `jq`:** substitute present interpreter (`… | node -e '…'` or `… | python3 -c '…'` — same filter/project) or source `--json` / raw unfiltered — raw writes whatever source returns (possibly PII) into artifact; prefer in-block projection.
@@ -80,7 +82,9 @@ RUN_CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""')
 FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \
   --jq '[.jobs[] | select(.conclusion=="failure") | {job: .name, steps: [.steps[] | select(.conclusion=="failure") | .name]}]' 2>/dev/null)
 CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
-[ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null)
+# Whole-run fallback is tens of MB — bound it. Raise CI_LOG_TAIL if the cause sits higher.
+CI_LOG_TAIL=2000
+[ -z "$CI_LOGS" ] && CI_LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null | tail -n "$CI_LOG_TAIL")
 [ -n "$CI_LOGS" ] \
   || { echo "[debug-fetch:github] skipped — no logs returned for run $RUN_ID" >&2; exit 0; }
 ERR_SUBSET=$(printf '%s' "$CI_LOGS" | grep -E '##\[error\]|::error' 2>/dev/null)
@@ -139,12 +143,18 @@ DEST=$(mktemp -d)
 trap 'rm -rf "$DEST"' EXIT
 gh run download "$RUN_ID" -n "$E2E_ARTIFACT" -D "$DEST" 2>/dev/null \
   || { echo "[debug-fetch:playwright] skipped — run $RUN_ID published no '$E2E_ARTIFACT' artifact; its e2e evidence is NOT in GitHub" >&2; exit 0; }
-SCAN="$DEST/test-results"; [ -d "$SCAN" ] || SCAN="$DEST"
+# Failing specs first (`test-results/` holds only failures), then the rest. Bound both counts.
+E2E_MAX_FILES=20; E2E_MAX_LINES=300
+e2e_list() { find "$1" -type f \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.log' -o -name '*.xml' \) 2>/dev/null | sort; }
+E2E_FILES=$({ e2e_list "$DEST/test-results"; e2e_list "$DEST"; } | awk '!seen[$0]++')
+E2E_TOTAL=$(printf '%s' "$E2E_FILES" | grep -c . || true)
 printf '===== playwright report (run %s, artifact %s) =====\n' "$RUN_ID" "$E2E_ARTIFACT"
-find "$SCAN" -type f \( -name '*.md' -o -name '*.json' -o -name '*.txt' -o -name '*.log' -o -name '*.xml' \) | sort | while read -r f; do
-  printf '\n===== file: %s =====\n' "${f#"$DEST"/}"
-  cat "$f"
+printf '%s\n' "$E2E_FILES" | head -n "$E2E_MAX_FILES" | while read -r f; do
+  [ -n "$f" ] || continue
+  printf '\n===== file: %s (first %s lines) =====\n' "${f#"$DEST"/}" "$E2E_MAX_LINES"
+  head -n "$E2E_MAX_LINES" "$f"
 done
+[ "$E2E_TOTAL" -gt "$E2E_MAX_FILES" ] && printf '\n===== inlined %s of %s files; the rest were NOT read =====\n' "$E2E_MAX_FILES" "$E2E_TOTAL"
 printf '\n===== binary artifacts (not inlined) =====\n'
 find "$DEST" -type f \( -name '*.html' -o -name '*.png' -o -name '*.webm' -o -name '*.zip' \) | sed "s|^$DEST/||" | sort
 ```

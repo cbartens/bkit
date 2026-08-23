@@ -36,7 +36,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
                                   ▼
 
 /bkit-design ───── output: detailed design ───────────────────────────────────
-  1. fetch related       (tracker search by design keywords → related-issues.md)
+  1. fetch related       (semantic tracker search, rank order → related-issues.md)
   2. brainstorm × 3 (parallel, distinct lenses, no sibling reads)
      • pragmatic  • optimal-tradeoff  • risk / pre-mortem
   3. generate design     (synthesise across lenses + related issues)
@@ -49,7 +49,8 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 /bkit-plan ───── output: detailed plan ───────────────────────────────────────
   1. generate plan
   2. fetch context       (tracker: related issues; ledgers: prior deferrals,
-                         prior failures → feeds all three reviewers below)
+                         prior failures, strongest term-overlap first, top 40
+                         → feeds all three reviewers below)
   3. review × 3 (parallel, distinct lenses)
      • tightness + design-coverage  • dependency-correctness  • regression-risk
   4. update plan         (merge critiques, max-wins on CRITICAL)
