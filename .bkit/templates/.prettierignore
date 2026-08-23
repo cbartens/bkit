@@ -8,11 +8,15 @@ dist/
 # lint them. Width-sensitive rewrites would be reverted next install. The
 # .opencode agent + command mirrors are force-overwritten just like .claude /
 # .cursor (the managed-version marker and transform output are the source of
-# truth, not a prettier rewrite). .opencode/plugin/ stays byte-equal-seeded.
+# truth, not a prettier rewrite). .opencode/plugin/ is listed for the same
+# reason as .claude/ and .cursor/: its hook is a render of the template, and
+# leaving it lintable let prettier reformat the mirror but not the two ignored
+# twins, silently diverging three copies that must stay byte-identical.
 .claude/
 .cursor/
 .opencode/agents/
 .opencode/commands/
+.opencode/plugin/
 .github/
 .husky/_/
 *.tsbuildinfo

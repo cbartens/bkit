@@ -41,6 +41,16 @@ export interface ManifestEntry {
     scripts?: Record<string, string>;
     devDependencies?: Record<string, string>;
   };
+  /**
+   * `markered-text` only. Opt in to the no-marker migration policy in `writeTier2`:
+   * when a consumer's file predates this entry's marker adoption (exists, no markers),
+   * distinguish "ours, unmodified" (hash matches a prior canonical hash — replace
+   * wholesale) from "the consumer's own file" (append the block, then print this
+   * wiring-instructions string, with `{{PATH}}` substituted with the dest path)
+   * instead of always appending blind. Undefined (default) — every other
+   * markered-text file keeps the original append-blind behaviour.
+   */
+  noMarkerMigration?: string;
 }
 
 export type ModuleName =
@@ -231,6 +241,60 @@ const CORE_MANIFEST: ManifestEntry[] = [
   { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 
+// GateGuard wiring instructions (#422): printed by writeTier2's noMarkerMigration
+// policy when a consumer's gateguard file predates marker adoption AND its hash does
+// not match a known bkit release — i.e. it is the consumer's own file, not bkit's.
+// bkit appends the (pure, inert) advisory-engine block regardless; these instructions
+// are the one thing bkit cannot do for the consumer — call the appended function from
+// their existing driver. {{PATH}} is substituted with the destination path.
+export const GATEGUARD_CJS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGateguard(payload)\`
+  that returns \`{ mode, context }\` or \`null\` — it never touches stdin or stdout.
+  Wire it into your existing driver:
+    1. Parse the PreToolUse payload your driver already reads from stdin.
+    2. Call \`const result = bkitGateguard(payload);\`
+    3. If \`result\`, emit ONE JSON document to stdout: \`{ hookEventName: "PreToolUse",
+       permissionDecision: "deny", permissionDecisionReason: result.context }\` when
+       \`result.mode === "deny"\`, otherwise \`{ hookEventName: "PreToolUse",
+       additionalContext: result.context }\`.
+  Claude Code discards the entire hook's output if two emitters both write to
+  stdout, so make sure your driver still emits exactly once per invocation.
+`;
+
+export const GATEGUARD_JS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function
+  \`bkitGateguard(toolName, filePath, sessionId)\` that returns \`{ mode, context }\`
+  or \`null\` — it never touches opencode's client, stderr, or the throw path. Wire
+  it into your \`tool.execute.before\` hook:
+    1. Extract the file path from the tool args (\`write\`/\`edit\`/\`patch\` use \`path\`).
+    2. Call \`const result = bkitGateguard(tool, filePath, sessionID);\`
+    3. If \`result\` and \`result.mode === "deny"\`, \`throw new Error(result.context)\`
+       to block the call; otherwise surface \`result.context\` to the model (e.g. via
+       \`process.stderr.write\`) without blocking.
+`;
+
+export const GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
+  that returns \`{ permission, user_message, agent_message }\` or \`null\` — it never
+  touches stdin or stdout. Wire it into your existing driver:
+    1. Parse the hook payload your driver already reads from stdin.
+    2. Call \`const decision = bkitGuardrails(payload);\`
+    3. If \`decision\`, emit it to stdout as ONE JSON document; a \`null\` result means
+       bkit has no opinion — fall through to your own decision, defaulting to
+       \`{ permission: "allow" }\`.
+  Cursor discards the entire hook's output if two emitters both write to stdout,
+  so make sure your driver still emits exactly once per invocation.
+`;
+
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
   // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
@@ -238,10 +302,18 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: "CLAUDE.md", format: "markered-text", module: "claude" },
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
-  // GateGuard advisory PreToolUse hook — fully bkit-owned Node script (no consumer
-  // edits expected; configured via env vars), so byte-equal-text (force-overwrite
-  // on install, hash-tracked for upgrade/uninstall). Wired in .claude/settings.json.
-  { path: ".claude/hooks/gateguard.cjs", format: "byte-equal-text", module: "claude" },
+  // GateGuard advisory PreToolUse hook — markered-text (slash-comment): bkit owns
+  // only the advisory engine between `// bkit:start` / `// bkit:end`; the stdin/
+  // stdout driver outside the block is consumer-owned from first install onward, so
+  // a consumer can add their own advisories without losing them on upgrade. Wired
+  // in .claude/settings.json. noMarkerMigration covers every pre-markers consumer
+  // install (hash matches a prior canonical hash → replace wholesale).
+  {
+    path: ".claude/hooks/gateguard.cjs",
+    format: "markered-text",
+    module: "claude",
+    noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+  },
   // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
   // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
@@ -303,9 +375,29 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks.json", format: "json", module: "cursor" },
   { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
   // Destructive-op + secret-exposure gates (parity with Claude permissions / OpenCode
-  // permission map). Fully bkit-owned — consumers tune via editing the script only when
-  // deliberately diverging; writeTier1 force-overwrites on install/upgrade.
-  { path: ".cursor/hooks/guardrails.cjs", format: "byte-equal-text", module: "cursor" },
+  // permission map) — markered-text (slash-comment), same ownership split as the two
+  // GateGuard hooks: bkit owns only the decision engine between the markers, the
+  // stdin/stdout driver outside them is consumer-owned from first install onward, so a
+  // consumer can add their own gates without losing them on upgrade. noMarkerMigration
+  // covers every pre-markers consumer install (hash matches a prior canonical hash →
+  // replace wholesale).
+  {
+    path: ".cursor/hooks/guardrails.cjs",
+    format: "markered-text",
+    module: "cursor",
+    noMarkerMigration: GUARDRAILS_WIRING_INSTRUCTIONS,
+  },
+  // GateGuard advisory PreToolUse hook for Cursor — same ownership split and the
+  // same managed block as the Claude twin (byte-identical between the markers,
+  // asserted by a parity test). Wired in .cursor/hooks.json → preToolUse
+  // (matcher "Write"), deliberately without failClosed: an advisory hook that
+  // fails closed would block the edit it only meant to comment on.
+  {
+    path: ".cursor/hooks/gateguard.cjs",
+    format: "markered-text",
+    module: "cursor",
+    noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+  },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
   { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module
@@ -324,8 +416,9 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 // so bkit must reconverge only the bkit-managed keys on upgrade (KN-17). Seed-or-print
 // (Tier-3) would silently abandon bkit's managed keys on consumer-modified files.
 //
-// gateguard.js is byte-equal-text (writeTier1 force-overwrite) — consumers configure
-// via env vars, not by editing; fully bkit-owned like .claude/hooks/gateguard.cjs.
+// gateguard.js is markered-text (slash-comment) — bkit owns only the advisory engine
+// between the markers; the exported plugin driver outside the block is consumer-owned
+// from first install onward, same split as .claude/hooks/gateguard.cjs.
 //
 // Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
 // Spike initially observed singular; official docs are plural — plural is correct.
@@ -333,8 +426,13 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
   // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
   // writeTier2JsonContained throws on malformed destination (KN-19 guard).
   { path: ".opencode/opencode.json", format: "json", module: "opencode" },
-  // gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite; consumers use env vars).
-  { path: ".opencode/plugin/gateguard.js", format: "byte-equal-text", module: "opencode" },
+  // gateguard.js — Tier-2 markered-text (slash-comment); see comment above.
+  {
+    path: ".opencode/plugin/gateguard.js",
+    format: "markered-text",
+    module: "opencode",
+    noMarkerMigration: GATEGUARD_JS_WIRING_INSTRUCTIONS,
+  },
   // Agent and command mirrors are managed dynamically (not listed individually here —
   // the exact set depends on the bkit-prefix prompt/workflow files at install time).
   // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.

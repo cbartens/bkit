@@ -9,8 +9,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - No ad-hoc hex — theme tokens only; all colours MUST support Dark Mode.
 > - Touch targets >=44x44px; WCAG 2.1 AA contrast.
 

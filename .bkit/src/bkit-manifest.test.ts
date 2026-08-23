@@ -44,6 +44,18 @@ describe("CLAUDE.md ownership (#252: moved core → claude)", () => {
   });
 });
 
+describe(".claude/hooks/gateguard.cjs ownership (markered-text: consumer owns the driver)", () => {
+  it("is owned by the claude module as markered-text, not seed-or-print", () => {
+    const entry = getInstallManifest().find((e) => e.path === ".claude/hooks/gateguard.cjs");
+    expect(entry).toBeDefined();
+    expect(entry!.module).toBe("claude");
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // CLOUD_MANIFEST_CLAUDE / CLOUD_MANIFEST_CURSOR — variant-split (T1.5 / DECISION-D)
 // Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
@@ -302,11 +314,14 @@ describe("getInstallManifest", () => {
     expect(hooksEntry!.format).toBe("json");
   });
 
-  it("cursor manifest includes guardrails.cjs as byte-equal-text", () => {
+  it("cursor manifest includes guardrails.cjs as markered-text (consumer owns the driver)", () => {
     const entries = getInstallManifest(["cursor"]);
     const entry = entries.find((e) => e.path === ".cursor/hooks/guardrails.cjs");
     expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 
   it("claude manifest includes settings.json as json", () => {
@@ -458,13 +473,15 @@ describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
     expect(entry!.seedOrPrint ?? false).toBe(false);
   });
 
-  it("contains .opencode/plugin/gateguard.js as byte-equal-text (Tier-1 bkit-owned)", () => {
+  it("contains .opencode/plugin/gateguard.js as markered-text (consumer owns the driver)", () => {
     const entry = OPENCODE_MANIFEST.find((e) => e.path === ".opencode/plugin/gateguard.js");
     expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.format).toBe("markered-text");
     expect(entry!.module).toBe("opencode");
-    // gateguard.js is fully bkit-owned — must NOT be seed-or-print
+    // gateguard.js is not seed-or-print — bkit reconverges its block on every upgrade
     expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 
   it("all OPENCODE_MANIFEST entries have module=opencode", () => {

@@ -5,9 +5,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 > - One row per line. NEVER edit or reorder a prior LINE — row STATE changes via same-`key` append (§ Updating a Row).
 > - Before append: read file. Skip ONLY if identity-matching row exists AND nothing changed — changed field = update, NOT duplicate.
 > - `.bkit/friction.jsonl` rows removed ONLY by `bkit harvest` (§ Friction Is a Drained Queue).

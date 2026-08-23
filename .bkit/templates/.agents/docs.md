@@ -7,15 +7,15 @@
 >
 > **Rules:**
 >
-> - Read only docs relevant to current workflow/step/task.
-> - Follow workflow based reading suggestions first, then read more docs as step/task warrants.
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why. ONLY exceptions: Docs where purpose IS the record.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.
+> - Read only docs relevant to current workflow / step / task.
+> - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
 > - One row per doc — phase columns and one-line scope. Pointers only — do NOT duplicate text from indexed docs.
 > - Local project docs → `Project Documents` below the bkit-managed block; universal docs stay in-block.
 > - When two docs cover the same topic, that's a bug — pick a canonical home, link from the other.
 >
-> **Symbols:** `●` always read · `○` read if step/task touches this domain · `—` irrelevant.
+> **Symbols:** `●` always read · `○` read if step / task touches this domain · `—` irrelevant.
 
 ## Universal Documents
 

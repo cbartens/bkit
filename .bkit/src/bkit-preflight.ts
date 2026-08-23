@@ -69,16 +69,21 @@ function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
 }
 
 /**
- * Strip out content inside bkit-managed block markers (both HTML and hash style).
+ * Strip out content inside bkit-managed block markers (HTML, hash, and slash style).
  * Used by detectors that need to inspect only consumer-owned content.
  *
  * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts) to
- * avoid the greedy-regex KN-8 hazard. Applies both marker styles sequentially so that
- * files using either `<!-- bkit:start -->` or `# bkit:start` are stripped correctly.
+ * avoid the greedy-regex KN-8 hazard. Applies all marker styles sequentially so that
+ * files using `<!-- bkit:start -->`, `# bkit:start`, or `// bkit:start` are stripped
+ * correctly.
  */
 export function stripBkitBlock(content: string): string {
-  // Strip html-comment markers first, then hash-comment markers (line-anchored, KN-8 safe).
-  return stripManagedBlock(stripManagedBlock(content, "html-comment"), "hash-comment");
+  // Strip html-comment markers first, then hash-comment, then slash-comment
+  // (line-anchored, KN-8 safe).
+  return stripManagedBlock(
+    stripManagedBlock(stripManagedBlock(content, "html-comment"), "hash-comment"),
+    "slash-comment",
+  );
 }
 
 // ---------------------------------------------------------------------------

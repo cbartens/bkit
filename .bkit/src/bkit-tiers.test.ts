@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PreflightFinding } from "./bkit-preflight";
+import { sha256 } from "./bkit-version";
 import {
   writeTier1,
   writeTier2,
@@ -256,6 +257,97 @@ describe("writeTier2 — hash-comment markers", () => {
     const result = fs.readFileSync(dst, "utf-8");
     expect(result).toContain("node-version: 22");
     expect(result).not.toContain("{{NODE_VERSION}}");
+  });
+});
+
+describe("writeTier2 — noMarkerMigration policy (#422)", () => {
+  const templateSrc = () => {
+    const src = path.join(tmpDir, "gateguard.tpl.js");
+    fs.writeFileSync(
+      src,
+      "#!/usr/bin/env node\n// bkit:start\nfunction bkitGateguard() {}\n// bkit:end\nrest of driver\n",
+      "utf-8",
+    );
+    return src;
+  };
+
+  it("hash matches a prior canonical hash → replaces wholesale (case: ours, unmodified)", () => {
+    const src = templateSrc();
+    const dst = path.join(tmpDir, "gateguard.js");
+    const priorContent = "#!/usr/bin/env node\nold bkit-owned content, no markers\n";
+    fs.writeFileSync(dst, priorContent, "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
+      relPath: "gateguard.js",
+      canonicalHashes: { "gateguard.js": sha256(priorContent) },
+      wiringMessage: "wire {{PATH}} yourself",
+    });
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toBe(fs.readFileSync(src, "utf-8"));
+    expect(ws.writes).toHaveLength(1);
+    expect(ws.writes[0]!.action).toBe("update");
+  });
+
+  it("hash unknown → appends the block and prints wiring instructions (case: consumer's own file)", () => {
+    const src = templateSrc();
+    const dst = path.join(tmpDir, "gateguard.js");
+    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer's own driver code\n", "utf-8");
+    const ws = makeWriteSet();
+    const advisories: PreflightFinding[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
+      relPath: "gateguard.js",
+      canonicalHashes: {}, // unknown — no recorded hash
+      wiringMessage: "wire {{PATH}} yourself",
+      advisories,
+    });
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toContain("consumer's own driver code");
+    expect(result).toContain("// bkit:start");
+    expect(result).toContain("bkitGateguard");
+    expect(ws.writes).toHaveLength(1);
+    expect(ws.writes[0]!.action).toBe("append");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`wire ${dst} yourself`));
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]!.action).toContain(`wire ${dst} yourself`);
+
+    warnSpy.mockRestore();
+  });
+
+  it("hash differs from canonical → appends the block, does not replace (case: consumer modified)", () => {
+    const src = templateSrc();
+    const dst = path.join(tmpDir, "gateguard.js");
+    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer edited this bkit file\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "slash-comment", false, ws, {
+      relPath: "gateguard.js",
+      canonicalHashes: { "gateguard.js": "deadbeef".repeat(8) }, // does not match on-disk content
+      wiringMessage: "wire {{PATH}} yourself",
+    });
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toContain("consumer edited this bkit file");
+    expect(result).toContain("// bkit:start");
+    expect(ws.writes[0]!.action).toBe("append");
+  });
+
+  it("no migration policy passed → default append-blind behaviour, unchanged", () => {
+    const src = templateSrc();
+    const dst = path.join(tmpDir, "gateguard.js");
+    fs.writeFileSync(dst, "#!/usr/bin/env node\nconsumer's own driver code\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2(src, dst, TOKENS, "slash-comment", false, ws);
+
+    const result = fs.readFileSync(dst, "utf-8");
+    expect(result).toContain("consumer's own driver code");
+    expect(result).toContain("// bkit:start");
+    expect(ws.writes[0]!.action).toBe("append");
   });
 });
 
@@ -662,6 +754,37 @@ describe("stripManagedBlock — hash-comment markers", () => {
 
   it("does not strip hash-comment block when style is html-comment", () => {
     const content = "# bkit:start\nbkit content\n# bkit:end\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+});
+
+describe("stripManagedBlock — slash-comment markers", () => {
+  it("removes slash-comment managed block from JS/TS files", () => {
+    const content =
+      "// consumer preamble\n\n// bkit:start\nconst bkitStep = true;\n// bkit:end\n\n// consumer footer\n";
+    const result = stripManagedBlock(content, "slash-comment");
+    expect(result).not.toContain("// bkit:start");
+    expect(result).not.toContain("const bkitStep = true;");
+    expect(result).not.toContain("// bkit:end");
+    expect(result).toContain("// consumer preamble");
+    expect(result).toContain("// consumer footer");
+  });
+
+  it("returns content unchanged when slash markers are absent", () => {
+    const content = "// consumer js\nconst step = true;\n";
+    const result = stripManagedBlock(content, "slash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip html-comment block when style is slash-comment", () => {
+    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "slash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip slash-comment block when style is html-comment", () => {
+    const content = "// bkit:start\nbkit content\n// bkit:end\n";
     const result = stripManagedBlock(content, "html-comment");
     expect(result).toBe(content);
   });

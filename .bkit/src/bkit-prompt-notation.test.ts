@@ -242,3 +242,36 @@ describe("prompt notation: fenced output templates stay literal", () => {
     expect(seen.length).toBeGreaterThan(25);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Managed-version marker — never in a SOURCE prompt.
+//
+// `bkit install` / `upgrade` stamps `<!-- bkit:managed vX.Y.Z … -->` into the
+// RENDERED agent under `.claude/agents/` etc. A source prompt that carries one
+// ships a stale version string into every render and makes `bkit check` report
+// drift that no edit can fix. The corpus actively misleads here: every rendered
+// agent has the line, so copying a render back into a source reintroduces it.
+// ---------------------------------------------------------------------------
+
+describe("managed-version marker: sources carry none", () => {
+  const sources = () => {
+    const abs = path.join(REPO_ROOT, PROMPT_DIR);
+    return fs
+      .readdirSync(abs)
+      .filter((n) => n.endsWith(".md"))
+      .sort()
+      .map((n) => ({
+        file: `${PROMPT_DIR}/${n}`,
+        text: fs.readFileSync(path.join(abs, n), "utf-8"),
+      }));
+  };
+
+  it("enumerates prompt sources (not vacuous)", () => {
+    expect(sources().length).toBeGreaterThan(10);
+  });
+
+  it("no .bkit/prompts/*.md source contains a bkit:managed marker", () => {
+    const offenders = sources().filter(({ text }) => text.includes("bkit:managed"));
+    expect(offenders.map((o) => o.file)).toEqual([]);
+  });
+});

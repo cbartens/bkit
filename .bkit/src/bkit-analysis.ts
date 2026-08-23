@@ -398,7 +398,7 @@ export function computeDeferralDiscipline(rows: DeferralRow[]): DeferralDiscipli
     const writer =
       row.subagent ?? (row.workflow ? `${row.workflow} (orchestrator)` : "unattributed");
     const model = row.model ?? "unknown";
-    const id = `${writer} ${model}`;
+    const id = `${writer}\u0000${model}`;
     if (!byWriter[id])
       byWriter[id] = { writer, model, total: 0, unjustifiedCount: 0, byReason: {} };
     const w = byWriter[id]!;
@@ -450,11 +450,11 @@ export function runAnalysis(paths: string[]): AnalysisReport {
 
   for (const ev of events) {
     if (ev.kind === "outcome") {
-      outcomeRows.push(ev as OutcomeRow);
+      outcomeRows.push(ev);
     } else if (ev.kind === "compliance") {
-      complianceRows.push(ev as ComplianceRow);
+      complianceRows.push(ev);
     } else if (ev.kind === "deferral") {
-      deferralRows.push(ev as unknown as DeferralRow);
+      deferralRows.push(ev);
     }
   }
 

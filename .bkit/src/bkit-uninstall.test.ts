@@ -130,6 +130,34 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry!.decision).toBe("strip-block");
   });
 
+  it("markered-text file with slash-comment-prefixed html markers (// <!-- bkit:start -->) → classified html-comment, NOT slash-comment", () => {
+    // The html-comment check must run FIRST: a `// <!-- bkit:start -->` line (JS/TS
+    // file carrying an HTML marker) must not be misread as the bare `// bkit:start`
+    // slash-comment style, or the block never resolves and the file is preserved
+    // untouched instead of having its block stripped.
+    writeFile(
+      ".claude/hooks/gateguard.cjs",
+      "#!/usr/bin/env node\n// header\n\n// <!-- bkit:start -->\nbkit hook body\n// <!-- bkit:end -->\nconst driver = true;\n",
+    );
+    const table = buildDecisionTable(["claude"], makeCtx());
+    const entry = table.find((r) => r.file === ".claude/hooks/gateguard.cjs");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.decision).toBe("strip-block");
+  });
+
+  it("markered-text file with bare slash-comment markers (// bkit:start) → decision=strip-block", () => {
+    writeFile(
+      ".opencode/plugin/gateguard.js",
+      "// header\n\n// bkit:start\nbkit plugin body\n// bkit:end\nexport default function plugin() {}\n",
+    );
+    const table = buildDecisionTable(["opencode"], makeCtx());
+    const entry = table.find((r) => r.file === ".opencode/plugin/gateguard.js");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.decision).toBe("strip-block");
+  });
+
   it("core .agents/ doctrine files get a strip-block entry (they install via the templates pass, not the manifest)", () => {
     // Regression: .agents/{config,docs,rules,skills}.md install via runCoreTemplates and were
     // in no manifest, so uninstall/--nuke could not remove them — a full uninstall orphaned

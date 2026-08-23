@@ -228,37 +228,46 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 // ---------------------------------------------------------------------------
 
 describe("opencode uninstall — zero footprint after uninstall", () => {
-  it("uninstall(opencode) deletes .opencode/plugin/gateguard.js when hash matches (byte-equal-text)", async () => {
-    // gateguard.js is byte-equal-text — deleted only when hash matches tier3Hashes.
+  it("uninstall(opencode) strips the bkit block from gateguard.js, preserving the consumer's driver (markered-text)", async () => {
+    // gateguard.js is markered-text (slash-comment) — bkit owns only the content
+    // between `// bkit:start` / `// bkit:end`; the driver around it is consumer-owned
+    // from first install onward, so uninstall must strip the block and leave a
+    // working (consumer-authored) hook behind, not delete the file.
     const pluginPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
     fs.mkdirSync(path.dirname(pluginPath), { recursive: true });
-    const pluginContent = "// bkit gateguard";
+    const pluginContent =
+      "// consumer driver preamble\n" +
+      "// bkit:start\n" +
+      "\n" +
+      "function bkitGateguard() { return null; }\n" +
+      "\n" +
+      "// bkit:end\n" +
+      "export default function plugin() { return {}; }\n";
     fs.writeFileSync(pluginPath, pluginContent, "utf-8");
 
     // opencode.json (json format) — seed empty-ish content that fully contains template scope
-    // Use --force to ensure deletion regardless of hash (tests the delete path)
     const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
     fs.mkdirSync(path.dirname(opencodeJsonPath), { recursive: true });
     fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
 
-    // Write tier3Hashes so the byte-equal-text file can be identified as bkit-owned
-    const { sha256: computeSha256 } = await import("./bkit-version");
     const versionPath = path.join(tmpDir, ".bkit", "version");
-    const tier3Hashes: Record<string, string> = {
-      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
-    };
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
       "utf-8",
     );
 
-    // Use --force to also delete byte-equal-text files regardless of hash check
-    await runUninstall(["opencode"], makeCtx({ force: true }));
+    await runUninstall(["opencode"], makeCtx());
 
-    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be force-deleted").toBe(
-      false,
+    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should NOT be deleted").toBe(
+      true,
     );
+    const postContent = fs.readFileSync(pluginPath, "utf-8");
+    expect(postContent).toContain("// consumer driver preamble");
+    expect(postContent).toContain("export default function plugin() { return {}; }");
+    expect(postContent).not.toContain("// bkit:start");
+    expect(postContent).not.toContain("bkitGateguard");
+    expect(postContent).not.toContain("// bkit:end");
   });
 
   it("uninstall(opencode) strips bkit-managed scope from opencode.json; deletes when empty after strip", async () => {
@@ -332,14 +341,18 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
     fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
 
-    // gateguard.js (byte-equal-text) — record hash so uninstall can delete
-    const { sha256: computeSha256 } = await import("./bkit-version");
-    const pluginContent = "// bkit gateguard plugin";
+    // gateguard.js (markered-text) — bkit's footprint is the block only; the driver
+    // around it is consumer-owned and survives a full opencode uninstall.
+    const pluginContent =
+      "// consumer driver preamble\n" +
+      "// bkit:start\n" +
+      "\n" +
+      "function bkitGateguard() { return null; }\n" +
+      "\n" +
+      "// bkit:end\n" +
+      "export default function plugin() { return {}; }\n";
     const pluginPath = path.join(opencodeDir, "plugin", "gateguard.js");
     fs.writeFileSync(pluginPath, pluginContent, "utf-8");
-    const tier3Hashes: Record<string, string> = {
-      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
-    };
 
     // bkit-prefix dynamic mirrors
     const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-execute.md");
@@ -350,7 +363,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
       "utf-8",
     );
 
@@ -360,9 +373,15 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     expect(fs.existsSync(opencodeJsonPath), ".opencode/opencode.json should be deleted").toBe(
       false,
     );
-    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be deleted").toBe(
-      false,
-    );
+    // gateguard.js survives — it is the consumer's driver now; only bkit's block is gone
+    expect(
+      fs.existsSync(pluginPath),
+      ".opencode/plugin/gateguard.js should NOT be deleted (consumer owns the driver)",
+    ).toBe(true);
+    const postPluginContent = fs.readFileSync(pluginPath, "utf-8");
+    expect(postPluginContent).toContain("// consumer driver preamble");
+    expect(postPluginContent).not.toContain("// bkit:start");
+    expect(postPluginContent).not.toContain("bkitGateguard");
     // Dynamic mirrors gone
     expect(fs.existsSync(agentFile), "bkit-prefix agent mirror should be deleted").toBe(false);
     expect(fs.existsSync(cmdFile), "bkit-prefix command mirror should be deleted").toBe(false);

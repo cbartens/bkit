@@ -1,5 +1,6 @@
-// bkit-cursor-guardrails.integration.test.ts — Cursor destructive-op / secret-exposure
+// bkit-guardrails-cursor.integration.test.ts — Cursor destructive-op / secret-exposure
 // hook parity with Claude permissions + OpenCode permission map.
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
@@ -102,5 +103,41 @@ describe("cursor guardrails.cjs — read", () => {
     expect(run({ tool_name: "Read", tool_input: { path: ".env.example" } }).permission).toBe(
       "allow",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Managed-block boundary (#422) — consumers own the driver (stdin read + the
+// single emit()), bkit owns only the pure decision engine.
+// ---------------------------------------------------------------------------
+
+describe("cursor guardrails.cjs — managed-block boundary", () => {
+  const src = fs.readFileSync(HOOK, "utf-8");
+  const start = src.indexOf("// bkit:start");
+  const end = src.indexOf("// bkit:end");
+
+  it("carries slash-comment markers, start before end", () => {
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+  });
+
+  it("the managed block never reads stdin or writes stdout", () => {
+    const block = src.slice(start, end);
+    expect(block).not.toContain("process.stdout");
+    expect(block).not.toContain("readFileSync(0");
+  });
+
+  it("the single emitter and the stdin read live outside the block", () => {
+    const driver = src.slice(end);
+    expect(driver).toContain("process.stdout.write");
+    expect(driver).toContain("readFileSync(0");
+    // exactly one emitter in the whole file
+    expect(src.split("process.stdout.write").length - 1).toBe(1);
+  });
+
+  it("a no-opinion payload still emits exactly one allow document", () => {
+    const r = run({ tool_name: "Grep", tool_input: { pattern: "x" } });
+    expect(r.permission).toBe("allow");
+    expect(r.raw.trim().split("\n")).toHaveLength(1);
   });
 });

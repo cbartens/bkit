@@ -9,29 +9,16 @@
 // the read-this-file checklist, which does not fit a file that does not exist yet.
 //
 // CONTRACT — do not regress:
-//   - ADVISORY BY DEFAULT: throws with advisory text to inject model-visible context.
-//     In opencode's plugin model, returning from the hook = allow; throwing = block
-//     with the thrown message surfaced to the model. Advisory mode uses a non-blocking
-//     mechanism: we throw only in deny mode; in advisory mode we log to stderr (model
-//     context injection in opencode v1.16.x is via the throw path only — advisory mode
-//     therefore uses stderr which opencode surfaces in tool context).
-//
-//     UPDATE: opencode's tool.execute.before hook is block-or-allow only (no separate
-//     "inject context" primitive). Advisory mode works by throwing the advisory text
-//     so the model sees it — but since that would block the edit, advisory mode instead
-//     writes the advisory to the tool's output context via stderr (opencode surfaces
-//     stderr to the model for inspection). Deny mode throws to hard-block.
-//
-//     IMPLEMENTATION NOTE: opencode's plugin API (v1.16.x) fires tool.execute.before
-//     for ALL tools. The hook can: (a) return to allow, or (b) throw to block. There is
-//     no separate "inject context without blocking" primitive. Advisory mode therefore
-//     uses process.stderr (opencode surfaces stderr in the tool result seen by the model)
-//     to deliver the investigation checklist without blocking the edit. Deny mode throws.
+//   - ADVISORY BY DEFAULT: writes the checklist to stderr, which opencode surfaces in
+//     the tool result the model reads — never blocks. tool.execute.before is
+//     block-or-allow only (return = allow, throw = block); it has no "inject context
+//     without blocking" primitive, so stderr is the advisory channel and the throw
+//     path is reserved for deny mode.
 //
 //   - FAIL OPEN: top-level try/catch swallows every error. A plugin that throws
 //     unexpectedly would crash the tool call — the fail-open boundary prevents that.
-//   - SUBAGENT EXEMPT: skipped when client.session.get() returns a non-empty parentID.
-//     bkit's workflow subagents are already scope-bounded by their own prompts.
+//   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, file)
+//     and a subagent runs in its own session, so it gets its own checklist.
 //   - DEDUP: warns once per (session, file); state lives in OS temp dir keyed by
 //     sessionID and is GC'd after 24h. Never writes into the consumer repo.
 //
@@ -51,8 +38,15 @@
 //
 // See: docs/plans/202606/logs/245-opencode-provider-host/spike-verdict.md §(d)
 // Functional mirror of: .bkit/templates/.claude/hooks/gateguard.cjs
+//
+// OWNERSHIP: everything between the markers below is bkit-managed and is
+// overwritten on every `bkit install` / `bkit upgrade`. It is a pure advisory
+// engine only — no client calls, no stderr write, no throw — so it composes
+// with your own checks in the exported plugin that follows the managed block,
+// without bkit's block needing to know about them.
 
 // bkit:start
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -123,6 +117,31 @@ function configAdvisory(filePath) {
   );
 }
 
+// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
+// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
+// match, not basename — every one of these directories holds same-named files.
+// Excludes docs/plans/ (the plan template governs those, not the docs register)
+// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+function isDocsPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  const inDocs = p.startsWith("docs/") || p.includes("/docs/");
+  if (!inDocs) return false;
+  const inPlans = p.startsWith("docs/plans/") || p.includes("/docs/plans/");
+  return !inPlans;
+}
+
+function docAuthoringAdvisory() {
+  return (
+    `[bkit GateGuard] docs/*.md authoring:\n` +
+    `- Read THIS file's header block and follow its purpose and rules if present.\n` +
+    `- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\n` +
+    `- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
+    `- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n` +
+    `Advisory — proceed once satisfied.`
+  );
+}
+
 function stateDir() {
   return path.join(os.tmpdir(), "bkit-gateguard");
 }
@@ -162,13 +181,123 @@ function gcOldState() {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const name of fs.readdirSync(dir)) {
     const f = path.join(dir, name);
-    try {
-      const stat = fs.statSync(f);
-      if (stat.mtimeMs < cutoff) fs.unlinkSync(f);
-    } catch {
-      // GC is opportunistic — ignore individual file errors
-    }
+    // throwIfNoEntry / force: the file can vanish between readdir and here (another
+    // session GCing the same dir); both calls tolerate that without a catch.
+    const stat = fs.statSync(f, { throwIfNoEntry: false });
+    if (stat && stat.mtimeMs < cutoff) fs.rmSync(f, { force: true });
   }
+}
+
+// Pure: takes the tool name, the already-extracted file path, and the session id;
+// returns the advisory to emit or null. Never touches opencode's client, stderr,
+// or the throw path — the driver below owns all three, so it can fold in its own
+// checks without bkit's block needing to change.
+function bkitGateguard(toolName, filePath, sessionId) {
+  const mode = process.env.BKIT_GATEGUARD;
+  if (mode === "off") return null;
+  if (!EDIT_TOOLS.has(toolName)) return null;
+  if (!filePath || typeof filePath !== "string") return null;
+
+  const sid = typeof sessionId === "string" ? sessionId : "no-session";
+
+  // Warn once per (session, file).
+  if (alreadyWarned(sid, filePath)) return null;
+
+  const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
+  // A write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  const isNewFile = toolName === "write" && !fs.existsSync(filePath);
+  const baseContext = gated
+    ? configAdvisory(filePath)
+    : isNewFile
+      ? reuseChecklist(filePath)
+      : investigationChecklist(filePath);
+  const context = isDocsPath(filePath)
+    ? `${baseContext}\n\n${docAuthoringAdvisory()}`
+    : baseContext;
+
+  markWarned(sid, filePath);
+  gcOldState();
+
+  return { mode: mode === "deny" ? "deny" : "advisory", context };
+}
+
+// bkit:end
+
+// ---------------------------------------------------------------------------
+// DOGFOOD ONLY — bkit's own authoring rules for its own execution surfaces.
+// This region exists ONLY in this repo's .claude/hooks/gateguard.cjs; it ships
+// in no template and reaches no consumer install (.bkit/workflows/ and
+// .bkit/prompts/ never exist outside this repo). Lives outside the managed
+// block so it survives every `bkit install` / `bkit upgrade`.
+// ---------------------------------------------------------------------------
+
+function isBkitWorkflowPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  return p.endsWith(".md") && (p.startsWith(".bkit/workflows/") || p.includes("/.bkit/workflows/"));
+}
+
+function isBkitPromptPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  return p.endsWith(".md") && (p.startsWith(".bkit/prompts/") || p.includes("/.bkit/prompts/"));
+}
+
+function workflowAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] .bkit/workflows/*.md authoring:\n" +
+    "- These files ARE their own template: ALWAYS `grep .bkit/workflows/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, routes, jump targets, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (subagent invocations, `bash` blocks, conditional routes, comment fences, gate checklists). Bash decides, prose routes; `→` is intentional process glyph, adopt do NOT convert; 1 process branch → inline; 2+ branches → labeled decision / route block.\n" +
+    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline behaviour justification. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/workflows.md`.\n" +
+    "- Cross-workflow alignment: Check for shared instructions and change in ALL workflows using them.\n" +
+    "- Self-contained: every file MUST stand alone; inline ALL instructions; NO file references. Exceptions: subagent context.\n" +
+    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function promptAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] .bkit/prompts/*.md authoring:\n" +
+    "- These files ARE their own template: ALWAYS `grep .bkit/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.\n" +
+    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline comments justifying behaviour. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/prompts.md`.\n" +
+    "- Cross-prompt alignment: Check for shared instructions and change in ALL prompts using them.\n" +
+    "- Self-contained: every prompt MUST stand alone; inline ALL instructions; NO file references. Exceptions: `.agents/docs.md`, `*.jsonl` ledgers.\n" +
+    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function bkitDocAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] bkit `.md` doc authoring:\n" +
+    "- Read THIS file's header block and follow its purpose and rules if present.\n" +
+    "- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n" +
+    "- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function isBkitDocPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  // Own docs/** test, deliberately NOT the managed block's isDocsPath: this region
+  // must keep working whatever happens inside the markers. docs/** already gets the
+  // shipped advisory, and the two execution surfaces get their own — what is left is
+  // bkit's own reference docs under `.bkit/` and `.agents/`, templates included.
+  if (p.startsWith("docs/") || p.includes("/docs/")) return false;
+  if (isBkitWorkflowPath(p) || isBkitPromptPath(p)) return false;
+  return (
+    p.startsWith(".bkit/") ||
+    p.includes("/.bkit/") ||
+    p.startsWith(".agents/") ||
+    p.includes("/.agents/")
+  );
+}
+
+/** Returns the authoring advisory for a bkit execution-surface path, else null. */
+function dogfoodAuthoringAdvisory(filePath) {
+  if (isBkitWorkflowPath(filePath)) return workflowAuthoringAdvisory();
+  if (isBkitPromptPath(filePath)) return promptAuthoringAdvisory();
+  if (isBkitDocPath(filePath)) return bkitDocAuthoringAdvisory();
+  return null;
 }
 
 /** @param {import('@opencode-ai/plugin').PluginInput} input */
@@ -176,64 +305,43 @@ export default function plugin(input) {
   return {
     "tool.execute.before": async (hookInput, output) => {
       try {
-        const mode = process.env.BKIT_GATEGUARD;
-        if (mode === "off") return;
+        if (process.env.BKIT_GATEGUARD === "off") return;
 
         const { tool, sessionID } = hookInput;
         if (!EDIT_TOOLS.has(tool)) return;
 
-        // Subagent-exempt: use client.session.get() to check parentID.
-        // Subagent sessions have a non-empty parentID; orchestrator sessions do not.
-        // This is the opencode equivalent of Claude's agent_id exemption.
-        // (Spike-confirmed: no direct agent_id in hook payload; use session lookup.)
-        let parentID = "";
-        try {
-          const session = await input.client.session.get({ sessionID });
-          parentID = session?.parentID ?? "";
-        } catch {
-          // If session lookup fails, fail-open: treat as orchestrator (apply advisory)
-          parentID = "";
-        }
-        if (parentID !== "" && parentID != null) return;
+        // Subagents are NOT exempt: a subagent edit is still an edit, and the
+        // investigation it skips is the same investigation. Dedup is per
+        // (session, file), and a subagent runs in its own session, so it gets the
+        // checklist once for a file the orchestrator already touched.
 
         // Extract file path from tool args (opencode's write/edit/patch tools).
         // The args object structure: write → { path, content }, edit → { path, ... },
         // patch → { path, ... }. All use `path` as the file-path key.
         const args = output?.args ?? {};
         const filePath = args.path ?? args.file_path;
-        if (!filePath || typeof filePath !== "string") return;
 
-        const sessionId = typeof sessionID === "string" ? sessionID : "no-session";
+        const result = bkitGateguard(tool, filePath, sessionID);
+        if (!result) return;
 
-        // Warn once per (session, file). Emit first, then record + GC.
-        if (alreadyWarned(sessionId, filePath)) return;
+        const dogfoodExtra = dogfoodAuthoringAdvisory(filePath || "");
+        if (dogfoodExtra) result.context = `${result.context}\n\n${dogfoodExtra}`;
 
-        const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-        // A write to a not-yet-existing path is a NEW file — the bolt-on moment.
-        const isNewFile = tool === "write" && !fs.existsSync(filePath);
-        const context = gated
-          ? configAdvisory(filePath)
-          : isNewFile
-            ? reuseChecklist(filePath)
-            : investigationChecklist(filePath);
-
-        if (mode === "deny") {
+        if (result.mode === "deny") {
           // Deny mode: throw to hard-block the tool call. The thrown message is
           // model-visible in opencode's tool result surface.
-          markWarned(sessionId, filePath);
-          gcOldState();
-          throw new Error(context);
-        } else {
-          // Advisory mode: emit to stderr (opencode surfaces stderr in tool context).
-          // This delivers the checklist to the model without blocking the edit.
-          process.stderr.write(`\n${context}\n\n`);
-          markWarned(sessionId, filePath);
-          gcOldState();
+          throw new Error(result.context);
         }
+        // Advisory mode: emit to stderr (opencode surfaces stderr in tool context).
+        // This delivers the checklist to the model without blocking the edit.
+        process.stderr.write(`\n${result.context}\n\n`);
       } catch (err) {
         // Re-throw only for deny mode (intentional block). All other errors: fail-open.
-        const mode = process.env.BKIT_GATEGUARD;
-        if (mode === "deny" && err instanceof Error && err.message.includes("[bkit GateGuard]")) {
+        if (
+          process.env.BKIT_GATEGUARD === "deny" &&
+          err instanceof Error &&
+          err.message.includes("[bkit GateGuard]")
+        ) {
           throw err;
         }
         // Fail-open: swallow unexpected errors so the hook never crashes a session.
@@ -241,4 +349,3 @@ export default function plugin(input) {
     },
   };
 }
-// bkit:end

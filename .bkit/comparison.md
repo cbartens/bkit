@@ -5,8 +5,9 @@
 >
 > **Rules:**
 >
-> - Human-written. Not seeded to consumers — bkit-repo-specific.
-> - Keep prose factual (House / write-good linters apply to `*.md`). No hype adjectives.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Keep prose factual; house / write-good linters apply to `*.md`; no hype adjectives.
 > - Pipeline or subagents change → update Part 1 to match `.bkit/workflows/*` and `.bkit/prompts.md`.
 
 ## What this is

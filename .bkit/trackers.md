@@ -5,9 +5,10 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent / maintainer readers only.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Three trackers: `github` (default), `linear` (opt-in), `none` (no tracker wired).
 > - New tracker (Jira, etc.): add enum to `.bkit/src/bkit-manifest.ts`; document MCP under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every call site (extend pair resolver in `.bkit/src/bkit-trackers.ts`). No `none` marker — no-tracker content is `false`.
 

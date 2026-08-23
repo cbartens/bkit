@@ -731,11 +731,18 @@ const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
 const HASH_START_MARKER = "# bkit:start";
 const HASH_END_MARKER = "# bkit:end";
+const SLASH_START_MARKER = "// bkit:start";
+const SLASH_END_MARKER = "// bkit:end";
 // Select marker pair based on markerStyle.
 function selectMarkers(markerStyle) {
-    return markerStyle === "hash-comment"
-        ? [HASH_START_MARKER, HASH_END_MARKER]
-        : [START_MARKER, END_MARKER];
+    switch (markerStyle) {
+        case "hash-comment":
+            return [HASH_START_MARKER, HASH_END_MARKER];
+        case "slash-comment":
+            return [SLASH_START_MARKER, SLASH_END_MARKER];
+        default:
+            return [START_MARKER, END_MARKER];
+    }
 }
 // Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
 const ALLOWED_PREFIXES = ["", "# ", "// "];
@@ -748,7 +755,9 @@ export function findLineAnchoredMarkers(content, markerOrStyle, _markerStyle) {
     // Support both legacy call-site (content, markerString) and new call-site (content, markerStyle).
     // If markerOrStyle is a known MarkerStyle literal, treat it as style; otherwise treat as marker string.
     let marker;
-    if (markerOrStyle === "html-comment" || markerOrStyle === "hash-comment") {
+    if (markerOrStyle === "html-comment" ||
+        markerOrStyle === "hash-comment" ||
+        markerOrStyle === "slash-comment") {
         // Called as findLineAnchoredMarkers(content, markerStyle) — internal helper path
         // This overload is used only internally; callers pass marker string directly.
         // Retain backward-compat: interpret as the START marker of the given style.
@@ -2135,6 +2144,7 @@ async function main() {
                             format: entry?.format,
                             seedOrPrint: entry?.seedOrPrint,
                             contentOverride,
+                            noMarkerMigration: entry?.noMarkerMigration,
                         });
                     }
                 }

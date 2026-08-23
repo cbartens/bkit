@@ -21,6 +21,7 @@ import {
   extractFullManagedBlock,
   extractManagedBlock,
   extractNamedBlocks,
+  findLineAnchoredMarkers,
   parseFrontmatter,
   remapTemplateDest,
   updateManagedBlock,
@@ -630,6 +631,73 @@ describe("hash-comment marker round-trip (markerStyle: 'hash-comment')", () => {
     fs.writeFileSync(tmpFile, "no: markers\n", "utf-8");
     const changed = updateManagedBlock(tmpFile, "content", false, "hash-comment");
     expect(changed).toBe(false);
+  });
+});
+
+describe("slash-comment marker round-trip (markerStyle: 'slash-comment')", () => {
+  let tmpFile: string;
+
+  beforeEach(() => {
+    tmpFile = path.join(os.tmpdir(), `bkit-test-slash-${Date.now()}.js`);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(tmpFile)) fs.rmSync(tmpFile);
+  });
+
+  it("extractManagedBlock with slash-comment extracts inner content from JS", () => {
+    const js = `export default function () {}\n// bkit:start\nconst old = true;\n// bkit:end\n`;
+    expect(extractManagedBlock(js, "slash-comment")).toBe("const old = true;");
+  });
+
+  it("extractFullManagedBlock with slash-comment includes marker lines", () => {
+    const js = `// bkit:start\nconst step = true;\n// bkit:end\n`;
+    const full = extractFullManagedBlock(js, "slash-comment");
+    expect(full).not.toBeNull();
+    expect(full).toContain("// bkit:start");
+    expect(full).toContain("// bkit:end");
+    expect(full).toContain("const step = true;");
+  });
+
+  it("updateManagedBlock with slash-comment round-trips on JS content", () => {
+    fs.writeFileSync(tmpFile, "// bkit:start\nconst old = true;\n// bkit:end\n", "utf-8");
+    const changed = updateManagedBlock(tmpFile, "const fresh = true;", false, "slash-comment");
+    expect(changed).toBe(true);
+    const after = fs.readFileSync(tmpFile, "utf-8");
+    expect(after).toContain("const fresh = true;");
+    expect(after).not.toContain("const old = true;");
+    expect(after).toContain("// bkit:start");
+    expect(after).toContain("// bkit:end");
+  });
+
+  it("updateManagedBlock with slash-comment is idempotent on second run", () => {
+    fs.writeFileSync(tmpFile, "// bkit:start\nconst old = true;\n// bkit:end\n", "utf-8");
+    updateManagedBlock(tmpFile, "const stable = true;", false, "slash-comment");
+    const afterFirst = fs.readFileSync(tmpFile, "utf-8");
+    const secondChanged = updateManagedBlock(
+      tmpFile,
+      "const stable = true;",
+      false,
+      "slash-comment",
+    );
+    expect(secondChanged).toBe(false);
+    expect(fs.readFileSync(tmpFile, "utf-8")).toBe(afterFirst);
+  });
+
+  it("updateManagedBlock with slash-comment no-op when markers absent", () => {
+    fs.writeFileSync(tmpFile, "no markers here\n", "utf-8");
+    const changed = updateManagedBlock(tmpFile, "content", false, "slash-comment");
+    expect(changed).toBe(false);
+  });
+
+  it("findLineAnchoredMarkers finds a bare slash-comment marker (prefix '' is allowed)", () => {
+    const js = `header\n// bkit:start\nbody\n// bkit:end\n`;
+    expect(findLineAnchoredMarkers(js, "// bkit:start")).toEqual([js.indexOf("// bkit:start")]);
+  });
+
+  it("hash-comment markers are NOT matched when markerStyle is slash-comment", () => {
+    const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
+    expect(extractManagedBlock(yaml, "slash-comment")).toBeNull();
   });
 });
 

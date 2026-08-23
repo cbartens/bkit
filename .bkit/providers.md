@@ -5,11 +5,11 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Ships to consumers: describe the CURRENT setup only. NEVER an internal identifier (tracker issue number, ledger key, review-finding id) and NEVER project history — decisions belong in `docs/decisions.jsonl`, incidents in `docs/knowledge.jsonl`.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - One row per concern. Update when an IDE adds/changes a feature.
+> - One row per concern. Update when an IDE adds / changes a feature.
 > - Unlisted = identical across hosts; install copies byte-identical.
 > - Canonical format = Claude. All transforms = Claude → other.
 
@@ -226,20 +226,25 @@ Both hosts: `/<filename-without-ext>` (`/bkit-build`, `/bkit-plan`, etc.). Ident
 
 ### GateGuard
 
-Pre-edit advisory hook. First file touch per session → investigation checklist; gate-config paths (tsconfig/eslint/prettier/vitest/vale/slop/lint-staged) → "fix code, don't weaken gate" advisory. **fail-open**, **subagent-exempt** (skips when `agent_id` in payload), dedup `(session, file)` via OS-temp state, 24h TTL.
+Pre-edit advisory hook, on all three hosts. First file touch per session → investigation checklist; gate-config paths (tsconfig/eslint/prettier/vitest/vale/slop/lint-staged) → "fix code, don't weaken gate" advisory; new-file writes → reuse-over-duplicate nudge; `docs/**.md` (not `docs/plans/`) → density advisory appended. **fail-open**, **subagents included**, dedup `(session, file)` via OS-temp state, 24h TTL.
 
 <!-- prettier-ignore -->
 | Host | Implementation | File | Registration |
 | --- | --- | --- | --- |
 | Claude Code | `gateguard.cjs` (CJS) | `.claude/hooks/gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
 | opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugin` array (opencode plugin spec — the key is `plugin`, singular; `plugins` is silently ignored and disables GateGuard) |
-| Cursor | **GateGuard port not supported** (no pre-edit advisory injection). Destructive-op / secret-exposure parity via `guardrails.cjs` instead. | `.cursor/hooks/guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`) |
+| Cursor | `gateguard.cjs` (CJS) — managed block byte-identical to the Claude twin | `.cursor/hooks/gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed` — an advisory hook that fails closed would block the edit it only meant to comment on |
+| Cursor | `guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and opencode's `permission` map | `.cursor/hooks/guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |
+
+**Ownership:** both GateGuard files — and Cursor's `guardrails.cjs` — are **markered-text** (slash-comment: `// bkit:start` / `// bkit:end`). bkit owns only the advisory engine between the markers and reconverges it on every install / upgrade; the driver around it — Claude's stdin read + single `emit()`, opencode's exported `plugin` — is consumer-owned from first install onward, so consumer advisories survive upgrades. bkit's block is pure (no stdin, no stdout / stderr, no top-level call): Claude Code parses hook stdout as ONE JSON document, so two emitters would produce `{...}{...}` and the whole hook's output — bkit's included — is discarded. Marker-less file on upgrade → hash matches a bkit release: replaced wholesale; hash unknown: block appended plus printed wiring instructions. Uninstall strips the block, leaving the consumer's driver working. `guardrails.cjs` follows the identical split: bkit owns `bkitGuardrails(payload)`, which returns a decision object or `null` for no-opinion, and the consumer owns the stdin read and the single `emit()`.
 
 **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny first touch (checklist as reason), allow retry. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses gate-config advisory.
 
-**Subagent exemption difference:** Claude `gateguard.cjs` checks `agent_id` in PreToolUse payload. opencode `gateguard.js` uses different subagent detection (plugin API); exemption may differ — validate in plugin spec.
+**Subagents:** not exempt on any host. A subagent edit is an edit, and dedup is per (session, file) with a subagent carrying its own session id, so it gets its own checklist. Claude's `agent_id` short-circuit and opencode's `parentID` lookup were both removed; Cursor's payload carries no subagent marker at all.
 
-**Deny mode:** Claude `PreToolUse` blocks via exit 2 / `permissionDecision: deny`. opencode plugin deny semantics may differ — check plugin spec for block return shape.
+**Deny mode, per host:** Claude `permissionDecision: "deny"` with the checklist as `permissionDecisionReason`; Cursor `permission: "deny"` with the checklist as `agent_message` (`user_message` goes to the human, not the model); opencode throws — `tool.execute.before` is block-or-allow only, so the throw path is the block and stderr is the advisory channel. Same behaviour, three delivery mechanisms; asserted uniformly in `.bkit/src/bkit-gateguard-parity.integration.test.ts`.
+
+**Divergence budget:** the Claude and Cursor managed blocks are byte-identical (test-asserted). opencode's differs only where the runtime forces it — ES module rather than CJS, tool vocabulary `write`/`edit`/`patch` rather than `Edit`/`Write`/`MultiEdit` — and every advisory string, gate-config pattern and docs-path rule is identical across all three.
 
 ---
 
@@ -249,7 +254,7 @@ Pre-edit advisory hook. First file touch per session → investigation checklist
 | Concern | Claude | Cursor | opencode |
 | --- | --- | --- | --- |
 | File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
-| Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, `curl`/`wget`, destructive git/gh, etc. | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
+| Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, destructive git/gh, etc. Shell `curl` / `wget` are NOT gated here — `permissions` cannot match a URL host, so only the `WebFetch` TOOL is allowlisted | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
 | Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches with consumer `allowed-domains` from `.agents/config.md` (stack hosts never shipped) | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow + `webfetch: "ask"`; `curl *` ask then `curl *{domain}*` allow from same allowlist (baked into `opencode.json`) |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |

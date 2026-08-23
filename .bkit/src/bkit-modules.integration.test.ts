@@ -32,7 +32,7 @@ import {
   deriveCiSkeleton,
   type ModuleContext,
 } from "./bkit-modules";
-import { readBkitVersion, writeBkitVersion } from "./bkit-version";
+import { readBkitVersion, writeBkitVersion, sha256 } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -3160,5 +3160,101 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
     });
     reconcileOpencodeJson(groqTemplate, DST, false, makeWriteSet());
     expect(providerOrder()).toEqual(["opencode-go", "groq"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// gateguard markered-text migration (#422) — install engine, all three
+// writeTier2 noMarkerMigration cases, for both the claude and opencode twins.
+// ---------------------------------------------------------------------------
+
+describe("gateguard.cjs / gateguard.js markered-text migration — install engine (#422)", () => {
+  const CJS_REL = path.join(".claude", "hooks", "gateguard.cjs");
+  const JS_REL = path.join(".opencode", "plugin", "gateguard.js");
+
+  // Resolve the real opencode model lookup from prompts.md (same source used at install
+  // time) — runOpencodeModule's agent/command render pass requires it populated.
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
+
+  function makeOpencodeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
+    return makeCtx({
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      effortMap: EFFORT_MAP,
+      opencodeProvider: "ollama-local",
+      ...overrides,
+    });
+  }
+
+  it("fresh install (no file) writes both hooks with slash-comment markers", () => {
+    const ctx = makeCtx();
+    runClaudeModule(ctx);
+    runOpencodeModule(makeOpencodeCtx());
+
+    const cjs = fs.readFileSync(path.join(tmpDir, CJS_REL), "utf-8");
+    expect(cjs).toContain("// bkit:start");
+    expect(cjs).toContain("// bkit:end");
+    const js = fs.readFileSync(path.join(tmpDir, JS_REL), "utf-8");
+    expect(js).toContain("// bkit:start");
+    expect(js).toContain("// bkit:end");
+  });
+
+  it("case: hash matches a prior canonical hash → replaced wholesale, byte-identical to a fresh install", () => {
+    // Reference: what a fresh install produces in an untouched tmpdir.
+    const freshDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-modules-fresh-"));
+    fs.writeFileSync(
+      path.join(freshDir, "package.json"),
+      JSON.stringify({ name: "test-project", packageManager: "pnpm@10.4.1" }),
+      "utf-8",
+    );
+    process.chdir(freshDir);
+    runClaudeModule(makeCtx());
+    const freshCjs = fs.readFileSync(path.join(freshDir, CJS_REL), "utf-8");
+    process.chdir(tmpDir);
+    fs.rmSync(freshDir, { recursive: true, force: true });
+
+    // A pre-markers install: gateguard.cjs predates the migration, no markers.
+    const legacyContent = "#!/usr/bin/env node\n// old bkit-owned gateguard, no markers\n";
+    fs.mkdirSync(path.dirname(path.join(tmpDir, CJS_REL)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, CJS_REL), legacyContent, "utf-8");
+    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
+      pinnedVersion: "4.10.0",
+      tier3Hashes: {},
+      canonicalHashes: { [CJS_REL]: sha256(legacyContent) },
+    });
+
+    const ctx = makeCtx();
+    runClaudeModule(ctx);
+
+    const migrated = fs.readFileSync(path.join(tmpDir, CJS_REL), "utf-8");
+    expect(migrated).toBe(freshCjs);
+    expect(ctx.advisories.some((a) => a.id.startsWith("tier2-block-appended-needs-wiring"))).toBe(
+      false,
+    );
+  });
+
+  it("case: hash unknown/differs → appends the block and pushes a wiring-instructions advisory", () => {
+    const consumerContent = "#!/usr/bin/env node\n// this consumer's own gateguard, never bkit's\n";
+    fs.mkdirSync(path.dirname(path.join(tmpDir, JS_REL)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, JS_REL), consumerContent, "utf-8");
+    // No .bkit/version at all → hash unknown, not a fresh install (dest exists).
+
+    const ctx = makeOpencodeCtx();
+    runOpencodeModule(ctx);
+
+    const result = fs.readFileSync(path.join(tmpDir, JS_REL), "utf-8");
+    expect(result).toContain("this consumer's own gateguard, never bkit's");
+    expect(result).toContain("// bkit:start");
+    expect(result).toContain("bkitGateguard");
+    const advisory = ctx.advisories.find((a) =>
+      a.id.startsWith("tier2-block-appended-needs-wiring"),
+    );
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toContain(JS_REL);
   });
 });

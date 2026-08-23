@@ -9,9 +9,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
 > - Pre-push: typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
 
@@ -441,7 +441,13 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-modules-upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge and seeded `bkit-mode.sh` deletion advisory. |
 | `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
-| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
+| `bkit-gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/gateguard.cjs`, spawned as a real process): advisory/deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
+| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included (exemption removed), advisory/deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
+| `bkit-gateguard-cursor.integration.test.ts` | Integration | Cursor GateGuard hook (`.cursor/hooks/gateguard.cjs`, spawned): advisory via `additional_context` on an allow, deny via `agent_message`, workspace-relative path resolution, managed-block parity with the Claude twin. |
+| `bkit-gateguard-parity.integration.test.ts` | Integration | One GateGuard behaviour table asserted on all three hosts through per-host adapters — advisory content, docs density, dedup, modes, fail-open, subagents included — plus the documented deviations. |
+| `bkit-gateguard-dogfood.integration.test.ts` | Integration | bkit-repo-only authoring advisories (`.bkit/workflows/`, `.bkit/prompts/`, bkit's own `.md` docs): routing, placement after `bkit:end`, never present in a template, rule-coverage vs the source sections. |
+| `bkit-guardrails-cursor.integration.test.ts` | Integration | Cursor destructive-op / secret-exposure hook (`.cursor/hooks/guardrails.cjs`, spawned): shell deny / ask patterns, curl-wget host allowlist, private-key and `.env` reads, managed-block boundary. |
+| `bkit-permissions-parity.integration.test.ts` | Integration | One canonical permission-gate table asserted across Claude `settings.json`, opencode `opencode.json` and Cursor `guardrails.cjs` — same verdict for every destructive command and secret read on every host. |
 | `bkit-untrusted-fence.test.ts` | Unit | Untrusted-content fence: identical at every workflow write site, no second fence from shipped fetch blocks, `Context:` names untrusted `Read:` paths. |
 | `bkit-untrusted-input-coverage.test.ts` | Unit | Untrusted-input header bullet: run-time enumeration of `.bkit/prompts/` + `.bkit/workflows/`, three named clause constants, glob-scoped stale-variant deny, matcher negative controls. |
 
@@ -485,7 +491,8 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 | `bkit-mode.sh` removal and deletion advisory | `bkit-modules-upgrade.integration.test.ts` | seeded copy → `bkit-mode-sh-deletion-required` advisory, NOT silent preservation |
 | opencode manifest round-trip | `bkit-uninstall-surgical.integration.test.ts` | install → zero drift → uninstall → zero `.opencode/` footprint |
 | opencode reconverge on upgrade | `bkit-modules-upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
-| GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagent-exempt, dedup |
+| GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagents included, dedup, docs density advisory, managed-block boundary |
+| GateGuard markered-text migration | `bkit-modules.integration.test.ts`, `bkit-upgrade.test.ts`, `bkit-upgrade.integration.test.ts` | install and upgrade engines: hash-match wholesale replace, hash-unknown append + wiring advisory, upgrade round-trip refreshes the block while preserving consumer content outside it |
 | end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | deferred — provider offline during session |
 
 ## Manual recipe — opencode E2E (Task 5.1)

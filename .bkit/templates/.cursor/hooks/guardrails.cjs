@@ -9,34 +9,39 @@
 // Output: JSON `{ permission: "allow"|"ask"|"deny", user_message?, agent_message? }`
 // Exit 0 always on a decided permission. failClosed:true in hooks.json blocks on crash.
 // Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
+//
+// OWNERSHIP: everything between the markers below is bkit-managed and is
+// overwritten on every `bkit install` / `bkit upgrade`. It is a pure decision
+// engine only — no stdin read, no stdout write, no top-level invocation — so two
+// emitters (bkit's and yours) can never collide into one unparseable stdout
+// blob. Add your own gates in the driver that follows the managed block: call
+// `bkitGuardrails(payload)`, fold in your own checks, and call `emit()` once.
 
 "use strict";
+
+// bkit:start
 
 const fs = require("node:fs");
 const path = require("node:path");
 
-function emit(decision) {
-  process.stdout.write(JSON.stringify(decision) + "\n");
-}
-
 function allow() {
-  emit({ permission: "allow" });
+  return { permission: "allow" };
 }
 
 function ask(userMessage, agentMessage) {
-  emit({
+  return {
     permission: "ask",
     user_message: userMessage,
     agent_message: agentMessage ?? userMessage,
-  });
+  };
 }
 
 function deny(userMessage, agentMessage) {
-  emit({
+  return {
     permission: "deny",
     user_message: userMessage,
     agent_message: agentMessage ?? userMessage,
-  });
+  };
 }
 
 /** @param {string} cmd */
@@ -216,12 +221,12 @@ function decideRead(filePath) {
   return allow();
 }
 
-function main() {
-  const raw = fs.readFileSync(0, "utf8").trim();
-  if (!raw) return allow();
-
-  const payload = JSON.parse(raw);
-
+/**
+ * Entry point — pure. Takes the parsed hook payload, returns a decision object
+ * `{ permission, user_message?, agent_message? }`, or `null` when bkit has no
+ * opinion on this call (the caller decides what a no-opinion result means).
+ */
+function bkitGuardrails(payload) {
   // beforeShellExecution: { command }
   if (
     typeof payload.command === "string" &&
@@ -250,11 +255,33 @@ function main() {
     return decideRead(payload.path);
   }
 
-  return allow();
+  return null;
+}
+
+// bkit:end
+
+// --- driver (yours) ---------------------------------------------------------
+// Reads stdin, calls into the managed block, and emits EXACTLY ONE JSON document.
+// Add your own gates here: inspect the payload, and either return your own
+// decision or defer to bkit's. Cursor discards the whole hook's output if two
+// emitters both write to stdout.
+
+function emit(decision) {
+  process.stdout.write(JSON.stringify(decision) + "\n");
+}
+
+function main() {
+  const raw = fs.readFileSync(0, "utf8").trim();
+  if (!raw) return emit({ permission: "allow" });
+
+  const payload = JSON.parse(raw);
+  const decision = bkitGuardrails(payload);
+
+  emit(decision ?? { permission: "allow" });
 }
 
 try {
   main();
 } catch {
-  allow();
+  emit({ permission: "allow" });
 }

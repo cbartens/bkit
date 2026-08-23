@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, findLineAnchoredMarkers, } from "./bkit-install.js";
 import { applyTokens } from "./bkit-tokens.js";
+import { hashFile } from "./bkit-version.js";
 export function deepContains(template, consumer, pathPrefix = "") {
     const missing = [];
     const mismatched = [];
@@ -263,9 +264,20 @@ function _detectSchemaFlip(before, after) {
 // Uses the line-anchored marker detection from BAR-138 (KN-8 lesson: greedy
 // whitespace regexes are unsafe — use the anchored parser instead).
 // ---------------------------------------------------------------------------
+// Marker pair for a given style — html-comment (default), hash-comment (YAML/INI/shell),
+// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
+function selectMarkerPair(markerStyle) {
+    switch (markerStyle) {
+        case "hash-comment":
+            return ["# bkit:start", "# bkit:end"];
+        case "slash-comment":
+            return ["// bkit:start", "// bkit:end"];
+        default:
+            return ["<!-- bkit:start -->", "<!-- bkit:end -->"];
+    }
+}
 export function stripManagedBlock(content, markerStyle = "html-comment") {
-    const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
-    const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+    const [startMarker, endMarker] = selectMarkerPair(markerStyle);
     const starts = findLineAnchoredMarkers(content, startMarker);
     const ends = findLineAnchoredMarkers(content, endMarker);
     // Safety guards: absent, duplicated, or inverted → no-op
@@ -323,17 +335,7 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
     }
     ws.writes.push({ path: dstPath, action: "write" });
 }
-// ---------------------------------------------------------------------------
-// markered-text format — managed-block (bkit owns content between markers; consumer owns rest)
-//
-// Semantics:
-//   - dest absent            → write whole file (with token substitution)
-//   - dest has markers       → update only the bkit block (tokens applied to new block content)
-//   - dest present, no marks → append full block at EOF; preserve consumer content above
-//
-// markerStyle: "html-comment" for markdown/.gitignore; "hash-comment" for YAML/INI/shell.
-// ---------------------------------------------------------------------------
-export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
+export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, noMarkerMigration) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
     if (!fs.existsSync(dstPath)) {
         // dest missing → write whole template (with tokens applied)
@@ -359,13 +361,28 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
         // extractManagedBlock returns null for BOTH "no markers" and "ambiguous markers"
         // (duplicates / inverted). Only the former should append — appending on the latter
         // compounds corruption (dogfood docs grew a second stamped block every install).
-        const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
-        const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+        const [startMarker, endMarker] = selectMarkerPair(markerStyle);
         const starts = findLineAnchoredMarkers(destContent, startMarker);
         const ends = findLineAnchoredMarkers(destContent, endMarker);
         if (starts.length > 0 || ends.length > 0) {
             console.warn(`[bkit] Managed block markers present but unparseable in ${dstPath} — skipping (expected exactly one start/end)`);
             return;
+        }
+        if (noMarkerMigration) {
+            const currentHash = hashFile(dstPath);
+            const recordedHash = noMarkerMigration.canonicalHashes[noMarkerMigration.relPath];
+            if (currentHash && recordedHash && currentHash === recordedHash) {
+                // Ours and unmodified (predates the marker migration) — replace wholesale,
+                // same bytes a fresh install would produce.
+                const content = applyTokens(srcRaw, tokens);
+                if (!dryRun) {
+                    fs.writeFileSync(dstPath, content, "utf-8");
+                    const srcMode = fs.statSync(srcPath).mode;
+                    fs.chmodSync(dstPath, srcMode);
+                }
+                ws.writes.push({ path: dstPath, action: "update" });
+                return;
+            }
         }
         // dest has no markers → append full block at EOF (with tokens applied)
         const appliedBlock = applyTokens(fullBlock, tokens);
@@ -381,7 +398,44 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
             fs.writeFileSync(dstPath, destContent + sep + appliedBlock + tail, "utf-8");
         }
         ws.writes.push({ path: dstPath, action: "append" });
+        if (noMarkerMigration) {
+            const message = noMarkerMigration.wiringMessage.replace(/\{\{PATH\}\}/g, dstPath);
+            console.warn(message);
+            noMarkerMigration.advisories?.push({
+                id: `tier2-block-appended-needs-wiring-${path.basename(dstPath)}`,
+                severity: "advisory",
+                detect: `${dstPath} exists with consumer-owned content and no bkit markers — the bkit-managed block was appended at EOF but is not wired into your driver.`,
+                action: message,
+            });
+        }
         return;
+    }
+    // Stale-position markers: markers ARE present and parseable, but nothing meaningful
+    // lives after the end marker. A block whose markers used to wrap the WHOLE file
+    // (the shape every gateguard.js predates: markers introduced ad hoc before
+    // slash-comment was a real MarkerStyle, with `bkit:end` literally at EOF) has this
+    // exact signature — the driver that now belongs OUTSIDE the block is still trapped
+    // INSIDE it, and an ordinary "replace only what's between the markers" merge would
+    // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
+    // by construction: once genuinely migrated, real driver content lives after the end
+    // marker, this is permanently false, and every later run takes the ordinary path below.
+    if (noMarkerMigration) {
+        const [, endMarker] = selectMarkerPair(markerStyle);
+        const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0];
+        const endLineEnd = destContent.indexOf("\n", endIdx + endMarker.length);
+        const afterBlock = endLineEnd === -1 ? "" : destContent.slice(endLineEnd + 1);
+        if (afterBlock.trim() === "") {
+            const content = applyTokens(srcRaw, tokens);
+            if (content !== destContent) {
+                if (!dryRun) {
+                    fs.writeFileSync(dstPath, content, "utf-8");
+                    const srcMode = fs.statSync(srcPath).mode;
+                    fs.chmodSync(dstPath, srcMode);
+                }
+                ws.writes.push({ path: dstPath, action: "update" });
+            }
+            return;
+        }
     }
     // dest has markers → update managed block with new content (tokens applied)
     const newBlockContent = extractManagedBlock(srcRaw, markerStyle);

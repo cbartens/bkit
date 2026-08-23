@@ -143,7 +143,7 @@ describe("live ledgers are machine-readable", () => {
     // corrected on. What has to hold is the CURRENT state of each entity.
     const entities = () => {
       const { state } = foldFrom([path.join(REPO_ROOT, "docs/deferrals.jsonl")]);
-      return [...state.values()] as unknown as Record<string, unknown>[];
+      return [...state.values()].map((v) => ({ ...v }) as Record<string, unknown>);
     };
 
     it("every entity's reason is in the enum", () => {

@@ -299,6 +299,108 @@ describe("P4.T5 — runUpgrade diff engine", () => {
 });
 
 // ---------------------------------------------------------------------------
+// #422 — markered-text noMarkerMigration policy through runUpgrade (slash-comment)
+// ---------------------------------------------------------------------------
+
+describe("runUpgrade — noMarkerMigration policy (markered-text, #422)", () => {
+  const REL = path.join(".claude", "hooks", "gateguard.cjs");
+  const templateContent =
+    "#!/usr/bin/env node\n// bkit:start\nfunction bkitGateguard() {}\n// bkit:end\nrest of driver\n";
+
+  it("hash matches a prior canonical hash → replaced wholesale, byte-identical to the template", () => {
+    const legacyContent = "#!/usr/bin/env node\n// old bkit-owned gateguard, no markers\n";
+    writeFile(REL, legacyContent);
+    writeBkitVersionInDir(makeVersion({ [REL]: sha256(legacyContent) }));
+    const templatePath = writeFile(".bkit-staging/template/gateguard.cjs", templateContent);
+
+    const result = runUpgrade(
+      [
+        {
+          relPath: REL,
+          templatePath,
+          format: "markered-text",
+          noMarkerMigration: "wire {{PATH}} yourself",
+        },
+      ],
+      { nonInteractive: false, dryRun: false, cwd: tmpDir },
+    );
+
+    expect(result.updated).toContain(REL);
+    expect(fs.readFileSync(path.join(tmpDir, REL), "utf-8")).toBe(templateContent);
+  });
+
+  it("hash unknown → appends the block, printing wiring instructions, and does not replace", () => {
+    const consumerContent = "#!/usr/bin/env node\n// this consumer's own gateguard, never bkit's\n";
+    writeFile(REL, consumerContent);
+    writeBkitVersionInDir(makeVersion({})); // no recorded hash for REL
+    const templatePath = writeFile(".bkit-staging/template/gateguard.cjs", templateContent);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = runUpgrade(
+      [
+        {
+          relPath: REL,
+          templatePath,
+          format: "markered-text",
+          noMarkerMigration: "wire {{PATH}} yourself",
+        },
+      ],
+      { nonInteractive: false, dryRun: false, cwd: tmpDir },
+    );
+
+    expect(result.updated).toContain(REL);
+    const onDisk = fs.readFileSync(path.join(tmpDir, REL), "utf-8");
+    expect(onDisk).toContain("this consumer's own gateguard, never bkit's");
+    expect(onDisk).toContain("// bkit:start");
+    expect(onDisk).toContain("bkitGateguard");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`wire ${path.join(tmpDir, REL)} yourself`),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it("template with a slash-prefixed HTML marker (// <!-- bkit:start -->) is classified html-comment, not slash-comment (site-9 mis-classification trap)", () => {
+    // If detectMarkerStyle checked the bare slash-comment marker before the (possibly
+    // prefixed) html-comment marker, this template would be mis-classified as
+    // slash-comment, extractFullManagedBlock would find nothing, and writeTier2 would
+    // silently no-op — the exact trap this ordering guards against.
+    const htmlPrefixedTemplate =
+      "// header\n// <!-- bkit:start -->\nbkit html-in-js block\n// <!-- bkit:end -->\nrest\n";
+    const templatePath = writeFile(".bkit-staging/template/weird.js", htmlPrefixedTemplate);
+
+    const result = runUpgrade([{ relPath: "weird.js", templatePath, format: "markered-text" }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
+
+    expect(result.updated).toContain("weird.js");
+    expect(fs.readFileSync(path.join(tmpDir, "weird.js"), "utf-8")).toContain(
+      "bkit html-in-js block",
+    );
+  });
+
+  it("no noMarkerMigration on the candidate → default append-blind behaviour, unchanged", () => {
+    const consumerContent = "#!/usr/bin/env node\n// consumer content, no markers\n";
+    writeFile(REL, consumerContent);
+    writeBkitVersionInDir(makeVersion({}));
+    const templatePath = writeFile(".bkit-staging/template/gateguard.cjs", templateContent);
+
+    const result = runUpgrade([{ relPath: REL, templatePath, format: "markered-text" }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
+
+    expect(result.updated).toContain(REL);
+    const onDisk = fs.readFileSync(path.join(tmpDir, REL), "utf-8");
+    expect(onDisk).toContain("consumer content, no markers");
+    expect(onDisk).toContain("// bkit:start");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // P4.T6 — --non-interactive mode
 // ---------------------------------------------------------------------------
 

@@ -101,16 +101,18 @@ export interface UninstallResult {
 // ---------------------------------------------------------------------------
 
 /**
- * Detect the marker style used in a file (html-comment or hash-comment).
- * Returns null if neither style is present.
+ * Detect the marker style used in a file (html-comment, hash-comment, or slash-comment).
+ * Returns null if none of the styles is present.
  */
 function detectMarkerStyle(content: string): MarkerStyle | null {
   // HTML markers may carry a `# ` / `// ` comment prefix so they survive inside
   // shell / JS files (e.g. preflight.sh uses `# <!-- bkit:start -->`); match the
   // same prefixes findAnchored/ALLOWED_PREFIXES allow. Checked FIRST so a prefixed
-  // HTML marker is never mistaken for the bare `# bkit:start` hash style.
+  // HTML marker is never mistaken for the bare `# bkit:start` hash style, or a
+  // `// <!-- bkit:start -->` line for the bare `// bkit:start` slash style.
   if (/^(?:# |\/\/ )?<!-- bkit:start -->$/m.test(content)) return "html-comment";
   if (/^# bkit:start$/m.test(content)) return "hash-comment";
+  if (/^\/\/ bkit:start$/m.test(content)) return "slash-comment";
   return null;
 }
 

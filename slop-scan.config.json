@@ -121,6 +121,15 @@
       }
     },
     {
+      "files": [".bkit/templates/.cursor/hooks/gateguard.cjs", ".cursor/hooks/gateguard.cjs"],
+      "_reason": "The Cursor hook's managed block is DELIBERATELY byte-identical to the Claude twin's — one advisory engine, two host drivers — and bkit-gateguard-parity.integration.test.ts asserts that byte-identity. De-duplicating to satisfy this rule would mean extracting a shared module, which no host can require: both files are dropped standalone into a consumer repo with no bkit package on their resolution path. Same opt-out, same reason, as the Claude and opencode twins above. Scoped to this one file (template + mirror) + rule.",
+      "rules": {
+        "structure.duplicate-function-signatures": {
+          "enabled": false
+        }
+      }
+    },
+    {
       "files": [".bkit/src/bkit-comply.ts"],
       "rules": {
         "defensive.error-obscuring": {

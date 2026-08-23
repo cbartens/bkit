@@ -9,9 +9,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
 > - Pre-push: typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
 

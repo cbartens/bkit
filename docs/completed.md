@@ -10,8 +10,8 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Append-only at EOF, do NOT overwrite.
 > - `Summary` dense enough to grok without reading plan.
 >

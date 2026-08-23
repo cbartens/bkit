@@ -7,9 +7,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Local project rules/overrides → `Project Rules` below the bkit-managed block; universal rules stay in-block.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Local project rules / overrides → `Project Rules` below the bkit-managed block; universal rules stay in-block.
 
 ## Universal Rules
 
@@ -35,6 +35,7 @@
 - **Verify changes first:** ALWAYS check what changes could break (callers / importers, DB schemas, APIs / SDKs) BEFORE touching symbols / signatures / contracts. NEVER assume blast radius.
 - **Verify symbols first:** ALWAYS confirm APIs / SDKs / flags / configs / imports exist as written BEFORE using (grep code, read docs, check live endpoints). NEVER assume or invent.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
+- **Edit tools only:** ALWAYS change file contents with edit / write tools; NEVER use shell commands to hand-edit source files or to bypass pre-edit gates. Exceptions: generating files from scripts, bulk mechanical file rewrites.
 - **Imports:** No barrel files / `index.ts` exports.
 - **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders / commented-out code, or dead stubs. Match surrounding comment density.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.

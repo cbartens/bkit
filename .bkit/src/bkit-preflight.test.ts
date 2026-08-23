@@ -410,6 +410,13 @@ describe("stripBkitBlock", () => {
     expect(stripBkitBlock(input)).not.toContain("inside");
   });
 
+  it("removes slash-comment-style bkit block content", () => {
+    const input = "before\n// bkit:start\ninside\n// bkit:end\nafter";
+    expect(stripBkitBlock(input)).toContain("before");
+    expect(stripBkitBlock(input)).toContain("after");
+    expect(stripBkitBlock(input)).not.toContain("inside");
+  });
+
   it("returns content unchanged when no markers present", () => {
     expect(stripBkitBlock("just content")).toBe("just content");
   });

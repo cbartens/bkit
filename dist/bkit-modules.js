@@ -12,7 +12,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
@@ -839,15 +839,22 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // byte-equal-text — GateGuard advisory PreToolUse hook (Node script, fully
-    // bkit-owned). writeTier1 force-overwrites on install/upgrade; consumers tune
-    // behaviour via env vars (BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT), not by editing.
+    // markered-text (slash-comment) — GateGuard advisory PreToolUse hook. bkit owns
+    // only the advisory engine between the markers; consumers own the stdin/stdout
+    // driver from first install onward (env vars BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT
+    // still tune behaviour, same as before).
     {
         const src = path.join(claudeTemplates, "hooks", "gateguard.cjs");
         const dst = ".claude/hooks/gateguard.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
-            writeTier1(src, dst, tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }
@@ -1014,15 +1021,42 @@ export function runCursorModule(ctx) {
             }
         }
     }
-    // byte-equal-text — Cursor destructive-op / secret-exposure guardrails (parity with
-    // Claude permissions deny/ask and OpenCode permission map). Force-overwrite; consumers
-    // do not customise via deep-merge.
+    // markered-text (slash-comment) — Cursor destructive-op / secret-exposure guardrails
+    // (parity with Claude permissions deny/ask and OpenCode permission map). bkit owns
+    // only the decision engine between the markers; consumers own the stdin/stdout driver
+    // from first install onward, same split as the two GateGuard hooks.
     {
         const src = path.join(cursorTemplates, "hooks", "guardrails.cjs");
         const dst = ".cursor/hooks/guardrails.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
-            writeTier1(src, dst, tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GUARDRAILS_WIRING_INSTRUCTIONS,
+            });
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+            }
+        }
+    }
+    // markered-text (slash-comment) — GateGuard advisory PreToolUse hook for Cursor.
+    // Same managed block as the Claude twin; the driver outside it adapts Cursor's
+    // payload (relative file_path, no subagent marker) and emits Cursor's shape.
+    {
+        const src = path.join(cursorTemplates, "hooks", "gateguard.cjs");
+        const dst = ".cursor/hooks/gateguard.cjs";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}cursor: ${dst}`);
             }
@@ -1614,18 +1648,24 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite) ---
+    // --- gateguard.js — Tier-2 markered-text (slash-comment); see bkit-manifest.ts ---
     {
         const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
         const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
         const pluginDst = ".opencode/plugin/gateguard.js";
         if (fs.existsSync(pluginSrc)) {
-            // dryRun-gated — writeTier1 honours dryRun, so the dir is only needed for a real
+            // dryRun-gated — writeTier2 honours dryRun, so the dir is only needed for a real
             // write; keeps `bkit check` read-only when gateguard's parent dir is absent (#255 #8).
             if (!dryRun)
                 ensureDir(path.dirname(pluginDst));
             const prevLen = ws.writes.length;
-            writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(pluginSrc, pluginDst, ctx.tokens, "slash-comment", dryRun, ws, {
+                relPath: pluginDst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_JS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
             }

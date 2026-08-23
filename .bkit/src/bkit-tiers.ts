@@ -11,6 +11,7 @@ import {
 } from "./bkit-install.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
+import { hashFile } from "./bkit-version.js";
 
 export type { WriteSet, WriteEntry, MarkerStyle };
 
@@ -373,12 +374,24 @@ function _detectSchemaFlip(
 // whitespace regexes are unsafe — use the anchored parser instead).
 // ---------------------------------------------------------------------------
 
+// Marker pair for a given style — html-comment (default), hash-comment (YAML/INI/shell),
+// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
+function selectMarkerPair(markerStyle: MarkerStyle): [string, string] {
+  switch (markerStyle) {
+    case "hash-comment":
+      return ["# bkit:start", "# bkit:end"];
+    case "slash-comment":
+      return ["// bkit:start", "// bkit:end"];
+    default:
+      return ["<!-- bkit:start -->", "<!-- bkit:end -->"];
+  }
+}
+
 export function stripManagedBlock(
   content: string,
   markerStyle: MarkerStyle = "html-comment",
 ): string {
-  const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
-  const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+  const [startMarker, endMarker] = selectMarkerPair(markerStyle);
 
   const starts = findLineAnchoredMarkers(content, startMarker);
   const ends = findLineAnchoredMarkers(content, endMarker);
@@ -461,7 +474,46 @@ export function writeTier1(
 //   - dest present, no marks → append full block at EOF; preserve consumer content above
 //
 // markerStyle: "html-comment" for markdown/.gitignore; "hash-comment" for YAML/INI/shell.
+//
+// noMarkerMigration (optional, default off — no other markered-text file's behaviour
+// changes): two independent, self-limiting migration triggers, each firing only for
+// a shape that cannot occur once a file is genuinely on the new format:
+//   - no markers, hash matches a prior canonical hash → replace wholesale (same bytes
+//     a fresh install would produce). A file with no markers whose full-file hash
+//     matches bkit's own record is provably ours and unmodified — the migration case
+//     for a file that was previously fully bkit-owned with no markers at all.
+//   - no markers, hash unknown/differs → append the block (unchanged default
+//     behaviour) and print wiring instructions — the consumer's own file needs one
+//     line added to call into the appended block.
+//   - markers present, but nothing meaningful lives after the end marker → replace
+//     wholesale. Covers a file whose markers predate a block-boundary move and used
+//     to wrap the WHOLE file (nothing left outside to preserve) — an ordinary
+//     block-content-only merge would silently discard whatever the old markers
+//     wrapped that the new template moved outside the block. Self-limiting: once
+//     genuinely migrated, real content lives after the end marker and this never
+//     fires again, so it can never be reused to wholesale-replace a file that has
+//     legitimate consumer content outside the block (unlike a hash comparison, whose
+//     recorded value is refreshed after every write and would eventually "match"
+//     ANY stable, unmodified file — bkit's own included).
+//   - markers present, real content after the end marker → falls through to the
+//     normal markers-present update (unchanged default behaviour).
 // ---------------------------------------------------------------------------
+
+export interface Tier2NoMarkerMigration {
+  /** Consumer-relative path — the `canonicalHashes` key space. `dstPath` itself may be
+   * absolute (the upgrade engine passes an absolute path), so this is carried
+   * separately rather than derived from it. */
+  relPath: string;
+  /** Canonical hashes recorded before this run (from `.bkit/version`), keyed by
+   * `relPath`. */
+  canonicalHashes: Record<string, string>;
+  /** Wiring-instructions text, printed via `console.warn`. `{{PATH}}` is substituted
+   * with `dstPath`. */
+  wiringMessage: string;
+  /** Optional: also push a structured advisory (install has a sink; `bkit upgrade`
+   * does not, and prints via `console.warn` alone). */
+  advisories?: PreflightFinding[];
+}
 
 export function writeTier2(
   srcPath: string,
@@ -470,6 +522,7 @@ export function writeTier2(
   markerStyle: MarkerStyle,
   dryRun: boolean,
   ws: WriteSet,
+  noMarkerMigration?: Tier2NoMarkerMigration,
 ): void {
   const srcRaw = fs.readFileSync(srcPath, "utf-8");
 
@@ -501,8 +554,7 @@ export function writeTier2(
     // extractManagedBlock returns null for BOTH "no markers" and "ambiguous markers"
     // (duplicates / inverted). Only the former should append — appending on the latter
     // compounds corruption (dogfood docs grew a second stamped block every install).
-    const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
-    const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+    const [startMarker, endMarker] = selectMarkerPair(markerStyle);
     const starts = findLineAnchoredMarkers(destContent, startMarker);
     const ends = findLineAnchoredMarkers(destContent, endMarker);
     if (starts.length > 0 || ends.length > 0) {
@@ -511,6 +563,24 @@ export function writeTier2(
       );
       return;
     }
+
+    if (noMarkerMigration) {
+      const currentHash = hashFile(dstPath);
+      const recordedHash = noMarkerMigration.canonicalHashes[noMarkerMigration.relPath];
+      if (currentHash && recordedHash && currentHash === recordedHash) {
+        // Ours and unmodified (predates the marker migration) — replace wholesale,
+        // same bytes a fresh install would produce.
+        const content = applyTokens(srcRaw, tokens);
+        if (!dryRun) {
+          fs.writeFileSync(dstPath, content, "utf-8");
+          const srcMode = fs.statSync(srcPath).mode;
+          fs.chmodSync(dstPath, srcMode);
+        }
+        ws.writes.push({ path: dstPath, action: "update" });
+        return;
+      }
+    }
+
     // dest has no markers → append full block at EOF (with tokens applied)
     const appliedBlock = applyTokens(fullBlock, tokens);
     const sep =
@@ -526,7 +596,45 @@ export function writeTier2(
       fs.writeFileSync(dstPath, destContent + sep + appliedBlock + tail, "utf-8");
     }
     ws.writes.push({ path: dstPath, action: "append" });
+    if (noMarkerMigration) {
+      const message = noMarkerMigration.wiringMessage.replace(/\{\{PATH\}\}/g, dstPath);
+      console.warn(message);
+      noMarkerMigration.advisories?.push({
+        id: `tier2-block-appended-needs-wiring-${path.basename(dstPath)}`,
+        severity: "advisory",
+        detect: `${dstPath} exists with consumer-owned content and no bkit markers — the bkit-managed block was appended at EOF but is not wired into your driver.`,
+        action: message,
+      });
+    }
     return;
+  }
+
+  // Stale-position markers: markers ARE present and parseable, but nothing meaningful
+  // lives after the end marker. A block whose markers used to wrap the WHOLE file
+  // (the shape every gateguard.js predates: markers introduced ad hoc before
+  // slash-comment was a real MarkerStyle, with `bkit:end` literally at EOF) has this
+  // exact signature — the driver that now belongs OUTSIDE the block is still trapped
+  // INSIDE it, and an ordinary "replace only what's between the markers" merge would
+  // silently discard it (there is nothing in `afterBlock` to preserve it). Self-limiting
+  // by construction: once genuinely migrated, real driver content lives after the end
+  // marker, this is permanently false, and every later run takes the ordinary path below.
+  if (noMarkerMigration) {
+    const [, endMarker] = selectMarkerPair(markerStyle);
+    const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0]!;
+    const endLineEnd = destContent.indexOf("\n", endIdx + endMarker.length);
+    const afterBlock = endLineEnd === -1 ? "" : destContent.slice(endLineEnd + 1);
+    if (afterBlock.trim() === "") {
+      const content = applyTokens(srcRaw, tokens);
+      if (content !== destContent) {
+        if (!dryRun) {
+          fs.writeFileSync(dstPath, content, "utf-8");
+          const srcMode = fs.statSync(srcPath).mode;
+          fs.chmodSync(dstPath, srcMode);
+        }
+        ws.writes.push({ path: dstPath, action: "update" });
+      }
+      return;
+    }
   }
 
   // dest has markers → update managed block with new content (tokens applied)

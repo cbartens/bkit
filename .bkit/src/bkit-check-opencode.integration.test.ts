@@ -117,17 +117,39 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(`${check.stdout}${check.stderr}`).toContain(".opencode/opencode.json");
   });
 
-  // gateguard.js is Tier-1 byte-equal (force-overwritten by install). A tampered copy is drift.
-  it("tampered gateguard.js → check exits 1 (drift detected)", () => {
+  // gateguard.js is Tier-2 markered-text: bkit owns only the content between
+  // `// bkit:start` / `// bkit:end`. Tampering INSIDE the block is drift (check must
+  // fail); tampering OUTSIDE it is the consumer's own driver code (check must pass).
+  it("tampered gateguard.js INSIDE the managed block → check exits 1 (drift detected)", () => {
     if (!fs.existsSync(getTsxBin())) return;
     expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
-    fs.appendFileSync(gateguard, "\n// consumer tampered\n", "utf-8");
+    const original = fs.readFileSync(gateguard, "utf-8");
+    expect(original).toContain('const EDIT_TOOLS = new Set(["write", "edit", "patch"]);');
+    fs.writeFileSync(
+      gateguard,
+      original.replace(
+        'const EDIT_TOOLS = new Set(["write", "edit", "patch"]);',
+        'const EDIT_TOOLS = new Set(["write"]);', // consumer weakened the managed block
+      ),
+      "utf-8",
+    );
 
     const check = runBkit(["check"]);
     expect(check.status).toBe(1);
     expect(`${check.stdout}${check.stderr}`).toContain(".opencode/plugin/gateguard.js");
+  });
+
+  it("tampered gateguard.js OUTSIDE the managed block → check exits 0 (consumer-owned)", () => {
+    if (!fs.existsSync(getTsxBin())) return;
+    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+
+    const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    fs.appendFileSync(gateguard, "\n// consumer's own extra logic\n", "utf-8");
+
+    const check = runBkit(["check"]);
+    expect(check.status).toBe(0);
   });
 
   // Host agent/command mirrors push would-writes into ws.writes — content drift (marker

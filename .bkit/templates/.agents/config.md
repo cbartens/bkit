@@ -3,14 +3,14 @@
 # Config
 
 > [!CAUTION]
-> **Purpose:** Agent/tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`) and cloud CLI provisioning. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
+> **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`) and cloud CLI provisioning. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
 >
 > **Rules:**
 >
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Blocks below `<!-- bkit:end -->` = consumer-owned — `bkit install` never overwrites them, `bkit check` drift stays clean. Add yours there.
 > - Read-only + idempotent. **Never log PII.**
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
 
 ## Debug Fetch
 
