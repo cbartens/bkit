@@ -56,7 +56,7 @@ Update rules:
 - **If** new → append unmatched.
 - **If** disappeared (non-resolved and zero occurrences) → `📉 NOT SEEN THIS SCAN`. Delete only after 2 consecutive clean scans (track `Last Seen`).
 - Metadata → update `## Scan Metadata` (date, timeframe, model). Append `Previous Scan` row.
-- Priority → rebuild — regressions first, new HIGH, unresolved. Exclude `✅ RESOLVED`.
+- Priority → rebuild — regressions first, new `HIGH`, unresolved. Exclude `✅ RESOLVED`.
 
 Deep dive: `cat tmp/gcp-audit/dev-errors.json | jq '[.[] | select(.jsonPayload.message // .textPayload | test("PATTERN_HERE"))]'`
 

@@ -61,7 +61,7 @@ maxTurns: 100
 
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-3. Resolve `MANAGER` from the root lockfile; `UPDATER` from `renovate.json5` / `renovate.json` / `.renovaterc*` → renovate, `.github/dependabot.yml` → dependabot; `BASE` = branch the dependency PRs target. Drive every command from the `MANAGER` row, confirming each flag via the manager's own `help` before first use — absent → record substitute. **If** several lockfiles → one pass per `MANAGER`. **If** none → `Verdict` = FAIL; emit and stop.
+3. Resolve `MANAGER` from the root lockfile; `UPDATER` from `renovate.json5` / `renovate.json` / `.renovaterc*` → renovate, `.github/dependabot.yml` → dependabot; `BASE` = branch the dependency PRs target. Drive every command from the `MANAGER` row, confirming each flag via the manager's own `help` before first use — absent → record substitute. **If** several lockfiles → one pass per `MANAGER`. **If** none → `Verdict` = `FAIL`; emit and stop.
 4. Inventory open dependency PRs — select by bot author, NEVER by title. Per PR: head ref + SHA, `mergeable`, `mergeStateStatus`, behind-count, files, latest run conclusion. NEVER read an in-progress run; re-poll to conclusion.
    ```bash
    gh pr list --state open --limit 200 --json number,title,author,headRefName,headRefOid,mergeable,mergeStateStatus,files,labels
@@ -79,21 +79,21 @@ maxTurns: 100
    - **If** conflict in `MANIFESTS` → take the higher version per line.
    - **Else** → `git merge --abort`, drop that PR from `BATCH`, record it.
 8. `MERGE_STATE` = `git rev-parse HEAD` after the last merge. Run the plain install. For each `BATCH` PR whose diff vs its merge-base touches no `MANIFESTS` file → collect `<pkg>@<ver>` from its `LOCKFILE` diff → targeted lockfile-only for exactly those. **If** that rewrote `MANIFESTS` → `git checkout {MERGE_STATE} -- {MANIFESTS}` → re-run targeted.
-9. Assert zero manifest drift, quoting command, exit code and output verbatim in the report; then stage `LOCKFILE` with EVERY `MANIFESTS` file → commit `chore(deps): batch {N} dependency updates into one CI run`. NEVER apply a skip-CI marker; repo convention uses one → record the deviation. **If** the assertion is non-zero → `Verdict` = FAIL; emit and stop.
+9. Assert zero manifest drift, quoting command, exit code and output verbatim in the report; then stage `LOCKFILE` with EVERY `MANIFESTS` file → commit `chore(deps): batch {N} dependency updates into one CI run`. NEVER apply a skip-CI marker; repo convention uses one → record the deviation. **If** the assertion is non-zero → `Verdict` = `FAIL`; emit and stop.
    ```bash
    git --no-pager diff --exit-code {MERGE_STATE} -- {MANIFESTS}
    ```
-10. Verify the clean committed tree — `git status --porcelain` MUST be empty first. Run the frozen install, then every verification command the repo declares, quoting each command and exit code in the report; a green claim without output is invalid. **If** any non-zero → drop the suspect PR → re-run from the branch build. **If** no single PR isolates it → `Verdict` = FAIL; emit and stop.
+10. Verify the clean committed tree — `git status --porcelain` MUST be empty first. Run the frozen install, then every verification command the repo declares, quoting each command and exit code in the report; a green claim without output is invalid. **If** any non-zero → drop the suspect PR → re-run from the branch build. **If** no single PR isolates it → `Verdict` = `FAIL`; emit and stop.
 11. Push once. **If** `pull_request` runs fire here (`gh run list --event pull_request --limit 1`) → `gh pr create`. **Else** → `gh workflow run` passing an explicit affected-base, **or** the suite unfiltered for the batch branch. Record which path and why.
 12. Poll the run to conclusion.
-    - **If** conclusion != success → `Verdict` = CONCERNS; do NOT merge; report the failing job.
+    - **If** conclusion != success → `Verdict` = `CONCERNS`; do NOT merge; report the failing job.
     - **Else If** `BASE` = integration branch → squash merge → poll the post-merge run and report it.
     - **Else** → do NOT merge; hold the green PR for explicit human confirmation.
 13. Apply Close policy to every excluded and blocked PR; write one marked comment per touched PR.
 14. Emit the report to the caller; `Verdict` mapping:
-    - PASS = drift assertion and every verification command exited 0; run success; merged, or held on the production branch.
-    - CONCERNS = locally green but run not success, or a `BATCH` PR dropped during bisect.
-    - FAIL = no lockfile; drift non-zero; verification red with no isolating PR.
+    - `PASS` = drift assertion and every verification command exited 0; run success; merged, or held on the production branch.
+    - `CONCERNS` = locally green but run not success, or a `BATCH` PR dropped during bisect.
+    - `FAIL` = no lockfile; drift non-zero; verification red with no isolating PR.
 
 **Output format:**
 

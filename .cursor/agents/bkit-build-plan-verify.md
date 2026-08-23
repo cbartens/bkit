@@ -34,22 +34,22 @@ tools:
 
 **Process:**
 
-1. Initialise **Create** output stub with PENDING placeholders.
+1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each PENDING via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any FAIL → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available. Per gap — append log at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any `FAIL` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
 6. **If** `Single` → every checklist item and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks vs all `DONE` log entries.
 7. **If** `Holistic` → same checklist / gate / `DONE` log cross-reference across all sub-plans, PLUS integration: sub-plan components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? **If** `turbo.json` exists → `pnpm turbo test --filter='...[origin/dev]' --continue`. **Else** → `pnpm test`.
 8. For each pending plan task read `Done when`:
-   - **If** missing → set `Verdict` = FAIL via `Edit`.
+   - **If** missing → set `Verdict` = `FAIL` via `Edit`.
    - **Else** assert codebase satisfies criteria (file exists, signature matches, test passes, observable behaviour). ONLY codebase satisfies `Done when` — `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and notes calling the task out of scope do NOT satisfy `Done when`; deferrals NEVER discharge plan tasks:
      - **If** satisfied → tick `[ ]` → `[x]` → continue.
-     - **Else** → leave `[ ]`, append log, set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+     - **Else** → leave `[ ]`, append log, set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - PASS = no gaps.
-   - FAIL = blocking gaps requiring remediation loop.
-   - CONCERNS = gaps addressable by gap-remediate.
+   - `PASS` = no gaps.
+   - `FAIL` = blocking gaps requiring remediation loop.
+   - `CONCERNS` = gaps addressable by gap-remediate.
 
 **Output format:**
 
@@ -63,23 +63,23 @@ Failures: <integer >= 0>
 
 ## Scope
 
-[`Single` (one sub-plan) or `Holistic` (master and all sub-plans); initially set to PENDING.]
+[`Single` (one sub-plan) or `Holistic` (master and all sub-plans); initially set to `PENDING`.]
 
 ## Sub-Plans Verified
 
-[Count. Holistic: count MUST match number of sub-plan files; mismatch → CONCERNS. **If** Single scope → `None`; initially set to PENDING.]
+[Count. Holistic: count MUST match number of sub-plan files; mismatch → `CONCERNS`. **If** Single scope → `None`; initially set to `PENDING`.]
 
 ## Integration Gaps
 
-[Count and description (Holistic only). **If** Single scope → `None`; initially set to PENDING.]
+[Count and description (Holistic only). **If** Single scope → `None`; initially set to `PENDING`.]
 
 ## Previously Attempted
 
-[Reference to prior verification attempts. **If** first attempt → `None`; initially set to PENDING.]
+[Reference to prior verification attempts. **If** first attempt → `None`; initially set to `PENDING`.]
 
 ## Notes
 
-[Brief summary; initially set to PENDING.]
+[Brief summary; initially set to `PENDING`.]
 
 ## Identified Gaps Log
 

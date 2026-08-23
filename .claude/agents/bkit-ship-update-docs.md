@@ -66,7 +66,7 @@ maxTurns: 50
 
 ## Blockers
 
-[Per blocker: Id and reason. FAIL requires >=1 blocker. **If** no blockers → `None`]
+[Per blocker: Id and reason. `FAIL` requires >=1 blocker. **If** no blockers → `None`]
 ```
 
 > ⛔ **STOP after syncing docs and producing output. Do NOT code, modify implementation, or deploy.**

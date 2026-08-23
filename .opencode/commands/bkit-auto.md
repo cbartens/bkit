@@ -33,7 +33,7 @@ $ARGUMENTS
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
-> - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
+> - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
@@ -45,6 +45,7 @@ $ARGUMENTS
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
+   <!-- bkit:generated -->
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -73,6 +74,7 @@ $ARGUMENTS
 4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
 5. **If** `MODE` = CI, discriminate on `{ARG}` shape — numeric = PR number, else FID slug. Assert the slug allowlist BEFORE `FID` is used:
    ```bash
+   ARG="{ARG}"
    if [[ "$ARG" =~ ^[0-9]+$ ]]; then
      PR_NUMBER="$ARG"
    else
@@ -99,6 +101,8 @@ $ARGUMENTS
 7. **If** `PR_STATE` != OPEN → **Failure Path**.
 8. Resolve CI run id that triggered the workflow:
    ```bash
+   BRANCH="{BRANCH}"
+   HEAD_SHA="{HEAD_SHA}"
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
@@ -111,6 +115,7 @@ $ARGUMENTS
    **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
 10. **Fallback (marker absent or malformed).**
     ```bash
+    BRANCH="{BRANCH}"
     case "$BRANCH" in
       feat/*) FID="${BRANCH#feat/}" ;;
       *) FID="" ;;
@@ -121,6 +126,7 @@ $ARGUMENTS
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch / PR / run links; `MODE` = CI_DEV omits the PR line when `PR_URL` is empty and the run line when `RUN_ID` is empty):
     ```comment
+    <!-- bkit:generated -->
     ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -147,6 +153,7 @@ $ARGUMENTS
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
+   <!-- bkit:generated -->
    ### Step 2 — Dispatch - Phase: {PHASE}
    ```
 2. Derive `{REF}`. NEVER pass a bare `{FID}` or bare number — the dispatched workflow's Step 4 CREATES a new issue on no match.

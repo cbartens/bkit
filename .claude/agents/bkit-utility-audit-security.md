@@ -43,9 +43,9 @@ maxTurns: 50
 6. API — Rate limiting, CORS, webhook signatures (Svix / Stripe / Resend), debug endpoints.
 7. Data — PII in logs / telemetry, permissive SELECTs, React Query cache leaks.
 8. Deps — run `pnpm audit`; check CVEs and unmaintained packages.
-9. Per finding, ALL four required: severity (CRITICAL / HIGH / MEDIUM / LOW), location (file:line), exploit scenario, suggested fix. **If** incomplete → not counted.
+9. Per finding, ALL four required: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `location` (`file:line`), exploit scenario, suggested fix. **If** incomplete → not counted.
 10. Cross-reference findings against relevant docs in `.agents/docs.md`.
-11. Create / update report → `docs/audits/security-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: CRITICAL → HIGH → MEDIUM → LOW.
+11. Create / update report → `docs/audits/security-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: `CRITICAL` → `HIGH` → `MEDIUM` → `LOW`.
 
 **Output format:**
 
@@ -58,7 +58,7 @@ maxTurns: 50
 
 ## Findings
 
-[Severity-sorted list. Each finding: severity, location (file:line), exploit scenario, suggested fix]
+[Severity-sorted list. Each finding: severity, `location` (`file:line`), exploit scenario, suggested fix]
 ```
 
 > ⛔ **STOP after auditing security and producing output. Do NOT apply fixes or write code.**

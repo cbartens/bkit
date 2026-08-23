@@ -61,7 +61,7 @@ Verdict: SINGLE | SPLIT
 
 ## Rationale
 
-[**If** `Verdict` = SINGLE → why it fits one session. **Else** → proposed domain groupings, each sub-plan must fit one session]
+[**If** `Verdict` = `SINGLE` → why it fits one session. **Else** → proposed domain groupings, each sub-plan must fit one session]
 ```
 
 > ⛔ **STOP after assessing complexity and producing output. Do NOT split or code.**

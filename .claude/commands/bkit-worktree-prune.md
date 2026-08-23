@@ -18,6 +18,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 1. `git rev-parse --show-toplevel` → extract `REPO_ROOT`. Assert non-empty.
 2. Self-skip check:
    ```bash
+   REPO_ROOT="{REPO_ROOT}"
    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    bkit_worktree_helper_guard "$REPO_ROOT" "worktree-prune"
    BKIT_WHG_RC=$?
@@ -33,6 +34,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 2. List all Claude-managed worktrees:
 
    ```bash
+   REPO_ROOT="{REPO_ROOT}"
    for dir in "$REPO_ROOT/.worktrees"/*/; do
      [ -d "$dir" ] || continue
      fid=$(basename "$dir")

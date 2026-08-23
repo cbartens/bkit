@@ -42,22 +42,22 @@ reasoningEffort: max
 
 **Process:**
 
-1. Initialise **Create** output stub with PENDING placeholders.
+1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Update **Create** — replace each PENDING via `Edit` as content becomes available.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Derive claims — from review's `PoC Approach` and `Unknowns & Blockers`, restate each unknown as one falsifiable claim design depends on. Order by blast radius; name design elements resting on each.
 6. Probe per claim — write smallest program that could disprove claim in spike directory, run it, capture output verbatim (measured values, error strings, exit codes).
    - **If** claim needs credentials, services, hosts or sessions run lacks → mark it `BLOCKED`; state what it needs.
    - **If** probes need uninstalled libraries → install in spike directory only; delete dependency trees and every build output before setting `Verdict`.
 7. Classify each claim:
-   - SETTLED = held under honest attempt.
-   - DISPROVEN = captured evidence contradicts it.
-   - BLOCKED = neither settled nor disproven.
+   - `SETTLED` = held under honest attempt.
+   - `DISPROVEN` = captured evidence contradicts it.
+   - `BLOCKED` = neither settled nor disproven.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - PASS = every claim SETTLED.
-   - CONCERNS = any claim BLOCKED, none DISPROVEN.
-   - FAIL = any claim DISPROVEN.
+   - `PASS` = every claim `SETTLED`.
+   - `CONCERNS` = any claim `BLOCKED`, none `DISPROVEN`.
+   - `FAIL` = any claim `DISPROVEN`.
 
 **Output format:**
 
@@ -70,27 +70,27 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Claims
 
-[Per claim: falsifiable statement, the design element resting on it, and SETTLED | DISPROVEN | BLOCKED; initially set to PENDING.]
+[Per claim: falsifiable statement, the design element resting on it, and `SETTLED|DISPROVEN|BLOCKED`; initially set to `PENDING`.]
 
 ## Method
 
-[Per claim: what was built, where it ran, and the exact command; initially set to PENDING.]
+[Per claim: what was built, where it ran, and the exact command; initially set to `PENDING`.]
 
 ## Evidence
 
-[Per claim: captured output verbatim — measured values, error strings, exit codes. No paraphrase; initially set to PENDING.]
+[Per claim: captured output verbatim — measured values, error strings, exit codes. No paraphrase; initially set to `PENDING`.]
 
 ## Design Impact
 
-[Per DISPROVEN claim: which design element it invalidates and what the evidence supports instead. **If** no claim DISPROVEN → `None`; initially set to PENDING.]
+[Per `DISPROVEN` claim: which design element it invalidates and what the evidence supports instead. **If** no claim `DISPROVEN` → `None`; initially set to `PENDING`.]
 
 ## Unsettled
 
-[Per BLOCKED claim: what it needs to settle and the risk carried into the design. **If** no claim BLOCKED → `None`; initially set to PENDING.]
+[Per `BLOCKED` claim: what it needs to settle and the risk carried into the design. **If** no claim `BLOCKED` → `None`; initially set to `PENDING`.]
 
 ## Verdict Reasoning
 
-[Why PASS / CONCERNS / FAIL; initially set to PENDING.]
+[Why `PASS|CONCERNS|FAIL`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after settling named unknowns and producing output. Do NOT implement design or code outside spike directory.**

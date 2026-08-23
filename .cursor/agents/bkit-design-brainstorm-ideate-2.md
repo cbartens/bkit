@@ -36,7 +36,7 @@ tools:
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Propose 2-3 approaches from first principles — best long-term shape if existing constraints did NOT matter. Lead recommended. Ignore "we already have X" as default; per approach flag existing-codebase friction. Per approach trade-offs:
-   - `Complexity`: LOW / MEDIUM / HIGH.
+   - `Complexity`: `LOW|MEDIUM|HIGH`.
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.
    - Maintenance: Ongoing cost.
@@ -53,11 +53,11 @@ Lens: Optimal-tradeoff — best long-term shape ignoring legacy constraints.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 
-[Summary (one sentence), `Complexity` (LOW / MEDIUM / HIGH), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
+[Summary (one sentence), `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility (future-change handling), Risk (main failure mode), Maintenance (ongoing cost)]
 
 ## Approach B — [Name]
 
-[Summary, `Complexity` (LOW / MEDIUM / HIGH), Extensibility, Risk, Maintenance]
+[Summary, `Complexity` (`LOW|MEDIUM|HIGH`), Extensibility, Risk, Maintenance]
 
 ## Approach C — [Name (optional)]
 

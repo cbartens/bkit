@@ -35,10 +35,10 @@ reasoningEffort: max
 
 **Process:**
 
-1. Initialise **Create** output stub with PENDING placeholders per `docs/plans/template.md` sections.
+1. Initialise **Create** output stub with `PENDING` placeholders per `docs/plans/template.md` sections.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
-4. Update **Create** — replace each PENDING via `Edit` as content becomes available; **If** none → `None`.
+4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 5. Populate template sections in following dependency order; do NOT change order, do NOT use document order. Follow ALL instruction in template and below; ALWAYS verify gates before proceeding. Leave human-confirmation boxes unchecked.
 6. Foundation — testable contract:
    - `Context & Goals`; populate `Related Issues` from references already present in input NOT fresh issue search. Do NOT expand scope.
