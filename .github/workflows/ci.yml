@@ -421,7 +421,7 @@ jobs:
       # `|| true` is belt-and-braces: the CLI's own contract is exit 0 always.
       - name: Check Status Holes
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm audit:status-holes || true
+        run: pnpm audit:status || true
 
   # ── bkit-tests-unit ──────────────────────────────────────────────────────
   # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —
