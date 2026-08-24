@@ -444,7 +444,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const agentsMd = path.join(tmpDir, "AGENTS.md");
     fs.writeFileSync(
       agentsMd,
-      "# AGENTS.md\n\n<!-- bkit:start -->\n\n**Read in full:** `.agents/rules.md`.\n\n<!-- bkit:end -->\n",
+      "# AGENTS.md\n\n<!-- bkit:start -->\n\n- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.\n\n<!-- bkit:end -->\n",
       "utf-8",
     );
 

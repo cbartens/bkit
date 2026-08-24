@@ -5,9 +5,10 @@
 // `.bkit/templates/.agents/rules.md`.
 //
 // D3 constraint: compare the MANAGED BLOCK ONLY (between `<!-- bkit:start -->`
-// and `<!-- bkit:end -->` inclusive). The `### bkit Repo Authoring` section
-// that follows the closing marker in `.agents/rules.md` is bkit-repo-only —
-// it never ships to consumers, and is NEVER compared by this test.
+// and `<!-- bkit:end -->` inclusive). Everything after the closing marker is
+// consumer-owned `Project Rules` — `bkit install` never writes it and `bkit
+// check` ignores its drift, so its SHAPE is never asserted here; only that the
+// shipped template seeds none of it.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -92,37 +93,21 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     }
   });
 
-  it("### bkit Repo Authoring section is present ONLY in .agents/rules.md, not in the template (D3 exclusion)", () => {
-    const agentsContent = fs.readFileSync(agentsRulesPath, "utf-8");
+  it("the template ships NO project rules below bkit:end — only the empty group scaffold", () => {
+    // D3 exclusion, asserted by shape rather than by naming known sections.
+    // Whatever a repo puts under `Project Rules` (naming conventions, repo
+    // authoring rules) is per-project and must ship to nobody; seeding even one
+    // would push one repo's conventions onto every consumer. Counting bullets
+    // instead of matching section titles keeps this gate working after a rename.
     const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+    const belowManaged = templateContent.slice(
+      templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,
+    );
+    const bullets = [...belowManaged.matchAll(/^-\s*\*\*([^*]+):\*\*/gm)].map((m) => m[1]);
 
-    // The section must exist in the bkit-repo file (outside bkit:end)
     expect(
-      agentsContent.includes("### bkit Repo Authoring"),
-      ".agents/rules.md should contain the ### bkit Repo Authoring section",
-    ).toBe(true);
-
-    // The section must NOT exist in the template (it is bkit-repo-only)
-    expect(
-      templateContent.includes("### bkit Repo Authoring"),
-      ".bkit/templates/.agents/rules.md must NOT contain the bkit-repo-only ### bkit Repo Authoring section",
-    ).toBe(false);
-  });
-
-  it("### Naming Conventions is project-owned — below bkit:end here, absent from the template", () => {
-    const agentsContent = fs.readFileSync(agentsRulesPath, "utf-8");
-    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
-
-    // Naming is per-project (table/verb shapes, log namespaces), so it ships to
-    // nobody. Landing it back inside the managed block would push one repo's
-    // conventions onto every consumer.
-    expect(
-      agentsContent.indexOf("### Naming Conventions"),
-      "### Naming Conventions must sit below <!-- bkit:end --> in .agents/rules.md",
-    ).toBeGreaterThan(agentsContent.indexOf("<!-- bkit:end -->"));
-    expect(
-      templateContent.includes("Naming Conventions"),
-      ".bkit/templates/.agents/rules.md must NOT carry project naming conventions",
-    ).toBe(false);
+      bullets,
+      ".bkit/templates/.agents/rules.md must carry no project rules below bkit:end",
+    ).toEqual([]);
   });
 });

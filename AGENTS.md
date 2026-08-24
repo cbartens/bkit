@@ -2,7 +2,7 @@
 
 <!-- bkit:start -->
 
-**Read in full:** `.agents/rules.md`.
+- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 
 > [!CAUTION]
 > This file is a **workflow router only**. It does NOT execute workflows.
