@@ -1379,13 +1379,37 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
-  it("openrouter: kimi-k3 opus, deepseek-v4-pro reasoner for convergent (aggressive-latest)", () => {
+  // The only column where opus and sonnet separate — every other provider's ceiling
+  // sits under the sonnet target, so opus+sonnet collapse there.
+  it("openrouter: kimi-k3 opus, gemini-3.7-flash sonnet, v4-pro-0813 convergent, v4-flash haiku", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k3");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/moonshotai/kimi-k3");
-    expect(lookup.get("bkit-design-summary")).toBe("openrouter/deepseek/deepseek-v4-pro");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v4-pro");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe(
+      "openrouter/google/gemini-3.7-flash",
+    );
+    expect(lookup.get("bkit-design-summary")).toBe("openrouter/deepseek/deepseek-v4-flash");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro-0813");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe(
+      "openrouter/deepseek/deepseek-v4-pro-0813",
+    );
+  });
+
+  // The undated deepseek-v4-pro slug is frozen on the 0423 snapshot (42.6); the GA
+  // build is a separate slug. Guards against silently reverting to the stale pin.
+  it("openrouter: convergent pin is the dated GA deepseek build, never the frozen slug", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    const pins = [...lookup.values()].filter((m) => m.startsWith("openrouter/"));
+    expect(pins).not.toContain("openrouter/deepseek/deepseek-v4-pro");
+    expect(pins.some((m) => m === "openrouter/deepseek/deepseek-v4-pro-0813")).toBe(true);
+  });
+
+  // This column exists to carry work when the Claude quota is spent — a Claude pin
+  // there defeats its purpose regardless of score.
+  it("openrouter: no Claude model is pinned in the column", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    for (const model of lookup.values()) {
+      expect(model).not.toMatch(/anthropic|claude/i);
+    }
   });
 
   it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4-pro haiku+convergent", () => {

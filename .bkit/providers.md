@@ -348,23 +348,42 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 ### Agentic-coding parity board
 
-Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`). **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
+Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026-06-25** (`table_2026_06_25.csv` / `cost_2026_06_25.csv`, `LiveBench/new-livebench`). **Score** = mean of the category's three tasks (`javascript`, `typescript`, `python`), per `public/categories_<date>.json`. **$/task** = category dollars ÷ 72 questions, from LiveBench's own cost table. Artificial Analysis stays the source for price/latency and general capability; agentic-coding score decides a **pin**, because that is the workload every bkit agent runs.
+
+**Re-probe on a schedule, never on a release stamp.** LiveBench appends newly released models to the **existing** `table_<date>.csv` — `RELEASES` in its `src/lib/constants.js` stays put while the file's contents move. The cited date is not a freshness signal, and a column can go stale with nothing here looking stale.
+
+**$/task must be rescaled to the provider actually billed.** LiveBench's cost table assumes direct-vendor pricing; an OpenRouter pin is billed at OpenRouter's `pricing.prompt` / `pricing.completion`. The two diverge (LiveBench assumes `$3/$15` per Mtok for `claude-sonnet-5`; OpenRouter charges `$2/$10`). Solve LiveBench's dollar figure for implied input tokens, then re-price.
+
+**Sub-scores are too coarse to pin on; use them to sanity-check, not to decide.** Question counts are JS 22 / TS 30 / PY 20, so one TypeScript question moves that sub-score 3.33 points (SE ≈ 9). TypeScript is the hardest of the three and every model scores below its own mean there — the Claude ladder is **not monotonic on TypeScript** (`claude-sonnet-5` 50.0 sits above `claude-opus-5` 43.3). Read the mean as the pin criterion; do not read it as a ranking of ability in any one language.
+
+**Score is necessary, not sufficient — operational shape decides ties.** Two properties carry real weight once scores are within noise: **endpoint count** (`/api/v1/models/<slug>/endpoints`) and **whether prompt caching applies without client configuration**. A single-endpoint model cannot be routed around a slow or down host and inherits that one provider's rate limits — disqualifying for a column whose whole job is to absorb work when the Claude quota is spent. Caching is the dominant latency and cost term for bkit workloads: without it every turn of a long agentic loop re-prefills the whole growing transcript.
+
+**Read caching from the provider docs, NOT from `supports_implicit_caching`.** That endpoint field is unreliable — it reports `false` on all 14 `kimi-k3` endpoints while OpenRouter's own [prompt-caching doc](https://openrouter.ai/docs/features/prompt-caching) states Moonshot caching is automated. The doc's per-provider sections are authoritative. Current contracts: **Moonshot, DeepSeek, Z.AI, Gemini 2.5+ cache automatically, no configuration**; **Anthropic, Alibaba Qwen require explicit `cache_control` breakpoints**, which bkit does not send — so an Alibaba-hosted pin gets no caching at all. Cache reads run ~0.03x-0.20x of input price; writes are free except on DeepSeek (charged at input price).
+
+**Cache hits need the same endpoint twice — OpenRouter handles this with sticky routing.** After a cached request it pins the conversation to that provider, keyed by `session_id` / `prompt_cache_key` when sent, otherwise by hashing the first system message plus the first non-system message. Sticky sessions expire after **10 minutes of inactivity**, and sticky routing is disabled entirely when `provider.order` is set — do not pin a provider order on a cached model.
 
 <!-- prettier-ignore -->
 | Model | Score | $/task | Role in bkit |
 | --- | --- | --- | --- |
 | `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
-| `kimi-k3` | 62.2 | $1.76 | `openrouter` opus+sonnet — only non-Claude pin above the sonnet target |
+| `deepseek-v4-flash-vision-exp` | 65.1 | $0.11 | **not pinned** — experimental; its own datasheet claims text parity with `deepseek-v4-flash-0731`, which measures 46.8. Score not trusted |
+| `qwen3.8-max` | 64.6 | $1.75 | **not pinned** — highest non-Claude score, but a single endpoint (Alibaba) and **no caching available**: Alibaba requires explicit breakpoints and this slug is absent from its supported list |
+| `kimi-k3` | 62.2 | $1.76 | `openrouter` opus — 14 endpoints, automatic caching (reads 0.10x, writes free); the operational pick over `qwen3.8-max` at −2.4 |
 | `claude-fable-5` (max) | 62.2 | $8.86 | not adopted — below Opus 5 at 1.7x the cost |
+| `qwen3.8-27b` | 61.4 | $1.52 | **not pinned** — 3.57M input tokens/task; `$0.95` on LiveBench's assumed price, `$1.52` at OpenRouter's |
+| `glm-5.3` | 60.9 | $1.60 | **not pinned** — single endpoint (Z.AI); caches automatically, but one endpoint fails the routing bar |
 | `claude-sonnet-5` (xhigh) | **59.4** | $2.14 | **sonnet target** |
+| `gemini-3.7-flash` | 58.3 | $0.42 | `openrouter` sonnet (−1.1) — 6 endpoints, implicit caching (reads 0.10x, writes free, ~5 min TTL, 4096-token minimum) |
+| `grok-4.6` | 57.0 | $1.79 | **not pinned** — under `gemini-3.7-flash` at 4x the cost |
 | `grok-4.5` | 56.5 | $0.54 | `cursor` opus (ceiling; −2.9 vs sonnet target at a quarter the cost) |
+| `deepseek-v4-pro-0813` | 54.9 | $0.22 | `openrouter` convergent — GA build; 15 endpoints, automatic caching (reads 0.03x, writes at input price) |
 | `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
 | `kimi-k2.7-code` | 45.7 | $0.39 | `ollama`-cloud + `opencode-zen` opus+sonnet |
 | `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
-| `deepseek-v4-pro` | 42.6 | $0.14 | convergent everywhere; `opencode-go` opus+sonnet; haiku on `openrouter`/`ollama` |
+| `deepseek-v4-pro` | 42.6 | $0.14 | convergent on `ollama` / both gateways; `opencode-go` opus+sonnet. **Frozen on the 0423 snapshot** — the undated slug does not float |
 | `qwen3.6-plus` | 41.4 | $1.55 | **dropped** — strictly dominated by `kimi-k2.7-code` (lower score, 4x cost) |
 | `minimax-m3` | 40.7 | $0.42 | **dropped** — `deepseek-v4-pro` scores higher at a third the cost |
-| `deepseek-v4-flash` | 37.6 | **$0.03** | haiku on both opencode gateways — clears the haiku target at 1/180th of Opus 5 |
+| `deepseek-v4-flash` | 37.6 | **$0.03** | haiku on `openrouter` + both opencode gateways — clears the haiku target at 1/180th of Opus 5 |
 | `claude-haiku-4-5` (thinking) | **~35 †** | — | **haiku target** |
 | `gpt-oss-120b` | ~10 † | — | **dropped everywhere** — below every target, haiku included |
 
@@ -378,7 +397,7 @@ Cells show pin · score · $/task. Deltas are against that column's target. Conv
 | Provider | opus — target 65.2 | sonnet — target 59.4 | haiku — target ~35 | convergent | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `claude` | `claude-opus-5` **65.2** · $5.34 | `claude-sonnet-5` **59.4** · $2.14 | `claude-haiku-4-5` ~35 † | (opus) | The baseline. Its ladder is a genuine cost lever — every rung clears its own bar by construction. |
-| `openrouter` | `moonshotai/kimi-k3` 62.2 · $1.76 (−3.0) | `moonshotai/kimi-k3` (**+2.8**) | `deepseek/deepseek-v4-pro` 42.6 · $0.14 | `deepseek/deepseek-v4-pro` | Aggregator; broad catalog to re-pin from. |
+| `openrouter` | `moonshotai/kimi-k3` 62.2 · $1.76 (−3.0) | `google/gemini-3.7-flash` 58.3 · $0.42 (−1.1) | `deepseek/deepseek-v4-flash` 37.6 · $0.02 | `deepseek/deepseek-v4-pro-0813` 54.9 · $0.22 | Aggregator; broad catalog to re-pin from, and the only column where opus and sonnet separate. Opus is **not** the top-scoring non-Claude model: `qwen3.8-max` (64.6) is single-endpoint and gets no caching at all (Alibaba needs explicit breakpoints bkit does not send), so `kimi-k3` (14 endpoints, automatic caching) takes the cell. **All four pins cache automatically with zero client configuration**, so a warm column runs at ~0.19x of its cold cost. Never pin `anthropic/*` here — this column carries work when the Claude quota is spent. |
 | `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ≈ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. |
 | `ollama` (cloud) | `kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `kimi-k2.7-code` (−13.7) | `deepseek-v4-pro` 42.6 · $0.14 | `deepseek-v4-pro` | **Whole column now needs a paid Ollama plan.** The free `qwen3.5:397b` / `gpt-oss:20b` pins it replaced were unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
 | `opencode-zen` | `opencode/kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `opencode/kimi-k2.7-code` (−13.7) | `opencode/deepseek-v4-flash` 37.6 · **$0.03** | `opencode/deepseek-v4-pro` | Best value in the matrix: the haiku cell clears its target at 1/180th of Opus 5. Existence-validated via models.dev. |
