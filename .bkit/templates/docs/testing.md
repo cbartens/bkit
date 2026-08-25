@@ -161,7 +161,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Static
 
-- Run the whole non-test gate set: typecheck · format check · lint · prose lint · code-slop scan (full **plus** a PR **delta** gate that fails only net-new findings) · drift check · workflow linter. The cheap deterministic subset (typecheck + unit + drift) also runs **pre-push**; the rest is CI fail-fast **before** any env pull or heavy tier.
+- Run the whole non-test gate set: typecheck · format check · lint · prose lint · code-slop scan (full **plus** a PR **delta** gate that fails only net-new findings) · drift check · workflow linter. Locally this set is one script, `bkit:lane:static`, and `bkit:gate:static-unit` adds the unit lane on top — the same scripts pre-push, the build loop and the remediate agents all run, so a green push and a green agent gate mean the same thing. CI runs the rest fail-fast **before** any env pull or heavy tier.
 - Scan a **clean tree** — run static **before** the test tiers write coverage / result artifacts, or the scan flags the artifacts instead of your code.
 - On PRs scope to the **affected graph** (e.g. a monorepo task runner's `--filter=...[base]`) over a **non-shallow checkout** (full history) — never a shallow clone that fails affected-selection open to "everything".
 - **Not:** a green CI that never ran the slop / drift / prose gates because they sat behind a test step that exited early.

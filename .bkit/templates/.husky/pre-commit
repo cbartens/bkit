@@ -6,4 +6,8 @@
 # SCAFFOLD REFERENCE. Rule: anything needing a deployed URL, a DB, or >a few seconds
 # belongs in a CI tier, not a hook. (lint:slop is `slop-scan scan` — report-only, never
 # fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
-pnpm lint-staged && pnpm lint:prose
+#
+# WHAT it runs lives in package.json `bkit:gate:format`, not here — the same script
+# the bkit agent workflows dispatch through. Change the gate there and hooks, prompts
+# and workflows all move together. Add repo-specific extras BELOW this line.
+pnpm bkit:gate:format

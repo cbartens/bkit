@@ -53,7 +53,7 @@
 
 - `git revert` on cross-branch squash (e.g. `feat/*` landed on `main` not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history.
 - `feat/*`-onto-`main` is root cause of destructive recovery; production merges MUST come from `dev` (single-feature squash scope).
-- On `revert-*` branches pre-push skips only **test suite** — typecheck, format:check, prose, slop:delta, bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
+- On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`) — the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 
@@ -510,9 +510,9 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 
 **CI-suppressor HEAD guard (pre-push, before gates):** non-`dev`/`main` branch + HEAD carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]` → probe `gh pr list --head <branch> --state open`. Open PR → **BLOCKED** (vacuously green checks); add clean trigger commit + re-push. No open PR → allowed (sanctioned `[skip ci]` for mid-loop status, abort handover). `gh` unavailable → warn + allow (manual-push backstop; workflow CI-Dispatch Gate covers close push).
 
-**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → skip `pnpm test` (Gate 2), run `pnpm typecheck && pnpm format:check` only. Gates 4–8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
+**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 4–8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-Pre-commit: `pnpm lint-staged && pnpm lint:prose` (staged files, not push). Enforcing slop gate: pre-push `pnpm slop:delta` (Gate 5); `pnpm lint:slop` report-only. CI re-runs prose + slop:delta in `bkit-tests-static`.
+Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:lane:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same lane (Gate 5); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
 Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed hook (skip-ci must not be HEAD when PR created). Genuinely broken gate (flaky external) → STOP, document blocker — do not push.
 

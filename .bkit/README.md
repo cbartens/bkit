@@ -243,6 +243,8 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.prettierignore` | lint | `.bkit/templates/.prettierignore` | Tier 2 hash-comment |
 | `package.json#scripts.typecheck` | lint | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing). TS-exclusive, under `lint`. |
 | `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults | Managed-key (add-if-missing) |
+| `package.json#scripts.bkit:lane:static` / `bkit:lane:unit` | lint | hardcoded defaults | Managed-key (add-if-missing). The lanes hold the real commands — edit these to point at your toolchain. |
+| `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | lint | hardcoded defaults | Managed-key (add-if-missing). What hooks, workflows and prompts run; the name states which lanes. |
 | `package.json#devDependencies.prettier` / `slop-scan` / `lint-staged` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`, `^15.2.10`) | Managed-key (add-if-missing) |
 | `.husky/pre-commit` | git-hooks | `.bkit/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
 | `.husky/pre-push` | git-hooks | `.bkit/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |

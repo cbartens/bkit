@@ -12,7 +12,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
@@ -1907,12 +1907,15 @@ const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists —
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose\` (fast staged
-  gate). The enforcing slop gate (\`pnpm slop:delta\`) and the heavier gates live in pre-push.
-  Most consumers using turbo or their own lint-staged config already cover the
-  equivalent — in that case, ignore this advisory and keep your existing hook.
-  If your hook does NOT already format staged files / run a prose lint,
-  consider adopting the reference, or merging the missing commands into yours.
+  bkit's reference pre-commit hook runs \`pnpm bkit:gate:format\` (fast staged gate —
+  prettier over staged files). Prose, the enforcing slop gate and the heavier gates
+  live in pre-push via \`pnpm bkit:gate:static-unit\`. Editing what a gate runs means
+  editing the \`bkit:lane:*\` / \`bkit:gate:*\` scripts in package.json, not the hook —
+  the same scripts the bkit agent workflows dispatch through, so hooks and agents
+  cannot drift apart. Most consumers using turbo or their own lint-staged config
+  already cover the equivalent — in that case, ignore this advisory and keep your
+  existing hook. If your hook does NOT already format staged files, consider
+  adopting the reference, or merging the missing commands into yours.
 
   Monorepo note: do not add eslint to lint-staged. In a workspace it must run
   per-package via turbo (at pre-push) so each package's own flat config resolves;
@@ -2322,6 +2325,10 @@ export function runLintModule(ctx) {
         "lint:slop": "slop-scan scan .",
         // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
         "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+        // The local gate every workflow and prompt now dispatches through (#437).
+        // Same single-source-of-truth rule as lint:prose above, enforced structurally
+        // here: both this call and the manifest default spread the SAME object.
+        ...BKIT_GATE_SCRIPTS,
     }, dryRun, ws, 
     // Re-point a superseded bkit lint:prose at the current one. add-if-missing
     // alone would leave every existing consumer on the version that silently
@@ -2362,6 +2369,36 @@ export function runLintModule(ctx) {
                     severity: "advisory",
                     detect: "package.json has no `test` script.",
                     action: 'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
+                });
+            }
+            // Every script a seeded bkit:gate* default chains MUST exist, or the gate
+            // dies on the first missing one and the workflow reads that as a real
+            // failure. Checked only where the value is still bkit's default — a
+            // consumer who rewrote the gate owns what it references (#437).
+            const declared = pkg.scripts ?? {};
+            // Tokens that follow `pnpm` but are not package.json scripts: the package
+            // manager's own subcommands (`pnpm install` in bkit:gate:ship) and node_modules
+            // binaries pnpm resolves directly (`pnpm lint-staged` in bkit:gate:commit).
+            // Neither can be "missing" in the sense this advisory reports.
+            const PNPM_NOT_A_SCRIPT = new Set(["install", "run", "exec", "dlx", "lint-staged"]);
+            const missing = new Set();
+            for (const [name, seeded] of Object.entries(BKIT_GATE_SCRIPTS)) {
+                if (declared[name] !== seeded)
+                    continue;
+                for (const [, called] of seeded.matchAll(/\bpnpm ([\w:-]+)/g)) {
+                    if (PNPM_NOT_A_SCRIPT.has(called))
+                        continue;
+                    if (!(called in declared) && !(called in BKIT_GATE_SCRIPTS))
+                        missing.add(called);
+                }
+            }
+            if (missing.size > 0) {
+                const names = [...missing].sort();
+                advisories.push({
+                    id: "gate-missing-called-scripts",
+                    severity: "advisory",
+                    detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.map((n) => `\`${n}\``).join(", ")}.`,
+                    action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.map((n) => `\`${n}\``).join(", ")} to package.json, or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
                 });
             }
         }

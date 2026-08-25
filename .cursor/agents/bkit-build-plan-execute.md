@@ -44,7 +44,7 @@ tools:
 5. Read each task `Done when` — criteria MUST be satisfied before next task. Missing `Done when` on any task → set `Verdict` = `FAIL` via `Edit`.
 6. Update **Create** after each task — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 7. Implement sequentially — edit / create source per task → at every gate confirm conditions met → append log → proceed.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck --filter='...[origin/dev]' --continue; else set -e; for s in typecheck format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local lint / typecheck MUST pass.
+8. Run `pnpm bkit:gate:static` — ALL local lint / typecheck MUST pass.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = every pending `[ ]` plan task has `DONE` log entry AND local lint / typecheck pass.
    - `FAIL` = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint / typecheck fail.

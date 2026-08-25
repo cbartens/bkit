@@ -53,7 +53,7 @@
 
 - `git revert` on cross-branch squash (e.g. `feat/*` landed on `main` not `dev`) can delete files `main` code still references → tree fails CI despite "clean" history.
 - `feat/*`-onto-`main` is root cause of destructive recovery; production merges MUST come from `dev` (single-feature squash scope).
-- On `revert-*` branches pre-push skips only **test suite** — typecheck, format:check, prose, slop:delta, bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
+- On `revert-*` branches pre-push drops only the **unit lane** (`bkit:gate:static` in place of `bkit:gate:static-unit`) — the static lane and the bkit drift gate still run → revert PR pushable when source state transitionally inconsistent.
 
 ### Post-rollback verification
 

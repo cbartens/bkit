@@ -42,7 +42,7 @@
     "build": "tsc && chmod +x dist/bkit-install.js",
     "bkit": "node dist/bkit-install.js",
     "test": "vitest run",
-    "test:bats": "bats tests/*.bats",
+    "test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
     "audit:status": "tsx .bkit/src/bkit-status-hole-detector.ts docs/plans/*/logs/*/status.jsonl",
     "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=70",
     "typecheck": "tsc --noEmit",
@@ -53,7 +53,14 @@
     "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     "lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo \"[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring\" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname \"$(cd \"$G\" && pwd)\") && [ -d \"$M/.vale/styles/write-good\" ] && mkdir -p .vale/styles && cp -R \"$M/.vale/styles/write-good\" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync\" >&2; fi; else echo \"[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)\"; fi'",
-    "prepare": "husky"
+    "prepare": "husky",
+    "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
+    "bkit:lane:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:lane:unit": "pnpm test && pnpm test:coverage:unit && pnpm test:bats",
+    "bkit:gate:format": "pnpm lint-staged",
+    "bkit:gate:static": "pnpm bkit:lane:static",
+    "bkit:gate:static-unit": "pnpm bkit:lane:static && pnpm bkit:lane:unit",
+    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:lane:static && pnpm bkit:lane:unit && pnpm build"
   },
   "dependencies": {
     "picomatch": "^4.0.4"

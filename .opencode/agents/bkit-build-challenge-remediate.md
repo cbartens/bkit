@@ -44,7 +44,7 @@ reasoningEffort: high
 5. Update **Create** after each finding — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 6. ANY finding with `class` = architectural → append `BLOCKED` → proceed to next.
 7. Implement in priority order — apply suggested remediation per finding (edit / create source) → append log → next finding.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local tests MUST pass.
+8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 10. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications → **If** none valid = NOT valid deferral → FINISH work. Only blocks that survive with valid `reason` earn rows → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:

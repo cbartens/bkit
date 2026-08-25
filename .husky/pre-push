@@ -41,36 +41,23 @@ case "$BRANCH" in
     ;;
 esac
 
+# WHAT each gate runs lives in package.json `bkit:gate*` — the same scripts the agent
+# workflows and prompts dispatch through, so a human push and an agent run enforce the
+# identical set. Edit the scripts, not this hook. bkit-repo-only extras stay below.
+# Revert path drops the suite only: prose and slop:delta stay (md prose is unaffected by
+# deleted code; removals show as 'resolved', never 'added', so slop:delta stays green).
+# bats runs inside `bkit:gate` and self-guards when the binary is absent — it is NOT a
+# devDependency (CI installs it via `npx --yes bats`), and without the guard a
+# contributor who has not installed bats could not push at all.
 if [ "$IS_REVERT" = "1" ]; then
-  echo "[pre-push] revert branch/commit detected — running typecheck + format:check only"
-  pnpm typecheck && pnpm format:check
+  echo "[pre-push] revert branch/commit detected — skipping the test suite"
+  pnpm bkit:gate:static < /dev/null
 else
-  pnpm typecheck && pnpm test && pnpm format:check
+  pnpm bkit:gate:static-unit < /dev/null
 fi
-
-# Prose + slop now run here too, so pre-push is a full deterministic mirror of CI
-# (previously prose was CI-only and slop never gated anywhere). prose = vale on the
-# curated md set; slop:delta fails ONLY on findings this push ADDS or WORSENS vs
-# origin/dev — the pre-existing baseline is not yours to fix on the way out. Both run
-# on revert pushes too (md prose is unaffected by deleted code; removals show as
-# 'resolved', never 'added', so slop:delta stays green).
-pnpm lint:prose < /dev/null
-pnpm slop:delta < /dev/null
 
 # bkit-repo only — fail push if `.agents/*` edits weren't mirrored via `pnpm bkit install`.
 pnpm bkit check < /dev/null
-
-# bkit-repo only — bats suite (Tier-1 carrier + helper scripts). Runs after
-# `bkit check` so a drift failure fails fast; runs before actionlint/dist so a
-# bats failure fails before the slower gates. Guard-skips when bats is absent
-# (it is NOT a devDependency — CI installs it via `npx --yes bats`), matching
-# the shipped template. Without the guard a contributor who has not installed
-# bats cannot push at all.
-if command -v bats >/dev/null 2>&1; then
-  pnpm test:bats < /dev/null
-else
-  echo "[pre-push] bats missing — skipping bats suite (install bats to enable)" >&2
-fi
 
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.

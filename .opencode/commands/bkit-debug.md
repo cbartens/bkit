@@ -366,20 +366,13 @@ $ARGUMENTS
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   TESTS_LIVE=""
-   if ! grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md" 2>/dev/null; then
-     for s in test:integration:live test:e2e:live test:live; do
-       if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 || { [ -f turbo.json ] && pnpm turbo run "$s" --dry-run >/dev/null 2>&1; }; then TESTS_LIVE="$TESTS_LIVE $s"; fi
-     done
-   fi
-   if [ -f turbo.json ]; then
-     TEST_SCOPE="pnpm turbo lint typecheck test test:integration test:e2e${TESTS_LIVE} --filter='...[origin/dev]' --continue"
-   else
-     TEST_SCOPE=""
-     for s in typecheck test format:check lint:slop lint:prose test:integration test:e2e${TESTS_LIVE}; do
-       jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm $s"
-     done
-   fi
+   GATES="bkit:gate:static-unit-integration-e2e-live bkit:gate:static-unit-integration-e2e bkit:gate:static-unit"
+   grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md" 2>/dev/null && GATES="${GATES#* }"
+   TEST_SCOPE=""
+   for g in $GATES; do
+     jq -e --arg g "$g" '.scripts[$g]' package.json >/dev/null 2>&1 && TEST_SCOPE="pnpm $g" && break
+   done
+   [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; exit 2; }
    echo "TEST_SCOPE=$TEST_SCOPE"
    TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
    mkdir -p "$(dirname "$TEST_LOG")"
@@ -482,7 +475,7 @@ $ARGUMENTS
 ### 🔒 Gate 3 — Run Tests
 
 - [ ] Test attempt derived (active run)
-- [ ] Tests executed (turbo path if `turbo.json`)
+- [ ] Tests executed (deepest declared `bkit:gate:*`, exit 0; `[live=off]` drops the live candidate)
 - [ ] Artifact written (`debug-context-tests-local-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)

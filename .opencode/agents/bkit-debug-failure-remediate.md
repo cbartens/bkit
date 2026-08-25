@@ -50,7 +50,7 @@ reasoningEffort: high
    - `pnpm-lock.yaml` → `pnpm install`.
    - `turbo.json` → merge pipelines.
    - Drizzle migrations → resequence.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local tests MUST pass. **If** any declared live tests were failing → remediation done ONLY when those same live tests pass.
+8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass. **If** any declared live tests were failing → remediation done ONLY when those same live tests pass.
 9. **If** any failures → document errors in output, set `Verdict` = `FAIL` (no alternatives, no rollbacks, no `--no-verify`).
 10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 11. Once remediations verified (tests pass) → append forced architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.

@@ -1082,19 +1082,14 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    TEST_ATTEMPT=$(counter_next "$STATUS" build build-run-tests) || exit 2
    ```
-2. Run verbatim — do NOT modify quoting, filter, or glob:
+2. Run verbatim — do NOT substitute the gate's contents for the script name:
    ```bash
-   COV_UNIT=0
-   jq -e '.scripts["test:coverage:unit"]' package.json >/dev/null 2>&1 && COV_UNIT=1
-   if [ -f turbo.json ]; then
-     TEST_SCOPE="pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue"
-   else
-     TEST_SCOPE=""
-     for s in typecheck test format:check lint:slop lint:prose; do
-       jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm $s"
-     done
-   fi
-   [ "$COV_UNIT" = 1 ] && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm test:coverage:unit"
+   GATES="bkit:gate:static-unit-integration bkit:gate:static-unit"
+   TEST_SCOPE=""
+   for g in $GATES; do
+     jq -e --arg g "$g" '.scripts[$g]' package.json >/dev/null 2>&1 && TEST_SCOPE="pnpm $g" && break
+   done
+   [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; exit 2; }
    echo "TEST_SCOPE=$TEST_SCOPE"
    eval "$TEST_SCOPE"
    ```
@@ -1151,7 +1146,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 14 — Run Tests
 
 - [ ] Test attempt derived (active run)
-- [ ] Tests executed (turbo path if `turbo.json`)
+- [ ] Tests executed (deepest declared of `bkit:gate:static-unit-integration`, `bkit:gate:static-unit`; exit 0)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Workflow status updated (step `build-run-tests` recorded with `parentSha`, `verdict`, `scope`)
 

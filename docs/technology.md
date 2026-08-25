@@ -84,7 +84,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs typecheck + `pnpm test` (unit + in-process integration) + `pnpm bkit check` before push. Source-repo copy additionally runs `pnpm check:dist` (dist freshness gate); consumer template does not include it. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Source-repo copy additionally runs `pnpm check:dist` and `pnpm lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 

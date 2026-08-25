@@ -2264,7 +2264,10 @@ describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
     const seeded = fs.readFileSync(prePushPath, "utf-8");
     // Seeded content matches the canonical template (no bkit markers in Tier 3)
     expect(seeded).not.toContain("# bkit:start");
-    expect(seeded).toContain("pnpm typecheck");
+    // The hook dispatches through the shared gate scripts rather than carrying its
+    // own command list, so hooks and agent workflows cannot drift apart (#437).
+    expect(seeded).toContain("pnpm bkit:gate:static-unit");
+    expect(seeded).toContain("pnpm bkit:gate:static");
     // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
     const ids = ctx.advisories.map((f) => f.id);
     expect(ids).not.toContain("tier3-merge-suggested-pre-push");

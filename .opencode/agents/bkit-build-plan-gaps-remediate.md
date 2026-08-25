@@ -47,7 +47,7 @@ reasoningEffort: high
    - `PIVOT` → Identify prior attempt failure and why. Different angle — do NOT repeat.
    - `FINAL` → Run `pnpm outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 7. Implement in priority order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` — ALL local tests MUST pass.
+8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = every gap has `DONE` across logs AND local tests pass.

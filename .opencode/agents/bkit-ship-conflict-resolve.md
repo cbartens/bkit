@@ -61,9 +61,9 @@ reasoningEffort: high
    **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to step 9 (verify) → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to step 7. Do NOT `git rebase --abort` here — step 11 owns that.
 7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
-9. **If** `Verdict` != `FAIL` → verify `pnpm install --frozen-lockfile` and if defined `pnpm typecheck`. **If** `turbo.json` exists → `pnpm test --filter='...[origin/dev]'`. **Else** → `pnpm test` and if defined `pnpm build`. All MUST exit 0 → append log entry with exit codes. **If** any non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
-    - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
+    - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm bkit:gate:install-static-unit-build` exited 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for non-mechanical reasons; OR any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:
     - `git rebase --abort 2>/dev/null || true`.

@@ -29,7 +29,7 @@ Every phase dispatches subagents in parallel under distinct lenses; the diff, pl
 
 - **Design** — fetches related issues; 3 brainstorms (pragmatic / tradeoff / risk) + 2 reviews (feasibility, cross-tier)
 - **Plan** — fetches related issues + prior deferrals + prior failures; 3 critiques (tightness / dependency / regression) + 2 scope-checks
-- **Build** — execute ⇄ verify loop; 2 challenges (bug-hunting + security); local test gate (lint + typecheck + unit); CI runs the full multi-tier scaffold on the PR
+- **Build** — execute ⇄ verify loop; 2 challenges (bug-hunting + security); local test gate (`bkit:gate:static-unit`, or `bkit:gate:static-unit-integration` where declared); CI runs the full multi-tier scaffold on the PR
 - **Ship** — pre-merge completeness gate; waits for CI capstone (`bkit-tests-check`) green before merge; docs update + summary in parallel
 - **Debug** — fetches CI failure logs + e2e reports + diff vs last-passing CI + runtime logs + related issues; diagnose (reads prior `knowledge.jsonl`) → remediate; broader test tier (adds integration + e2e + optional `@live` canary); soak mode for non-localisable failures
 - **Autonomous loop (opt-in `bkit-auto`)** — CI completion auto-routes: `/bkit-ship` on green, `/bkit-debug` on red; debug re-pushes, CI re-runs, auto-routes again. Runs unattended in cloud (Claude Code on the web / Cursor Background Agents / opencode) until a human gate fires.

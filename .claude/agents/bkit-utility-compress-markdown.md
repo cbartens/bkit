@@ -39,7 +39,7 @@ maxTurns: 25
    - All `#` / `##` / `###` headers — exact string (other agents grep these).
    - All bold field labels (e.g., `**Verdict:**`, `**Strategy:**`, `**Files modified:**`).
    - All paths (`docs/...`, `apps/...`, file globs).
-   - All agent / tool / command names (`@build-execute-plan`, `pnpm turbo …`, `gh pr …`).
+   - All agent / tool / command names (`@build-execute-plan`, `pnpm bkit:gate:static-unit`, `gh pr …`).
    - All code / SQL / JSON / YAML fences and inline `` `code` `` spans.
    - All admonitions (`> [!CAUTION]`, `> [!NOTE]`, `🔒 Gate`, `⛔`, verdict markers `✅` / `⚠️` / `❌`).
    - All `{TOKEN}` placeholders (`{FID}`, `{ATTEMPT}`, `{PHASE}`, etc.).
@@ -79,7 +79,7 @@ maxTurns: 25
 
 **Examples — BAD compression (DO NOT):**
 
-- ❌ `` `pnpm turbo lint typecheck test --filter='...[origin/dev]'` `` → `run tests` (drops exact command other agents copy).
+- ❌ `` `pnpm bkit:gate:static-unit` `` → `run tests` (drops exact command other agents copy).
 - ❌ `## Verification Record` → `## Verify` (header renamed — agents grepping original break).
 - ❌ `**Verdict:** ✅ PASS | ❌ FAIL` → `Verdict: PASS/FAIL` (drops emoji markers and bold label downstream parsers rely on).
 - ❌ Two sibling sections merged into one paragraph (other agents reference them by heading).

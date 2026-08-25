@@ -857,7 +857,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 11 — Reconcile Challenge | `@bkit-build-challenge-reconcile` | Merge `build-challenge-1.md` + `build-challenge-2.md` into unified `build-challenge.md`. Dedup same `file:line` or root-cause cluster; severity max-wins. `Verdict` max-wins (`FAIL > CONCERNS > PASS`). Extraction of `CHALLENGE_VERDICT`/`CHALLENGE_FAILURES` happens here. PASS → Step 14. CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12. CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 14. FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 12. FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. |
 | 12 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 11 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits FAIL (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). `Verdict` PASS / CONCERNS / FAIL. → Step 13. |
 | 13 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 11 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 10 (safety net; counter persists, NOT reset); else falls through to Step 14. |
-| 14 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`; absent → single-package fallback `&&`-chains `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) — fail-fast (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO mocked integration / E2E (CI covers those on the resulting PR). Build does NOT run the live tier — the @live boundary needs a deployed URL, so it is validated post-merge by the push-only `bkit-tests-live` CI canary and reproduced on demand via `/bkit-debug`; build gates on local tiers only and records no `testsLiveSkipped` (out of build's scope by design, not skipped). When the repo declares `test:coverage:unit`, append it LAST — the unit branch-coverage gate that mirrors the CI unit lane's `--coverage.thresholds.branches`; both callers run the SAME `package.json` script (one source for the threshold), so a coverage regression fails in the worktree here instead of only on the PR. `TEST_VERDICT` = PASS → Step 17. FAIL → Step 15 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
+| 14 — Run Tests | — | Runs the DEEPEST `bkit:gate:*` the consumer declares — descending `static-unit-integration`, `static-unit` (§ Local gate scripts). Pre-PR: no E2E (CI covers it on the resulting PR). Build does NOT run the live tier — the @live boundary needs a deployed URL, so it is validated post-merge by the push-only `bkit-tests-live` CI canary and reproduced on demand via `/bkit-debug`; build gates on local tiers only and records no `testsLiveSkipped` (out of build's scope by design, not skipped). A repo gating unit branch-coverage puts `test:coverage:unit` in `bkit:lane:unit`, so this gate and the CI unit lane run the SAME `package.json` script (one source for the threshold) and a coverage regression fails in the worktree here instead of only on the PR. `TEST_VERDICT` = PASS → Step 17. FAIL → Step 15 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
 | 15 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 14 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. |
 | 16 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 14 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 14. > `MAX_TEST_ATTEMPT` → Failure Path. |
 | 17 — Summary | `@bkit-build-summary` | Commit `chore({FID}): summary` → push (`-u origin {BRANCH}`). |
@@ -884,7 +884,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | --- | --- | --- |
 | 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER` → `PUSH_MODE`. Read prior `debugAttempt` from status.jsonl → `DEBUG_ATTEMPT` = prior + 1. Set `DEBUG_MODE` (NORMAL | SOAK; objective signals: `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` + session-prompt `[soak]`). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | Branch handling differs from feat workflows: debug MINTS NOTHING. Resume `.worktrees/{FID}` → else adopt an already-existing `feat/{FID}` (local or origin) into a worktree → else adopt the session's current branch in place (`WORKTREE_PATH=$REPO_ROOT`, no `git worktree add`, no `-b`), which is also the path taken when the session is already sitting on `feat/{FID}` (git refuses one branch in two worktrees). Branch eligibility: any branch but `main` — else Failure Path. Writes `debug-input-{DEBUG_ATTEMPT}.md` (failure description only — no workflow state). Init `NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0. Persists `debugMode` / `pushMode`. |
-| 3 — Run Tests | — | **LOOP HEAD (both modes).** Increment `NORMAL_ATTEMPT`. Detect `turbo.json`: present → `pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]' --continue` (append any declared `test:integration:live` / `test:e2e:live` / `test:live` LAST, opt-out via `[live=off]`); absent → single-package fallback. Iteration 1 = reproduce. Records `verdict` + `failures` + `scope` (the verbatim test command; contains a `test:...:live` task only when a live tier ran); commits `chore({FID}): run-tests attempt {NORMAL_ATTEMPT}` (status durable before route). PASS + `NORMAL_ATTEMPT` > 1 → Step 8; PASS (unreproduced) → Step 9; FAIL + NORMAL + `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4; FAIL + NORMAL + exhausted → set SOAK, reset `SOAK_ATTEMPT` = 0 → Step 4; FAIL + SOAK + `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4; else → Failure Path. |
+| 3 — Run Tests | — | **LOOP HEAD (both modes).** Increment `NORMAL_ATTEMPT`. Runs the DEEPEST `bkit:gate:*` the consumer declares — descending `static-unit-integration-e2e-live`, `static-unit-integration-e2e`, `static-unit`; `[live=off]` drops the live candidate (§ Local gate scripts). Iteration 1 = reproduce. Records `verdict` + `failures` + `scope` (the gate script name; ends `:live` only when the live gate ran); commits `chore({FID}): run-tests attempt {NORMAL_ATTEMPT}` (status durable before route). PASS + `NORMAL_ATTEMPT` > 1 → Step 8; PASS (unreproduced) → Step 9; FAIL + NORMAL + `NORMAL_ATTEMPT` <= `MAX_NORMAL_ATTEMPT` → Step 4; FAIL + NORMAL + exhausted → set SOAK, reset `SOAK_ATTEMPT` = 0 → Step 4; FAIL + SOAK + `SOAK_ATTEMPT` < `MAX_SOAK_ATTEMPT` → Step 4; else → Failure Path. |
 | 4 — Fetch Context | — | _(on FAIL with budget)_ Mode-agnostic. Five sub-fetches in priority order (CI logs / diff vs last-passing CI / local run output incl `[DEBUG-OBSERVE]` / Playwright e2e / runtime logs) + a related-issues tracker search → per-source `debug-context-*-{DEBUG_ATTEMPT}.md` written only when content exists. Routes: SOAK → Step 7; else → Step 5. |
 | 5 — Failure Diagnose | `@bkit-debug-failure-diagnose` _(only if `DEBUG_MODE` = NORMAL)_ | `STRATEGY` STANDARD → PIVOT → FINAL by prior diagnose. Writes `debug-failure-diagnose-{NORMAL_ATTEMPT}.md`; when a live tier failed on a functional assertion, anchors on that real-boundary ground truth (treats infra/credential failures as environment, not feature-broken). Sets `Mode` (NORMAL | SOAK) — `SOAK` when the cause is not localisable (gated on `Verdict` != PASS); in `NORMAL` the orchestrator then fast-tracks to Step 7 (Soak), resetting `SOAK_ATTEMPT` = 0, else → Step 6. |
 | 6 — Failure Remediate | `@bkit-debug-failure-remediate` _(only if `DEBUG_MODE` = NORMAL)_ | Writes `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md` + source files. Orchestrator commits `fix({FID}): {description}{VERBOSE_SUFFIX}` (`{description}` from the first `DONE — Step` line, truncated to 72 chars; `VERBOSE_SUFFIX = " bkit [verbose ci]"` iff `PUSH_MODE = LOCAL`); the fix commit is the HEAD the next Run Tests / Push pushes. → loop to Step 3. |
@@ -1318,13 +1318,53 @@ SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
 # Per N: reset VERIFY_ATTEMPT=1 at start of each iteration
 ```
 
-### Turbo command (verbatim)
+### Local gate scripts
 
-```bash
-pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue
-```
+Workflows, prompts and git hooks name a gate; `package.json` defines it. Never inline a toolchain command at a call site.
 
-No quote / filter / glob edits. Pre-PR = lint+typecheck+unit; debug normal-mode adds `test:integration test:e2e`. Build does NOT run live tier (post-merge `bkit-tests-live` canary). Debug appends `test:integration:live test:e2e:live test:live` LAST when declared (unless `[live=off]` — debug session flag from `debug-input-{DEBUG_ATTEMPT}.md`) — never in bare `pnpm test`. No live tier → CONCERNS + `testsLiveSkipped`.
+**Lanes** hold the commands, one per `ci.yml` test job, and the consumer owns every value — a turbo monorepo writes `turbo run … --filter='...[origin/dev]' --continue`, a Python repo writes `ruff check && mypy .`. bkit never reads a lane's value.
+
+<!-- prettier-ignore -->
+| Lane | Seeded default | CI job |
+| --- | --- | --- |
+| `bkit:lane:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `bkit-tests-static` |
+| `bkit:lane:unit` | `pnpm test` | `bkit-tests-unit` |
+| `bkit:lane:integration` | NOT seeded — consumer-defined | `bkit-tests-integration` |
+| `bkit:lane:e2e` | NOT seeded — consumer-defined | `bkit-tests-e2e` |
+| `bkit:lane:live` | NOT seeded — consumer-defined | `bkit-tests-live` |
+
+**Gates** chain lanes in canonical order. The name enumerates what runs, so a caller reads the coverage without opening `package.json` and `scope` in `status.jsonl` is self-describing. Where a step is not a lane, the name spells out the step.
+
+<!-- prettier-ignore -->
+| Gate | Runs | Called by |
+| --- | --- | --- |
+| `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
+| `bkit:gate:static` | static | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
+| `bkit:gate:static-unit` | static, unit | build Step 14, `.husky/pre-push`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
+| `bkit:gate:static-unit-integration` | + integration | build Step 14 |
+| `bkit:gate:static-unit-integration-e2e` | + integration, e2e | debug Step 3 |
+| `bkit:gate:static-unit-integration-e2e-live` | + live | debug Step 3 |
+| `bkit:gate:install-static-unit-build` | cold install, static, unit, build | `@bkit-ship-conflict-resolve` |
+
+Agents and humans run the SAME scripts, so a green agent gate and a green `git push` mean the same thing. `ci.yml` deliberately stays off them: it needs per-step reporting, affected-package conditionals, and the heavier tiers the local gate excludes, so it calls `pnpm typecheck` / `pnpm test` / … directly.
+
+`lint:slop` is in no lane — `slop-scan scan` is report-only and never fails; `slop:delta` is the enforcing gate. `bkit check` (mirror drift) sits in `.husky/pre-push` outside the gates: it validates the bkit install, not consumer source. `lint:prose` scans a whole-repo file set, so it gates at pre-push, not pre-commit.
+
+The three deep lanes and the three gates reaching them are NOT seeded: a seeded `pnpm test:integration` hard-fails every repo without that tier, and a gate named `…-integration-e2e` that skipped them silently is the false-green this design exists to kill. Declaring one is how a consumer opts a workflow into a deeper tier.
+
+Build and debug each run the DEEPEST gate the consumer declares, and record its name:
+
+<!-- prettier-ignore -->
+| Workflow | Candidates, descending | Stops at |
+| --- | --- | --- |
+| build Step 14 | `static-unit-integration`, `static-unit` | integration |
+| debug Step 3 | `…-integration-e2e-live`, `…-integration-e2e`, `static-unit` | live |
+
+Build stops at integration because its diagnose → remediate loop can only repair what its own gate runs — a tier left to CI is a defect the agent cannot fix in-session (build closes green, the PR reds, recovery is a separate `/bkit-debug`). Integration catches contract breaks the unit tier structurally cannot, at a cost the loop absorbs; E2E does not pay for itself there — a production build plus a browser, re-run on every remediation attempt, minutes before CI runs the same thing on the resulting PR. Debug reaches every tier because reproducing the failure IS the job.
+
+A repo with no integration tier is visibly gated at `bkit:gate:static-unit` instead of quietly claiming more. `[live=off]` (from `debug-input-{DEBUG_ATTEMPT}.md`) drops debug's live candidate; no live gate declared → CONCERNS + `testsLiveSkipped`.
+
+Build does NOT run the live tier (post-merge `bkit-tests-live` canary). `bkit install` seeds lanes and gates with the lint module and advises on any script they chain that `package.json` does not declare; a customised value is never overwritten (`bkit upgrade` alone does NOT seed them — that needs a module flag).
 
 ### Tracker issue-create return guard
 
@@ -1372,7 +1412,7 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 | --- | --- | --- | --- |
 | `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` = 3 | Failure Path |
 | `@bkit-build-challenge-1` + `@bkit-build-challenge-2` (parallel pair) → `@bkit-build-challenge-reconcile` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 11; one remediation max; FAIL triggers re-Challenge for verification, CONCERNS falls through without re-Challenge) | Failure Path on FAIL after remediate (covers both unrecoverable remediation and architectural-class findings) |
-| Build test loop (`pnpm turbo`) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
+| Build test loop (`pnpm bkit:gate:static-unit`) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` (NORMAL); `@bkit-debug-failure-soak` (SOAK) | `MAX_NORMAL_ATTEMPT` = 3 (NORMAL loop); `SOAK_ATTEMPT` bounded by `MAX_SOAK_ATTEMPT` = 3 (reset on each SOAK entry) | Failure Path with `@bkit-debug-abort-handover` |
 | Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |
 
@@ -1441,7 +1481,7 @@ When writing/editing `.bkit/workflows/bkit-*.md` (canonical — `bkit install` r
 - [ ] Subagent invocations use `@name` + `Context:` / `Read:` / `Update:` / `Create:` block (Update/Create as applicable); assert non-empty Update/Create artifacts.
 - [ ] Verdict-bearing steps extract `{*_VERDICT}` and route per § `Verdict` vocabulary.
 - [ ] Counters **derived** per fenced block from `status.jsonl` (§ Attempt counters); no prose `Init`/`Increment`; `MAX_*` from config by name; loops → Failure Path; logs `-{N}`.
-- [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm turbo`; exceeded → Failure Path.
+- [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm bkit:gate:static-unit*` run; exceeded → Failure Path.
 - [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases update state only, phase label unchanged.
 - [ ] Docs-only commits include `bkit [skip ci]` (§ CI / Vercel commit tags).
 - [ ] Branch eligibility check on phases that don't create their own branch (`/bkit-debug`, `/bkit-ship`).

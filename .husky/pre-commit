@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 set -e
-# lint:slop (scan) is report-only and never fails — it moved to pre-push as the
-# enforcing `slop:delta` gate. pre-commit stays fast: format staged + prose.
-pnpm lint-staged && pnpm lint:prose
+# WHAT this runs lives in package.json `bkit:gate:format` — the same script the agent
+# workflows dispatch through, so hooks and agents cannot drift. pre-commit stays fast:
+# format staged + prose. (lint:slop is report-only and never fails; the enforcing
+# `slop:delta` gate runs in pre-push via `bkit:gate`.)
+pnpm bkit:gate:format
 
 # bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
 # staged. Consumers don't compile TS and never run this gate.
