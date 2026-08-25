@@ -36,7 +36,7 @@ maxTurns: 50
 
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
-3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo).
+3. Run `pnpm bkit:deps:outdated` — read it filtered to the repo's declared test dependencies.
 4. Tier names and selection: Audit against best practice tiers: Static / Unit / Integration / E2E / @live / fresh-DB replay / Smoke.
 5. Backend → Unit / Integration (Vitest, no Playwright for APIs); >=1 Integration test hits the API vs a fresh local DB with no mocks at the boundary (`npm run test:integration`).
 6. UI → E2E (Playwright, visual DOM only); external / deployed boundary → @live (reach real boundaries, assert ground-truth signals). Flag under-tiering (boundary mocked, missing @live / E2E).

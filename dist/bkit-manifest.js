@@ -341,6 +341,12 @@ export const BKIT_GATE_SCRIPTS = {
     // manifest; `build` proves the resolution compiles. Both are subjects of this
     // gate, not preconditions — which is why they are named here and nowhere else.
     "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:lane:static && pnpm bkit:lane:unit && pnpm build",
+    // --- dependency inspection ---------------------------------------------
+    // Read-only, not gates: agents run these while diagnosing a version-shaped
+    // hypothesis or auditing deps. Named so the prompts stop hardcoding `pnpm
+    // outdated` / `pnpm audit`, which a cargo, go or uv consumer cannot run.
+    "bkit:deps:outdated": "pnpm outdated",
+    "bkit:deps:audit": "pnpm audit",
 };
 /**
  * The deeper gates, in DESCENDING order — `/bkit-debug` runs the first one the

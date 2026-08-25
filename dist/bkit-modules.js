@@ -2377,10 +2377,19 @@ export function runLintModule(ctx) {
             // consumer who rewrote the gate owns what it references (#437).
             const declared = pkg.scripts ?? {};
             // Tokens that follow `pnpm` but are not package.json scripts: the package
-            // manager's own subcommands (`pnpm install` in bkit:gate:ship) and node_modules
-            // binaries pnpm resolves directly (`pnpm lint-staged` in bkit:gate:commit).
-            // Neither can be "missing" in the sense this advisory reports.
-            const PNPM_NOT_A_SCRIPT = new Set(["install", "run", "exec", "dlx", "lint-staged"]);
+            // manager's own subcommands (`install` in bkit:gate:install-static-unit-build,
+            // `audit` / `outdated` in the bkit:deps:* pair) and node_modules binaries pnpm
+            // resolves directly (`lint-staged` in bkit:gate:format). None can be "missing"
+            // in the sense this advisory reports.
+            const PNPM_NOT_A_SCRIPT = new Set([
+                "install",
+                "run",
+                "exec",
+                "dlx",
+                "audit",
+                "outdated",
+                "lint-staged",
+            ]);
             const missing = new Set();
             for (const [name, seeded] of Object.entries(BKIT_GATE_SCRIPTS)) {
                 if (declared[name] !== seeded)

@@ -177,7 +177,15 @@ describe("bkit-local-gate-audit (#437)", () => {
     const declared = pkg.scripts ?? {};
     // Mirrors PNPM_NOT_A_SCRIPT in runLintModule: pnpm's own subcommands and
     // node_modules binaries pnpm resolves directly are not package.json scripts.
-    const subcommands = new Set(["install", "run", "exec", "dlx", "lint-staged"]);
+    const subcommands = new Set([
+      "install",
+      "run",
+      "exec",
+      "dlx",
+      "audit",
+      "outdated",
+      "lint-staged",
+    ]);
     for (const [name, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
       // Only meaningful where this repo still runs bkit's default.
       if (declared[name] !== value) continue;

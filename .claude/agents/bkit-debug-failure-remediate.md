@@ -48,9 +48,9 @@ maxTurns: 100
    - `FINAL` → Apply re-diagnosed fix as written.
 6. Implement in priority order — apply remediation steps per diagnosis (edit / create source); no reinterpretation — apply as written (diagnosis encodes strategy framing); implement missing tests if suggested → append log → proceed.
 7. **If** merge conflicts → resolve per type, then `git add -A && git rebase --continue`:
-   - `pnpm-lock.yaml` → `pnpm install`.
-   - `turbo.json` → merge pipelines.
-   - Drizzle migrations → resequence.
+   - Dependency lockfile → take the rebase target's copy, regenerate from the manifest with the repo's package manager.
+   - Task-runner / build config → merge both sides' task definitions.
+   - Ordered database migrations → resequence so each new file sorts after every migration already applied upstream.
 8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass. **If** any declared live tests were failing → remediation done ONLY when those same live tests pass.
 9. **If** any failures → document errors in output, set `Verdict` = `FAIL` (no alternatives, no rollbacks, no `--no-verify`).
 10. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.

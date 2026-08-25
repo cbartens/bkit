@@ -200,8 +200,30 @@ describe("bkit-rebase-resolve.sh: classification", () => {
     expect(runScript(`bkit_rebase_classify "${p}"`).stdout).toBe("ledger");
   });
 
-  it("classifies pnpm-lock.yaml as the lockfile shape", () => {
-    expect(runScript('bkit_rebase_classify "pnpm-lock.yaml"').stdout).toBe("lockfile");
+  // Every manager bkit recognises, not just pnpm (#437 §B): a cargo or uv
+  // consumer hitting a lockfile conflict must reach the same auto-resolution,
+  // not the Failure Path. Each name has its own regenerate branch in
+  // bkit_rebase_lockfile — a name classified here with no branch there would
+  // `git checkout --theirs` and then fail, so the two lists must stay in step.
+  it.each([
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "bun.lock",
+    "Cargo.lock",
+    "go.sum",
+    "uv.lock",
+  ])("classifies %s as the lockfile shape", (p) => {
+    expect(runScript(`bkit_rebase_classify "${p}"`).stdout).toBe("lockfile");
+  });
+
+  it("every classified lockfile has a regenerate branch", () => {
+    const src = fs.readFileSync(SCRIPT, "utf-8");
+    const classified = /case "\$1" in\s*\n\s*([^)]+)\)\s*\n\s*echo lockfile/.exec(src)?.[1] ?? "";
+    const names = classified.split("|").map((n) => n.trim());
+    expect(names.length).toBeGreaterThan(1);
+    const body = src.slice(src.indexOf("bkit_rebase_lockfile() {"));
+    for (const name of names) expect(body).toContain(`${name})`);
   });
 
   it.each([

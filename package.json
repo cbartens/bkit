@@ -60,7 +60,9 @@
     "bkit:gate:format": "pnpm lint-staged",
     "bkit:gate:static": "pnpm bkit:lane:static",
     "bkit:gate:static-unit": "pnpm bkit:lane:static && pnpm bkit:lane:unit",
-    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:lane:static && pnpm bkit:lane:unit && pnpm build"
+    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:lane:static && pnpm bkit:lane:unit && pnpm build",
+    "bkit:deps:outdated": "pnpm outdated",
+    "bkit:deps:audit": "pnpm audit"
   },
   "dependencies": {
     "picomatch": "^4.0.4"

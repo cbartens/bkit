@@ -44,7 +44,7 @@ tools:
 6. Determine `Strategy` from input Context; **If** missing → `Verdict` = `FAIL`. Apply:
    - `STANDARD` → Targeted remediation from current gaps.
    - `PIVOT` → Identify prior attempt failure and why. Different angle — do NOT repeat.
-   - `FINAL` → Run `pnpm outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
+   - `FINAL` → Run `pnpm bkit:deps:outdated`. Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 7. Implement in priority order — targeted remediation per gap (edit / create source); implement missing tests if suggested → verify acceptance criteria → append log → proceed.
 8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
