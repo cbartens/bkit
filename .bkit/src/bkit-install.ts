@@ -694,9 +694,21 @@ export function applyOpencodeCommand(content: string): string {
   return OPENCODE_SESSION_PROMPT_ANCHOR + result;
 }
 
-// T1: Strip leading YAML frontmatter block from command files for Cursor
+// T1: Replace the leading YAML frontmatter block with its `description:` value as a
+// plain first line, for Cursor commands. Cursor prints a command file's literal first
+// line as the description in the picker and hover, and it does not read frontmatter —
+// hence the strip. Dropping the description outright left whatever came next (the
+// managed-version marker) standing in as the description (#386). Derived from the
+// frontmatter at render time, so it cannot drift from the value Claude Code shows.
+// No frontmatter, or frontmatter without `description`, falls back to a plain strip.
 export function applyT1(content: string): string {
-  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
+  const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!fm) return content;
+  const body = content.slice(fm[0].length).replace(/^\n+/, "");
+  const eol = fm[0].includes("\r\n") ? "\r\n" : "\n";
+  const raw = parseFrontmatter(fm[1]).get("description")?.trim() ?? "";
+  const description = raw.replace(/^(['"])([\s\S]*)\1$/, "$2").trim();
+  return description ? `${description}${eol}${eol}${body}` : body;
 }
 
 // Parse simple YAML frontmatter block (key: value, or key: | multiline)

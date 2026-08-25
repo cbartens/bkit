@@ -195,7 +195,7 @@ Dashboard label-based routing.
 | Claude | `description:` (single field) | Surfaces in slash-command picker. |
 | Cursor | **none** | Per current Cursor docs, command files are plain markdown. Frontmatter tolerated/ignored on legacy files but not part of spec. |
 
-**Transform (Claude → Cursor, command files):** strip entire YAML frontmatter block (leading `---` to closing `---` + trailing blank line).
+**Transform (Claude → Cursor, command files):** replace the YAML frontmatter block with its `description:` value as a plain first line (Cursor shows a command file's literal first line as its picker/hover description, and does not read frontmatter). No `description:` key → plain strip.
 
 ### Body
 

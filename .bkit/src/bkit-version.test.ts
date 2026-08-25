@@ -399,12 +399,26 @@ describe("stampManagedVersion", () => {
     expect(out).not.toMatch(/-->\n\n\n/);
   });
 
-  it("prepends the marker + blank line when there is no frontmatter (cursor/opencode command shape)", () => {
+  it("sinks the marker below the first heading when there is no frontmatter", () => {
     const out = stampManagedVersion("# Ship Feature\n\nbody\n", "4.0.0");
     const lines = out.split("\n");
-    expect(lines[0]).toBe(managedVersionMarker("4.0.0"));
-    expect(lines[1]).toBe(""); // guaranteed blank line below the marker
-    expect(lines[2]).toBe("# Ship Feature");
+    expect(lines[0]).toBe("# Ship Feature");
+    expect(lines[1]).toBe("");
+    expect(lines[2]).toBe(managedVersionMarker("4.0.0"));
+    expect(lines[3]).toBe("");
+    expect(lines[4]).toBe("body");
+  });
+
+  it("sinks below the first heading even when a lead-in block precedes it (cursor/opencode command shape)", () => {
+    const src = "Plan Feature — Autonomous plan generation\n\n# Plan Feature\n\nbody\n";
+    const out = stampManagedVersion(src, "4.0.0");
+    expect(out.split("\n")[0]).toBe("Plan Feature — Autonomous plan generation");
+    expect(out).toContain(`# Plan Feature\n\n${managedVersionMarker("4.0.0")}\n\nbody`);
+  });
+
+  it("still prepends at top when there is no frontmatter AND no heading", () => {
+    const out = stampManagedVersion("**Role:** hi\n", "4.0.0");
+    expect(out.split("\n")[0]).toBe(managedVersionMarker("4.0.0"));
   });
 
   it("is idempotent — stamping the same version twice yields identical bytes", () => {

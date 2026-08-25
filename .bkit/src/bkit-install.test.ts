@@ -43,7 +43,12 @@ import {
 } from "./bkit-install";
 import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
 import type { IssueTracker } from "./bkit-manifest";
+import { DEFAULT_ISSUE_TRACKER } from "./bkit-manifest";
 import { applyTokens } from "./bkit-tokens";
+import { substituteWorkflow } from "./bkit-trackers";
+import { stampManagedVersion } from "./bkit-version";
+
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,15 +70,15 @@ function makeSubagentsMd(
 // T1 — strip command frontmatter
 // ---------------------------------------------------------------------------
 
-describe("T1 — strip command frontmatter", () => {
-  it("strips leading --- block", () => {
+describe("T1 — command frontmatter → description line", () => {
+  it("replaces leading --- block with the description as a plain first line", () => {
     const input = `---\ndescription: "Build Feature"\n---\n# Body here\n`;
-    expect(applyT1(input)).toBe("# Body here\n");
+    expect(applyT1(input)).toBe("Build Feature\n\n# Body here\n");
   });
 
-  it("strips multi-line frontmatter", () => {
+  it("replaces multi-line frontmatter with the description as a plain first line", () => {
     const input = `---\ndescription: "foo"\nmodel: bar\n---\n# Content\n`;
-    expect(applyT1(input)).toBe("# Content\n");
+    expect(applyT1(input)).toBe("foo\n\n# Content\n");
   });
 
   it("leaves content without frontmatter unchanged", () => {
@@ -81,10 +86,15 @@ describe("T1 — strip command frontmatter", () => {
     expect(applyT1(input)).toBe(input);
   });
 
-  it("preserves trailing newline after stripping", () => {
+  it("falls back to a plain strip when frontmatter has no description", () => {
+    const input = `---\nmodel: bar\n---\nbody\n`;
+    expect(applyT1(input)).toBe("body\n");
+  });
+
+  it("preserves trailing newline after replacing", () => {
     const input = `---\ndescription: "x"\n---\nbody\n`;
     const result = applyT1(input);
-    expect(result).toBe("body\n");
+    expect(result).toBe("x\n\nbody\n");
   });
 });
 
@@ -486,7 +496,7 @@ describe("Passthrough byte-equality", () => {
   it("T1 on content with CRLF line endings", () => {
     const input = "---\r\ndescription: foo\r\n---\r\nbody\r\n";
     const result = applyT1(input);
-    expect(result).toBe("body\r\n");
+    expect(result).toBe("foo\r\n\r\nbody\r\n");
   });
 
   it("T1 preserves BOM if present after frontmatter (edge case)", () => {
@@ -1955,4 +1965,44 @@ describe("runStatus — read-only host/provider status", () => {
     runStatus(cwd, "[bkit]");
     expect(out()).toContain("parse-error");
   });
+});
+
+// ---------------------------------------------------------------------------
+// #386: line 1 of a rendered command is a description, never the marker
+// ---------------------------------------------------------------------------
+
+describe("#386: line 1 of a rendered command is a description, never the marker", () => {
+  const src = path.join(REPO_ROOT, ".bkit/workflows");
+  const files = fs.readdirSync(src).filter((f) => f.startsWith("bkit-") && f.endsWith(".md"));
+
+  it("covers the whole workflow corpus", () => {
+    expect(files.length).toBeGreaterThan(5);
+  });
+
+  for (const f of files) {
+    const raw = fs.readFileSync(path.join(src, f), "utf-8");
+    // The description Claude Code renders into its frontmatter — Cursor must show the same string.
+    const expected = raw.match(/^description:\s*"?(.+?)"?\s*$/m)?.[1];
+
+    it(`cursor: ${f}`, () => {
+      const out = stampManagedVersion(
+        applyT2(applyT1(substituteWorkflow(raw, DEFAULT_ISSUE_TRACKER).output)),
+        "9.9.9",
+      );
+      const lines = out.split("\n");
+      expect(expected).toBeTruthy();
+      expect(lines[0]).toBe(expected);
+      expect(lines[0]).not.toContain("bkit:managed");
+      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+    });
+
+    it(`opencode: ${f}`, () => {
+      const out = stampManagedVersion(
+        applyOpencodeCommand(substituteWorkflow(raw, DEFAULT_ISSUE_TRACKER).output),
+        "9.9.9",
+      );
+      expect(out.split("\n")[0]).not.toContain("bkit:managed");
+      expect((out.match(/bkit:managed/g) ?? []).length).toBe(1);
+    });
+  }
 });
