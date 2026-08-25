@@ -149,13 +149,8 @@
 #### Repo Authoring
 
 - **Install source of truth:** Install engine lives in `.bkit/src/`; install payload lives in `.bkit/templates/`; mirror sources (`workflows`, `prompts`) and bkit-authoring docs live in `.bkit/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — never conflate the two.
-- **Canonical sources only:** ONLY edit `.bkit/workflows/*`, `.bkit/prompts/*`, and `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`, `.opencode/*`.
+- **Edit source only:** ONLY edit files in `.bkit/*`, `.bkit/workflows/*`, `.bkit/prompts/*`, `.bkit/templates/*`, and `.agents/*` then mirror; NEVER edit mirrors directly in `.claude/*`, `.cursor/*`, `.opencode/*`.
 - **Install to mirror:** After editing `.bkit/workflows/*` or `.bkit/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors. Batch once at session end; NEVER per edit.
-- **Cross-provider parity:** ALL agent-facing changes (workflows, prompts, permissions, hooks, shell) MUST work under ALL providers; verify each, keep shell POSIX-portable.
-- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.bkit/templates/.agents/rules.md` and vice versa.
-- **Workflow edits:** Any `.bkit/workflows/*.md` edits → ALWAYS follow `.bkit/workflows.md` § Workflow Authoring Rules.
-- **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/prompts.md` § Prompt Authoring Rules.
-- **Keep documentation updated:** When editing `.bkit/workflows/*.md` → update `.bkit/workflows.md`. When editing `.bkit/prompts/*.md` → update `.bkit/prompts.md`. Index drift = regression.
-- **Docs describe state, not change:** Reference docs in `docs/*.md` or `.agents/*.md` and advisories describe the CURRENT state only. NEVER narrate what changed; narrative lives in `CHANGELOG.md`; changes themselves are migrate scripts.
-- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command, key params, and decisive context). NEVER link out to `docs/*.md`.
+- **Provider parity:** ALL agent-facing changes (workflows, prompts, permissions, hooks, shell) MUST work across ALL providers; verify each, keep shell POSIX-portable.
+- **Advisories self-contained:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command, key params, and decisive context); NEVER link out to `docs/*.md`.
 - **Verify before complete:** Done = BOTH full suite (`pnpm vitest run`, never scoped) AND real dogfood (`pnpm build` → `node dist/bkit-install.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.
