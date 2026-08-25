@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

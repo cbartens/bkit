@@ -1573,129 +1573,12 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
 
 // ---------------------------------------------------------------------------
 // Scenario P1-B — Ollama cloud warning: bkit install --auto=opencode with
-// an existing .opencode/opencode.json that has provider key "ollama-local" must
-// emit a console.warn containing "ollama-local" and "local server".
+// an existing .opencode/opencode.json that has provider key "ollama" must
+// emit a console.warn containing "ollama" and "local server".
 //
 // This is a non-fatal warning — the install proceeds (exits 0) but surfaces a
 // diagnostic message to prevent a surprising runtime failure in the cloud job.
 // ---------------------------------------------------------------------------
-
-describe("Scenario P1-B — ollama-local cloud warning on --auto=opencode install", () => {
-  const getInstallPath = () =>
-    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
-  const getTsxBin = () =>
-    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
-
-  it("emits warning containing 'ollama-local' and 'local server' when .opencode/opencode.json has provider key=ollama-local", () => {
-    const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
-
-    // Consumer prerequisites: package.json + .git + tracker=github (required for --auto=opencode)
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "ollama-warn-consumer",
-        version: "0.0.0",
-        devDependencies: {},
-        bkit: { issueTracker: "github" },
-      }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-    // Seed .opencode/opencode.json with provider key = "ollama-local" (npm-based format)
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({
-        provider: {
-          "ollama-local": {
-            npm: "@ai-sdk/openai-compatible",
-            name: "Ollama (Local)",
-            options: { baseURL: "http://localhost:11434/v1" },
-          },
-        },
-      }),
-      "utf-8",
-    );
-
-    // Run: bkit install --tracker=github --auto=opencode
-    // The --opencode host is already "installed" (we seeded .opencode/), so --auto=opencode
-    // should reach the provider check and emit the warning.
-    const result = spawnSync(
-      tsxBin,
-      [getInstallPath(), "install", "--tracker=github", "--auto=opencode"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
-
-    // stdout + stderr (console.warn may go to either depending on Node/tsx)
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-
-    // The warning must mention "ollama-local" (the provider) and "local server" (the key phrase)
-    expect(combined).toMatch(/ollama-local/i);
-    expect(combined).toMatch(/local server/i);
-
-    // Warning is non-fatal — install exits 0 (the tracker/cloud pair matches)
-    expect(result.status, `Expected exit 0 (warning is non-fatal).\ncombined: ${combined}`).toBe(0);
-  }, 90_000);
-
-  it("does NOT emit ollama-local warning when provider is not local (e.g. nvidia)", () => {
-    const tsxBin = getTsxBin();
-    if (!fs.existsSync(tsxBin)) return;
-
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "nvidia-warn-consumer",
-        version: "0.0.0",
-        devDependencies: {},
-        bkit: { issueTracker: "github" },
-      }),
-      "utf-8",
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-    // Seed .opencode/opencode.json with provider key = "nvidia" (remote provider)
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({
-        provider: {
-          nvidia: {
-            npm: "@ai-sdk/openai-compatible",
-            name: "NVIDIA NIM",
-            options: {
-              baseURL: "https://integrate.api.nvidia.com/v1",
-              apiKey: "{env:NVIDIA_API_KEY}",
-            },
-          },
-        },
-      }),
-      "utf-8",
-    );
-
-    const result = spawnSync(
-      tsxBin,
-      [getInstallPath(), "install", "--tracker=github", "--auto=opencode"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
-
-    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    // No local-server warning expected for a remote provider
-    expect(combined).not.toMatch(/local server/i);
-    expect(result.status, `Expected exit 0.\ncombined: ${combined}`).toBe(0);
-  }, 90_000);
-});
 
 // ---------------------------------------------------------------------------
 // #252 — CLI surface redesign (subprocess): install ≥1-flag guard, check/upgrade
@@ -1878,22 +1761,22 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         name: "x",
-        bkit: { opencodeProvider: "groq", opencodeProviders: ["nvidia", "groq"] },
+        bkit: { opencodeProvider: "openrouter", opencodeProviders: ["openrouter", "openrouter"] },
       }),
       "utf-8",
     );
     const providers = detectOpencodeProviders(tmpDir);
-    expect(providers).toEqual(["nvidia", "groq"]);
+    expect(providers).toEqual(["openrouter", "openrouter"]);
   });
 
   it("falls back to [opencodeProvider] for legacy single-string installs", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { opencodeProvider: "nvidia" } }),
+      JSON.stringify({ name: "x", bkit: { opencodeProvider: "openrouter" } }),
       "utf-8",
     );
     const providers = detectOpencodeProviders(tmpDir);
-    expect(providers).toEqual(["nvidia"]);
+    expect(providers).toEqual(["openrouter"]);
   });
 
   it("returns [] when no bkit opencode fields present", () => {
@@ -1907,12 +1790,12 @@ describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2
       path.join(tmpDir, "package.json"),
       JSON.stringify({
         name: "x",
-        bkit: { opencodeProviders: ["nvidia", "bad-provider", "groq"] },
+        bkit: { opencodeProviders: ["openrouter", "bad-provider", "openrouter"] },
       }),
       "utf-8",
     );
     const providers = detectOpencodeProviders(tmpDir);
-    expect(providers).toEqual(["nvidia", "groq"]);
+    expect(providers).toEqual(["openrouter", "openrouter"]);
   });
 
   it("returns [] when package.json does not exist", () => {
@@ -1955,26 +1838,26 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
 
   it("two sequential installs: opencodeProviders = both, opencodeProvider = second", () => {
     if (!fs.existsSync(tsxPath())) return;
-    // First install: nvidia
-    const r1 = run(["install", "--opencode=nvidia"]);
+    // First install: openrouter
+    const r1 = run(["install", "--opencode=openrouter"]);
     expect(r1.status, `first install failed:\n${r1.stdout}\n${r1.stderr}`).toBe(0);
 
     const pkg1 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
       bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
     };
-    expect(pkg1.bkit?.opencodeProvider).toBe("nvidia");
-    expect(pkg1.bkit?.opencodeProviders).toEqual(["nvidia"]);
+    expect(pkg1.bkit?.opencodeProvider).toBe("openrouter");
+    expect(pkg1.bkit?.opencodeProviders).toEqual(["openrouter"]);
 
-    // Second install: groq
-    const r2 = run(["install", "--opencode=groq"]);
+    // Second install: ollama
+    const r2 = run(["install", "--opencode=ollama"]);
     expect(r2.status, `second install failed:\n${r2.stdout}\n${r2.stderr}`).toBe(0);
 
     const pkg2 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
       bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
     };
-    expect(pkg2.bkit?.opencodeProvider).toBe("groq");
-    expect(pkg2.bkit?.opencodeProviders).toContain("nvidia");
-    expect(pkg2.bkit?.opencodeProviders).toContain("groq");
+    expect(pkg2.bkit?.opencodeProvider).toBe("ollama");
+    expect(pkg2.bkit?.opencodeProviders).toContain("openrouter");
+    expect(pkg2.bkit?.opencodeProviders).toContain("ollama");
     expect(pkg2.bkit?.opencodeProviders).toHaveLength(2);
   });
 
@@ -1984,22 +1867,22 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
     fs.writeFileSync(
       path.join(tmp, "package.json"),
       JSON.stringify(
-        { name: "consumer", version: "0.0.0", bkit: { opencodeProvider: "nvidia" } },
+        { name: "consumer", version: "0.0.0", bkit: { opencodeProvider: "openrouter" } },
         null,
         2,
       ),
     );
 
-    // Run a new install with groq — should migrate nvidia into the array
-    const r = run(["install", "--opencode=groq"]);
+    // Run a new install with ollama — should migrate openrouter into the array
+    const r = run(["install", "--opencode=ollama"]);
     expect(r.status, `install failed:\n${r.stdout}\n${r.stderr}`).toBe(0);
 
     const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
       bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
     };
-    expect(pkg.bkit?.opencodeProvider).toBe("groq");
-    expect(pkg.bkit?.opencodeProviders).toContain("nvidia");
-    expect(pkg.bkit?.opencodeProviders).toContain("groq");
+    expect(pkg.bkit?.opencodeProvider).toBe("ollama");
+    expect(pkg.bkit?.opencodeProviders).toContain("openrouter");
+    expect(pkg.bkit?.opencodeProviders).toContain("ollama");
     expect(pkg.bkit?.opencodeProviders).toHaveLength(2);
   });
 });

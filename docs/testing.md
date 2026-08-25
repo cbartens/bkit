@@ -497,12 +497,12 @@ const violations = runGrader({ parentSha, phase: "ship", gitAdapter: realGitAdap
 
 ## Manual recipe — opencode E2E (Task 5.1)
 
-Run once a live provider (Ollama or NVIDIA) is available:
+Run once a live provider (OpenRouter or an opencode gateway) is available:
 
-1. `bkit install --opencode=ollama-local` (or `--opencode=nvidia`) in a clean consumer repo. (Provider key is `ollama-local`, not bare `ollama` — npm custom-provider format.)
-2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`. Seeded agents share a single local model pin (`qwen3-coder:30b`); consumer tunes per-agent.
-3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host and provider. For `ollama-local`, `bkit doctor` surfaces the server-side memory-safety check (`OLLAMA_MAX_LOADED_MODELS=1` / `OLLAMA_NUM_PARALLEL=1` / `OLLAMA_KEEP_ALIVE=2m`).
-4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch and verdicts collected (on `ollama-local` with `OLLAMA_NUM_PARALLEL=1` the fan-out serializes — one model, no parallel speedup).
+1. `bkit install --opencode=openrouter` (or `--opencode=opencode-go`) in a clean consumer repo.
+2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`. Seeded agents carry the curated per-agent pins for the chosen provider; consumer tunes per-agent.
+3. Confirm `bkit check --opencode` exits 0, `bkit status` shows opencode host and provider, and `bkit doctor` reports the provider's API key as PRESENT.
+4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch and verdicts collected.
 5. Confirm provider served the subagents (opencode logs/provider dashboard — not model identity self-report).
 6. Edit a `tsconfig.json` in the opencode session; confirm GateGuard plugin injects advisory.
 7. Run `bkit upgrade` over a consumer dir seeded with `.bkit/scripts/bkit-mode.sh`; confirm deletion advisory fires (NOT silent preservation).

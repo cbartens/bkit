@@ -92,11 +92,9 @@
     "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "zai",
+    "opencodeProvider": "opencode-go",
     "opencodeProviders": [
-      "nvidia",
-      "opencode-go",
-      "zai"
+      "opencode-go"
     ],
     "renovateRunner": "self",
     "capstoneJob": "bkit-tests-check",

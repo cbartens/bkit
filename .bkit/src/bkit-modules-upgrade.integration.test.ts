@@ -357,7 +357,7 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const templatePath = path.join(tmpDir, "opencode-template.json");
     const template = {
       provider: {
-        "ollama-local": {
+        ollama: {
           npm: "@ai-sdk/openai-compatible",
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
@@ -371,7 +371,7 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const consumerPath = path.join(tmpDir, "opencode.json");
     const consumerDoc = {
       provider: {
-        "ollama-local": {
+        ollama: {
           npm: "@ai-sdk/openai-compatible",
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
@@ -393,8 +393,8 @@ describe("opencode opencode.json reconverge on upgrade", () => {
 
     const afterDoc = JSON.parse(fs.readFileSync(consumerPath, "utf-8"));
 
-    // bkit ollama-local provider still present (reconverged)
-    expect(afterDoc.provider?.["ollama-local"]?.options?.baseURL).toBe("http://localhost:11434/v1");
+    // bkit ollama provider still present (reconverged)
+    expect(afterDoc.provider?.["ollama"]?.options?.baseURL).toBe("http://localhost:11434/v1");
     // Consumer's custom (non-bkit) provider preserved
     expect(afterDoc.provider?.customllm?.apiKey).toBe("${CUSTOMLLM_API_KEY}");
     // Consumer's mcp config preserved
@@ -407,7 +407,7 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const templatePath = path.join(tmpDir, "opencode-template.json");
     const template = {
       provider: {
-        "ollama-local": {
+        ollama: {
           npm: "@ai-sdk/openai-compatible",
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
@@ -420,7 +420,7 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const consumerPath = path.join(tmpDir, "opencode.json");
     const consumerDoc = {
       provider: {
-        "ollama-local": {
+        ollama: {
           npm: "@ai-sdk/openai-compatible",
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
@@ -499,7 +499,7 @@ describe("bkit-mode.sh deletion advisory (Task 6.3 upgrade-migration)", () => {
       "expected bkit-mode-sh-deletion-required advisory to be emitted for seeded bkit-mode.sh",
     ).toBeDefined();
 
-    // Advisory MUST NOT contain ccr/bkit mode/ollama/nvidia router framing
+    // Advisory MUST NOT contain ccr/bkit mode/ollama/openrouter router framing
     const actionText = deletionAdvisory!.action ?? "";
     expect(actionText, "advisory must not reference ccr").not.toContain("ccr");
     expect(actionText, "advisory must not reference bkit mode command").not.toContain(
@@ -508,8 +508,8 @@ describe("bkit-mode.sh deletion advisory (Task 6.3 upgrade-migration)", () => {
     expect(actionText, "advisory must not reference ollama router framing").not.toMatch(
       /--local=ollama/,
     );
-    expect(actionText, "advisory must not reference nvidia router framing").not.toMatch(
-      /--cloud=nvidia/,
+    expect(actionText, "advisory must not reference openrouter router framing").not.toMatch(
+      /--cloud=openrouter/,
     );
 
     // Advisory MUST name the shell-rc source line removal step

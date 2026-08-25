@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-scope-check-1
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

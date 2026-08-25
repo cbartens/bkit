@@ -137,7 +137,7 @@ Workflow/prompt SOURCES not shipped into consumer `.agents/`; live in installed 
 
 - `.claude/commands/` + `.claude/agents/` — byte-identical copies of `.bkit/workflows/` + `.bkit/prompts/`
 - `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed for Cursor
-- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; ten providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zai`, `moonshot`, `opencode-zen`, `opencode-go`. See `docs/technology.md` § Execution Hosts.
+- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in `bkit install --opencode=<provider>`; four providers: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`. See `docs/technology.md` § Execution Hosts.
 
 `.claude/hooks/gateguard.cjs`, `.cursor/hooks/gateguard.cjs` and `.opencode/plugin/gateguard.js` (the GateGuard pre-edit advisory hooks) plus `.cursor/hooks/guardrails.cjs` (Cursor's destructive-op / secret-exposure gates) are markered-text (slash-comment: `// bkit:start` / `// bkit:end`) — bkit owns only the pure advisory engine between the markers; the stdin/stdout driver (Claude) or exported plugin (opencode) around it is consumer-owned from first install onward, so a consumer can add their own advisories without losing them on upgrade. A pre-markers install (no markers, hash matches a prior canonical hash) is replaced wholesale on the next install/upgrade; a genuinely consumer-authored file (no markers, unknown hash) gets the block appended plus printed wiring instructions.
 

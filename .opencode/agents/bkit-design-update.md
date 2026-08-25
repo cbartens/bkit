@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-update
 description: Senior architect merging design-review critiques into the design, no scope expansion.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

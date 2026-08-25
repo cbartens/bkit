@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./bkit-modules";
-import { parseModelLookup, parseOpencodeModelLookup, parseEffortMap } from "./bkit-install";
+import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag, CloudVariant } from "./bkit-cli";
 
@@ -184,14 +184,14 @@ it.todo(
 // --opencode dry-run parity (Task 2.2 "Done when" — bkit-dry-run-parity)
 // ---------------------------------------------------------------------------
 
-describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.2)", () => {
+describe("check ≡ install writeset parity — --opencode=opencode-go (Task 2.2)", () => {
   const PROMPTS_MD = path.resolve(
     import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
     "..",
     "prompts.md",
   );
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
-  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
 
   function makeOpencodeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
@@ -206,7 +206,7 @@ describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
       effortMap: EFFORT_MAP,
-      opencodeProvider: "ollama-local",
+      opencodeProvider: "ollama",
       advisories: [],
       ws,
       logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",

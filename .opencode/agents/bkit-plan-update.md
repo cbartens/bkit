@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

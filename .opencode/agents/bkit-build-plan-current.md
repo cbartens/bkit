@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since plan was written leave it executable.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

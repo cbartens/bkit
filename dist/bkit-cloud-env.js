@@ -412,10 +412,7 @@ export const BKIT_SHIPPED_NETWORK_DOMAINS = [
     "linear.app",
     "opencode.ai",
     "ollama.com",
-    "nvidia.com",
-    "z.ai",
-    "moonshot.ai",
-    "kimi.com",
+    "openrouter.ai",
     "npmjs.com",
 ];
 /**

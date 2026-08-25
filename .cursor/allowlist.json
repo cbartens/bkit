@@ -10,23 +10,17 @@
     "*.github.com",
     "githubusercontent.com",
     "*.githubusercontent.com",
-    "kimi.com",
-    "*.kimi.com",
     "linear.app",
     "*.linear.app",
-    "moonshot.ai",
-    "*.moonshot.ai",
     "npmjs.com",
     "*.npmjs.com",
-    "nvidia.com",
-    "*.nvidia.com",
     "ollama.com",
     "*.ollama.com",
     "opencode.ai",
     "*.opencode.ai",
+    "openrouter.ai",
+    "*.openrouter.ai",
     "tavily.com",
-    "*.tavily.com",
-    "z.ai",
-    "*.z.ai"
+    "*.tavily.com"
   ]
 }

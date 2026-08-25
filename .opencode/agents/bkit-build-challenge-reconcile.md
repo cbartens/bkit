@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

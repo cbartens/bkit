@@ -74,7 +74,7 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
 
     // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
     //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
-    const install = runBkit(["install", "--claude", "--opencode=nvidia"]);
+    const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
     const installCombined = `${install.stdout}\n${install.stderr}`;
     // Sanity: install reached dispatch and produced the rendered outputs.
     expect(installCombined).toMatch(/\[bkit-install\]/);
@@ -148,9 +148,9 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
 
-    // Install the opencode host (nvidia) — opencode.json is templated with @@OPENCODE_*@@
+    // Install the opencode host (openrouter) — opencode.json is templated with @@OPENCODE_*@@
     // sentinels that renderOpencodeJson resolves on install.
-    const install = runBkit(["install", "--opencode=nvidia"]);
+    const install = runBkit(["install", "--opencode=openrouter"]);
     expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
     const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
@@ -176,12 +176,12 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
       "@@",
     );
     const parsed = JSON.parse(after) as { provider?: Record<string, unknown>; theme?: string };
-    // Provider block intact (nvidia), consumer key preserved by the deep-merge.
-    expect(parsed.provider?.nvidia).toBeDefined();
+    // Provider block intact (openrouter), consumer key preserved by the deep-merge.
+    expect(parsed.provider?.openrouter).toBeDefined();
     expect(parsed.theme).toBe("consumer-custom-theme");
   }, 180_000);
 
-  it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama-local fallback)", () => {
+  it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
 
@@ -219,15 +219,15 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     expect(agentBody).toMatch(/model:\s*opencode-go\//);
 
     // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
-    //     `opencode-go` block, NOT falling back to ollama-local.
+    //     `opencode-go` block, NOT falling back to ollama.
     const upgrade = runBkit(["upgrade", "--auto-apply"]);
     expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
     const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
     expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
     expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
     expect(
-      after.provider?.["ollama-local"],
-      "upgrade must NOT re-render opencode-go as ollama-local",
+      after.provider?.["ollama"],
+      "upgrade must NOT re-render opencode-go as ollama",
     ).toBeUndefined();
   }, 180_000);
 });

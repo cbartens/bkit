@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-security
 description: Senior security engineer auditing auth, secrets, validation, and data exposure.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

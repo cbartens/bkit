@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-summary
 description: Senior reviewer evaluating completed plans for build-readiness.
-model: zai/glm-5.1
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: true

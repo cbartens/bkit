@@ -6,7 +6,7 @@
 //
 // The trap this guards (the reason the gate was deferred until the render inputs were fixed):
 // `bkit check` takes no `--opencode=` flag, so without a provider/tracker FALLBACK the check
-// would re-render with the ollama-local/default and report FALSE drift for an nvidia/opencode/…
+// would re-render with the ollama/default and report FALSE drift for an openrouter/opencode/…
 // consumer. The render inputs now fall back to the installed provider (package.json
 // `bkit.opencodeProvider`, the authoritative signal for the opencode gateway whose on-disk block
 // is keyed `opencode`) and the recorded tracker — so a clean install checks green across providers.
@@ -61,10 +61,10 @@ afterEach(() => {
 
 describe("#255 #8 — bkit check gates opencode drift (no false positives)", () => {
   // A clean install must check GREEN for every provider/tracker shape — proving the
-  // render-input fallback uses the INSTALLED provider, not the ollama-local default.
-  it("clean install (nvidia + github) → check exits 0, zero would-write drift", () => {
+  // render-input fallback uses the INSTALLED provider, not the ollama default.
+  it("clean install (openrouter + github) → check exits 0, zero would-write drift", () => {
     if (!fs.existsSync(getTsxBin())) return; // CI without devDeps
-    const install = runBkit(["install", "--claude", "--opencode=nvidia", "--tracker=github"]);
+    const install = runBkit(["install", "--claude", "--opencode=openrouter", "--tracker=github"]);
     expect(install.status).toBe(0);
     expect(fs.existsSync(opencodeJsonPath())).toBe(true);
 
@@ -92,9 +92,9 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   });
 
   // A keyless provider with tracker=none (no mcp block) must also check green.
-  it("clean install (ollama-local, no tracker) → check exits 0, no false drift", () => {
+  it("clean install (ollama, no tracker) → check exits 0, no false drift", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    const install = runBkit(["install", "--opencode=ollama-local"]);
+    const install = runBkit(["install", "--opencode=opencode-go"]);
     expect(install.status).toBe(0);
 
     const check = runBkit(["check"]);
@@ -106,7 +106,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // (exactly the weakening #255 P1-3 hardened) must FAIL check.
   it("dropped permission block in opencode.json → check exits 1 (drift detected)", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
     delete cfg.permission; // consumer weakened the sandbox — bkit-owned key removed
@@ -122,7 +122,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // fail); tampering OUTSIDE it is the consumer's own driver code (check must pass).
   it("tampered gateguard.js INSIDE the managed block → check exits 1 (drift detected)", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
     const original = fs.readFileSync(gateguard, "utf-8");
@@ -143,7 +143,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 
   it("tampered gateguard.js OUTSIDE the managed block → check exits 0 (consumer-owned)", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const gateguard = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
     fs.appendFileSync(gateguard, "\n// consumer's own extra logic\n", "utf-8");
@@ -156,7 +156,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // still current) must fail check, not only managed-version-marker stale.
   it("tampered agent mirror content → check exits 1 (writeset drift)", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const agentDir = path.join(tmpDir, ".opencode", "agents");
     const agentFile = fs.readdirSync(agentDir).find((f) => f.endsWith(".md"));
@@ -173,7 +173,7 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
   // future over-eager gate doesn't start failing on benign consumer additions.)
   it("consumer-added extra key in opencode.json → check exits 0 (deep-contain, not drift)", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    expect(runBkit(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
     cfg.theme = "consumer-custom-theme"; // a key bkit does not own

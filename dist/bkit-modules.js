@@ -452,7 +452,12 @@ export function renderOpencodeAgentsCommands(ctx) {
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
     const version = ctx.version ?? readInstallingVersion();
     const written = [];
-    const provider = opencodeProvider ?? "ollama-local";
+    // The opencode host cannot render without a provider — `--opencode=<provider>` is
+    // unary at the CLI, so an absent value here is a caller bug, not a case to default.
+    if (!opencodeProvider) {
+        throw new Error("renderOpencodeAgentsCommands: ctx.opencodeProvider is required");
+    }
+    const provider = opencodeProvider;
     // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
     {
         const src = getPromptsRoot();
@@ -1159,40 +1164,11 @@ export function runCursorModule(ctx) {
 // These are sane defaults; consumers tune after install.
 // npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
 const OPENCODE_PROVIDER_DEFAULTS = {
-    "ollama-local": {
-        envVar: "OLLAMA_HOST",
-        baseURL: "http://localhost:11434/v1",
-        apiPlaceholder: "",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Ollama (Local)",
-    },
-    nvidia: {
-        envVar: "NVIDIA_API_KEY",
-        baseURL: "https://integrate.api.nvidia.com/v1",
-        // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
-        // and makes opencode reject the whole config) and read keys via {env:VAR} — never
-        // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
-        apiPlaceholder: "{env:NVIDIA_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "NVIDIA NIM",
-    },
-    // Free-tier fast cloud — same OpenAI-compatible driver as nvidia, different endpoint/key.
-    groq: {
-        envVar: "GROQ_API_KEY",
-        baseURL: "https://api.groq.com/openai/v1",
-        apiPlaceholder: "{env:GROQ_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Groq",
-    },
-    cerebras: {
-        envVar: "CEREBRAS_API_KEY",
-        baseURL: "https://api.cerebras.ai/v1",
-        apiPlaceholder: "{env:CEREBRAS_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Cerebras",
-    },
     // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
     // provider (NOT the any-endpoint fallback #245 removed).
+    // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
+    // and makes opencode reject the whole config) and read keys via {env:VAR} — never
+    // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
     openrouter: {
         envVar: "OPENROUTER_API_KEY",
         baseURL: "https://openrouter.ai/api/v1",
@@ -1200,31 +1176,14 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "OpenRouter",
     },
-    // Cloud-hosted Ollama (ollama.com) — DISTINCT key from `ollama-local` (localhost, no API
-    // key). Matches opencode's own naming where built-in `ollama` = the cloud service.
+    // Cloud-hosted Ollama (ollama.com). Matches opencode's own naming where built-in
+    // `ollama` = the cloud service.
     ollama: {
         envVar: "OLLAMA_API_KEY",
         baseURL: "https://ollama.com/v1",
         apiPlaceholder: "{env:OLLAMA_API_KEY}",
         npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Ollama (Cloud)",
-    },
-    // Coding-subscription gateways — same OpenAI-compatible npm driver as nvidia, one GLM/Kimi
-    // family each. Endpoints are the coding-plan hosts (cheapest for heavy agent use), NOT the
-    // pay-as-you-go platform APIs. See providers.md § Models.
-    zai: {
-        envVar: "ZAI_API_KEY",
-        baseURL: "https://api.z.ai/api/coding/paas/v4",
-        apiPlaceholder: "{env:ZAI_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Z.AI (GLM)",
-    },
-    moonshot: {
-        envVar: "MOONSHOT_API_KEY",
-        baseURL: "https://api.moonshot.ai/v1",
-        apiPlaceholder: "{env:MOONSHOT_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Moonshot (Kimi)",
+        displayName: "Ollama",
     },
     // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
     // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
@@ -1249,15 +1208,15 @@ const OPENCODE_PROVIDER_DEFAULTS = {
 };
 /**
  * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
- * (opencode → opencode, groq → groq, etc.). Model ids are `<providerId>/<model>`. Unknown
+ * (opencode → opencode, openrouter → openrouter, etc.). Model ids are `<providerId>/<model>`. Unknown
  * keys pass through unchanged.
  */
 export function opencodeProviderId(providerKey) {
     return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
 }
 /**
- * The provider secret env var name for a bkit provider key (`NVIDIA_API_KEY`, `OPENCODE_API_KEY`,
- * `OLLAMA_HOST` for the keyless local host, ...). Empty string for an unknown key. Mirrors
+ * The provider secret env var name for a bkit provider key (`OPENROUTER_API_KEY`,
+ * `OPENCODE_API_KEY`, ...). Empty string for an unknown key. Mirrors
  * {@link opencodeProviderId}; used to compare a self-installed opencode.yml handler's `env:`
  * secret against the installed provider.
  */
@@ -1315,7 +1274,7 @@ export function detectOpencodeYmlProviderDrift(cwd) {
     // The handler's hardcoded `model: <providerId>/<model>` line (opencode `run --model`).
     const ymlModel = content.match(/^\s*model:\s*(\S+)/m)?.[1] ?? null;
     const ymlPrefix = ymlModel ? ymlModel.split("/")[0] : null;
-    // The handler's hardcoded provider secret — an `env:` key like NVIDIA_API_KEY / OPENCODE_API_KEY.
+    // The handler's hardcoded provider secret — an `env:` key like OPENROUTER_API_KEY / OPENCODE_API_KEY.
     const ymlEnvVar = content.match(/^\s*([A-Z][A-Z0-9_]*(?:_API_KEY|_HOST)):/m)?.[1] ?? null;
     // Two independent drift signals. The model prefix is the precise one (it distinguishes the two
     // opencode gateways that share OPENCODE_API_KEY); the env var catches a wrong/absent secret.
@@ -1370,9 +1329,12 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
 export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
     // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
-    // a known key here. Fall back to the local default (never a synthesized placeholder URL)
-    // for any unexpected id rather than emitting a non-working endpoint.
-    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? OPENCODE_PROVIDER_DEFAULTS["ollama-local"];
+    // a known key here. An unknown id is a caller bug — fail loudly rather than emitting a
+    // non-working endpoint or silently substituting another provider.
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
+    if (!providerDefaults) {
+        throw new Error(`renderOpencodeJson: unknown opencode provider ${JSON.stringify(provider)}`);
+    }
     // Resolve tracker MCP entry
     // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
     // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
@@ -1405,22 +1367,20 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
         // opencode-side provider id carrying only the apiKey ({env:OPENCODE_API_KEY}).
         if (providerDefaults.builtin) {
             const pid = providerDefaults.providerId ?? provider;
-            const options = {};
-            if (providerDefaults.apiPlaceholder)
-                options.apiKey = providerDefaults.apiPlaceholder;
+            const options = { apiKey: providerDefaults.apiPlaceholder };
             parsed.provider = { [pid]: { options } };
             injectOpencodeNetworkCurlAllows(parsed, cwd);
             return JSON.stringify(parsed, null, 2) + "\n";
         }
-        // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
-        // block with the npm-driver format: { npm, name, options: { baseURL } }
+        // For npm-based custom providers (e.g. openrouter), replace the api-openai provider
+        // block with the npm-driver format: { npm, name, options: { baseURL, apiKey } }
         if (providerDefaults.npmPackage) {
-            // Remote providers (nvidia) carry an apiKey as {env:VAR}; local (ollama-local) has
-            // an empty placeholder → no apiKey field. opencode rejects an unknown "api" field,
-            // so the block is rebuilt to the npm-driver shape only.
-            const options = { baseURL: providerDefaults.baseURL };
-            if (providerDefaults.apiPlaceholder)
-                options.apiKey = providerDefaults.apiPlaceholder;
+            // Every custom provider carries an apiKey as {env:VAR}. opencode rejects an unknown
+            // "api" field, so the block is rebuilt to the npm-driver shape only.
+            const options = {
+                baseURL: providerDefaults.baseURL,
+                apiKey: providerDefaults.apiPlaceholder,
+            };
             parsed.provider = {
                 [provider]: {
                     npm: providerDefaults.npmPackage,
@@ -1625,7 +1585,11 @@ export function runOpencodeModule(ctx) {
     const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    const provider = ctx.opencodeProvider ?? "ollama-local";
+    // See renderOpencodeAgentsCommands — the opencode host is unary; no provider is a bug.
+    if (!ctx.opencodeProvider) {
+        throw new Error("runOpencodeModule: ctx.opencodeProvider is required");
+    }
+    const provider = ctx.opencodeProvider;
     // Source-rendered agents/commands (.opencode/agents + .opencode/commands). Extracted to
     // renderOpencodeAgentsCommands so `bkit upgrade` re-renders them identically (#251) —
     // bkit-owned output, force-overwritten.
@@ -1692,22 +1656,6 @@ export function runOpencodeModule(ctx) {
                         `     ${pd.envVar}=<your-api-key>\n` +
                         `  3. Built-in provider (no npm/baseURL). Models are referenced as ${modelPrefix}/<id>.\n`);
                 }
-                // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
-                // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
-                // apiPlaceholder (no API key) is the local marker (ollama-local only).
-                if (!pd.apiPlaceholder) {
-                    return (`  1. Ollama runs locally — no API key needed.\n` +
-                        `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
-                        `  3. Pull the seeded model: \`ollama pull qwen3-coder:30b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
-                        `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
-                        `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
-                        `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
-                        `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
-                        `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
-                        `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
-                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia) ignore them.\n` +
-                        `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`);
-                }
                 return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
                     `     ${pd.envVar}=<your-api-key>\n` +
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
@@ -1717,8 +1665,8 @@ export function runOpencodeModule(ctx) {
             `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
-            `  4. Model IDs: all ten providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
+            `  4. Model IDs: all four providers (openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }
@@ -1991,8 +1939,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Merge any new entries you find into your existing file — this file is for bkit
   and agent tooling secrets ONLY: tracker/cloud-agent tokens (GH_BKIT_TOKEN,
   GH_BKIT_TOKEN_INSTALL, LINEAR_API_KEY, ANTHROPIC_API_KEY, CURSOR_API_KEY) and opencode
-  provider keys (OPENCODE_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY,
-  OPENROUTER_API_KEY, OLLAMA_API_KEY). App/stack creds do NOT belong here — your
+  provider keys (OPENCODE_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_KEY).
+  App/stack creds do NOT belong here — your
   app's runtime keys AND the /bkit-debug observability tokens (e.g. a Vercel or
   Supabase log-read token) live in your app env files (e.g. apps/web/.env.local,
   sourced by .envrc), never in .bkit/.env. Keep any project-specific additions you
@@ -3020,7 +2968,7 @@ export function runCloudModule(ctx) {
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +

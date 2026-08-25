@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-codebase
 description: Senior architect reviewing codebases against best practices and project goals.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

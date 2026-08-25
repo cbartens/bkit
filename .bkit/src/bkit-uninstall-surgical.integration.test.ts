@@ -484,11 +484,14 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     JSON.stringify(
       {
         provider: {
-          groq: {
+          openrouter: {
             npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+            options: {
+              baseURL: "https://api.openrouter.com/openai/v1",
+              apiKey: "{env:OPENROUTER_API_KEY}",
+            },
           },
-          "ollama-local": {
+          ollama: {
             npm: "@ai-sdk/openai-compatible",
             options: { baseURL: "http://localhost:11434/v1", apiKey: "" },
           },
@@ -502,9 +505,12 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     JSON.stringify(
       {
         provider: {
-          groq: {
+          openrouter: {
             npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+            options: {
+              baseURL: "https://api.openrouter.com/openai/v1",
+              apiKey: "{env:OPENROUTER_API_KEY}",
+            },
           },
         },
       },
@@ -541,8 +547,8 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
   it("removes exactly ONE provider block; the other provider remains intact", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "ollama-local",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "ollama",
     });
 
     // Seed a bkit-prefix agent mirror so we can detect if full teardown was (wrongly) triggered
@@ -550,18 +556,15 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, "bkit-build-plan-execute.md"), "# agent", "utf-8");
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const oJson = readOpencodeJson();
     const providers = (oJson.provider ?? {}) as Record<string, unknown>;
 
-    // groq block removed
-    expect(providers.groq, "groq provider block should be removed").toBeUndefined();
-    // ollama-local block preserved
-    expect(
-      providers["ollama-local"],
-      "ollama-local provider block should be preserved",
-    ).toBeDefined();
+    // openrouter block removed
+    expect(providers.openrouter, "openrouter provider block should be removed").toBeUndefined();
+    // ollama block preserved
+    expect(providers["ollama"], "ollama provider block should be preserved").toBeDefined();
 
     // Full teardown must NOT have been triggered
     expect(
@@ -573,38 +576,38 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
   it("updates bkit.opencodeProviders array in package.json", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "ollama-local",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "ollama",
     });
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
-    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
-    // Active provider unchanged (groq was not active)
-    expect(bkit.opencodeProvider).toBe("ollama-local");
+    expect(bkit.opencodeProviders).toEqual(["ollama"]);
+    // Active provider unchanged (openrouter was not active)
+    expect(bkit.opencodeProvider).toBe("ollama");
   });
 
   it("re-points bkit.opencodeProvider when the active provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
-    // groq is the ACTIVE provider
+    // openrouter is the ACTIVE provider
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "groq",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "openrouter",
     });
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
     // opencodeProviders updated
-    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
+    expect(bkit.opencodeProviders).toEqual(["ollama"]);
     // Active provider re-pointed to first remaining
-    expect(bkit.opencodeProvider).toBe("ollama-local");
+    expect(bkit.opencodeProvider).toBe("ollama");
   });
 
   it("falls through to full teardown when the last provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_ONE_PROVIDER);
-    seedPackageJson({ opencodeProviders: ["groq"], opencodeProvider: "groq" });
+    seedPackageJson({ opencodeProviders: ["openrouter"], opencodeProvider: "openrouter" });
 
     // Seed bkit-prefix mirrors so we can verify full teardown was triggered
     const agentDir = path.join(tmpDir, ".opencode", "agents");
@@ -625,7 +628,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
       "utf-8",
     );
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     // Full teardown: bkit-prefix mirrors deleted
     expect(

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-organise
 description: Senior architect decomposing reviewed designs into dependency-annotated workstreams.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

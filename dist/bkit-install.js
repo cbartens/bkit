@@ -6,7 +6,7 @@ import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpen
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, enrichClaudeSettingsWebFetch, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
@@ -200,82 +200,36 @@ export function parseModelLookupForColumn(subagentsMdPath, columnHeader) {
 export function parseModelLookup(subagentsMdPath) {
     return parseModelLookupForColumn(subagentsMdPath, "Cursor");
 }
-/**
- * Like parseModelLookupForColumn but returns null instead of exiting when the
- * column header is absent — used for optional per-provider opencode columns.
- */
-function tryParseModelLookupForColumn(subagentsMdPath, columnHeader) {
-    const content = fs.readFileSync(subagentsMdPath, "utf-8");
-    const modelsIdx = content.indexOf("## Models");
-    if (modelsIdx === -1)
-        return null;
-    // The header row is the first table line in the § Models section (the row
-    // immediately above the `| --- | ... |` separator).
-    const sectionLines = content.slice(modelsIdx).split("\n");
-    let headerLine;
-    for (let i = 0; i < sectionLines.length; i++) {
-        const t = sectionLines[i].trim();
-        if (!t.startsWith("|"))
-            continue;
-        const next = (sectionLines[i + 1] ?? "").trim();
-        if (next.startsWith("|") && /^[|\s:-]+$/.test(next)) {
-            headerLine = t;
-            break;
-        }
-    }
-    if (!headerLine)
-        return null;
-    const headers = headerLine
-        .split("|")
-        .map((c) => c.trim().toLowerCase().replace(/`/g, ""))
-        .filter(Boolean);
-    if (!headers.includes(columnHeader.toLowerCase()))
-        return null;
-    return parseModelLookupForColumn(subagentsMdPath, columnHeader);
-}
 // Map an opencode provider key → its human-friendly prompts.md § Models column header.
-// The table uses display headers ("Ollama (Local)", "Nvidia"); the install flag uses
-// provider keys ("ollama-local", "nvidia"). Providers absent here have no curated column.
+// The table uses display headers ("OpenRouter", "Ollama"); the install flag uses
+// provider keys ("openrouter", "ollama"). Every allowlisted provider has a column.
 const OPENCODE_PROVIDER_COLUMN = {
-    "ollama-local": "Ollama (Local)",
-    nvidia: "Nvidia",
-    groq: "Groq",
-    cerebras: "Cerebras",
     openrouter: "OpenRouter",
-    ollama: "Ollama (Cloud)",
-    // Coding-subscription gateways (single-family): GLM (zai/<model>) and Kimi (moonshot/<model>).
-    zai: "Z.AI",
-    moonshot: "Moonshot",
+    ollama: "Ollama",
     // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
     // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
     "opencode-zen": "OpenCode Zen",
     "opencode-go": "OpenCode Go",
 };
 /**
+ * The § Models column parsed when no opencode provider is installed or detected.
+ * `bkit check` / `bkit upgrade` take no `--opencode=` flag, so the render paths still
+ * need one column to resolve against in a repo that has never installed the host.
+ * NOT a consumer fallback — an installed repo always resolves its own provider first.
+ */
+const DEFAULT_OPENCODE_PROVIDER = "opencode-zen";
+/**
  * Build the per-agent opencode model lookup for the selected provider.
  * Source of truth = prompts.md § Models, which carries one curated column per
- * provider ("Ollama (Local)", "Nvidia"). Providers without a column fall back to a
- * single documented default (consumer tunes after install). Header-addressed.
+ * provider ("OpenRouter", "Ollama"). Header-addressed. Every allowlisted provider
+ * ships a column — an absent one is a bug, not a case to substitute around.
  */
 export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const header = OPENCODE_PROVIDER_COLUMN[provider];
-    const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
-    if (curated)
-        return curated;
-    // Sentinel fallback. All ten allowlisted providers (ollama-local, nvidia, groq, cerebras,
-    // openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) ship a curated prompts.md column and never reach here.
-    // This path is the safety net for a FUTURE allowlisted provider added before its column
-    // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
-    // model id (see providers.md § Models for the live-probe recipe). The prefix is the
-    // opencode-side provider id (opencodeProviderId(provider)), not necessarily the bkit key.
-    const names = tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
-        parseModelLookupForColumn(subagentsMdPath, "Claude");
-    const bare = "set-model-id";
-    const prefix = opencodeProviderId(provider);
-    const out = new Map();
-    for (const name of names.keys())
-        out.set(name, `${prefix}/${bare}`);
-    return out;
+    if (!header) {
+        throw new Error(`buildOpencodeModelLookup: no prompts.md § Models column for provider ${JSON.stringify(provider)}`);
+    }
+    return parseModelLookupForColumn(subagentsMdPath, header);
 }
 /**
  * Parse the consumer-owned `## Model Overrides` table (below the `bkit:end` marker)
@@ -331,26 +285,13 @@ export function applyModelOverrides(lookup, providerKey, overridesPath) {
         }
     }
 }
-/**
- * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel> for ollama-local.
- * Back-compat shim — delegates to buildOpencodeModelLookup with the default provider.
- */
-export function parseOpencodeModelLookup(subagentsMdPath) {
-    return buildOpencodeModelLookup(subagentsMdPath, "ollama-local");
-}
 /** Host/provider key → prompts.md effort-table column header. */
 const EFFORT_COLUMN_FOR_PROVIDER = {
     claude: "Claude",
     cursor: "Cursor",
-    nvidia: "NVIDIA",
-    zai: "Z.AI",
-    moonshot: "Moonshot",
+    // Every opencode provider shares the generic ladder — no provider-specific column.
     "opencode-zen": "OpenCode Go/Zen",
     "opencode-go": "OpenCode Go/Zen",
-    // Opencode providers without a dedicated column inherit the generic ladder.
-    "ollama-local": "OpenCode Go/Zen",
-    groq: "OpenCode Go/Zen",
-    cerebras: "OpenCode Go/Zen",
     openrouter: "OpenCode Go/Zen",
     ollama: "OpenCode Go/Zen",
 };
@@ -508,7 +449,7 @@ export function applyOpencodeAgent(content, opencodeModelLookup, effortMap, prov
     newFm += `model: ${opencodeModel}\n`;
     newFm += opencodeToolsBlock(toolsBlock);
     if (effort && effortMap) {
-        const host = provider ?? "ollama-local";
+        const host = provider ?? DEFAULT_OPENCODE_PROVIDER;
         newFm += `reasoningEffort: ${lookupEffort(effortMap, host, effort)}\n`;
     }
     newFm += "---\n";
@@ -1299,8 +1240,8 @@ export function detectInstalledHostModules(cwd) {
  * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
  * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
  * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
- * + the package.json tracker resolution), so an nvidia/opencode/… consumer is checked against its own
- * config — not the ollama-local default — and the dry-run path is read-only (installFile /
+ * + the package.json tracker resolution), so an openrouter/opencode/… consumer is checked against its own
+ * config — not the install default — and the dry-run path is read-only (installFile /
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
  */
@@ -1410,7 +1351,7 @@ export function validateCloudTrackerMatch(cloudVariant, hasCloudModule, issueTra
  * Resolution order:
  *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
  *     This is the ONLY signal for managed-auth gateways (opencode) whose opencode.json carries no
- *     custom provider block; without it upgrade would re-render the provider as the ollama-local default.
+ *     custom provider block; without it upgrade would re-render the provider as the install default.
  *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
  *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
  *  3. null — caller falls back to the install default so the model lookup still resolves.
@@ -1861,7 +1802,7 @@ async function main() {
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
-    // so that MCP token placeholders (GH_BKIT_TOKEN, NVIDIA_API_KEY, …) resolve correctly
+    // so that MCP token placeholders (GH_BKIT_TOKEN, OPENCODE_API_KEY, …) resolve correctly
     // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
     if (verb === "cursor" || verb === "opencode") {
         await launchApp(verb, process.cwd());
@@ -1917,22 +1858,14 @@ async function main() {
             const activeProvider = detectedProvider ?? allProviders[0] ?? null;
             const providersToCheck = allProviders.length > 0 ? allProviders : activeProvider ? [activeProvider] : [];
             // Per-provider cred check (present/absent only — no value echoed).
-            // Remote providers each name one API key; ollama-local is local (no key). Any
-            // remote provider absent here falls back to `${PROVIDER}_API_KEY` (see below).
+            // Every provider names one API key. Any provider absent here falls back to
+            // `${PROVIDER}_API_KEY` (see below).
             const PROVIDER_KEYS = {
-                nvidia: ["NVIDIA_API_KEY"],
-                groq: ["GROQ_API_KEY"],
-                cerebras: ["CEREBRAS_API_KEY"],
                 openrouter: ["OPENROUTER_API_KEY"],
-                ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
-                zai: ["ZAI_API_KEY"], // Z.AI GLM coding-subscription gateway
-                moonshot: ["MOONSHOT_API_KEY"], // Moonshot/Kimi coding-subscription gateway
+                ollama: ["OLLAMA_API_KEY"], // Ollama cloud endpoint (ollama.com)
                 "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
                 "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
-                // ollama-local: local server, no API key required
             };
-            // Local-only providers that use no remote API key
-            const LOCAL_PROVIDERS = new Set(["ollama-local"]);
             if (providersToCheck.length === 0) {
                 console.log(`${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`);
             }
@@ -1940,43 +1873,10 @@ async function main() {
                 for (const provider of providersToCheck) {
                     const roleLabel = provider === activeProvider ? "(active)" : "(installed)";
                     console.log(`${LOG_PREFIX} --- ${provider} ${roleLabel} ---`);
-                    if (!LOCAL_PROVIDERS.has(provider)) {
-                        const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
-                        for (const key of keys) {
-                            const present = Boolean(process.env[key] && process.env[key].trim().length > 0);
-                            console.log(`${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`);
-                        }
-                    }
-                    else {
-                        // ollama-local: local server, check host and memory-safety vars
-                        console.log(`${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`);
-                        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
-                        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
-                        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
-                        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
-                        if (!maxLoaded) {
-                            console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`);
-                        }
-                        else if (maxLoaded !== "1") {
-                            console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`);
-                        }
-                        else {
-                            console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
-                        }
-                        console.log(`${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`);
-                        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
-                        // model, parallel requests give no speedup and split the KV cache (more memory).
-                        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
-                        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
-                        if (!numParallel) {
-                            console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`);
-                        }
-                        else if (numParallel !== "1") {
-                            console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`);
-                        }
-                        else {
-                            console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
-                        }
+                    const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
+                    for (const key of keys) {
+                        const present = Boolean(process.env[key] && process.env[key].trim().length > 0);
+                        console.log(`${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`);
                     }
                 }
             }
@@ -2097,7 +1997,7 @@ async function main() {
         // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
         // consumer's config (#245). Detect the installed provider so the render matches install.
         const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
-        const upgradeOpencodeProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+        const upgradeOpencodeProvider = detectOpencodeProvider(process.cwd()) ?? DEFAULT_OPENCODE_PROVIDER;
         // .mcp.json / .cursor/mcp.json are seeded tracker-FILTERED on install (buildMcpJson keeps only
         // the selected tracker's mcpServers entry). The raw templates carry BOTH trackers, so without
         // rendering them the same way here the upgrade walk compares the all-tracker template against
@@ -2238,7 +2138,7 @@ async function main() {
         // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
         // preserved. Docs stay single-source PACKAGE-side (#204/#219) — never relocated to templates/.
         const renderModules = detectInstalledHostModules(process.cwd());
-        const renderProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+        const renderProvider = detectOpencodeProvider(process.cwd()) ?? DEFAULT_OPENCODE_PROVIDER;
         // Build the model lookups the SAME way the install dispatch does: DEFAULTS from the
         // package's .bkit/prompts.md § Models, consumer overrides from the consumer's installed
         // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
@@ -2407,7 +2307,7 @@ async function main() {
     // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
     // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
     // the opencode drift check render with the consumer's real provider instead of the
-    // ollama-local default — otherwise an nvidia/groq/opencode/… consumer reports false drift. On
+    // install default — otherwise an openrouter/opencode/… consumer reports false drift. On
     // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
     // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
     // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
@@ -2475,7 +2375,7 @@ async function main() {
         // guarded (returns [] when the file/section is absent), so it needs no catch here.
         applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
         if (effectiveModules.has("opencode")) {
-            const provider = renderOpencodeProvider ?? "ollama-local";
+            const provider = renderOpencodeProvider ?? DEFAULT_OPENCODE_PROVIDER;
             try {
                 opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
             }
@@ -2506,28 +2406,6 @@ async function main() {
                 `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode-zen)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
             process.exit(1);
-        }
-        // Warn (non-fatal) when the detected provider is local-only (ollama-local) — the cloud runner
-        // has no local model server, so the cloud job will fail at runtime.
-        if (cloudVariant === "opencode") {
-            const ocJsonPath = path.join(process.cwd(), ".opencode", "opencode.json");
-            if (fs.existsSync(ocJsonPath)) {
-                try {
-                    const cfg = JSON.parse(fs.readFileSync(ocJsonPath, "utf-8"));
-                    const detectedId = cfg.provider && typeof cfg.provider === "object"
-                        ? (Object.keys(cfg.provider)[0] ?? null)
-                        : null;
-                    const LOCAL_ONLY_PROVIDERS = new Set(["ollama-local"]);
-                    if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
-                        console.warn(`[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
-                            `The cloud opencode job requires a remote provider with an API key — ` +
-                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode-zen) to switch.`);
-                    }
-                }
-                catch {
-                    // best-effort
-                }
-            }
         }
     }
     // Persist bkit manifest fields to consumer package.json AFTER all hard-error gates pass.

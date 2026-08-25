@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

@@ -2895,33 +2895,33 @@ describe("detectOpencodeYmlProviderDrift", () => {
   }
 
   it("null when opencode.yml is absent (ship-safe existence guard)", () => {
-    writePkg("nvidia");
+    writePkg("openrouter");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 
   it("null when in sync (handler model prefix + secret match the installed provider)", () => {
-    writePkg("nvidia");
-    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    writePkg("openrouter");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 
   it("flags drift when the handler is pinned to a different provider than installed", () => {
-    // Installed = opencode-go (OPENCODE_API_KEY), handler = nvidia — the real repo state.
+    // Installed = opencode-go (OPENCODE_API_KEY), handler = openrouter — the real repo state.
     writePkg("opencode-go");
-    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
     const f = detectOpencodeYmlProviderDrift(tmpDir);
     expect(f?.id).toBe("opencode-yml-provider-drift");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("opencode-go");
-    expect(f?.detect).toContain("NVIDIA_API_KEY");
+    expect(f?.detect).toContain("OPENROUTER_API_KEY");
     expect(f?.action).toContain("OPENCODE_API_KEY");
     expect(f?.action).toContain("opencode-go/<model>");
   });
 
   it("flags env-var drift even when the model prefix matches", () => {
-    // model prefix opencode-go matches, but the secret env var is wrong (NVIDIA vs OPENCODE).
+    // model prefix opencode-go matches, but the secret env var is wrong (OPENROUTER vs OPENCODE).
     writePkg("opencode-go");
-    writeOpencodeYml("opencode-go/some-model", "NVIDIA_API_KEY");
+    writeOpencodeYml("opencode-go/some-model", "OPENROUTER_API_KEY");
     const f = detectOpencodeYmlProviderDrift(tmpDir);
     expect(f?.id).toBe("opencode-yml-provider-drift");
   });
@@ -2938,7 +2938,7 @@ describe("detectOpencodeYmlProviderDrift", () => {
 
   it("null when bkit.opencodeProvider is not recorded (cannot determine intended provider)", () => {
     writePkg(null);
-    writeOpencodeYml("nvidia/moonshotai/kimi-k2.6", "NVIDIA_API_KEY");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 });

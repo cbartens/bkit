@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-dependency-triage
 description: Senior release engineer batching open dependency PRs into a single verified CI run.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

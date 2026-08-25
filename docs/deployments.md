@@ -611,7 +611,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 **Rules:**
 
 - **Secret-gated, never branch-gated.** Missing key → no-op (not fail). Both keys → both jobs; serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`).
-- **`--auto=opencode` requires `tracker=github` + remote provider.** Hard-error on `ollama-local`/local — runner has no Ollama. Use remote (nvidia) for cloud lane.
+- **`--auto=opencode` requires `tracker=github`.**
 - **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened — `PHASE`/`ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
 - **Renovate exemption** + **`bkit [auto route]` gate** unchanged — § GitHub Actions pinning, commit-tag taxonomy.
 

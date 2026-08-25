@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-1
 description: Senior engineer assessing whether designs are buildable with the approved stack.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

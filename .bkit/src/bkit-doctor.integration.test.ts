@@ -433,159 +433,19 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
 // These vars govern the Ollama SERVER daemon, not opencode.json — doctor only inspects.
 // ---------------------------------------------------------------------------
 
-describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
-  function seedOpencodeLocal(dir: string): void {
-    seedMinimalConsumer(dir);
-    fs.mkdirSync(path.join(dir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(dir, ".opencode", "opencode.json"),
-      JSON.stringify({
-        provider: {
-          "ollama-local": {
-            npm: "@ai-sdk/openai-compatible",
-            name: "Ollama (Local)",
-            options: { baseURL: "http://localhost:11434/v1" },
-          },
-        },
-      }),
-      "utf-8",
-    );
-  }
-
-  it("warns to set =1 when OLLAMA_MAX_LOADED_MODELS is unset", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedOpencodeLocal(tmpDir);
-
-    const { OLLAMA_MAX_LOADED_MODELS: _drop, ...envNoMax } = process.env;
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...envNoMax, GH_BKIT_TOKEN_INSTALL: "test-token" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: not set/);
-    expect(combined).toMatch(/recommend =1/);
-  });
-
-  it("reports memory-safe when OLLAMA_MAX_LOADED_MODELS=1", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedOpencodeLocal(tmpDir);
-
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_MAX_LOADED_MODELS: "1" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 1 \(memory-safe\)/);
-  });
-
-  it("warns when OLLAMA_MAX_LOADED_MODELS > 1", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedOpencodeLocal(tmpDir);
-
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_MAX_LOADED_MODELS: "3" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 3/);
-    expect(combined).toMatch(/swap thrash/);
-  });
-
-  it("warns to set OLLAMA_NUM_PARALLEL=1 when unset (serializes subagent fan-out)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedOpencodeLocal(tmpDir);
-
-    const { OLLAMA_NUM_PARALLEL: _drop, ...envNoParallel } = process.env;
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...envNoParallel, GH_BKIT_TOKEN_INSTALL: "test-token" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: not set/);
-    expect(combined).toMatch(/serializes workflow subagent fan-out/);
-  });
-
-  it("reports serialized when OLLAMA_NUM_PARALLEL=1", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedOpencodeLocal(tmpDir);
-
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token", OLLAMA_NUM_PARALLEL: "1" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: 1 \(subagent fan-out serialized\)/);
-  });
-
-  it("does NOT emit Ollama memory-safety checks for a remote provider (nvidia)", () => {
-    if (!fs.existsSync(tsxBin)) return;
-    seedMinimalConsumer(tmpDir);
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({
-        provider: {
-          nvidia: {
-            npm: "@ai-sdk/openai-compatible",
-            name: "NVIDIA NIM",
-            options: {
-              baseURL: "https://integrate.api.nvidia.com/v1",
-              apiKey: "{env:NVIDIA_API_KEY}",
-            },
-          },
-        },
-      }),
-      "utf-8",
-    );
-
-    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      timeout: 30_000,
-      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
-    });
-
-    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
-    const combined = result.stdout + result.stderr;
-    // NUM_PARALLEL / MAX_LOADED_MODELS guidance is ollama-local only — must NOT appear for nvidia
-    expect(combined).not.toMatch(/OLLAMA_NUM_PARALLEL/);
-    expect(combined).not.toMatch(/OLLAMA_MAX_LOADED_MODELS/);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // Task 5 (#281) — status and doctor show ALL installed providers
 // ---------------------------------------------------------------------------
 
 function seedMultiProvider(dir: string): void {
-  // package.json with two providers; nvidia is active
+  // package.json with two providers; openrouter is active
   fs.writeFileSync(
     path.join(dir, "package.json"),
     JSON.stringify({
       name: "test-consumer",
       bkit: {
-        opencodeProvider: "nvidia",
-        opencodeProviders: ["nvidia", "ollama-local"],
+        opencodeProvider: "openrouter",
+        opencodeProviders: ["openrouter", "ollama"],
       },
     }),
     "utf-8",
@@ -597,15 +457,15 @@ function seedMultiProvider(dir: string): void {
     path.join(dir, ".opencode", "opencode.json"),
     JSON.stringify({
       provider: {
-        nvidia: {
+        openrouter: {
           npm: "@ai-sdk/openai-compatible",
-          name: "NVIDIA NIM",
+          name: "OpenRouter",
           options: {
-            baseURL: "https://integrate.api.nvidia.com/v1",
-            apiKey: "{env:NVIDIA_API_KEY}",
+            baseURL: "https://integrate.api.openrouter.com/v1",
+            apiKey: "{env:OPENROUTER_API_KEY}",
           },
         },
-        "ollama-local": {
+        ollama: {
           npm: "@ai-sdk/openai-compatible",
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
@@ -633,9 +493,9 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
     // Must say "providers:" (plural) when multiple are installed
     expect(result.stdout).toMatch(/providers:/);
     // Active provider has (active) label
-    expect(result.stdout).toMatch(/nvidia \(active\)/);
+    expect(result.stdout).toMatch(/openrouter \(active\)/);
     // Second provider is listed without (active)
-    expect(result.stdout).toContain("ollama-local");
+    expect(result.stdout).toContain("ollama");
     // (active) appears exactly once (only on the active provider)
     const activeMatches = (result.stdout.match(/\(active\)/g) ?? []).length;
     expect(activeMatches).toBe(1);
@@ -651,12 +511,12 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
       path.join(tmpDir, ".opencode", "opencode.json"),
       JSON.stringify({
         provider: {
-          nvidia: {
+          openrouter: {
             npm: "@ai-sdk/openai-compatible",
-            name: "NVIDIA NIM",
+            name: "OpenRouter",
             options: {
-              baseURL: "https://integrate.api.nvidia.com/v1",
-              apiKey: "{env:NVIDIA_API_KEY}",
+              baseURL: "https://integrate.api.openrouter.com/v1",
+              apiKey: "{env:OPENROUTER_API_KEY}",
             },
           },
         },
@@ -679,25 +539,24 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
 });
 
 describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
-  it("checks credentials for ALL installed providers (nvidia key + ollama-local memory check)", () => {
+  it("checks credentials for ALL installed providers", () => {
     if (!fs.existsSync(tsxBin)) return;
 
     seedMultiProvider(tmpDir);
 
-    const { OLLAMA_MAX_LOADED_MODELS: _drop, ...envNoMax } = process.env;
     const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       timeout: 30_000,
-      env: { ...envNoMax, GH_BKIT_TOKEN_INSTALL: "test-token" },
+      env: { ...process.env, GH_BKIT_TOKEN_INSTALL: "test-token" },
     });
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
     const combined = result.stdout + result.stderr;
-    // nvidia key check should appear (active provider)
-    expect(combined).toMatch(/NVIDIA_API_KEY/);
-    // ollama-local memory-safety check should also appear (installed provider)
-    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS/);
+    // active provider key check
+    expect(combined).toMatch(/OPENROUTER_API_KEY/);
+    // secondary installed provider key check
+    expect(combined).toMatch(/OLLAMA_API_KEY/);
   });
 
   it("marks the active provider with (active) label in doctor output", () => {
@@ -714,7 +573,7 @@ describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
 
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
     const combined = result.stdout + result.stderr;
-    expect(combined).toMatch(/nvidia.*\(active\)/);
-    expect(combined).toMatch(/ollama-local.*\(installed\)/);
+    expect(combined).toMatch(/openrouter.*\(active\)/);
+    expect(combined).toMatch(/ollama.*\(installed\)/);
   });
 });

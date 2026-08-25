@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-spike
 description: Senior engineer settling a design's load-bearing unknowns with throwaway probe code.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

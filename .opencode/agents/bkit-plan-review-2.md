@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

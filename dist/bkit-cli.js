@@ -10,16 +10,9 @@ export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
  * OPENCODE_PROVIDER_COLUMN (bkit-install.ts § Models lookup).
  */
 export const OPENCODE_PROVIDERS = [
-    "ollama-local",
-    "nvidia",
-    "groq",
-    "cerebras",
+    // OpenAI-compatible npm driver — endpoint + key per provider.
     "openrouter",
     "ollama",
-    // Coding-subscription gateways — OpenAI-compatible npm driver (== nvidia shape), one GLM/Kimi
-    // family each. Aliases glm→zai, kimi→moonshot (OPENCODE_PROVIDER_ALIASES). See providers.md § Models.
-    "zai",
-    "moonshot",
     // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
     // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
     // opencode-go/<id>. Both auth via OPENCODE_API_KEY. See providers.md § Models.
@@ -36,9 +29,6 @@ export const OPENCODE_PROVIDER_ALIASES = {
     opencode: "opencode-zen",
     zen: "opencode-zen",
     go: "opencode-go",
-    // Ergonomic family-name aliases for the coding-subscription gateways (#376).
-    glm: "zai",
-    kimi: "moonshot",
 };
 /** Normalise an `--opencode=` value through OPENCODE_PROVIDER_ALIASES (identity if no alias). */
 export function normalizeOpencodeProvider(value) {
@@ -299,8 +289,7 @@ export function parseArgs(argv) {
                 continue;
             }
             // Value-bearing flag: --opencode=<provider>
-            // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
-            // cerebras, openrouter, ollama (cloud), zai (GLM) + moonshot (Kimi) coding gateways,
+            // Additive opencode host opt-in. Supported providers: openrouter, ollama,
             // opencode-zen + opencode-go (opencode-native gateways) (strict allowlist).
             // A value is required (provider identifies which API key + base URL to configure).
             if (flag === "opencode") {
@@ -615,9 +604,8 @@ Module flags (composable; symmetric install ↔ uninstall):
   --opencode=<provider>
                   Additive opencode host. Each install ADDS a provider block to
                   opencode.json; agent defaults track the last-installed (active) provider.
-                  Provider value is REQUIRED. Supported: ollama-local, nvidia, groq,
-                  cerebras, openrouter, ollama (cloud), zai (Z.AI/GLM), moonshot
-                  (Moonshot/Kimi), opencode-zen, opencode-go (opencode-native gateways;
+                  Provider value is REQUIRED. Supported: openrouter, ollama,
+                  opencode-zen, opencode-go (opencode-native gateways;
                   auth via OPENCODE_API_KEY; legacy alias \`opencode\` → opencode-zen).
                   Ships .opencode/** (agents, commands, opencode.json, gateguard).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
@@ -684,10 +672,9 @@ Examples:
   bkit install --claude --cursor --tooling    Same as --ci --typescript (back-compat alias).
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
-  bkit install --opencode=nvidia                add nvidia alongside an opencode gateway.
-  bkit install --opencode=zai                   Z.AI GLM coding-subscription gateway (glm alias).
-  bkit install --opencode=moonshot              Moonshot/Kimi coding-subscription gateway (kimi alias).
-  bkit uninstall --opencode=nvidia              remove nvidia block only; keep the gateway.
+  bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
+  bkit install --opencode=ollama                Ollama cloud endpoint (OLLAMA_API_KEY).
+  bkit uninstall --opencode=openrouter          remove openrouter block only; keep the gateway.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --renovate=self
                                               Renovate via self-hosted GitHub Actions (16 GB;
@@ -706,7 +693,7 @@ macOS GUI-isolation note (launchctl fallback):
   make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
   survive reboot — must re-run after each restart):
     launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"
-    launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"   # etc.
+    launchctl setenv OPENCODE_API_KEY "$OPENCODE_API_KEY"   # etc.
   For a persistent approach, add a RunAtLoad LaunchAgent plist under
   ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
   whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.

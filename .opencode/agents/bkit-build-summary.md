@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-summary
 description: Senior reviewer evaluating completed build cycles for shippability.
-model: zai/glm-5.1
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: true

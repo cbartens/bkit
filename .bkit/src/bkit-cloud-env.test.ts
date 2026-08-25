@@ -386,9 +386,9 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
   });
 
   it("networkAllowlistBases drops empty/whitespace entries and trims", () => {
-    expect(networkAllowlistBases(["  npmjs.com  ", "", "   ", "*.z.ai"])).toEqual([
+    expect(networkAllowlistBases(["  npmjs.com  ", "", "   ", "*.openrouter.ai"])).toEqual([
       "npmjs.com",
-      "z.ai",
+      "openrouter.ai",
     ]);
   });
 

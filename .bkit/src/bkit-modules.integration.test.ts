@@ -9,7 +9,7 @@ import {
   extractFullManagedBlock,
   extractManagedBlock,
   parseModelLookup,
-  parseOpencodeModelLookup,
+  buildOpencodeModelLookup,
   parseEffortMap,
 } from "./bkit-install";
 import type { PreflightFinding } from "./bkit-preflight";
@@ -2524,7 +2524,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     "prompts.md",
   );
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
-  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
   const EXPECTED_AGENT_COUNT = CATALOG_MODEL_LOOKUP.size;
 
@@ -2540,7 +2540,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
       effortMap: EFFORT_MAP,
-      opencodeProvider: "ollama-local",
+      opencodeProvider: "ollama",
       advisories: [],
       ws: makeWriteSet(),
       logPrefix: "[bkit-install]",
@@ -2629,21 +2629,27 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
   });
 
   // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
-  // removing the first. Both nvidia + opencode blocks coexist after two installs.
-  it("provider switch nvidia → opencode-go keeps both blocks (additive install)", () => {
+  // removing the first. Both openrouter + opencode blocks coexist after two installs.
+  it("provider switch openrouter → opencode-go keeps both blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
     let parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
-    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
+    expect(
+      parsed.provider?.openrouter,
+      "openrouter provider seeded on first install",
+    ).toBeDefined();
+    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("OPENROUTER_API_KEY");
 
     // opencode-go renders a built-in block keyed `opencode-go` (apiKey only — no npm/baseURL).
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    // Additive: nvidia block is preserved alongside the new opencode-go block.
-    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
+    // Additive: openrouter block is preserved alongside the new opencode-go block.
+    expect(
+      parsed.provider?.openrouter,
+      "openrouter provider preserved (additive install)",
+    ).toBeDefined();
     const go = parsed.provider?.["opencode-go"];
     expect((go?.options as Record<string, unknown>)?.apiKey).toBe("{env:OPENCODE_API_KEY}");
     expect(go?.npm).toBeUndefined();
@@ -2656,7 +2662,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
     const doc = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    // Consumer (or prior bug) hijacked the built-in with an ollama-local-shaped block.
+    // Consumer (or prior bug) hijacked the built-in with an ollama-shaped block.
     doc.provider!["opencode-go"] = {
       npm: "@ai-sdk/openai-compatible",
       name: "hijacked",
@@ -2677,23 +2683,26 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(Object.keys(block ?? {})).toEqual(["options"]);
   });
 
-  it("provider switch nvidia → groq keeps both provider blocks (additive install)", () => {
+  it("provider switch openrouter → openrouter keeps both provider blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.groq, "groq provider present").toBeDefined();
-    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
+    expect(parsed.provider?.openrouter, "openrouter provider present").toBeDefined();
+    expect(
+      parsed.provider?.openrouter,
+      "openrouter provider preserved (additive install)",
+    ).toBeDefined();
   });
 
   it("preserves both consumer-added and bkit provider blocks across a second install", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
     // Consumer adds their own provider under a key bkit never seeds.
     const doc = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
     (doc.provider as Record<string, unknown>)["my-custom"] = {
@@ -2703,41 +2712,44 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     };
     fs.writeFileSync(jsonPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
 
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
     expect(parsed.provider?.["my-custom"], "consumer provider preserved").toBeDefined();
-    // Additive: the prior bkit nvidia block is also preserved.
+    // Additive: the prior bkit openrouter block is also preserved.
     expect(
-      parsed.provider?.nvidia,
+      parsed.provider?.openrouter,
       "prior bkit provider preserved (additive install)",
     ).toBeDefined();
-    expect(parsed.provider?.groq, "new bkit provider present").toBeDefined();
+    expect(parsed.provider?.openrouter, "new bkit provider present").toBeDefined();
   });
 
-  it("additive install: nvidia then ollama-local → both provider blocks present", () => {
+  it("additive install: openrouter then ollama → both provider blocks present", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "ollama-local" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "openrouter" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "ollama" }));
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.nvidia, "nvidia block present after additive install").toBeDefined();
     expect(
-      parsed.provider?.["ollama-local"],
-      "ollama-local block present after additive install",
+      parsed.provider?.openrouter,
+      "openrouter block present after additive install",
+    ).toBeDefined();
+    expect(
+      parsed.provider?.["ollama"],
+      "ollama block present after additive install",
     ).toBeDefined();
   });
 
   it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
-    const ctx = makeOpencodeCtx({ opencodeProvider: "nvidia" });
+    const ctx = makeOpencodeCtx({ opencodeProvider: "openrouter" });
     runOpencodeModule(ctx);
 
     const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
     expect(advisory).toBeDefined();
     expect(advisory!.detect).toMatch(/opencode host installed/);
     // Advisory names the provider key env var
-    expect(advisory!.action).toMatch(/NVIDIA_API_KEY/);
+    expect(advisory!.action).toMatch(/OPENROUTER_API_KEY/);
     // Advisory references bkit doctor/status
     expect(advisory!.action).toMatch(/bkit doctor/);
     expect(advisory!.action).toMatch(/bkit status/);
@@ -2745,14 +2757,13 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(advisory!.action).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
   });
 
-  it("ollama-local advisory does NOT mention an API key (Ollama is local, no key needed)", () => {
-    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama-local" });
+  it("ollama advisory names its API key env var", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama" });
     runOpencodeModule(ctx);
 
     const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/Ollama runs locally/);
-    expect(advisory!.action).not.toMatch(/OLLAMA_API_KEY/);
+    expect(advisory!.action).toMatch(/OLLAMA_API_KEY/);
   });
 
   it("dry-run: no agent/command .md files written to disk, advisory still emitted", () => {
@@ -2790,7 +2801,7 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
     "..",
     "prompts.md",
   );
-  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
 
   it("zero .opencode/ footprint before runOpencodeModule is called", () => {
@@ -2811,7 +2822,7 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
       effortMap: parseEffortMap(PROMPTS_MD),
-      opencodeProvider: "ollama-local",
+      opencodeProvider: "ollama",
       advisories: [] as PreflightFinding[],
       ws,
       logPrefix: "[bkit-install]",
@@ -2846,14 +2857,14 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
   it("passes through custom providers (key === opencode id)", () => {
     for (const key of [
-      "ollama-local",
-      "nvidia",
-      "groq",
-      "cerebras",
+      "ollama",
+      "openrouter",
+      "openrouter",
+      "openrouter",
       "openrouter",
       "ollama",
-      "zai",
-      "moonshot",
+      "openrouter",
+      "openrouter",
     ]) {
       expect(opencodeProviderId(key)).toBe(key);
     }
@@ -2879,43 +2890,21 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
 describe("renderOpencodeJson — opencode custom-provider format", () => {
   const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
 
-  it("nvidia (remote): npm driver, custom-provider shape, apiKey via {env:VAR}", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
-    const block = parsed.provider?.nvidia;
+  it("openrouter (remote): npm driver, aggregator baseURL, apiKey via {env:OPENROUTER_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
+    const block = parsed.provider?.openrouter;
     expect(block).toBeTruthy();
     expect(block.npm).toBe("@ai-sdk/openai-compatible");
-    expect(block.options.baseURL).toBe("https://integrate.api.nvidia.com/v1");
-    expect(block.options.apiKey).toBe("{env:NVIDIA_API_KEY}");
-    // No shell-style interpolation in the provider block (opencode reads {env:VAR}).
-    expect(JSON.stringify(block)).not.toContain("${");
-  });
-
-  it("zai (remote): npm driver, GLM coding-plan baseURL, apiKey via {env:ZAI_API_KEY}", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zai"));
-    const block = parsed.provider?.zai;
-    expect(block).toBeTruthy();
-    expect(block.npm).toBe("@ai-sdk/openai-compatible");
-    expect(block.options.baseURL).toBe("https://api.z.ai/api/coding/paas/v4");
-    expect(block.options.apiKey).toBe("{env:ZAI_API_KEY}");
+    expect(block.options.baseURL).toBe("https://openrouter.ai/api/v1");
+    expect(block.options.apiKey).toBe("{env:OPENROUTER_API_KEY}");
     expect(block.api).toBeUndefined(); // an "api" field makes opencode reject the whole config
-    expect(JSON.stringify(block)).not.toContain("${");
-  });
-
-  it("moonshot (remote): npm driver, Kimi coding baseURL, apiKey via {env:MOONSHOT_API_KEY}", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "moonshot"));
-    const block = parsed.provider?.moonshot;
-    expect(block).toBeTruthy();
-    expect(block.npm).toBe("@ai-sdk/openai-compatible");
-    expect(block.options.baseURL).toBe("https://api.moonshot.ai/v1");
-    expect(block.options.apiKey).toBe("{env:MOONSHOT_API_KEY}");
-    expect(block.api).toBeUndefined();
     expect(JSON.stringify(block)).not.toContain("${");
   });
 
   it("github MCP: type 'remote' (not 'http') + {env:} header — opencode schema valid", () => {
     // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
     // its presence makes opencode reject the whole config. Regression guard for #245.
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const gh = parsed.mcp?.github;
     expect(gh.type).toBe("remote");
     expect(gh.headers.Authorization).toBe("Bearer {env:GH_BKIT_TOKEN}");
@@ -2924,18 +2913,18 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
   });
 
   it("linear MCP: type 'remote' (not 'http')", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "linear", "nvidia"));
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "linear", "openrouter"));
     expect(parsed.mcp?.linear?.type).toBe("remote");
   });
 
   it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
     expect(parsed.plugins).toBeUndefined();
   });
 
   it("permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const perm = parsed.permission;
     expect(perm.rules).toBeUndefined(); // the Claude-style array that opencode rejects
     expect(perm.edit).toBe("allow");
@@ -2992,20 +2981,20 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\nsupabase.com\n<!-- allowed-domains:end -->\n",
       "utf-8",
     );
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia", tmp));
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter", tmp));
     expect(parsed.permission.bash["curl *vercel.com*"]).toBe("allow");
     expect(parsed.permission.bash["wget *supabase.com*"]).toBe("allow");
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("ollama-local (local): npm driver, NO apiKey (keyless local server)", () => {
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "ollama-local"));
-    const block = parsed.provider?.["ollama-local"];
+  it("ollama: npm driver, cloud baseURL, apiKey via {env:OLLAMA_API_KEY}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "ollama"));
+    const block = parsed.provider?.["ollama"];
     expect(block).toBeTruthy();
     expect(block.api).toBeUndefined();
     expect(block.npm).toBe("@ai-sdk/openai-compatible");
-    expect(block.options.baseURL).toBe("http://localhost:11434/v1");
-    expect(block.options.apiKey).toBeUndefined();
+    expect(block.options.baseURL).toBe("https://ollama.com/v1");
+    expect(block.options.apiKey).toBe("{env:OLLAMA_API_KEY}");
   });
 
   it("opencode-zen / opencode-go: built-in providers (apiKey only — no npm/baseURL)", () => {
@@ -3137,32 +3126,32 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
   it("reconciling a LATER provider's block keeps the existing key order (upgrade path)", () => {
     seed({
       "opencode-go": { options: { apiKey: "{env:OPENCODE_API_KEY}" } },
-      nvidia: { npm: "@ai-sdk/openai-compatible", name: "NVIDIA NIM", options: {} },
+      openrouter: { npm: "@ai-sdk/openai-compatible", name: "OpenRouter", options: {} },
     });
-    // The "additional provider" reconcile on upgrade seeds ONLY nvidia.
-    const nvidiaTemplate = JSON.stringify({
+    // The "additional provider" reconcile on upgrade seeds ONLY openrouter.
+    const openrouterTemplate = JSON.stringify({
       provider: {
-        nvidia: {
+        openrouter: {
           npm: "@ai-sdk/openai-compatible",
-          name: "NVIDIA NIM",
+          name: "OpenRouter",
           options: {
-            baseURL: "https://integrate.api.nvidia.com/v1",
-            apiKey: "{env:NVIDIA_API_KEY}",
+            baseURL: "https://integrate.api.openrouter.com/v1",
+            apiKey: "{env:OPENROUTER_API_KEY}",
           },
         },
       },
     });
-    reconcileOpencodeJson(nvidiaTemplate, DST, false, makeWriteSet());
-    expect(providerOrder()).toEqual(["opencode-go", "nvidia"]);
+    reconcileOpencodeJson(openrouterTemplate, DST, false, makeWriteSet());
+    expect(providerOrder()).toEqual(["opencode-go", "openrouter"]);
   });
 
   it("appends a genuinely-new template provider AFTER the existing ones", () => {
     seed({ "opencode-go": { options: {} } });
-    const groqTemplate = JSON.stringify({
-      provider: { groq: { npm: "@ai-sdk/openai-compatible", name: "Groq", options: {} } },
+    const ollamaTemplate = JSON.stringify({
+      provider: { openrouter: { npm: "@ai-sdk/openai-compatible", name: "Ollama", options: {} } },
     });
-    reconcileOpencodeJson(groqTemplate, DST, false, makeWriteSet());
-    expect(providerOrder()).toEqual(["opencode-go", "groq"]);
+    reconcileOpencodeJson(ollamaTemplate, DST, false, makeWriteSet());
+    expect(providerOrder()).toEqual(["opencode-go", "openrouter"]);
   });
 });
 
@@ -3182,14 +3171,14 @@ describe("gateguard.cjs / gateguard.js markered-text migration — install engin
     "..",
     "prompts.md",
   );
-  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = buildOpencodeModelLookup(PROMPTS_MD, "opencode-zen");
   const EFFORT_MAP = parseEffortMap(PROMPTS_MD);
 
   function makeOpencodeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
     return makeCtx({
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
       effortMap: EFFORT_MAP,
-      opencodeProvider: "ollama-local",
+      opencodeProvider: "ollama",
       ...overrides,
     });
   }

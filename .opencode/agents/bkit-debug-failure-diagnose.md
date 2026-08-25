@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI / runtime failure root-cause analysis.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

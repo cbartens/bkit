@@ -13,7 +13,6 @@ import {
   applyOpencodeCommand,
   OPENCODE_SESSION_PROMPT_ANCHOR,
   parseModelLookup,
-  parseOpencodeModelLookup,
   buildOpencodeModelLookup,
   parseModelOverrides,
   applyModelOverrides,
@@ -60,7 +59,7 @@ function makeSubagentsMd(
   const tableRows = rows
     .map(
       (r) =>
-        `| \`${r.name}\` | ${r.cursorModel} | ${r.opencodeModel ?? "ollama-local/test:7b"} | medium | — | test role |`,
+        `| \`${r.name}\` | ${r.cursorModel} | ${r.opencodeModel ?? "ollama/test:7b"} | medium | — | test role |`,
     )
     .join("\n");
   return `# Subagents\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Cursor RO | Role |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
@@ -1123,19 +1122,19 @@ describe("applyOpencodeCommand", () => {
 
 describe("applyOpencodeAgent", () => {
   const opencodeModelLookup = new Map([
-    ["build-plan", "ollama-local/qwen2.5:7b"],
-    ["design-synthesize", "ollama-local/qwen2.5:14b"],
+    ["build-plan", "ollama/qwen2.5:7b"],
+    ["design-synthesize", "ollama/qwen2.5:14b"],
   ]);
   const promptsMd = path.join(import.meta.dirname ?? ".", "..", "prompts.md");
   const effortMap = parseEffortMap(promptsMd);
 
   it("emits mode: subagent, name, description, model", () => {
     const input = `---\nname: build-plan\ndescription: Execute plan tasks\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\npermissionMode: acceptEdits\nmaxTurns: 100\n---\nBody here.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("mode: subagent");
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
-    expect(result).toContain("model: ollama-local/qwen2.5:7b");
+    expect(result).toContain("model: ollama/qwen2.5:7b");
     expect(result).toContain("tools:");
   });
 
@@ -1143,7 +1142,7 @@ describe("applyOpencodeAgent", () => {
     // opencode's AgentConfig.tools is an object {name: boolean}, NOT a YAML array, and
     // its tool names are lowercase. The array form fails: "tools: Expected object, got [...]".
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Glob\n  - Write\n  - Edit\n  - WebFetch\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("tools:\n");
     expect(result).toContain("  read: true");
     expect(result).toContain("  glob: true");
@@ -1157,46 +1156,46 @@ describe("applyOpencodeAgent", () => {
 
   it("maps effort: medium → reasoningEffort: high (OpenCode Go/Zen column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: high");
     expect(result).not.toContain("effort:");
   });
 
   it("maps effort: high → reasoningEffort: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: max");
   });
 
   it("maps effort: xhigh → reasoningEffort: max", () => {
     const input = `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: max");
   });
 
   it("maps effort: low → reasoningEffort: none", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: none");
   });
 
   it("maps effort: max → reasoningEffort: max", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: max\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: max");
   });
 
-  it("zai: reads Z.AI column — medium → high, high/xhigh → max", () => {
+  it("opencode provider column: medium → high, high/xhigh → max", () => {
     const zaiLookup = new Map([
-      ["build-plan", "zai/glm-5.1"],
-      ["design-synthesize", "zai/glm-5.2"],
+      ["build-plan", "openrouter/glm-5.1"],
+      ["design-synthesize", "openrouter/glm-5.2"],
     ]);
     expect(
       applyOpencodeAgent(
         `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-5\n---\nBody.\n`,
         zaiLookup,
         effortMap,
-        "zai",
+        "openrouter",
       ),
     ).toContain("reasoningEffort: high");
     expect(
@@ -1204,7 +1203,7 @@ describe("applyOpencodeAgent", () => {
         `---\nname: design-synthesize\ndescription: desc\neffort: high\nmodel: claude-opus-5\n---\nBody.\n`,
         zaiLookup,
         effortMap,
-        "zai",
+        "openrouter",
       ),
     ).toContain("reasoningEffort: max");
     expect(
@@ -1212,7 +1211,7 @@ describe("applyOpencodeAgent", () => {
         `---\nname: design-synthesize\ndescription: desc\neffort: xhigh\nmodel: claude-opus-5\n---\nBody.\n`,
         zaiLookup,
         effortMap,
-        "zai",
+        "openrouter",
       ),
     ).toContain("reasoningEffort: max");
     expect(
@@ -1220,14 +1219,14 @@ describe("applyOpencodeAgent", () => {
         `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-haiku-4-5-20251001\n---\nBody.\n`,
         zaiLookup,
         effortMap,
-        "zai",
+        "openrouter",
       ),
     ).toContain("reasoningEffort: none");
   });
 
   it("drops Claude-only fields: permissionMode, maxTurns, is_background, readonly", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: high\npermissionMode: allowedTools\nmaxTurns: 10\nis_background: true\nreadonly: true\nmodel: claude-opus-4-8\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).not.toContain("permissionMode:");
     expect(result).not.toContain("maxTurns:");
     expect(result).not.toContain("is_background:");
@@ -1237,7 +1236,7 @@ describe("applyOpencodeAgent", () => {
 
   it("rewrites the tools block to opencode's object map (not the Claude array)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\n  - Bash\n---\nBody.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("tools:");
     expect(result).toContain("  read: true");
     expect(result).toContain("  edit: true");
@@ -1247,7 +1246,7 @@ describe("applyOpencodeAgent", () => {
 
   it("preserves agent body unchanged", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody content here.\nMore body.\n`;
-    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama-local");
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("Body content here.\nMore body.\n");
   });
 
@@ -1283,33 +1282,18 @@ describe("applyOpencodeAgent", () => {
 describe("parseEffortMap", () => {
   const effortMap = parseEffortMap(".bkit/prompts.md");
 
-  it("parses Default | Claude | Cursor | OpenCode Go/Zen | NVIDIA | Z.AI | Moonshot", () => {
-    for (const col of [
-      "Default",
-      "Claude",
-      "Cursor",
-      "OpenCode Go/Zen",
-      "NVIDIA",
-      "Z.AI",
-      "Moonshot",
-    ]) {
+  it("parses Default | Claude | Cursor | OpenCode Go/Zen", () => {
+    for (const col of ["Default", "Claude", "Cursor", "OpenCode Go/Zen"]) {
       expect(effortMap.has(col)).toBe(true);
     }
     expect(effortMap.get("Default")?.size).toBe(5);
   });
 
-  it("Z.AI column collapses medium → high, high/xhigh → max", () => {
-    expect(lookupEffort(effortMap, "zai", "medium")).toBe("high");
-    expect(lookupEffort(effortMap, "zai", "high")).toBe("max");
-    expect(lookupEffort(effortMap, "zai", "xhigh")).toBe("max");
-    expect(lookupEffort(effortMap, "zai", "max")).toBe("max");
-    expect(lookupEffort(effortMap, "zai", "low")).toBe("none");
-  });
-
-  it("providers without a column inherit OpenCode Go/Zen", () => {
-    expect(effortColumnForProvider("groq")).toBe("OpenCode Go/Zen");
-    expect(lookupEffort(effortMap, "groq", "xhigh")).toBe("max");
-    expect(lookupEffort(effortMap, "nvidia", "xhigh")).toBe("max");
+  it("every opencode provider inherits the OpenCode Go/Zen column", () => {
+    for (const p of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
+      expect(effortColumnForProvider(p)).toBe("OpenCode Go/Zen");
+      expect(lookupEffort(effortMap, p, "xhigh")).toBe("max");
+    }
     expect(lookupEffort(effortMap, "opencode-go", "medium")).toBe("high");
   });
 
@@ -1317,7 +1301,7 @@ describe("parseEffortMap", () => {
   // under the Claude tier target must spend MORE thinking to close the gap, not less.
   it("opencode columns ceiling out above low (never below the Default rung)", () => {
     const RANK = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
-    for (const provider of ["opencode-go", "opencode-zen", "nvidia", "zai", "moonshot"]) {
+    for (const provider of ["opencode-go", "opencode-zen", "openrouter", "ollama"]) {
       expect(lookupEffort(effortMap, provider, "low")).toBe("none");
       for (const e of ["medium", "high", "xhigh", "max"]) {
         expect(RANK[lookupEffort(effortMap, provider, e)]).toBeGreaterThanOrEqual(RANK[e]);
@@ -1338,9 +1322,9 @@ describe("parseEffortMap", () => {
 // parseOpencodeModelLookup — header-addressed column reader
 // ---------------------------------------------------------------------------
 
-describe("parseOpencodeModelLookup", () => {
+describe("buildOpencodeModelLookup — default column reader", () => {
   it("parses one row per agent file in .bkit/prompts/", () => {
-    const lookup = parseOpencodeModelLookup(".bkit/prompts.md");
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     expect(lookup.size).toBe(agentFiles.length);
     for (const [name, model] of lookup) {
@@ -1350,7 +1334,7 @@ describe("parseOpencodeModelLookup", () => {
   });
 
   it("all .bkit/prompts/ files have an opencode model entry", () => {
-    const lookup = parseOpencodeModelLookup(".bkit/prompts.md");
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     const missingNames: string[] = [];
     for (const f of agentFiles) {
@@ -1366,21 +1350,21 @@ describe("parseOpencodeModelLookup", () => {
 
   it("count matches parseModelLookup count (same catalog)", () => {
     const cursorLookup = parseModelLookup(".bkit/prompts.md");
-    const opencodeLookup = parseOpencodeModelLookup(".bkit/prompts.md");
+    const opencodeLookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     expect(opencodeLookup.size).toBe(cursorLookup.size);
   });
 
-  it("parses the ollama-local model column from inline table string", () => {
-    const content = `# S\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Role |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen3-coder:30b\` | \`medium\` | task exec |\n`;
+  it("parses the provider model column from inline table string", () => {
+    const content = `# S\n\n## Models\n\n| Prompt | Cursor | OpenCode Zen | Effort | Role |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`opencode/deepseek-v4-pro\` | \`medium\` | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-opencode-lookup.md");
     fs.writeFileSync(tmp, content);
-    const lookup = parseOpencodeModelLookup(tmp);
-    expect(lookup.get("test-agent")).toBe("ollama-local/qwen3-coder:30b");
+    const lookup = buildOpencodeModelLookup(tmp, "opencode-zen");
+    expect(lookup.get("test-agent")).toBe("opencode/deepseek-v4-pro");
     fs.rmSync(tmp);
   });
 
   it("all parsed opencode model values have no backticks", () => {
-    const lookup = parseOpencodeModelLookup(".bkit/prompts.md");
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }
@@ -1392,27 +1376,6 @@ describe("parseOpencodeModelLookup", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildOpencodeModelLookup — per-provider model resolution", () => {
-  it("ollama-local: every agent gets the single memory-safe model", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama-local");
-    expect(lookup.size).toBeGreaterThan(0);
-    for (const [, model] of lookup) {
-      expect(model).toBe("ollama-local/qwen3-coder:30b");
-    }
-  });
-
-  it("nvidia: tier-mapped models with the reasoning-agent override", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "nvidia");
-    // opus-tier general → kimi
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("nvidia/moonshotai/kimi-k2.6");
-    // sonnet-tier collapses onto the opus pin — NIM's ceiling is below the sonnet target (#205)
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("nvidia/moonshotai/kimi-k2.6");
-    // haiku-tier → cheapest pin that clears the haiku target (gpt-oss dropped: ~10 est)
-    expect(lookup.get("bkit-design-summary")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
-    // reasoning lens (opus-tier but CoT override) → deepseek
-    expect(lookup.get("bkit-build-challenge-2")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
-  });
-
   // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
@@ -1433,60 +1396,17 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
   });
 
-  it("groq: whole column collapses onto qwen3.6-27b (gpt-oss scores ~10 — below every tier target)", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "groq");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/qwen/qwen3.6-27b");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3.6-27b");
-    expect(lookup.get("bkit-design-summary")).toBe("groq/qwen/qwen3.6-27b");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("groq/qwen/qwen3.6-27b");
-  });
-
-  it("cerebras: whole column collapses onto glm-4.7 (gpt-oss scores ~10 — below every tier target)", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "cerebras");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("cerebras/zai-glm-4.7");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("cerebras/zai-glm-4.7");
-    expect(lookup.get("bkit-design-summary")).toBe("cerebras/zai-glm-4.7");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
-  });
-
-  it("zai: single GLM family — glm-5.2 opus/sonnet/convergent, glm-5.1 haiku", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zai");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("zai/glm-5.2"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("zai/glm-5.2"); // sonnet — collapsed onto ceiling
-    expect(lookup.get("bkit-design-summary")).toBe("zai/glm-5.1"); // haiku — glm-4.5-air is below the haiku target
-    expect(lookup.get("bkit-build-challenge-2")).toBe("zai/glm-5.2"); // convergent
-  });
-
-  it("moonshot: single Kimi family — kimi-k3 opus/sonnet/convergent, kimi-k2.5 haiku", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "moonshot");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("moonshot/kimi-k3"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("moonshot/kimi-k3"); // sonnet — k3 is the only non-Claude pin above the sonnet target
-    expect(lookup.get("bkit-design-summary")).toBe("moonshot/kimi-k2.5"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("moonshot/kimi-k3"); // convergent
-  });
-
-  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all ten)", () => {
-    for (const provider of [
-      "ollama-local",
-      "nvidia",
-      "groq",
-      "cerebras",
-      "openrouter",
-      "ollama",
-      "zai",
-      "moonshot",
-      "opencode-zen",
-      "opencode-go",
-    ]) {
+  it("every allowlisted provider ships a curated column (all four)", () => {
+    for (const provider of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
-      for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
+      expect(lookup.size).toBeGreaterThan(0);
     }
   });
 
-  it("unknown provider: prefix-correct sentinel for every agent (defensive — CLI gates the allowlist)", () => {
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "acme");
-    expect(lookup.size).toBeGreaterThan(0);
-    for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
+  it("unknown provider throws — no column, no substitute", () => {
+    expect(() => buildOpencodeModelLookup(".bkit/prompts.md", "acme")).toThrow(
+      /no prompts.md . Models column/,
+    );
   });
 
   it("opencode-zen: curated OpenCode Zen column (opencode/<id> — models.dev built-in id)", () => {
@@ -1496,7 +1416,6 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode\//);
       expect(model).not.toMatch(/^opencode-zen\//);
-      expect(model).not.toContain("set-model-id");
     }
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.7-code"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/kimi-k2.7-code"); // sonnet — qwen3.6-plus was strictly dominated (lower score, 4x cost)
@@ -1512,7 +1431,6 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode-go\//);
-      expect(model).not.toContain("set-model-id");
     }
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/deepseek-v4-pro"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/deepseek-v4-pro"); // sonnet
@@ -1530,19 +1448,19 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
     const tmp = path.join(os.tmpdir(), `ov-${Math.random().toString(36).slice(2)}.md`);
     fs.writeFileSync(
       tmp,
-      `<!-- bkit:start -->\n# managed\n\n## Models\n\n| Prompt | Nvidia |\n| --- | --- |\n| a | nvidia/managed |\n\n<!-- bkit:end -->\n\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n${rows}`,
+      `<!-- bkit:start -->\n# managed\n\n## Models\n\n| Prompt | OpenRouter |\n| --- | --- |\n| a | openrouter/managed |\n\n<!-- bkit:end -->\n\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n${rows}`,
     );
     return tmp;
   }
 
   it("parses override rows; ignores header + separator", () => {
     const f = writeOverrides(
-      "| bkit-design-summary | nvidia | nvidia/x |\n| bkit-build-summary | ollama-local | ollama-local/y |\n",
+      "| bkit-design-summary | openrouter | openrouter/x |\n| bkit-build-summary | ollama | ollama/y |\n",
     );
     const rows = parseModelOverrides(f);
     expect(rows).toEqual([
-      { prompt: "bkit-design-summary", provider: "nvidia", model: "nvidia/x" },
-      { prompt: "bkit-build-summary", provider: "ollama-local", model: "ollama-local/y" },
+      { prompt: "bkit-design-summary", provider: "openrouter", model: "openrouter/x" },
+      { prompt: "bkit-build-summary", provider: "ollama", model: "ollama/y" },
     ]);
     fs.rmSync(f);
   });
@@ -1552,7 +1470,7 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
     // A `## Model Overrides` table ABOVE bkit:end must be ignored.
     fs.writeFileSync(
       tmp,
-      `<!-- bkit:start -->\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n| evil | nvidia | nvidia/inject |\n\n<!-- bkit:end -->\n`,
+      `<!-- bkit:start -->\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n| evil | openrouter | openrouter/inject |\n\n<!-- bkit:end -->\n`,
     );
     expect(parseModelOverrides(tmp)).toEqual([]);
     fs.rmSync(tmp);
@@ -1564,24 +1482,24 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
 
   it("applies only matching-provider rows to known agents (in place)", () => {
     const f = writeOverrides(
-      "| keep-me | nvidia | nvidia/override |\n| keep-me | ollama-local | ollama-local/other |\n| unknown-agent | nvidia | nvidia/z |\n",
+      "| keep-me | openrouter | openrouter/override |\n| keep-me | ollama | ollama/other |\n| unknown-agent | openrouter | openrouter/z |\n",
     );
     const lookup = new Map([
-      ["keep-me", "nvidia/base"],
-      ["leave-me", "nvidia/base2"],
+      ["keep-me", "openrouter/base"],
+      ["leave-me", "openrouter/base2"],
     ]);
-    applyModelOverrides(lookup, "nvidia", f);
-    expect(lookup.get("keep-me")).toBe("nvidia/override"); // provider match → overridden
-    expect(lookup.get("leave-me")).toBe("nvidia/base2"); // not in override table → unchanged
+    applyModelOverrides(lookup, "openrouter", f);
+    expect(lookup.get("keep-me")).toBe("openrouter/override"); // provider match → overridden
+    expect(lookup.get("leave-me")).toBe("openrouter/base2"); // not in override table → unchanged
     expect(lookup.has("unknown-agent")).toBe(false); // not a known agent → not added
     fs.rmSync(f);
   });
 
   it("provider key is matched case-insensitively and does not cross providers", () => {
-    const f = writeOverrides("| a | ollama-local | ollama-local/q |\n");
-    const lookup = new Map([["a", "nvidia/managed"]]);
-    applyModelOverrides(lookup, "nvidia", f); // ollama-local row must NOT touch nvidia lookup
-    expect(lookup.get("a")).toBe("nvidia/managed");
+    const f = writeOverrides("| a | ollama | ollama/q |\n");
+    const lookup = new Map([["a", "openrouter/managed"]]);
+    applyModelOverrides(lookup, "openrouter", f); // ollama row must NOT touch openrouter lookup
+    expect(lookup.get("a")).toBe("openrouter/managed");
     fs.rmSync(f);
   });
 });
@@ -1603,8 +1521,8 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
   it("returns a different set of values for 'opencode model' vs 'Cursor model'", () => {
     // This guards against the column parser accidentally reading the same column for both hosts.
     const cursorLookup = parseModelLookup(".bkit/prompts.md");
-    const opencodeLookup = parseOpencodeModelLookup(".bkit/prompts.md");
-    // At least some values must differ (opencode uses ollama-local/*, cursor uses various)
+    const opencodeLookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
+    // At least some values must differ (opencode uses ollama/*, cursor uses various)
     let diffCount = 0;
     for (const [name] of cursorLookup) {
       if (cursorLookup.get(name) !== opencodeLookup.get(name)) diffCount++;
@@ -1630,7 +1548,7 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
   });
 
   it("renders --opencode with the resolved provider, or a placeholder when unknown", () => {
-    expect(flags(["opencode"], "nvidia")).toBe("--opencode=nvidia");
+    expect(flags(["opencode"], "openrouter")).toBe("--opencode=openrouter");
     expect(flags(["opencode"], null)).toBe("--opencode=<provider>");
   });
 
@@ -1845,8 +1763,8 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
   });
 
   it("reads a valid bkit.opencodeProvider from package.json", () => {
-    writePkg({ opencodeProvider: "nvidia" });
-    expect(detectOpencodeProvider(cwd)).toBe("nvidia");
+    writePkg({ opencodeProvider: "openrouter" });
+    expect(detectOpencodeProvider(cwd)).toBe("openrouter");
   });
 
   it("normalizes a legacy provider key (zen → opencode-zen)", () => {
@@ -1861,8 +1779,8 @@ describe("detectOpencodeProvider — provider resolution (manifest-first)", () =
 
   it("falls back to the first opencode.json provider key when the manifest is silent", () => {
     writePkg({});
-    writeOpencodeJson({ provider: { nvidia: {} } });
-    expect(detectOpencodeProvider(cwd)).toBe("nvidia");
+    writeOpencodeJson({ provider: { openrouter: {} } });
+    expect(detectOpencodeProvider(cwd)).toBe("openrouter");
   });
 
   it("returns null on an unparseable package.json with no opencode.json", () => {
@@ -1887,13 +1805,13 @@ describe("detectOpencodeProviders — all installed providers", () => {
   });
 
   it("reads and allowlist-filters bkit.opencodeProviders, normalizing legacy keys", () => {
-    writePkg({ opencodeProviders: ["nvidia", "zen", "bogus"] });
-    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode-zen"]);
+    writePkg({ opencodeProviders: ["openrouter", "zen", "bogus"] });
+    expect(detectOpencodeProviders(cwd)).toEqual(["openrouter", "opencode-zen"]);
   });
 
   it("falls back to the single bkit.opencodeProvider for legacy installs", () => {
-    writePkg({ opencodeProvider: "groq" });
-    expect(detectOpencodeProviders(cwd)).toEqual(["groq"]);
+    writePkg({ opencodeProvider: "openrouter" });
+    expect(detectOpencodeProviders(cwd)).toEqual(["openrouter"]);
   });
 
   it("returns [] when neither a providers array nor a single provider is present", () => {
@@ -1940,12 +1858,12 @@ describe("runStatus — read-only host/provider status", () => {
     fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
     fs.writeFileSync(
       path.join(cwd, ".opencode", "opencode.json"),
-      JSON.stringify({ model: "nvidia/foo" }),
+      JSON.stringify({ model: "openrouter/foo" }),
       "utf-8",
     );
     fs.writeFileSync(
       path.join(cwd, "package.json"),
-      JSON.stringify({ bkit: { opencodeProviders: ["nvidia", "groq"] } }),
+      JSON.stringify({ bkit: { opencodeProviders: ["openrouter", "openrouter"] } }),
       "utf-8",
     );
     runStatus(cwd, "[bkit]");

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, scope discipline, and design-coverage.
-model: zai/glm-5.2
+model: opencode-go/deepseek-v4-pro
 tools:
   read: true
   grep: true

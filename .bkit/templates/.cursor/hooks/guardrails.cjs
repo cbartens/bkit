@@ -121,10 +121,7 @@ const SHIPPED_NETWORK_BASES = [
   "linear.app",
   "opencode.ai",
   "ollama.com",
-  "nvidia.com",
-  "z.ai",
-  "moonshot.ai",
-  "kimi.com",
+  "openrouter.ai",
   "npmjs.com",
 ];
 

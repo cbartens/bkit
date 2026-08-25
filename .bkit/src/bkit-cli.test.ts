@@ -546,17 +546,11 @@ describe("parseArgs — upgrade flags", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --opencode flag", () => {
-  it("--opencode=ollama-local → opencode + core; provider recorded", () => {
-    const result = parseArgs(["install", "--opencode=ollama-local"]);
+  it("--opencode=opencode-go → opencode + core; provider recorded", () => {
+    const result = parseArgs(["install", "--opencode=opencode-go"]);
     expect([...result.modules].sort()).toEqual(["core", "opencode"]);
-    expect(result.opencodeProvider).toBe("ollama-local");
+    expect(result.opencodeProvider).toBe("opencode-go");
     expect(result.moduleFlags.has("opencode")).toBe(true);
-  });
-
-  it("--opencode=nvidia → opencode + core, provider=nvidia", () => {
-    const result = parseArgs(["install", "--opencode=nvidia"]);
-    expect(result.modules.has("opencode")).toBe(true);
-    expect(result.opencodeProvider).toBe("nvidia");
   });
 
   it("--opencode=openrouter → opencode + core, provider=openrouter (#245 named provider)", () => {
@@ -577,10 +571,10 @@ describe("parseArgs — --opencode flag", () => {
     );
   });
 
-  it("--claude --opencode=ollama-local compose", () => {
-    const result = parseArgs(["install", "--claude", "--opencode=ollama-local"]);
+  it("--claude --opencode=opencode-go compose", () => {
+    const result = parseArgs(["install", "--claude", "--opencode=opencode-go"]);
     expect([...result.modules].sort()).toEqual(["claude", "core", "opencode"]);
-    expect(result.opencodeProvider).toBe("ollama-local");
+    expect(result.opencodeProvider).toBe("opencode-go");
   });
 
   it("opencode is NOT installed implicitly (additive opt-in)", () => {
@@ -603,36 +597,23 @@ describe("parseArgs — --opencode flag", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --opencode provider strict allowlist", () => {
-  it("--opencode=ollama-local is accepted", () => {
-    expect(parseArgs(["install", "--opencode=ollama-local"]).opencodeProvider).toBe("ollama-local");
-  });
-
-  it("--opencode=nvidia is accepted", () => {
-    expect(parseArgs(["install", "--opencode=nvidia"]).opencodeProvider).toBe("nvidia");
-  });
-
-  // #245 provider expansion — these became valid (groq/cerebras free cloud; openrouter
-  // re-added as a NAMED provider, not the any-endpoint fallback; ollama = cloud Ollama).
-  const accepted = ["groq", "cerebras", "openrouter", "ollama"] as const;
+  // The full allowlist — openrouter + ollama (npm driver) and both opencode gateways.
+  const accepted = ["openrouter", "ollama"] as const;
   for (const value of accepted) {
-    it(`--opencode=${value} is accepted (#245)`, () => {
+    it(`--opencode=${value} is accepted`, () => {
       expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
     });
   }
 
-  // #376 — GLM (zai) + Kimi (moonshot) coding-subscription gateways.
-  const codingGateways = ["zai", "moonshot"] as const;
-  for (const value of codingGateways) {
-    it(`--opencode=${value} is accepted (#376)`, () => {
-      expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
+  // Retired providers are rejected outright — no alias, no migration path.
+  const removed = ["ollama-local", "nvidia", "groq", "cerebras", "zai", "moonshot"] as const;
+  for (const value of removed) {
+    it(`--opencode=${value} is rejected (removed provider)`, () => {
+      expect(expectExit(() => parseArgs(["install", `--opencode=${value}`]))).toMatch(
+        /unsupported provider/,
+      );
     });
   }
-  it("--opencode=glm normalises to zai (family alias, #376)", () => {
-    expect(parseArgs(["install", "--opencode=glm"]).opencodeProvider).toBe("zai");
-  });
-  it("--opencode=kimi normalises to moonshot (family alias, #376)", () => {
-    expect(parseArgs(["install", "--opencode=kimi"]).opencodeProvider).toBe("moonshot");
-  });
 
   // opencode-native gateways — two providers `opencode-zen` + `opencode-go`, both auth via
   // OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).
@@ -663,7 +644,7 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     ["MY_PROVIDER", "uppercase"],
     ["provider with spaces", "spaces"],
     ["x$y", "special character"],
-    ["1nvidia", "starts with digit"],
+    ["1openrouter", "starts with digit"],
   ];
   for (const [value, why] of rejected) {
     it(`--opencode=${value} → rejected (${why})`, () => {
@@ -719,7 +700,7 @@ describe("parseArgs — launcher verbs", () => {
   });
 
   it("opencode with a flag → exit 1 (no flags allowed)", () => {
-    const msg = expectExit(() => parseArgs(["opencode", "--nvidia"]));
+    const msg = expectExit(() => parseArgs(["opencode", "--openrouter"]));
     expect(msg).toMatch(/takes no flags/);
   });
 });
