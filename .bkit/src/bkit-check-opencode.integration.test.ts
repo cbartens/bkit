@@ -183,4 +183,43 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(check.status).toBe(0);
     expect(check.stdout).toContain("0 write(s) would occur");
   });
+
+  // #435 — no default provider. `bkit check` / `bkit upgrade` take no `--opencode=` flag and
+  // read what the consumer installed; a repo carrying .opencode/ with no recorded provider is
+  // a broken install and must be reported, never rendered against a substitute (which would
+  // silently rewrite every agent pin to a provider the consumer never chose).
+  it("opencode installed but no provider recorded → check exits 1 and names the fix", () => {
+    if (!fs.existsSync(getTsxBin())) return;
+    expect(runBkit(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
+
+    // Erase both provider signals: the package.json manifest field and the opencode.json block.
+    const pkgPath = path.join(tmpDir, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit?: { opencodeProvider?: unknown; opencodeProviders?: unknown };
+    };
+    delete pkg.bkit?.opencodeProvider;
+    delete pkg.bkit?.opencodeProviders;
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+
+    const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as Record<string, unknown>;
+    delete cfg.provider;
+    fs.writeFileSync(opencodeJsonPath(), JSON.stringify(cfg, null, 2) + "\n", "utf-8");
+
+    const check = runBkit(["check"]);
+    expect(check.status).toBe(1);
+    const combined = `${check.stdout}${check.stderr}`;
+    expect(combined).toMatch(/no provider is recorded/);
+    expect(combined).toMatch(/bkit install --opencode=<provider>/);
+    // The message must list the real allowlist so the fix is actionable.
+    expect(combined).toMatch(/openrouter, ollama, opencode-zen, opencode-go/);
+  });
+
+  it("a consumer with no opencode host at all is not failed for a missing provider", () => {
+    if (!fs.existsSync(getTsxBin())) return;
+    expect(runBkit(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    const check = runBkit(["check"]);
+    expect(check.status).toBe(0);
+    expect(`${check.stdout}${check.stderr}`).not.toMatch(/no provider is recorded/);
+  });
 });

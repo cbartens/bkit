@@ -294,12 +294,29 @@ const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
 };
 
 /**
- * The § Models column parsed when no opencode provider is installed or detected.
- * `bkit check` / `bkit upgrade` take no `--opencode=` flag, so the render paths still
- * need one column to resolve against in a repo that has never installed the host.
- * NOT a consumer fallback — an installed repo always resolves its own provider first.
+ * The installed opencode provider, or exit(1) with the fix.
+ *
+ * `bkit check` / `bkit upgrade` take no `--opencode=` flag, so they read the provider the
+ * consumer actually installed (package.json `bkit.opencodeProvider`, else the opencode.json
+ * provider block). There is no default: a repo carrying `.opencode/` with no recorded
+ * provider is a broken install, and rendering it against a substitute would silently rewrite
+ * every agent pin to a provider the consumer never chose.
+ *
+ * Call ONLY on a path already known to need the opencode host — never speculatively, or a
+ * consumer who simply did not install opencode gets a spurious failure.
  */
-const DEFAULT_OPENCODE_PROVIDER = "opencode-zen";
+function requireOpencodeProvider(cwd: string, context: string): string {
+  const detected = detectOpencodeProvider(cwd);
+  if (!detected) {
+    console.error(
+      `${LOG_PREFIX} ${context}: the opencode host is installed but no provider is recorded ` +
+        `(package.json \`bkit.opencodeProvider\` and .opencode/opencode.json are both silent). ` +
+        `Re-run \`bkit install --opencode=<provider>\` — one of ${OPENCODE_PROVIDERS.join(", ")}.`,
+    );
+    process.exit(1);
+  }
+  return detected;
+}
 
 /**
  * Build the per-agent opencode model lookup for the selected provider.
@@ -559,8 +576,9 @@ export function applyOpencodeAgent(
   newFm += `model: ${opencodeModel}\n`;
   newFm += opencodeToolsBlock(toolsBlock);
   if (effort && effortMap) {
-    const host = provider ?? DEFAULT_OPENCODE_PROVIDER;
-    newFm += `reasoningEffort: ${lookupEffort(effortMap, host, effort)}\n`;
+    // lookupEffort resolves an unnamed/unknown provider to the generic OpenCode Go/Zen
+    // ladder, which is the column every opencode provider uses — no default needed here.
+    newFm += `reasoningEffort: ${lookupEffort(effortMap, provider ?? "", effort)}\n`;
   }
   newFm += "---\n";
 
@@ -2291,8 +2309,11 @@ async function main() {
     // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
     // consumer's config (#245). Detect the installed provider so the render matches install.
     const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
-    const upgradeOpencodeProvider =
-      detectOpencodeProvider(process.cwd()) ?? DEFAULT_OPENCODE_PROVIDER;
+    // Demanded only when the consumer actually has an opencode.json to re-render — a repo
+    // without the host must not be failed for a provider it was never asked to choose.
+    const upgradeOpencodeProvider = fs.existsSync(path.join(process.cwd(), OPENCODE_JSON_RELPATH))
+      ? requireOpencodeProvider(process.cwd(), "upgrade")
+      : null;
 
     // .mcp.json / .cursor/mcp.json are seeded tracker-FILTERED on install (buildMcpJson keeps only
     // the selected tracker's mcpServers entry). The raw templates carry BOTH trackers, so without
@@ -2344,7 +2365,7 @@ async function main() {
             const contentOverride =
               relPath === CLOUD_WORKFLOW_RELPATH
                 ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
-                : relPath === OPENCODE_JSON_RELPATH
+                : relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
                   ? renderOpencodeJson(
                       entAbs,
                       upgradeTracker,
@@ -2454,7 +2475,10 @@ async function main() {
     // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
     // preserved. Docs stay single-source PACKAGE-side (#204/#219) — never relocated to templates/.
     const renderModules = detectInstalledHostModules(process.cwd());
-    const renderProvider = detectOpencodeProvider(process.cwd()) ?? DEFAULT_OPENCODE_PROVIDER;
+    // Demanded only when opencode is one of the detected hosts — see requireOpencodeProvider.
+    const renderProvider = renderModules.has("opencode")
+      ? requireOpencodeProvider(process.cwd(), "upgrade render")
+      : null;
     // Build the model lookups the SAME way the install dispatch does: DEFAULTS from the
     // package's .bkit/prompts.md § Models, consumer overrides from the consumer's installed
     // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
@@ -2470,7 +2494,8 @@ async function main() {
         // Not fatal — the cursor render fails per-file if a model is missing
       }
       applyModelOverrides(renderModelLookup, "cursor", consumerPromptsMd);
-      if (renderModules.has("opencode")) {
+      // Non-null exactly when opencode is a detected host (see renderProvider above).
+      if (renderProvider) {
         try {
           renderOpencodeModelLookup = buildOpencodeModelLookup(pkgPromptsMd, renderProvider);
         } catch {
@@ -2734,7 +2759,10 @@ async function main() {
     // guarded (returns [] when the file/section is absent), so it needs no catch here.
     applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
     if (effectiveModules.has("opencode")) {
-      const provider = renderOpencodeProvider ?? DEFAULT_OPENCODE_PROVIDER;
+      // On install `--opencode=<provider>` already set this; on check it comes from what the
+      // consumer installed. Either way the opencode host cannot render without a real one.
+      const provider =
+        renderOpencodeProvider ?? requireOpencodeProvider(process.cwd(), "opencode render");
       try {
         opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
       } catch {
