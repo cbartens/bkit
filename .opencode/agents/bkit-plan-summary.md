@@ -9,7 +9,7 @@ tools:
   edit: true
 reasoningEffort: none
 ---
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating completed plans for build-readiness.
 **Scope:** As specified by input and Read / Update / Create section.

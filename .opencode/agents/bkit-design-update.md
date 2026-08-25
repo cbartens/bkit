@@ -11,7 +11,7 @@ tools:
   bash: true
 reasoningEffort: max
 ---
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect merging design-review critiques into the design, no scope expansion.
 **Scope:** As specified by input and Read / Update / Create section.

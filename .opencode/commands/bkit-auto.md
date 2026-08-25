@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Auto
 
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator — phase-routed auto-dispatcher.
 **Scope:** Route an invocation to the matching bkit phase skill.

@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer applying targeted code fixes against prioritised review reports.
 **Scope:** As specified by input and Read / Update / Create section.

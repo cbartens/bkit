@@ -1,7 +1,7 @@
 ---
 description: "Build Feature — Autonomous implementation"
 ---
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Build Feature (Workflow 3/6)
 

@@ -6,7 +6,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [4.12.0] — 2026-08-25
 
 ### Added
 

@@ -2,7 +2,7 @@ Ship Feature — Autonomous merge and archive
 
 # Ship Feature (Workflow 5/6)
 
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
