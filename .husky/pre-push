@@ -61,8 +61,8 @@ pnpm bkit check < /dev/null
 
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.
-pnpm check:dist < /dev/null
+pnpm bkit:check:dist < /dev/null
 
 # bkit-repo only — actionlint validates `.github/workflows/*` (YAML parse is not enough).
 # Guard-skips when actionlint is absent; install actionlint to enforce.
-pnpm lint:workflows < /dev/null
+pnpm bkit:lint:workflows < /dev/null

@@ -408,7 +408,7 @@ jobs:
       # from the committed version.
       - name: Assert Dist Freshness
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm check:dist
+        run: pnpm bkit:check:dist
 
       - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
@@ -421,7 +421,7 @@ jobs:
       # `|| true` is belt-and-braces: the CLI's own contract is exit 0 always.
       - name: Check Status Holes
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm audit:status || true
+        run: pnpm bkit:audit:status || true
 
   # ── bkit-tests-unit ──────────────────────────────────────────────────────
   # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —

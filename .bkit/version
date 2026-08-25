@@ -8,8 +8,8 @@
     ".github/workflows/renovate.yml": "b7ae6892521643844ad0d69d4f337b8853d97bf803d73d346fabd4867c6d55e4"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "17587b8cac16322a0348e33a50d07de72fbf59651b8dcb1dbb9b78f1cd51c737",
-    "docs/testing.md": "5974290ac3f792d477789c7c32a9f21c086f3b626dce3654287bd694e1997e62",
+    "docs/deployments.md": "7bffb46388439834bd1775f94d912020f304c57bf4ee09055f077c960f83d14e",
+    "docs/testing.md": "329c3a480030c64938fa9d41a142c7e6ca4f4c9d61d67b7fbc576262c531b9d1",
     ".claude/settings.json": "e42f2c2d9aa5be40089628aa474a9bd6f5d36ce6fcf8263f74ddd07868e22537",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
     ".agents/config.md": "4e6b4c8f7d27e06c8828ae6b5c70fe2f15281000f6fdf552e0cbd3dc30944465",
@@ -30,7 +30,7 @@
     ".vale.ini": "9e2a7f98110a62d8a7465ec1637930fdb72833053b995b4cb039626e15c154d7",
     "AGENTS.md": "e18f55c531a687a0337042f70621079f9cd6a25ebafed387990f25f68eda5096",
     "CLAUDE.md": "f9beba22ff66b57d92c04864dbf2be485119f67624c7c154ebaf0626acae595d",
-    "docs/setup.md": "3e18898b1cb057d47936189cbee81c61e026cc236d21f3a369b52b0d88b909fd",
+    "docs/setup.md": "5a728fe61ea0fe32c32331476081ce025bbbde16a293c7ab44aa181cdf521a1c",
     "docs/data-schema.md": "7a4e57be46d0e98ff16e69dffdbff80329005a292e32dc3b80e4b3663f76ce0f",
     "docs/warnings.md": "9bdcf585f5303038f677edbe0dbd87d922b807551254303f11774bcfece80e66",
     "slop-scan.config.json": "1021583fde34ef4cf6443a07740c12eb1753c18b6dc60e97ff43d87366643750",
@@ -48,7 +48,7 @@
     ".mcp.json": "1aea759cf1f261b8e340f6f34bd3c561e8c5283235a63fede0b177703877c66a",
     "docs/architecture.md": "275f07ac0dd30ff789d7950e9986ab8e666da70108f23a0ed33be40a66d59bbf",
     "docs/completed.md": "c866c1cb0186459bdd0d0b46f73a6606d8782cc63fb7e087c7cb11d099c5f026",
-    "docs/technology.md": "f2bae7c548d57a1e4c750687e172fc3401ba741002aa96759e2331b017b8504a",
+    "docs/technology.md": "e2c9e5b0dbc6f456dd905b479dcea371607b091ef2d53da1fc567f54a9b854aa",
     ".github/workflows/bkit-cloud.yml": "960974831b4c673804ffe8d31bc6bb4889f833ba6910de067a0326fd80b42327",
     ".github/renovate-local.json5": "b4fac9cf508134eea643e5432e6833b2842c0b5fcef88de63dd120957c70546f",
     ".claude/hooks/gateguard.cjs": "7eb346ec14f5237936858965dbe221717864bc83beee59137b986ae06d2a9617",

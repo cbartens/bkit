@@ -55,7 +55,7 @@ jobs:
         run: pnpm lint:slop
 
       - name: Verify dist/ is fresh
-        run: pnpm check:dist
+        run: pnpm bkit:check:dist
 
       - name: Publish to GitHub Packages
         run: npm publish

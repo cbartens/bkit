@@ -280,25 +280,24 @@ export const LEGACY_LINT_PROSE_SCRIPTS = [
     'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
 ];
 // ---------------------------------------------------------------------------
-// bkit:lane:* / bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
+// bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
 //
 // Before this, eight prompts and two workflows each carried their own
 // `if [ -f turbo.json ] … else jq -e ".scripts[…]"` copy. A consumer on a
 // different toolchain silently no-opped every probe, `eval ""` exited 0, and the
 // agent recorded the gate as having run.
 //
-// TWO LAYERS.
+// ONE CHAIN. Each gate is the previous gate plus its own tier, so the NAME and
+// the VALUE describe the same sequence and cannot disagree. Tier vocabulary is
+// the `ci.yml` job ids (bkit-tests-static / -unit / -integration / -e2e / -live),
+// so a caller reads the coverage off the name without opening package.json and
+// `scope` in status.jsonl is self-describing. Where a step is not a tier
+// (`format`, the ship gate) the name spells out the actual steps rather than
+// inventing a label.
 //
-//   bkit:lane:*  — one per CI lane, named after the `ci.yml` job ids
-//                  (bkit-tests-static / -unit / -integration / -e2e / -live).
-//                  Holds the real commands. The consumer owns every value: a
-//                  turbo monorepo puts `turbo run … --filter` here, a Python
-//                  repo puts `pytest`. bkit never reads the value.
-//   bkit:gate:*  — chains lanes in canonical order. The NAME enumerates the
-//                  lanes it runs, so a caller reads the coverage without opening
-//                  package.json and `scope` in status.jsonl is self-describing.
-//                  Where the steps are not lanes (`format`, the ship gate) the
-//                  name spells out the actual steps instead of inventing a label.
+// The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
+// a Python repo writes `ruff check && pytest`. bkit never reads a value — only
+// whether a name is declared.
 //
 // Declared here (pure data, no cycle) and consumed by BOTH the manifest entry
 // below and runLintModule's ensurePackageJsonScripts call — one object, so the
@@ -310,37 +309,36 @@ export const LEGACY_LINT_PROSE_SCRIPTS = [
 // deliberately NOT on them — it needs per-step reporting, affected-package
 // conditionals, and tiers the local gate excludes, so it calls the scripts directly.
 //
-// `lint:slop` is in no lane by design: `slop-scan scan` is report-only and never
+// `lint:slop` is in no gate by design: `slop-scan scan` is report-only and never
 // fails (see runLintModule). The gate that fails on new findings is `slop:delta`.
 //
-// NOT SEEDED — and that is the point. The integration / e2e / live lanes and the
-// two gates that reach them are absent unless the consumer writes them, because a
-// seeded `pnpm test:integration` would hard-fail every repo without that tier, and
-// a gate named `…-integration-e2e` that silently skipped them would be the exact
-// false-green this issue exists to kill. `/bkit-debug` runs the DEEPEST gate that
-// exists and records its name, so a repo with no integration tier is visibly gated
-// at `bkit:gate:static-unit` instead of quietly claiming more.
+// NOT SEEDED — and that is the point. The three deeper gates (…-integration,
+// …-integration-e2e, …-integration-e2e-live) are absent unless the consumer
+// writes them, because a seeded `pnpm test:integration` would hard-fail every
+// repo without that tier, and a gate named `…-integration-e2e` that silently
+// skipped them would be the exact false-green this issue exists to kill. Each is
+// one line chaining its parent, e.g.
+//   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
+// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its
+// name, so a repo with no integration tier is visibly gated at
+// `bkit:gate:static-unit` instead of quietly claiming more.
 export const BKIT_GATE_SCRIPTS = {
-    // --- lanes -------------------------------------------------------------
-    // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
-    "bkit:lane:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
-    "bkit:lane:unit": "pnpm test",
-    // --- gates -------------------------------------------------------------
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
+    // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
     // Build's plan-execute loop between tasks (tests come later, at Run Tests), and
     // the `.husky/pre-push` revert path where the tree is knowingly inconsistent and
     // the suite would fail on deletions it cannot fix.
-    "bkit:gate:static": "pnpm bkit:lane:static",
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
     // The default local gate: `.husky/pre-push`, build Step 14, the remediates.
-    "bkit:gate:static-unit": "pnpm bkit:lane:static && pnpm bkit:lane:unit",
+    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
     // Ship's conflict-resolve, the only caller whose dependency graph may have just
     // been hand-merged (lockfile conflict) and whose tree no one has ever compiled.
     // `install --frozen-lockfile` proves the merged lockfile still matches the
     // manifest; `build` proves the resolution compiles. Both are subjects of this
     // gate, not preconditions — which is why they are named here and nowhere else.
-    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:lane:static && pnpm bkit:lane:unit && pnpm build",
+    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
     // --- dependency inspection ---------------------------------------------
     // Read-only, not gates: agents run these while diagnosing a version-shaped
     // hypothesis or auditing deps. Named so the prompts stop hardcoding `pnpm
@@ -379,6 +377,39 @@ export const BKIT_DEBUG_GATES = [
 export const BKIT_BUILD_GATES = [
     "bkit:gate:static-unit-integration",
     "bkit:gate:static-unit",
+];
+/**
+ * The deeper gates, shallowest first, with what declaring each one costs.
+ *
+ * Never seeded — a placeholder would be worse than nothing here. The probe's
+ * rule is "declared = run it", so an empty or stub value exits 0 and the
+ * workflow records a `scope` claiming integration coverage it never ran: the
+ * exact false-green #437 exists to kill, wearing a more convincing name.
+ *
+ * Absence is therefore load-bearing, which leaves discoverability as the real
+ * problem: a repo that HAS an integration tier and never declares the gate is
+ * silently gated at `bkit:gate:static-unit` by both build and debug. `declaredBy`
+ * is how install detects exactly that case and advises — see runLintModule.
+ */
+export const BKIT_OPTIONAL_GATES = [
+    {
+        gate: "bkit:gate:static-unit-integration",
+        parent: "bkit:gate:static-unit",
+        tier: "test:integration",
+        declaredBy: ["test:integration"],
+    },
+    {
+        gate: "bkit:gate:static-unit-integration-e2e",
+        parent: "bkit:gate:static-unit-integration",
+        tier: "test:e2e",
+        declaredBy: ["test:e2e"],
+    },
+    {
+        gate: "bkit:gate:static-unit-integration-e2e-live",
+        parent: "bkit:gate:static-unit-integration-e2e",
+        tier: "test:live",
+        declaredBy: ["test:live", "test:integration:live", "test:e2e:live"],
+    },
 ];
 const CURSOR_MANIFEST = [
     { path: ".cursor/hooks.json", format: "json", module: "cursor" },

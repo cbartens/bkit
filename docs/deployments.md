@@ -505,14 +505,14 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 | 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
 | 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `.bkit/scripts/bkit-slop-delta.sh` materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
 | 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
-| 7 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
-| 8 | Workflow lint | `pnpm lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
+| 7 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 8 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
 
 **CI-suppressor HEAD guard (pre-push, before gates):** non-`dev`/`main` branch + HEAD carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]` → probe `gh pr list --head <branch> --state open`. Open PR → **BLOCKED** (vacuously green checks); add clean trigger commit + re-push. No open PR → allowed (sanctioned `[skip ci]` for mid-loop status, abort handover). `gh` unavailable → warn + allow (manual-push backstop; workflow CI-Dispatch Gate covers close push).
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 4–8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
 
-Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:lane:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same lane (Gate 5); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
+Pre-commit: `pnpm bkit:gate:format` — prettier over staged files, seconds. Prose is NOT here: `lint:prose` scans a fixed whole-repo file set, so it gates at pre-push inside `bkit:gate:static`. Enforcing slop gate: pre-push `pnpm slop:delta` via the same gate (Gate 5); `pnpm lint:slop` is report-only and sits in no lane. CI re-runs prose + slop:delta in `bkit-tests-static`.
 
 Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed hook (skip-ci must not be HEAD when PR created). Genuinely broken gate (flaky external) → STOP, document blocker — do not push.
 
@@ -520,13 +520,13 @@ Gate fails locally → fix + re-stage; do NOT `--no-verify` or amend over failed
 
 Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git add dist/` in same commit.
 
-- Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
-- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
+- Hooks run `typecheck` + `test`, NOT `pnpm build`. Source-repo pre-push runs `pnpm bkit:check:dist` (blocks stale `dist/`) but does not commit freshened `dist/` — run `pnpm build && git add dist/` manually.
+- CI `bkit-tests-static` "Assert Dist Freshness" (`pnpm bkit:check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) — `.github/workflows/ci.yml` only.
 - Consumer template `.bkit/templates/.github/workflows/ci.yml` omits freshness (tarball install, no recompile). Do not add there.
 
 ### `.husky/pre-push` bkit check gate
 
-**Tier 3 (seed-or-print)** — written once, never overwritten; no `# bkit:start`/`# bkit:end`. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm check:dist`, `pnpm lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
+**Tier 3 (seed-or-print)** — written once, never overwritten; no `# bkit:start`/`# bkit:end`. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm bkit:check:dist`, `pnpm bkit:lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
 
 - Repo-only lines at bottom; not in consumer template.
 - On failure: `pnpm bkit install` (drift), `pnpm build && git add dist/` (dist), fix workflow (actionlint); commit; push. `--no-verify` PROHIBITED.

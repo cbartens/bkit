@@ -56,6 +56,7 @@ import {
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
   BKIT_GATE_SCRIPTS,
+  BKIT_OPTIONAL_GATES,
   GATEGUARD_CJS_WIRING_INSTRUCTIONS,
   GATEGUARD_JS_WIRING_INSTRUCTIONS,
   GUARDRAILS_WIRING_INSTRUCTIONS,
@@ -2258,7 +2259,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   bkit's reference pre-commit hook runs \`pnpm bkit:gate:format\` (fast staged gate —
   prettier over staged files). Prose, the enforcing slop gate and the heavier gates
   live in pre-push via \`pnpm bkit:gate:static-unit\`. Editing what a gate runs means
-  editing the \`bkit:lane:*\` / \`bkit:gate:*\` scripts in package.json, not the hook —
+  editing the \`bkit:gate:*\` scripts in package.json, not the hook —
   the same scripts the bkit agent workflows dispatch through, so hooks and agents
   cannot drift apart. Most consumers using turbo or their own lint-staged config
   already cover the equivalent — in that case, ignore this advisory and keep your
@@ -2785,10 +2786,15 @@ export function runLintModule(ctx: ModuleContext): void {
       action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
     });
   }
-  // The `test` script is the consumer's responsibility — flag if absent so they know
-  // (the wired ci.yml step bodies call `pnpm test`). Moved here from runCiModule (#265):
-  // the agnostic --ci skeleton has the test step commented, so the advisory belongs with
-  // the TS toolchain that activates it.
+  // The unit-test script is the consumer's responsibility — flag if absent so they
+  // know (the wired ci.yml step bodies call it). Moved here from runCiModule (#265):
+  // the agnostic --ci skeleton has the test step commented, so the advisory belongs
+  // with the TS toolchain that activates it.
+  //
+  // Stays `test`, not `test:unit`, despite the siblings being test:integration /
+  // test:e2e / test:live: `npm test` is a package-manager builtin (its own npm-test(1)
+  // man page), runs without `run` on npm/pnpm/yarn, and fires pretest/posttest hooks.
+  // The irregularity is the ecosystem's, and renaming would forfeit all of that.
   if (!dryRun && !lintScripts.missingPkg && !lintScripts.malformed) {
     try {
       const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
@@ -2837,6 +2843,30 @@ export function runLintModule(ctx: ModuleContext): void {
           severity: "advisory",
           detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.map((n) => `\`${n}\``).join(", ")}.`,
           action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.map((n) => `\`${n}\``).join(", ")} to package.json, or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
+        });
+      }
+      // A repo that HAS a deeper tier but never declares its gate is silently
+      // gated at bkit:gate:static-unit by both /bkit-build and /bkit-debug — the
+      // tier exists, CI runs it, and the agent loop never does. bkit cannot seed
+      // these (a stub would exit 0 and claim the coverage), so it detects the
+      // mismatch and hands over the exact line to paste (#437).
+      const unwired: string[] = [];
+      for (const { gate, parent, tier, declaredBy } of BKIT_OPTIONAL_GATES) {
+        const hasTier = declaredBy.some((s) => s in declared);
+        if (!hasTier || gate in declared) continue;
+        const tierCall = declaredBy.find((s) => s in declared) ?? tier;
+        unwired.push(`    "${gate}": "pnpm ${parent} && pnpm ${tierCall}"`);
+      }
+      if (unwired.length > 0) {
+        advisories.push({
+          id: "gate-tier-not-wired",
+          severity: "advisory",
+          detect:
+            "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build` and `/bkit-debug` gate at `bkit:gate:static-unit` and never execute them.",
+          action:
+            "Each workflow runs the DEEPEST gate you declare; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
+            unwired.join("\n") +
+            "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt).",
         });
       }
     } catch {

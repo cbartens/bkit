@@ -766,7 +766,7 @@ export function detectValePackageNotSynced(cwd) {
 }
 /**
  * Detect incomplete local workflow-lint tooling: `actionlint` and/or `shellcheck`
- * not on PATH. `pnpm lint:workflows` soft-skips without actionlint, and actionlint
+ * not on PATH. `pnpm bkit:lint:workflows` soft-skips without actionlint, and actionlint
  * skips shellcheck on `run:` blocks without shellcheck — so invalid GHA expressions
  * and shell issues in `.github/workflows/*` surface only in CI (the runner preinstalls
  * both). Recommends installing both for pre-push parity. Only fires when the repo has
@@ -794,8 +794,8 @@ export function detectWorkflowLintToolsMissing(cwd) {
     return {
         id: "workflow-lint-tools-missing",
         severity: "advisory",
-        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
-        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm lint:workflows` lints `.github/workflows/*` locally before you push.",
+        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm bkit:lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
+        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm bkit:lint:workflows` lints `.github/workflows/*` locally before you push.",
     };
 }
 const BKIT_STUBS = [

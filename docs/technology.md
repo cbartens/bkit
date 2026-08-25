@@ -40,7 +40,7 @@
 | Technology | Config | Usage |
 | --- | --- | --- |
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/src/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
-| `check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
+| `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
 | `picomatch` | `^4.0.4` — the ONLY runtime `dependency` | `.bkitignore` glob matching. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
 ## Execution Hosts
@@ -75,7 +75,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | --- | --- | --- |
 | Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
 | Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
-| actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm lint:workflows` guard-skips locally when absent |
+| actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
 | slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks
@@ -84,7 +84,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Source-repo copy additionally runs `pnpm check:dist` and `pnpm lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 

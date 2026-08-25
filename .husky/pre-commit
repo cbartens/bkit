@@ -8,11 +8,11 @@ pnpm bkit:gate:format
 
 # bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is
 # staged. Consumers don't compile TS and never run this gate.
-# Test files are excluded: they emit nothing into dist/, but check:dist rebuilds from
+# Test files are excluded: they emit nothing into dist/, but bkit:check:dist rebuilds from
 # the WORKING TREE, so a test-only commit made while any source edit is still
 # uncommitted would fail on a diff it did not cause and cannot fix.
 if git diff --cached --name-only --diff-filter=ACM |
   grep -v '\.test\.ts$' |
   grep -q '^\.bkit/src/.*\.ts$'; then
-  pnpm check:dist < /dev/null
+  pnpm bkit:check:dist < /dev/null
 fi

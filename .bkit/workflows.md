@@ -1322,35 +1322,26 @@ SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
 
 Workflows, prompts and git hooks name a gate; `package.json` defines it. Never inline a toolchain command at a call site.
 
-**Lanes** hold the commands, one per `ci.yml` test job, and the consumer owns every value — a turbo monorepo writes `turbo run … --filter='...[origin/dev]' --continue`, a Python repo writes `ruff check && mypy .`. bkit never reads a lane's value.
+Each gate is the previous gate plus its own tier, so the name and the value describe the same sequence. Tier names are the `ci.yml` job ids (`bkit-tests-static` / `-unit` / `-integration` / `-e2e` / `-live`), so a caller reads the coverage off the name and `scope` in `status.jsonl` is self-describing. Where a step is not a tier, the name spells out the step. The consumer owns every value — a turbo monorepo writes `turbo run … --filter='...[origin/dev]' --continue`, a Python repo writes `ruff check && pytest`; bkit reads only whether a name is declared.
 
 <!-- prettier-ignore -->
-| Lane | Seeded default | CI job |
-| --- | --- | --- |
-| `bkit:lane:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `bkit-tests-static` |
-| `bkit:lane:unit` | `pnpm test` | `bkit-tests-unit` |
-| `bkit:lane:integration` | NOT seeded — consumer-defined | `bkit-tests-integration` |
-| `bkit:lane:e2e` | NOT seeded — consumer-defined | `bkit-tests-e2e` |
-| `bkit:lane:live` | NOT seeded — consumer-defined | `bkit-tests-live` |
-
-**Gates** chain lanes in canonical order. The name enumerates what runs, so a caller reads the coverage without opening `package.json` and `scope` in `status.jsonl` is self-describing. Where a step is not a lane, the name spells out the step.
-
-<!-- prettier-ignore -->
-| Gate | Runs | Called by |
+| Gate | Seeded default | Called by |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
-| `bkit:gate:static` | static | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
-| `bkit:gate:static-unit` | static, unit | build Step 14, `.husky/pre-push`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
-| `bkit:gate:static-unit-integration` | + integration | build Step 14 |
-| `bkit:gate:static-unit-integration-e2e` | + integration, e2e | debug Step 3 |
-| `bkit:gate:static-unit-integration-e2e-live` | + live | debug Step 3 |
-| `bkit:gate:install-static-unit-build` | cold install, static, unit, build | `@bkit-ship-conflict-resolve` |
+| `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta` | `@bkit-build-plan-execute`, `.husky/pre-push` revert path |
+| `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Step 14, `.husky/pre-push`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-build-challenge-tests`, `@bkit-build-plan-verify`, `@bkit-debug-failure-remediate` |
+| `bkit:gate:static-unit-integration` | NOT seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Step 14 |
+| `bkit:gate:static-unit-integration-e2e` | NOT seeded — chains the gate above | debug Step 3 |
+| `bkit:gate:static-unit-integration-e2e-live` | NOT seeded — chains the gate above | debug Step 3 |
+| `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build` | `@bkit-ship-conflict-resolve` |
+
+Dependency inspection is read-only, not a gate: `bkit:deps:outdated` and `bkit:deps:audit` exist so prompts stop hardcoding `pnpm outdated` / `pnpm audit`.
 
 Agents and humans run the SAME scripts, so a green agent gate and a green `git push` mean the same thing. `ci.yml` deliberately stays off them: it needs per-step reporting, affected-package conditionals, and the heavier tiers the local gate excludes, so it calls `pnpm typecheck` / `pnpm test` / … directly.
 
-`lint:slop` is in no lane — `slop-scan scan` is report-only and never fails; `slop:delta` is the enforcing gate. `bkit check` (mirror drift) sits in `.husky/pre-push` outside the gates: it validates the bkit install, not consumer source. `lint:prose` scans a whole-repo file set, so it gates at pre-push, not pre-commit.
+`lint:slop` is in no gate — `slop-scan scan` is report-only and never fails; `slop:delta` is the enforcing gate. `bkit check` (mirror drift) sits in `.husky/pre-push` outside the gates: it validates the bkit install, not consumer source. `lint:prose` scans a whole-repo file set, so it gates at pre-push, not pre-commit.
 
-The three deep lanes and the three gates reaching them are NOT seeded: a seeded `pnpm test:integration` hard-fails every repo without that tier, and a gate named `…-integration-e2e` that skipped them silently is the false-green this design exists to kill. Declaring one is how a consumer opts a workflow into a deeper tier.
+The three deep gates are NOT seeded: a seeded `pnpm test:integration` hard-fails every repo without that tier, and a gate named `…-integration-e2e` that skipped them silently is the false-green this design exists to kill. Declaring one — a single line chaining its parent — is how a consumer opts a workflow into a deeper tier.
 
 Build and debug each run the DEEPEST gate the consumer declares, and record its name:
 
