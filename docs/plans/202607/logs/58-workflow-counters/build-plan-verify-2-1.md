@@ -31,14 +31,15 @@ Executor: T5.3 authored **after** conversion (inverts T3.0 run-first-then-conver
 
 Method: inject bare counter read into real non-deriving block `bkit-build.md:57-67`; `npx vitest run .bkit/src/bkit-counter-prose-audit.test.ts -t "T5.3"`. Six shapes, restore between (`shasum`: `7a4c84ea0d349b260e7bb7d76fe052abe97c785c`).
 
-| Shape injected                                                         | T5.3                |
-| ---------------------------------------------------------------------- | ------------------- |
-| `echo "$TEST_ATTEMPT"`                                                 | **REDS**            |
-| `echo $TEST_ATTEMPT` (unquoted)                                        | GREEN — **escapes** |
-| `echo "${TEST_ATTEMPT}"`                                               | GREEN — **escapes** |
-| `jq -nc --argjson a "${TEST_ATTEMPT}" >> "$STATUS"`                    | GREEN — **escapes** |
-| `jq -nc --argjson a $TEST_ATTEMPT >> "$STATUS"`                        | GREEN — **escapes** |
-| `echo "$TEST_ATTEMPT"` in 4-backtick nested fence (`:1211-1216`)       | **REDS**            |
+<!-- prettier-ignore -->
+| Shape injected | T5.3 |
+| --- | --- |
+| `echo "$TEST_ATTEMPT"` | **REDS** |
+| `echo $TEST_ATTEMPT` (unquoted) | GREEN — **escapes** |
+| `echo "${TEST_ATTEMPT}"` | GREEN — **escapes** |
+| `jq -nc --argjson a "${TEST_ATTEMPT}" >> "$STATUS"` | GREEN — **escapes** |
+| `jq -nc --argjson a $TEST_ATTEMPT >> "$STATUS"` | GREEN — **escapes** |
+| `echo "$TEST_ATTEMPT"` in 4-backtick nested fence (`:1211-1216`) | **REDS** |
 | `jq -nc --argjson a "$TEST_ATTEMPT"` in VERIFY-deriving block (`:539`) | GREEN — **escapes** |
 
 Rule matches only `"$NAME"` — shape finished conversion left. Plan T5.3 `:247` requires bare `$X_ATTEMPT` / `${X_ATTEMPT}` in scope. Comment `:517-529` cites filename Edge Case but claims JSON-typed `attempt` coverage — shape D escapes. Narrowing unsound on stated terms.

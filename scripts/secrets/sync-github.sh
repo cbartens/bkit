@@ -9,12 +9,12 @@
 # GITHUB_KEYS (which now includes VERCEL_ORG_ID/VERCEL_PROJECT_ID). Every value
 # resolves from the env files via get_val — nothing is read from outside the env
 # files, so this script is portable across repos. This is intentionally a SMALL
-# list — see docs/knowledge.md §"Secrets Management Architecture".
+# list — see docs/knowledge.jsonl §"Secrets Management Architecture".
 #
 # Two sources, by tier (get_val prefers AGENT_ENV_FILES, then falls back to the
 # web env file):
-#   - .bkit/.env              → agent/CI-tier secrets (GH_MCP_TOKEN, GH_BKIT_TOKEN,
-#                               LINEAR_API_KEY, ANTHROPIC_API_KEY, CURSOR_API_KEY)
+#   - .bkit/.env              → agent/CI-tier secrets (GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN,
+#                               ANTHROPIC_API_KEY, CURSOR_API_KEY)
 #   - apps/web/.env.preview   → deploy-infra tokens (VERCEL_*, SUPABASE_ACCESS_TOKEN)
 #
 # Mirror semantics within the curated scope:
@@ -82,8 +82,10 @@ is_protected() {
   return 1
 }
 
-echo "📤 GitHub Actions Secrets (from $(basename "$ENV_FILE") + agent env)"
+echo "GitHub Actions Secrets (from $(basename "$ENV_FILE") + agent env)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "📤 Phase 1: Pushing ${#GITHUB_KEYS[@]} configured keys to $REPO..."
 
 # KEEP set: secrets that must remain on the repo (everything we pushed +
 # the two Vercel ids + PROTECTED_KEYS). Anything live but not in KEEP is deleted
@@ -93,7 +95,7 @@ declare -a KEEP=()
 
 for key in "${GITHUB_KEYS[@]}"; do
   if is_protected "$key"; then
-    echo "  🛡️  $key (protected — never pushed)"
+    echo "  ✅ $key (protected — never pushed)"
     continue
   fi
   val=$(get_val "$key")
@@ -103,7 +105,7 @@ for key in "${GITHUB_KEYS[@]}"; do
   fi
 
   if [ "$DRY_RUN" = true ]; then
-    echo "  🔍 $key = ${val:0:8}..."
+    echo "  ✅ $key = ${val:0:8}..."
   else
     echo -n "$val" | $GH secret set "$key" --repo "$REPO"
     echo "  ✅ $key"
@@ -122,7 +124,12 @@ done
 echo ""
 echo "🧹 Phase 2: Reconciling GitHub secrets against scope..."
 
-CURRENT_SECRETS=$($GH api "/repos/$REPO/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")
+# A failed API call must NOT degrade to "no live secrets" — that printed a reassuring
+# "✅ All clean. Nothing to delete." while nothing had actually been checked.
+if ! CURRENT_SECRETS=$($GH api "/repos/$REPO/actions/secrets" --jq '.secrets[].name'); then
+  echo "  ❌ Could not list live secrets on $REPO — refusing to report a clean reconcile."
+  exit 1
+fi
 CLEANUP_COUNT=0
 
 for secret in $CURRENT_SECRETS; do
@@ -136,10 +143,10 @@ for secret in $CURRENT_SECRETS; do
 
   if [ "$FOUND" = false ]; then
     if [ "$DRY_RUN" = true ]; then
-      echo "  🗑️  DELETE $secret (not in scope)"
+      echo "  ⚠️  would DELETE $secret (not in scope)"
     else
       $GH secret remove "$secret" --repo "$REPO"
-      echo "  🗑️  Removed: $secret"
+      echo "  ⚠️  Deleted: $secret"
     fi
     CLEANUP_COUNT=$((CLEANUP_COUNT + 1))
   fi

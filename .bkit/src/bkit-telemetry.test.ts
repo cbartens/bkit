@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   ARCHIVE_SHARD_TEMPLATE,
+  DEFERRAL_REASONS,
   MAX_ROWS_BEFORE_ROLLUP,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
+  UNJUSTIFIED_REASON,
   VALID_KINDS,
   VALID_SEVERITIES,
   parseRemoteUrlToSlug,
@@ -101,6 +103,7 @@ function deferralEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     category: "agentic",
     severity: "LOW" as const,
     description: "deferred for later",
+    reason: "scope-declared" as const,
     ...overrides,
   } as TelemetryEvent;
 }
@@ -263,6 +266,48 @@ describe("severity — per-kind requirement + closed enum", () => {
     const r = validate({ ...complianceEvent(), status: "OPEN" });
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("do not carry status");
+  });
+
+  // reason — the deferral justification. Being declared used to be the only test
+  // for exemption from the ship sweep, and the agent that wanted out of the work
+  // wrote the declaration; the enum is what makes the claim adjudicable.
+  it("DEFERRAL_REASONS is exactly the four justifications plus the adjudicator verdict", () => {
+    expect([...DEFERRAL_REASONS].sort()).toEqual([
+      "hard-blocked",
+      "needs-decision",
+      "own-cycle",
+      "scope-declared",
+      "unjustified",
+    ]);
+    expect(DEFERRAL_REASONS.has(UNJUSTIFIED_REASON)).toBe(true);
+  });
+
+  it.each([...DEFERRAL_REASONS])("accepts deferral reason %j", (reason) => {
+    expect(validate({ ...deferralEvent("k"), reason }).ok).toBe(true);
+  });
+
+  it("rejects a deferral row with reason missing", () => {
+    const { reason: _dropped, ...withoutReason } = deferralEvent("k") as Record<string, unknown>;
+    const r = validate(withoutReason);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("reason");
+  });
+
+  // Free prose is exactly what one live row carries today — it reads as a
+  // justification while being unadjudicable, which is the failure mode the enum closes.
+  it.each(["blocked", "out of scope", "no time", "SCOPE-DECLARED", ""])(
+    "rejects off-enum deferral reason %j",
+    (reason) => {
+      const r = validate({ ...deferralEvent("k"), reason });
+      expect(r.ok).toBe(false);
+      expect(r.reason).toContain("scope-declared");
+    },
+  );
+
+  it("rejects reason on a kind that must not carry it", () => {
+    const r = validate({ ...failureEvent("k"), reason: "hard-blocked" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry reason");
   });
 
   // parse() stays tolerant: 3 legacy rows carry free-text statuses and must still read.

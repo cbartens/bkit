@@ -96,7 +96,7 @@ An engineer runs `/bkit-build` on a feature whose tests keep failing. Every retr
 | Scenario | Expected Behavior |
 | --- | --- |
 | Counter expands empty / non-integer at a routing block | `decide_next` / `check_max` print **nothing** on stdout, emit a diagnostic on stderr, `return 2` → block exits 2 → orchestrator routes to **Failure Path**. Never "continue". _(Guard hardening itself is `plan-v4-2.md`'s T3.8; the suite that demands this is T2.7 here.)_ |
-| `status.jsonl` missing or unreadable at a derive block | `counter_count` returns 2 → call site `|| exit 2` → **Failure Path**. Never a default of 0. |
+| `status.jsonl` missing or unreadable at a derive block | `counter_count` returns 2 → call site `\|\| exit 2` → **Failure Path**. Never a default of 0. |
 | **A routing site reads `0` legitimately** (routes on a *prior, not-yet-executed* step: `bkit-build.md:778-784` challenge-remediate on first CONCERNS/FAIL; `bkit-debug.md:440` SOAK budget in Step 3, where soak rows are written in Step 7) | `counter_count` prints `0`, exit **0** → the **continue** branch (Step 11 / Step 4). **NOT** Failure Path. `0` is the correct answer, not an error. Only `counter_current` (post-own-write) may refuse `0`; these sites must not use it. This is issue constraint 1's regression through a side door — asserted by a test, not by prose. |
 | **Resume** of a killed run (latest run is still `IN_PROGRESS` for this workflow) | `bkit-build.md:334-337` / `bkit-debug.md:325-327` append `workflow-started` **only if** the latest folded run is not (this workflow AND `IN_PROGRESS`) → no new run → active-run scoping **continues** the count. The spent budget is inherited **on purpose**: acceptance bullet 5 ("no fresh budget") holds. |
 | **Re-invoke** after the previous run reached DONE / FAILED | A new `workflow-started` is appended → new active run → **fresh budget**, never the previous run's spent one (the DE-25 starvation). The opposite of the resume row above, and correct for the opposite reason. |
@@ -528,6 +528,6 @@ Record before ending this session:
 | **DB** | N/A — no database. | — |
 | **Code** | `git revert {SQUASH_SHA}` then `pnpm bkit install` to regenerate mirrors + `.bkit/version` hashes. | Single squash commit spanning all three sub-plans; revert restores the prose counters and the fail-open guard together (the KN-26 pair inverts cleanly). **This sub-plan is not independently revertible because it is not independently merged.** |
 | **Data** | None. `soakEntryAt` rows already in a `status.jsonl` are ignored by the reverted code; `counter` rows already emitted with `shell-bus` stay valid (documented enum member). Both are additive and forward-compatible. | No log migration either way. |
-| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. | |
+| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. |  |
 
 _Code-only — `git revert` sufficient._

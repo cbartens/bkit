@@ -140,17 +140,17 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("pnpm lint:slop");
   });
 
-  it("pnpm check:dist step present", () => {
-    expect(content).toContain("pnpm check:dist");
+  it("pnpm bkit:check:dist step present", () => {
+    expect(content).toContain("pnpm bkit:check:dist");
   });
 
-  it("check suite steps appear in order: typecheck → test → format:check → lint:prose → lint:slop → check:dist", () => {
+  it("check suite steps appear in order: typecheck → test → format:check → lint:prose → lint:slop → bkit:check:dist", () => {
     const typecheckIdx = lineIndex("pnpm typecheck");
     const testIdx = lineIndex("pnpm test");
     const formatIdx = lineIndex("pnpm format:check");
     const proseIdx = lineIndex("pnpm lint:prose");
     const slopIdx = lineIndex("pnpm lint:slop");
-    const distIdx = lineIndex("pnpm check:dist");
+    const distIdx = lineIndex("pnpm bkit:check:dist");
 
     expect(typecheckIdx).toBeGreaterThan(-1);
     expect(testIdx).toBeGreaterThan(typecheckIdx);
@@ -173,8 +173,8 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}");
   });
 
-  it("npm publish step appears after pnpm check:dist", () => {
-    const distIdx = lineIndex("pnpm check:dist");
+  it("npm publish step appears after pnpm bkit:check:dist", () => {
+    const distIdx = lineIndex("pnpm bkit:check:dist");
     const publishIdx = lineIndex("npm publish");
     expect(publishIdx).toBeGreaterThan(distIdx);
   });

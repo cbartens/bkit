@@ -15,15 +15,16 @@ Closing `build-plan-verify-2-1.md`'s FAIL (3 blocking gaps, all in T5.3's comple
 
 **Shape coverage (RED-proof evidence, all permanent tests in file, `describe("#58 T5.3...")`):**
 
-| Shape                                                                                             | Test                                                                                               | Result                           |
-| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `echo "$TEST_ATTEMPT"` (quoted bare)                                                              | `RED-PROOF (shape): echo "$TEST_ATTEMPT" ...`                                                      | PASS (reds a non-deriving block) |
-| `echo $TEST_ATTEMPT` (unquoted bare)                                                              | `RED-PROOF (shape): echo $TEST_ATTEMPT ...`                                                        | PASS                             |
-| `echo "${TEST_ATTEMPT}"` (quoted braced)                                                          | `RED-PROOF (shape): echo "${TEST_ATTEMPT}" ...`                                                    | PASS                             |
-| `jq -nc --argjson a "${TEST_ATTEMPT}" >> "$STATUS"` (the literal #58 defect, braced)              | `RED-PROOF (shape): jq ... "${TEST_ATTEMPT}" ...`                                                  | PASS                             |
-| `jq -nc --argjson a $TEST_ATTEMPT >> "$STATUS"` (unquoted argjson)                                | `RED-PROOF (shape): jq ... $TEST_ATTEMPT ...`                                                      | PASS                             |
-| `jq -nc --argjson a "$TEST_ATTEMPT"` inside a block deriving a DIFFERENT counter (VERIFY_ATTEMPT) | `RED-PROOF (shape): a bare $TEST_ATTEMPT read inside a block that derives a DIFFERENT counter ...` | PASS (Gap 2 proof)               |
-| `MAX_TEST_ATTEMPT` bare / `${MAX_TEST_ATTEMPT}`                                                   | `does not flag a MAX_TEST_ATTEMPT reference as a TEST_ATTEMPT violation ...`                       | PASS (never falsely counted)     |
+<!-- prettier-ignore -->
+| Shape | Test | Result |
+| --- | --- | --- |
+| `echo "$TEST_ATTEMPT"` (quoted bare) | `RED-PROOF (shape): echo "$TEST_ATTEMPT" ...` | PASS (reds a non-deriving block) |
+| `echo $TEST_ATTEMPT` (unquoted bare) | `RED-PROOF (shape): echo $TEST_ATTEMPT ...` | PASS |
+| `echo "${TEST_ATTEMPT}"` (quoted braced) | `RED-PROOF (shape): echo "${TEST_ATTEMPT}" ...` | PASS |
+| `jq -nc --argjson a "${TEST_ATTEMPT}" >> "$STATUS"` (the literal #58 defect, braced) | `RED-PROOF (shape): jq ... "${TEST_ATTEMPT}" ...` | PASS |
+| `jq -nc --argjson a $TEST_ATTEMPT >> "$STATUS"` (unquoted argjson) | `RED-PROOF (shape): jq ... $TEST_ATTEMPT ...` | PASS |
+| `jq -nc --argjson a "$TEST_ATTEMPT"` inside a block deriving a DIFFERENT counter (VERIFY_ATTEMPT) | `RED-PROOF (shape): a bare $TEST_ATTEMPT read inside a block that derives a DIFFERENT counter ...` | PASS (Gap 2 proof) |
+| `MAX_TEST_ATTEMPT` bare / `${MAX_TEST_ATTEMPT}` | `does not flag a MAX_TEST_ATTEMPT reference as a TEST_ATTEMPT violation ...` | PASS (never falsely counted) |
 
 Full `npx vitest run .bkit/src/bkit-counter-prose-audit.test.ts -t "T5.3"` → **10/10 pass** (1 real-corpus + 9 RED-proofs, up from prior 3).
 
@@ -63,17 +64,18 @@ Full reconciliation detail: `docs/plans/202607/logs/58-workflow-counters/unconve
 
 ## Verification run this session
 
-| Command                       | Result                                                                                                                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm typecheck`              | clean                                                                                                                                                                     |
-| `pnpm format:check`           | clean (prettier auto-fixed whitespace in test file; content unchanged)                                                                                                    |
-| `pnpm lint:slop`              | 10 findings, all pre-existing — none in session's edited files                                                                                                            |
-| `pnpm slop:delta`             | `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` — OK                                                                                                    |
-| `pnpm lint:prose`             | 1 pre-existing warning at `docs/architecture.md:156` (out of scope)                                                                                                       |
-| `pnpm test`                   | **2251 passed**, 3 failed (expected-RED `T5.1: no bare *_ATTEMPT token in non-fenced prose` — out of scope, WS-4 in sub-plan 3), 2 skipped, 1 todo. No other regressions. |
-| `npx --yes bats tests/*.bats` | **68/68 green**                                                                                                                                                           |
-| `git status --short`          | only 4 intended files modified + 1 new log; no mirror drift (`.claude/.cursor/.opencode` untouched); `red-vs-dev.txt` untouched                                           |
-| —                             | No `pnpm bkit install` run                                                                                                                                                |
+<!-- prettier-ignore -->
+| Command | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm format:check` | clean (prettier auto-fixed whitespace in test file; content unchanged) |
+| `pnpm lint:slop` | 10 findings, all pre-existing — none in session's edited files |
+| `pnpm slop:delta` | `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` — OK |
+| `pnpm lint:prose` | 1 pre-existing warning at `docs/architecture.md:156` (out of scope) |
+| `pnpm test` | **2251 passed**, 3 failed (expected-RED `T5.1: no bare *_ATTEMPT token in non-fenced prose` — out of scope, WS-4 in sub-plan 3), 2 skipped, 1 todo. No other regressions. |
+| `npx --yes bats tests/*.bats` | **68/68 green** |
+| `git status --short` | only 4 intended files modified + 1 new log; no mirror drift (`.claude/.cursor/.opencode` untouched); `red-vs-dev.txt` untouched |
+| — | No `pnpm bkit install` run |
 
 ## Remediation Log
 

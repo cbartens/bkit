@@ -156,6 +156,57 @@ const CORE_MANIFEST = [
     { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
+// GateGuard wiring instructions (#422): printed by writeTier2's noMarkerMigration
+// policy when a consumer's gateguard file predates marker adoption AND its hash does
+// not match a known bkit release — i.e. it is the consumer's own file, not bkit's.
+// bkit appends the (pure, inert) advisory-engine block regardless; these instructions
+// are the one thing bkit cannot do for the consumer — call the appended function from
+// their existing driver. {{PATH}} is substituted with the destination path.
+export const GATEGUARD_CJS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGateguard(payload)\`
+  that returns \`{ mode, context }\` or \`null\` — it never touches stdin or stdout.
+  Wire it into your existing driver:
+    1. Parse the PreToolUse payload your driver already reads from stdin.
+    2. Call \`const result = bkitGateguard(payload);\`
+    3. If \`result\`, emit ONE JSON document to stdout: \`{ hookEventName: "PreToolUse",
+       permissionDecision: "deny", permissionDecisionReason: result.context }\` when
+       \`result.mode === "deny"\`, otherwise \`{ hookEventName: "PreToolUse",
+       additionalContext: result.context }\`.
+  Claude Code discards the entire hook's output if two emitters both write to
+  stdout, so make sure your driver still emits exactly once per invocation.
+`;
+export const GATEGUARD_JS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed advisory block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function
+  \`bkitGateguard(toolName, filePath, sessionId)\` that returns \`{ mode, context }\`
+  or \`null\` — it never touches opencode's client, stderr, or the throw path. Wire
+  it into your \`tool.execute.before\` hook:
+    1. Extract the file path from the tool args (\`write\`/\`edit\`/\`patch\` use \`path\`).
+    2. Call \`const result = bkitGateguard(tool, filePath, sessionID);\`
+    3. If \`result\` and \`result.mode === "deny"\`, \`throw new Error(result.context)\`
+       to block the call; otherwise surface \`result.context\` to the model (e.g. via
+       \`process.stderr.write\`) without blocking.
+`;
+export const GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
+  that returns \`{ permission, user_message, agent_message }\` or \`null\` — it never
+  touches stdin or stdout. Wire it into your existing driver:
+    1. Parse the hook payload your driver already reads from stdin.
+    2. Call \`const decision = bkitGuardrails(payload);\`
+    3. If \`decision\`, emit it to stdout as ONE JSON document; a \`null\` result means
+       bkit has no opinion — fall through to your own decision, defaulting to
+       \`{ permission: "allow" }\`.
+  Cursor discards the entire hook's output if two emitters both write to stdout,
+  so make sure your driver still emits exactly once per invocation.
+`;
 const CLAUDE_MANIFEST = [
     // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
     // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
@@ -163,10 +214,18 @@ const CLAUDE_MANIFEST = [
     { path: "CLAUDE.md", format: "markered-text", module: "claude" },
     { path: ".claude/settings.json", format: "json", module: "claude" },
     { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
-    // GateGuard advisory PreToolUse hook — fully bkit-owned Node script (no consumer
-    // edits expected; configured via env vars), so byte-equal-text (force-overwrite
-    // on install, hash-tracked for upgrade/uninstall). Wired in .claude/settings.json.
-    { path: ".claude/hooks/gateguard.cjs", format: "byte-equal-text", module: "claude" },
+    // GateGuard advisory PreToolUse hook — markered-text (slash-comment): bkit owns
+    // only the advisory engine between `// bkit:start` / `// bkit:end`; the stdin/
+    // stdout driver outside the block is consumer-owned from first install onward, so
+    // a consumer can add their own advisories without losing them on upgrade. Wired
+    // in .claude/settings.json. noMarkerMigration covers every pre-markers consumer
+    // install (hash matches a prior canonical hash → replace wholesale).
+    {
+        path: ".claude/hooks/gateguard.cjs",
+        format: "markered-text",
+        module: "claude",
+        noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+    },
     // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
     // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
     // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
@@ -182,13 +241,221 @@ const CLAUDE_MANIFEST = [
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
 ];
+// ---------------------------------------------------------------------------
+// lint:prose — the managed prose-gate script (single source of truth)
+//
+// Declared here (pure data, no cycle) because THREE surfaces must carry the
+// identical string or the gate silently degrades:
+//   - this manifest's packageJsonKeys default (what install seeds, what the
+//     uninstall stripper byte-compares to decide "still ours?")
+//   - runLintModule's ensurePackageJsonScripts call (bkit-modules.ts)
+//   - the F9 advisory remedy text (bkit-preflight.ts)
+//
+// F9 (BAR-138) contract, preserved: symmetric soft-skip — never hard-fail a
+// consumer's commit because the vale binary is absent. What CHANGED: a missing
+// `.vale/styles/write-good` is no longer treated the same as a missing binary.
+// The styles dir is gitignored, so it is absent in every fresh checkout AND in
+// every `git worktree add` — which meant the pre-commit prose gate silently
+// self-disabled in worktrees while still reporting success. Now that case
+// self-heals (copy from the main worktree via --git-common-dir, zero network;
+// `vale sync` as fallback) and, if self-heal fails with vale present, says so
+// LOUDLY on stderr instead of emitting one quiet line nobody reads.
+//
+// Shell constraints: no single quotes anywhere in the body (it is wrapped in
+// `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
+// would command-substitute).
+export const LINT_PROSE_SCRIPT = 'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
+// The `typecheck` default install seeds in a repo with NO `tsconfig.json`. Both this
+// and `tsc --noEmit` are current bkit defaults — which one lands depends on the repo,
+// not on the bkit version — so the uninstall stripper must recognise both or it orphans
+// the script it seeded. Single source of truth for runLintModule and the stripper.
+// `bkit:gate:static` chains `pnpm lint`, and bkit ships no linter of its own — so in a
+// repo with no `lint` script pnpm falls back to whatever `lint` binary is on PATH and
+// the gate can go GREEN THROUGH THE WRONG PROGRAM (an Android SDK `lint` was observed).
+// Seed the eslint-aware default bkit already runs on itself: eslint where a config
+// exists, an honest skip line where none does — never a silent fall-through to a
+// stranger's binary. Add-if-missing, so a consumer's own `lint` always wins. The
+// `gate-missing-called-scripts` advisory still names what bkit cannot supply
+// (`build`, `test`).
+export const LINT_SCRIPT = "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'";
+export const TYPECHECK_NO_TSCONFIG_SCRIPT = 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
+// Prior bkit-shipped lint:prose defaults, newest first.
+//
+// Why this list exists: `ensurePackageJsonScripts` is add-if-missing — it NEVER
+// overwrites an existing script — so changing LINT_PROSE_SCRIPT above reaches
+// new consumers only. An existing consumer would keep the silently-self-disabling
+// version forever. Any value byte-matching an entry here is provably bkit's own
+// (never consumer-authored), so install/upgrade may safely replace it, and the
+// uninstall stripper may safely reclaim it. A value matching NEITHER the current
+// default NOR a legacy entry is consumer-customised and is left strictly alone.
+//
+// Append the outgoing string here whenever LINT_PROSE_SCRIPT changes.
+export const LEGACY_LINT_PROSE_SCRIPTS = [
+    'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+];
+// ---------------------------------------------------------------------------
+// bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
+//
+// Before this, eight prompts and two workflows each carried their own
+// `if [ -f turbo.json ] … else jq -e ".scripts[…]"` copy. A consumer on a
+// different toolchain silently no-opped every probe, `eval ""` exited 0, and the
+// agent recorded the gate as having run.
+//
+// ONE CHAIN. Each gate is the previous gate plus its own tier, so the NAME and
+// the VALUE describe the same sequence and cannot disagree. Tier vocabulary is
+// the `ci.yml` job ids (bkit-tests-static / -unit / -integration / -e2e / -live),
+// so a caller reads the coverage off the name without opening package.json and
+// `scope` in status.jsonl is self-describing. Where a step is not a tier
+// (`format`, the ship gate) the name spells out the actual steps rather than
+// inventing a label.
+//
+// The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
+// a Python repo writes `ruff check && pytest`. bkit never reads a value — only
+// whether a name is declared.
+//
+// Declared here (pure data, no cycle) and consumed by BOTH the manifest entry
+// below and runLintModule's ensurePackageJsonScripts call — one object, so the
+// install default and the value the uninstall stripper byte-compares cannot
+// drift apart (the failure mode the LINT_PROSE_SCRIPT comment above describes).
+//
+// The SAME names are what the git hooks run (`.husky/pre-commit`, `.husky/pre-push`),
+// so agent and human gates cannot drift: one edit here changes both. `ci.yml` is
+// deliberately NOT on them — it needs per-step reporting, affected-package
+// conditionals, and tiers the local gate excludes, so it calls the scripts directly.
+//
+// `lint:slop` is in no gate by design: `slop-scan scan` is report-only and never
+// fails (see runLintModule). The gate that fails on new findings is `slop:delta`.
+//
+// NOT SEEDED — and that is the point. The three deeper gates (…-integration,
+// …-integration-e2e, …-integration-e2e-live) are absent unless the consumer
+// writes them, because a seeded `pnpm test:integration` would hard-fail every
+// repo without that tier, and a gate named `…-integration-e2e` that silently
+// skipped them would be the exact false-green this issue exists to kill. Each is
+// one line chaining its parent, e.g.
+//   "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"
+// `/bkit-build` and `/bkit-debug` run the DEEPEST gate that exists and record its
+// name, so a repo with no integration tier is visibly gated at
+// `bkit:gate:static-unit` instead of quietly claiming more.
+export const BKIT_GATE_SCRIPTS = {
+    // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
+    // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
+    "bkit:gate:format": "pnpm lint-staged",
+    // Everything that needs no test runner. Mirrors the bkit-tests-static CI job.
+    // Build's plan-execute loop between tasks (tests come later, at Run Tests), and
+    // the `.husky/pre-push` revert path where the tree is knowingly inconsistent and
+    // the suite would fail on deletions it cannot fix.
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    // The default local gate: `.husky/pre-push`, build Step 14, the remediates.
+    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
+    // Ship's conflict-resolve, the only caller whose dependency graph may have just
+    // been hand-merged (lockfile conflict) and whose tree no one has ever compiled.
+    // `install --frozen-lockfile` proves the merged lockfile still matches the
+    // manifest; `build` proves the resolution compiles. Both are subjects of this
+    // gate, not preconditions — which is why they are named here and nowhere else.
+    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
+    // --- dependency inspection ---------------------------------------------
+    // Read-only, not gates: agents run these while diagnosing a version-shaped
+    // hypothesis or auditing deps. Named so the prompts stop hardcoding `pnpm
+    // outdated` / `pnpm audit`, which a cargo, go or uv consumer cannot run.
+    "bkit:deps:outdated": "pnpm outdated",
+    "bkit:deps:audit": "pnpm audit",
+};
+/**
+ * The deeper gates, in DESCENDING order — `/bkit-debug` runs the first one the
+ * consumer declares. Never seeded (see BKIT_GATE_SCRIPTS); listed here so the
+ * workflow, the docs and the audit test share one ordering.
+ *
+ * The `:live` suffix is load-bearing: `/bkit-debug` greps the recorded scope for
+ * the word `live` to decide `testsLiveSkipped`, and `:` is not a word character.
+ */
+export const BKIT_DEBUG_GATES = [
+    "bkit:gate:static-unit-integration-e2e-live",
+    "bkit:gate:static-unit-integration-e2e",
+    "bkit:gate:static-unit",
+];
+/**
+ * What `/bkit-build` Step 14 will run, in DESCENDING order — first one declared wins.
+ *
+ * Build stops at integration ON PURPOSE. Its diagnose → remediate loop can only
+ * repair what its own gate runs, so a tier left to CI is a defect the agent cannot
+ * fix in-session: build closes green, the PR reds, and recovery becomes a separate
+ * human-triggered `/bkit-debug`. Integration catches contract breaks the unit tier
+ * structurally cannot, at a cost the loop can absorb. E2E does not pay for itself
+ * here — a production build plus a browser, re-run on every remediation attempt,
+ * minutes before CI runs the same thing on the resulting PR.
+ *
+ * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` is how a
+ * consumer opts their build loop into the integration tier. Absent it, build runs
+ * exactly what it always ran.
+ */
+export const BKIT_BUILD_GATES = [
+    "bkit:gate:static-unit-integration",
+    "bkit:gate:static-unit",
+];
+/**
+ * The deeper gates, shallowest first, with what declaring each one costs.
+ *
+ * Never seeded — a placeholder would be worse than nothing here. The probe's
+ * rule is "declared = run it", so an empty or stub value exits 0 and the
+ * workflow records a `scope` claiming integration coverage it never ran: the
+ * exact false-green #437 exists to kill, wearing a more convincing name.
+ *
+ * Absence is therefore load-bearing, which leaves discoverability as the real
+ * problem: a repo that HAS an integration tier and never declares the gate is
+ * silently gated at `bkit:gate:static-unit` by both build and debug. `declaredBy`
+ * is how install detects exactly that case and advises — see runLintModule.
+ */
+export const BKIT_OPTIONAL_GATES = [
+    {
+        gate: "bkit:gate:static-unit-integration",
+        parent: "bkit:gate:static-unit",
+        tier: "test:integration",
+        declaredBy: ["test:integration"],
+    },
+    {
+        gate: "bkit:gate:static-unit-integration-e2e",
+        parent: "bkit:gate:static-unit-integration",
+        tier: "test:e2e",
+        declaredBy: ["test:e2e"],
+    },
+    {
+        gate: "bkit:gate:static-unit-integration-e2e-live",
+        parent: "bkit:gate:static-unit-integration-e2e",
+        tier: "test:live",
+        declaredBy: ["test:live", "test:integration:live", "test:e2e:live"],
+    },
+];
 const CURSOR_MANIFEST = [
     { path: ".cursor/hooks.json", format: "json", module: "cursor" },
     { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
     // Destructive-op + secret-exposure gates (parity with Claude permissions / OpenCode
-    // permission map). Fully bkit-owned — consumers tune via editing the script only when
-    // deliberately diverging; writeTier1 force-overwrites on install/upgrade.
-    { path: ".cursor/hooks/guardrails.cjs", format: "byte-equal-text", module: "cursor" },
+    // permission map) — markered-text (slash-comment), same ownership split as the two
+    // GateGuard hooks: bkit owns only the decision engine between the markers, the
+    // stdin/stdout driver outside them is consumer-owned from first install onward, so a
+    // consumer can add their own gates without losing them on upgrade. noMarkerMigration
+    // covers every pre-markers consumer install (hash matches a prior canonical hash →
+    // replace wholesale).
+    {
+        path: ".cursor/hooks/guardrails.cjs",
+        format: "markered-text",
+        module: "cursor",
+        noMarkerMigration: GUARDRAILS_WIRING_INSTRUCTIONS,
+    },
+    // GateGuard advisory PreToolUse hook for Cursor — same ownership split and the
+    // same managed block as the Claude twin (byte-identical between the markers,
+    // asserted by a parity test). Wired in .cursor/hooks.json → preToolUse
+    // (matcher "Write"), deliberately without failClosed: an advisory hook that
+    // fails closed would block the edit it only meant to comment on.
+    {
+        path: ".cursor/hooks/gateguard.cjs",
+        format: "markered-text",
+        module: "cursor",
+        noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+    },
+    // Curl/wget host allowlist read at runtime by guardrails.cjs. No template backs it —
+    // `writeNetworkAllowlistArtifact` (bkit-cloud-env.ts) computes the domain set from the
+    // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
+    { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
     { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
     { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
     // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module
@@ -206,8 +473,9 @@ const CURSOR_MANIFEST = [
 // so bkit must reconverge only the bkit-managed keys on upgrade (KN-17). Seed-or-print
 // (Tier-3) would silently abandon bkit's managed keys on consumer-modified files.
 //
-// gateguard.js is byte-equal-text (writeTier1 force-overwrite) — consumers configure
-// via env vars, not by editing; fully bkit-owned like .claude/hooks/gateguard.cjs.
+// gateguard.js is markered-text (slash-comment) — bkit owns only the advisory engine
+// between the markers; the exported plugin driver outside the block is consumer-owned
+// from first install onward, same split as .claude/hooks/gateguard.cjs.
 //
 // Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
 // Spike initially observed singular; official docs are plural — plural is correct.
@@ -215,8 +483,13 @@ export const OPENCODE_MANIFEST = [
     // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
     // writeTier2JsonContained throws on malformed destination (KN-19 guard).
     { path: ".opencode/opencode.json", format: "json", module: "opencode" },
-    // gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite; consumers use env vars).
-    { path: ".opencode/plugin/gateguard.js", format: "byte-equal-text", module: "opencode" },
+    // gateguard.js — Tier-2 markered-text (slash-comment); see comment above.
+    {
+        path: ".opencode/plugin/gateguard.js",
+        format: "markered-text",
+        module: "opencode",
+        noMarkerMigration: GATEGUARD_JS_WIRING_INSTRUCTIONS,
+    },
     // Agent and command mirrors are managed dynamically (not listed individually here —
     // the exact set depends on the bkit-prefix prompt/workflow files at install time).
     // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
@@ -353,10 +626,19 @@ const LINT_MANIFEST = [
             scripts: {
                 // typecheck moved here from the (now agnostic) ci module — it is TS-exclusive (#265).
                 typecheck: "tsc --noEmit",
+                // Placeholder so `bkit:gate:static`'s `pnpm lint` cannot silently resolve to an
+                // unrelated PATH binary. Add-if-missing — a consumer's own `lint` always wins.
+                lint: LINT_SCRIPT,
                 "format:check": "prettier --check .",
-                "lint:prose": 'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+                "lint:prose": LINT_PROSE_SCRIPT,
                 "lint:slop": "slop-scan scan .",
                 "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+                // The local gate (#437). Lives with the lint module because that is
+                // where its constituents already live (typecheck, format:check,
+                // lint:prose, lint:slop, slop:delta are all seeded above) — a consumer
+                // without the lint module has none of them, so a seeded gate would just
+                // chain missing scripts. runLintModule advises that case instead.
+                ...BKIT_GATE_SCRIPTS,
             },
             devDependencies: {
                 prettier: "^3.5.3",

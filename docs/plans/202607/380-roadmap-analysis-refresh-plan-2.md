@@ -59,15 +59,15 @@ As a bkit user, after I close any workflow phase for an issue, `docs/roadmap.md`
 ### Success Criteria _(inherited from design — do not rewrite)_
 
 1. After every workflow close, `docs/roadmap.md`'s phase-sectioned status board reflects each in-flight issue's current phase, built primarily from on-disk artifacts so it works with NO tracker connected; when a tracker IS wired, additionally enriched via an orchestrator-mediated `list_issues` MCP call (never `gh`/`search_issues`), additive never a precondition. _(Implemented in sub-plan 1.)_
-2. A concurrent close, a merge conflict, or an `-X ours` squash never aborts a close or silently corrupts the board — deterministically regenerable per-FID. _(sub-plan 1.)_
+2. A concurrent close, a merge conflict, or an `-X ours` squash never aborts a close or silently corrupts the board — `docs/roadmap.jsonl` is append-only + `merge=union` and the board is fully regenerated from it (design Addendum 3 § O). _(sub-plan 1.)_
 3. Ship-close and `/bkit-roadmap` produce a refreshed analysis block: a ranked best-next-step, dependency-aware issue groupings, and bkit-usage prompt suggestions, stamped with scan coverage. **[This sub-plan: Tasks 8/9; on-demand path in sub-plan 3, Task 13.]**
 4. Ledger/audit integration fires on a deterministic threshold — counting DISTINCT FIDs that reached `BUILT` in `docs/roadmap.jsonl` since the last cadence FIRE (design Addendum 3 § Q; never `stats.jsonl` rows, which carry no FID by design § R) plus a staleness-days fallback: open `deferrals.jsonl`/`failures.jsonl` items and a #80 audit candidate surface as grouped next-steps. **[This sub-plan: Task 10.]**
 5. `docs/roadmap.md` stays consumer-owned — `bkit install` never creates/overwrites it and `bkit check` drift stays clean; only the generator script, the analysis prompt, the utility, the five close-step edits, the ledger migration, and doc-index rows ship.
 
 ### Process Sketch _(inherited from design — plan may refine)_
 
-- **WHEN** any workflow reaches Close **→ THEN** the fold upserts only the closing FID's row into its phase section. _(sub-plan 1.)_
-- **WHEN** the squash-merge conflicts on `docs/roadmap.md` (`-X ours`) **→ THEN** the writer re-upserts its own FID row; other rows untouched. _(sub-plan 1.)_
+- **WHEN** any workflow reaches Close **→ THEN** it appends the phase's `docs/roadmap.jsonl` row and the fold FULLY REGENERATES the `roadmap-status` block from the ledger (no upsert — design Addendum 3 § O). _(sub-plan 1.)_
+- **WHEN** the squash-merge conflicts on `docs/roadmap.md` (`-X ours`) **→ THEN** it is a non-event: the ledger is append-only + `merge=union` and the next fold regenerates the board from it. _(sub-plan 1.)_
 - **WHEN** ship-close runs OR `/bkit-roadmap` is invoked **→ THEN** `@bkit-roadmap-refresh` rewrites the `roadmap-analysis` block (best next step + groupings + prompt suggestions), bounded + coverage-stamped. **[This sub-plan: Tasks 8/9.]**
 - **WHEN** a ship close (or `/bkit-roadmap`) evaluates the threshold and the distinct-`BUILT`-FID count since the last fire crosses `bkit.roadmap.buildCycles`, OR `bkit.roadmap.stalenessDays` have passed since that fire **→ THEN** the analysis pass fires ONCE, rebaselines via a `ROADMAP_CADENCE_FIRE` counter row, injects a #80 audit candidate + open `deferrals`/`failures` items as grouped next-steps, and reconciles tracker labels to the board (settled drift only, when wired). **[This sub-plan: Tasks 10/11.]**
 - **IF** `tracker: none` or the `list_issues` read fails/returns empty **→ THEN** the board is built entirely from on-disk artifacts + the Backlog region (never blank, never gated); every fail-open branch logs `[bkit-roadmap]`.
@@ -80,7 +80,7 @@ As a bkit user, after I close any workflow phase for an issue, `docs/roadmap.md`
 **Steps (analysis/cadence portion):**
 
 3. User runs `/bkit-roadmap` → `@bkit-roadmap-refresh` reads the frontier snapshot + `deferrals`/`failures.jsonl` + the Backlog region, rewrites `roadmap-analysis` with a ranked best-next-step (folding the two ideas in), stamps "scanned 2 of 2", and appends a `ROADMAP_SCAN_COVERAGE` counter row.
-4. A fifth issue ships, crossing `N`=5 **ship-cycles overall** since the last analysis refresh (the threshold counts ship-cycles, not repeat-ships of a single FID) → the cadence fires: a #80 audit candidate + the oldest open `deferrals` item surface as grouped next-steps; the shipped FID (`412-export-csv`) leaves the active phase sections, gains a `docs/roadmap.jsonl` row, and appears at the top of the regenerated `## Shipped` section (last 10).
+4. A tenth DISTINCT FID reaches `BUILT` in `docs/roadmap.jsonl` since the last `ROADMAP_CADENCE_FIRE` row, crossing `bkit.roadmap.buildCycles`=10 (repeat `BUILT` rows for one FID do not advance it; design Addendum 3 § Q) → the next ship close evaluates the threshold, the cadence fires ONCE and rebaselines via a fresh `ROADMAP_CADENCE_FIRE` row: a #80 audit candidate + the oldest open `deferrals` item surface as grouped next-steps; the shipped FID (`412-export-csv`) gains a `SHIPPED` row, leaves the active phase sections, and appears at the top of the regenerated `## Shipped` section (last 10).
 
 **Outcome:** the analysis block names the next best step, the Backlog survives every regenerate, and cadence/reconcile keep the board honest — all with no tracker connected.
 
@@ -91,7 +91,7 @@ As a bkit user, after I close any workflow phase for an issue, `docs/roadmap.md`
 | --- | --- |
 | Large tracker (200+ open issues) blows analysis `maxTurns`/context | Bounded scan (open + milestone-scoped, paged), coverage-stamped "scanned N of M" + `ROADMAP_SCAN_COVERAGE` counter row; report budget reserved. |
 | Consumer "Backlog / Ideas" region below the last machine marker | NEVER rewritten by any regenerator; a declared read-input for the analysis tier (promotable into design; may suggest filing as an issue when wired). |
-| Lost/corrupted in-flight phase row (roadmap not fully re-derivable) | Reconcile pass diffs live `feat/*` (+ open issues when wired) vs the board, re-adds/flags missing rows with `[bkit-roadmap]`. |
+| Lost/corrupted/deleted board | Rebuilt exactly by re-running the fold — the board holds no state the ledger lacks (design Addendum 3 § O). The residual risk is a close that never WROTE its row: the drift check diffs live `feat/*` (+ open issues when wired) against `docs/roadmap.jsonl` and WARNS via `[bkit-roadmap]`; it never mutates the board. |
 | Backlog region as untrusted analysis input | Analysis prompt treats the Backlog region as DATA, not instructions (prompt-injection surface); folds ideas into ranking, never executes them. |
 | `tracker: none` or a `list_issues` read that fails/returns empty | Analysis + reverse sync + reconcile skip the tracker under `none`, treat a wired read that fails/returns 0/empty as inconclusive; never blank, never gated; `[bkit-roadmap]` stderr on every fail-open branch. |
 | Reverse-sync candidate is actively transitioning | Only "settled" drift is synced — an issue with NO matching live `feat/{FID}` branch AND NO in-flight `status.jsonl` phase event; anything else is skipped with `[bkit-roadmap]`. |
@@ -110,7 +110,7 @@ As a bkit user, after I close any workflow phase for an issue, `docs/roadmap.md`
 | 16 | Drift check: a live `feat/*` with NO `docs/roadmap.jsonl` row emits a `[bkit-roadmap]` warning; a live `feat/*` that DOES have a row is silent; the check never mutates the board (it is regenerated from the ledger) | Integration (Vitest, boundary: git branches) | `.bkit/src/bkit-roadmap-reconcile.integration.test.ts` |
 
 > [!NOTE]
-> **Cross-sub-plan row references.** Task 9 (ship Step 10 wiring) EXTENDS matrix row 11 (per-workflow-shape staging, owned by sub-plan 1) — its assertion that Step 10 launches the three subagents with the analysis write preceding the docs commit is added to `.bkit/src/bkit-roadmap-staging.integration.test.ts`. Task 11's fire/skip/conflict fail-branches are covered by matrix row 22 (owned by sub-plan 1) in `tests/telemetry-failopen.bats`, which this sub-plan extends. Rows 1–11, 19–22 belong to sub-plan 1; rows 17–18 to sub-plan 3.
+> **Cross-sub-plan row references.** Task 9 (ship Step 10 wiring) EXTENDS matrix row 11 (per-workflow-shape staging, owned by sub-plan 1) — its assertion that Step 10 launches the three subagents with the analysis write preceding the docs commit is added to `.bkit/src/bkit-roadmap-staging.integration.test.ts`. Task 11's fire/skip/conflict fail-branches are covered by matrix row 22 (owned by sub-plan 1) in `tests/telemetry-failopen.bats`, which this sub-plan extends. Rows 1–11, 19–26 belong to sub-plan 1 (row 26 = the ship `BOOK_PATHS`/`BOOK_ROOT` contract, design Addendum 4 § T); rows 17–18 to sub-plan 3.
 
 ### 👤 ✅ Human Confirmation
 
@@ -143,7 +143,7 @@ No exported TS symbol signatures change. No consumer command is renamed.
 
 - **RESOLVED (cadence numbers, owner 2026-07-27 — design Addendum 3 § Q):** `bkit.roadmap.buildCycles` = **10** distinct FIDs reaching `BUILT` since the last cadence FIRE; `bkit.roadmap.stalenessDays` = **90**. Anchoring on the last FIRE (not the last analysis refresh) is load-bearing — the analysis block is refreshed at every ship close, so a refresh-anchored counter would reset every ship and never reach the threshold. Both values come from the `package.json` manifest via the existing `bkit.*` jq idiom. **[Load-bearing for Task 10.]**
 - **RESOLVED (board scope, owner 2026-07-25 — design Addendum 2 § K):** active phase sections carry open + in-flight FIDs only; on ship the FID leaves them and appears in a separate `## Shipped` section — regenerated from `docs/roadmap.jsonl`, `ts` desc, capped at the last **10**. Closed/abandoned tracker issues are not shown.
-- **RESOLVED (`completed` codec scope, owner 2026-07-25):** **`bkit harvest` does NOT consume `docs/roadmap.jsonl`** — not copy, not count; `HARVEST_COPY_FILES` and the count-only set are unchanged.
+- **RESOLVED (`kind: "feature"` codec scope, owner 2026-07-25):** **`bkit harvest` does NOT consume `docs/roadmap.jsonl`** — not copy, not count; `HARVEST_COPY_FILES` and the count-only set are unchanged.
 - **Assumption:** the no-concurrent-workflows-per-clone constraint holds → if violated, closes rely on the append-only `merge=union` ledger + regenerate-from-ledger (`-X ours` on the board is a non-event).
 - **Assumption:** `docs/roadmap.jsonl` carries a `BUILT` row per built FID (sub-plan 1, Task 7) and `.bkit/stats.jsonl` carries the FID-free `ROADMAP_CADENCE_FIRE` counter → if either is missing the count reads 0 and the cadence never fires (fail-safe, not fail-dangerous). **[Load-bearing for Task 10.]**
 - **Assumption:** shipped roadmap/analysis text stays stack/vendor-agnostic and cites no tracker-internal refs (`BAR-`/`KN-`/Linear ids) → if violated, the shipped-surface rule reds `slop`/review.
@@ -159,9 +159,9 @@ No exported TS symbol signatures change. No consumer command is renamed.
 
 **Selection rule:** pick the approach with the best quality-of-end-state, NOT the smallest diff.
 
-Chosen (relevant to this sub-plan): keep the analysis as a **clean reusable leaf** (`@bkit-roadmap-refresh`) rather than folding it into `@bkit-ship-update-docs` (which would couple it to ship-only doc work and block utility reuse); count the cadence from **persisted `.bkit/stats.jsonl` `outcome` rows** (NOT the non-persisted `bkit-counter-bus.sh`, which is per-FID); reverse sync via `list_issues` never `search_issues` (silently returns 0 on private repos), treating 0/empty as inconclusive.
+Chosen (relevant to this sub-plan): keep the analysis as a **clean reusable leaf** (`@bkit-roadmap-refresh`) rather than folding it into `@bkit-ship-update-docs` (which would couple it to ship-only doc work and block utility reuse); count the cadence from **distinct `BUILT` FIDs in `docs/roadmap.jsonl` since the last `ROADMAP_CADENCE_FIRE` row** (design Addendum 3 § Q — NOT `.bkit/stats.jsonl` `outcome` rows, which carry no FID by § R, and NOT the non-persisted per-FID `bkit-counter-bus.sh`); reverse sync via `list_issues` never `search_issues` (silently returns 0 on private repos), treating 0/empty as inconclusive.
 
-Rejected: folding analysis into ship-update-docs; `search_issues` for tracker reads; blind full-regenerate of the status region (sub-plan 1 concern).
+Rejected: folding analysis into ship-update-docs; `search_issues` for tracker reads; counting the cadence off `stats.jsonl` `outcome` rows (would require a FID in a harvested ledger — § R).
 
 ## Out of Scope
 
@@ -232,7 +232,8 @@ bkit has no database. **Invariant conformance:** every write path is best-effort
 
 #### [MODIFY] `.bkit/workflows/bkit-ship.md` Step 10
 
-- **Existence Check:** exists. Add `@bkit-roadmap-refresh` as the third parallel subagent (alongside `@bkit-ship-update-docs` ‖ `@bkit-ship-summary`); its `roadmap-analysis` write precedes the existing Step 10 `git add -- docs/ && git commit … -- docs/` (line ~916), so it is committed, never left written-but-uncommitted. Add its artifact to the Gate-10 assertions.
+- **Existence Check (post-#384, verified on `dev` at `e14fe9f4`):** Step 10 starts at line 942 and today launches exactly TWO subagents — its prose reads "Launch **both** subagents in parallel using `Agent` tool" (line 948, item 3) with an item-4 wait/assert on their artifacts; Gate 10 is at line 995. Add `@bkit-roadmap-refresh` as the THIRD (alongside `@bkit-ship-update-docs` ‖ `@bkit-ship-summary`): update that "both" wording to three, give the leaf the same `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` Context preamble the siblings carry, and add its `docs/plans/{YYYYMM}/logs/{FID}/roadmap-refresh.md` artifact to the Step-4 non-empty assertion and the Gate-10 checklist.
+- **Commit ordering:** there is NO `git add -- docs/` in `bkit-ship.md` any more (design Addendum 4 § T). Ship flushes ALL bookkeeping in ONE path-scoped commit at Step 13 Close (`git -C "$WT" add $BOOK_PATHS` → `git commit … -- $BOOK_PATHS`, lines ~1257–1258), and `docs/roadmap.md` + `docs/roadmap.jsonl` are in `BOOK_PATHS` from sub-plan 1 Task 5. So the Step-10 analysis write provably precedes the Step-13 staging by step order, and the block is never left written-but-uncommitted. The write itself targets `$BOOK_ROOT` (Step 1), not a bare relative path.
 
 ### Cadence + reverse sync + reconcile (WS-4)
 
@@ -262,7 +263,7 @@ None — all triggers are workflow-close-driven or on-demand; no scheduler.
 | --- | --- | --- |
 | **Code** | `git revert {COMMIT}` — all changes are an additive prompt file + workflow-step edits | No DB. Reverting drops the analysis/cadence/sync/reconcile additions; the status tier (sub-plan 1) is unaffected. |
 | **Mirrors** | `bkit install` re-renders host mirrors from the reverted SSOT (run in sub-plan 3) | Mirrors are force-overwritten, not drift-gated. |
-| **Risk window** | None — no deploy, no migration apply | |
+| **Risk window** | None — no deploy, no migration apply |  |
 
 _Code-only — `git revert` sufficient; re-run `bkit install` (sub-plan 3) to re-render mirrors._
 
@@ -279,7 +280,7 @@ _Code-only — `git revert` sufficient; re-run `bkit install` (sub-plan 3) to re
 ### Analysis tier (WS-3)
 
 - [ ] **Task 8 — `@bkit-roadmap-refresh` leaf.** Create `.bkit/prompts/bkit-roadmap-refresh.md` (opus leaf) writing ONLY `roadmap-analysis`; reads frontier snapshot + `deferrals`/`failures.jsonl` + Backlog region (as untrusted data); groupings via `design-organise` seam; prompt suggestions via `plan-complexity-check`; no hardcoded model IDs/IDE; "scanned N of M" + `ROADMAP_SCAN_COVERAGE` counter row. **Done when:** `bkit-roadmap-refresh-prompt.test.ts` asserts the prompt writes only the `roadmap-analysis` marker block + contains no model-ID/IDE literals (matrix row 12) and the emitted `ROADMAP_SCAN_COVERAGE` counter row conforms to the jsonl.md counter schema (matrix row 13).
-- [ ] **Task 9 — ship Step 10 wiring.** Add `@bkit-roadmap-refresh` as the third parallel subagent in `bkit-ship.md` Step 10 with the write preceding the existing `git add -- docs/` commit (~916); add its artifact to Gate 10. **Done when:** `bkit-roadmap-staging.integration.test.ts` confirms Step 10 launches the three subagents and the analysis write precedes the docs commit (extends matrix row 11 audit); `bkit check` clean.
+- [ ] **Task 9 — ship Step 10 wiring.** Add `@bkit-roadmap-refresh` as the third parallel subagent in `bkit-ship.md` Step 10 (line 942; the "Launch both subagents" line is 948, Gate 10 is 995): rewrite that "both" prose to three, give the leaf the sibling Context/working-directory preamble, write under `$BOOK_ROOT`, and add its artifact to the Step-4 non-empty assertion + the Gate-10 checklist. Staging is the Step-13 `BOOK_PATHS` commit from sub-plan 1 Task 5 — do NOT add a Step-10 `git add`/`git commit` of `docs/` (design Addendum 4 § T; `bkit-ship-invariants.test.ts` bans it). **Done when:** `bkit-roadmap-staging.integration.test.ts` confirms Step 10 launches three subagents, names the `roadmap-refresh.md` artifact in the wait/assert list and Gate 10, and that the Step-10 write precedes the single Step-13 `BOOK_PATHS` commit by step order with no new `git add` introduced in Step 10 (extends matrix row 11 audit); `bkit-ship-invariants.test.ts` still green (matrix row 26); `bkit check` clean.
 
 ### Cadence + reverse sync + reconcile (WS-4)
 
@@ -288,7 +289,7 @@ _Code-only — `git revert` sufficient; re-run `bkit install` (sub-plan 3) to re
 - [ ] **Task 12 — drift check (Directive 4, rescoped).** Add the check diffing live `feat/*` (+ open issues when wired) against `docs/roadmap.jsonl` and WARNING via `[bkit-roadmap]` on any live `feat/*` with no ledger row — a close that never wrote. It never mutates the board (the board is regenerated from the ledger, so there is nothing to recover) and never gates. **Done when:** `bkit-roadmap-reconcile.integration.test.ts` (boundary: real git branches) proves a live `feat/*` without a ledger row warns, one with a row is silent, and neither path writes to `docs/roadmap.md` (matrix row 16).
 
 > [!IMPORTANT]
-> **Handoff to sub-plan 3.** After Tasks 8–12 land, sub-plan 3 (Utility + Cross-provider/docs) reuses the reconcile pass (Task 12) inside `/bkit-roadmap` (Task 13) and the `@bkit-roadmap-refresh` leaf, then batches all mirror regen + cross-cutting docs + the full Verification Plan (Gates 2–4, Manual Verification).
+> **Handoff to sub-plan 3.** After Tasks 8–12 land, sub-plan 3 (Utility + Cross-provider/docs) reuses the drift check (Task 12 — warn-only, never mutates the board) inside `/bkit-roadmap` (Task 13) and the `@bkit-roadmap-refresh` leaf, then batches all mirror regen + cross-cutting docs + the full Verification Plan (Gates 2–4, Manual Verification).
 
 ## Verification (scoped to this sub-plan)
 

@@ -1,0 +1,72 @@
+Verdict: CONCERNS
+
+<!-- verdict:end -->
+
+# Design Review
+
+Lens: Operability — failure modes, observability, on-call ergonomics.
+
+## Failure-Mode Enumeration
+
+**1. `.cursor/allowlist.json` absent, deleted, or corrupt.**
+Verified against source (`.cursor/hooks/guardrails.cjs:126-145`): today `loadNetworkAllowlistBases()` seeds `bases` from `SHIPPED_NETWORK_BASES` _before_ the `try`, so a missing/corrupt file still leaves the 13 shipped bases usable (fail-open). The design deletes `SHIPPED_NETWORK_BASES` and starts from an empty `Set`, so the same corrupt/missing case now asks on **every** `curl`/`wget`, including `github.com`. Detection: interactive — the editor pops an "ask" dialog per command, not a log line or metric. Blast radius: one workstation/session, self-resolving once `bkit install` reruns (verified: `writeNetworkAllowlistArtifact` unconditionally rewrites `.cursor/allowlist.json` to the resolved set regardless of its prior corrupt content). Fails closed, correctly.
+I checked whether the artifact could plausibly be absent on a routine clean-checkout (the scenario that would make this failure mode common rather than rare): `.cursor/allowlist.json` is **tracked in git** in this repo (`git ls-files` confirms it, not gitignored), so a teammate cloning an already-installed consumer repo inherits it. The failure mode is real only for hand-editing, merge-conflict corruption, or a consumer who has git-ignored it locally — narrower than "every fresh clone," which the draft does not claim but is worth confirming explicitly since it changes how often on-call sees this.
+
+**2. Cloud paste block goes stale (human-mediated channel).**
+No code path can detect a stale paste. Verified: `.claude/cloud.md` / `.cursor/cloud.md` are untracked, gitignored, regenerated on every install/upgrade (`bkit-cloud-env.ts:574-586, 672-689`) — nothing compares what a human pasted into the vendor dashboard against what bkit last rendered. Detection today, per the draft's own risk table: **an opaque harness timeout on the model call, not a network error.** This is the single largest observability gap in the design and is honestly flagged HIGH in Risks — but the proposed mitigation (a per-render fingerprint line) has no corresponding "how does the operator discover to check it" step wired into the shipped docs (see Observability Coverage below).
+
+**3. `enrichClaudeSettingsWebFetch` prune deletes a consumer's own grant that happens to coincide with a since-derived host.**
+Verified additive-only behavior at `bkit-modules.ts:1716-1758` and the new prune algorithm (`previous \ current) ∩ allow`). If a consumer hand-adds `WebFetch(domain:groq.com)` before bkit ever derives it, then upgrades (recording it into `webFetchDerived` because it happened to already be present), then a later release removes `groq` from the registry, the consumer's own grant is silently removed on the next upgrade with only a log line (per the draft's own spec: "log every removed entry") as the record. This is disclosed honestly in Trade-offs Accepted, but there's no proposed _log destination_ — `bkit upgrade` output is transient in most CI/agent contexts and easy to miss. Detection: none unless the operator reads upgrade stdout at the moment it happens. Blast radius: one consumer, one domain grant, silently narrowed — a real (if narrow, disclosed) security-adjacent regression.
+
+**4. Multi-tenant apex slips through the CI denylist because it isn't yet on the list (`*.modal.run`, `*.fly.dev`, `github.io`, `herokuapp.com`, etc.).**
+The gate is a denylist, not an allowlist — verified explicitly acknowledged as MEDIUM risk with a proposed soft-warning follow-up ("warn, not block, on `.dev`/`.app`/`.run` TLDs"). This is scoped correctly: it's a bkit-repo CI-time authoring failure, not a consumer-facing one, and the blast radius if it slips through is every consumer of the next bkit release getting a widened wildcard grant to a shared-tenancy apex — a real but honestly-priced risk.
+
+**5. `bkit check` drift from a missed `.bkit/version` / hook-template regeneration.**
+Verified `guardrails.cjs` is `format: "byte-equal-text"` (`bkit-manifest.ts:267`) and there IS an existing test asserting hook↔template byte parity is untested today (`slop-scan.config.json:174` co-lists both files but "never asserted" per the draft, confirmed — no existing test greps for it beyond `bkit-manifest.test.ts:303-305` which only asserts manifest _entry format_, not template↔live byte equality). Design's proposed test 6 closes this. Detection today, pre-fix: `bkit check` failing for every consumer who installed before a hand-sync slip — a support-facing symptom with a generic "run bkit install" fix, acceptable.
+
+## Observability Coverage
+
+<!-- prettier-ignore -->
+| Failure mode | Structured log | Metric/counter | Trace/correlation id | Verdict |
+| --- | --- | --- | --- | --- |
+| Corrupt/absent `.cursor/allowlist.json` | No — silent `ask()` dialog per command, named message points at file + `bkit install` | None (no counter of ask-rate exists or is proposed) | N/A (single-machine hook) | Adequate for a low-frequency, self-diagnosing, single-workstation failure. |
+| Stale cloud paste | New fingerprint line in the rendered doc | None | None | **Gap.** The fingerprint is a diagnostic _primitive_, not a diagnostic _path_ — nothing in the docs-changed table (Components §5) adds a troubleshooting sentence to `.claude/cloud.md` / `.cursor/cloud.md` itself telling an operator "if cloud runs silently time out on model calls, compare this fingerprint to a fresh render." Verified: neither cloud.md template currently has any network-troubleshooting section (`grep -i troubleshoot\|timeout` returns nothing in either template). Without that pointer, the fingerprint sits unused until someone already suspects a stale paste and knows to look — which is precisely the class of person who wouldn't need the fingerprint. This is the design's own HIGH risk item, and the mitigation as scoped in Components/Docs sections is incomplete on the "how does on-call _find_ this" axis. |
+| Prune removing a coincidental consumer grant | "log every removed entry" (unspecified sink) | None | None | Under-specified. No destination named (stdout of `bkit upgrade`? a file?) and no way for a consumer to audit historical prunes after the fact. |
+| CI denylist gate (authoring-time) | CI failure output | N/A (build-time, not runtime) | N/A | Adequate — correctly scoped to bkit-repo CI, not shipped to consumers. |
+| Hook/template byte drift | `bkit check` failure output (existing mechanism) | None | N/A | Adequate — existing, well-understood consumer-facing signal with a known fix. |
+
+## On-Call Ergonomics
+
+- **Cursor "ask on every curl/wget" degraded state:** runbook is obvious from the alert payload itself (message names the file + `bkit install`) — good ergonomics, no context-chasing needed. Recovery is a single idempotent command. Noise: bounded to one workstation, not a page.
+- **Cloud egress timeout (the design's own HIGH risk):** runbook is **not** obvious from the symptom — the operator sees a generic harness/model-call timeout with zero indication it's network-related, and must already suspect the allowlist to go looking for the fingerprint. Recovery is human judgement (re-paste after manually diffing hashes), not automatic or self-evidently idempotent from the symptom side. This is the weakest ergonomics point in the design and is a direct, load-bearing consequence of the human-mediated channel the draft itself calls out as unfixable-in-scope.
+- **Prune's silent-narrowing case:** no alert at all short of the consumer noticing a previously-working `WebFetch` call now asking/denying. Recovery is manual re-declaration once noticed — findable only via git history of `.claude/settings.json` or the (unspecified-destination) removal log.
+- **CI denylist rejection:** immediate, loud, at authoring time in the bkit repo — best-case ergonomics of the set, correctly not exposed to consumers as a runtime concern.
+
+## Operational Dependencies
+
+- No new dashboards. No new automated alerts/paging are introduced — every failure mode in this design surfaces either as an interactive IDE prompt, an opaque model-call timeout, `bkit check` output, or bkit-repo CI red. That is consistent with bkit's existing operability posture (no telemetry pipeline), so this is not a regression, but it does mean the design adds one more silent-failure surface (cloud paste staleness) without adding any new detection primitive beyond a hash a human must think to compare.
+- New on-call burden to acknowledge explicitly: the fingerprint line in `.claude/cloud.md` / `.cursor/cloud.md` becomes a support artifact — whoever triages "cloud agent can't reach provider X" bug reports needs to know it exists and know to ask the reporter for it. This should be named in a support/runbook doc (`.bkit/providers.md` or `.bkit/cloud.md`), not left implicit in the code comment. Not currently in the Components §5 docs-changed table.
+- `.bkit/version`'s new `webFetchDerived` field is an additive, well-precedented extension (same pattern `canonicalHashes` used, verified at `bkit-version.ts:37-113`) — no new operational burden beyond what already exists for that file.
+
+## Verdict Reasoning
+
+The design fails closed everywhere it matters (Cursor hook degrades to ask, not allow; CI denylist blocks unknown platform apexes at authoring time, not silently widens; the prune is directionally safe — it can only ever narrow entries bkit itself is provably shown to have written). The blast radius of widening from raw host to registrable base + `*.` is argued honestly: the draft's own Trade-offs and Risks sections state the cost (~19 bases reachable regardless of installed providers, OpenCode's substring-glob asymmetry, denylist rot) without minimizing it, and the two proposed denylists (`MULTI_TENANT_APEXES`, `MULTI_LABEL_SUFFIXES`) target the actual over-grant risk (`*.amazonaws.com`, `*.googleapis.com`) rather than a decorative PSL dependency — that reasoning holds up under an operability read as well as a security one.
+
+What keeps this at CONCERNS rather than PASS: the design's own HIGH-severity risk — a stale human-pasted cloud allowlist producing an opaque model-call timeout with no diagnosable network signal — is given a mitigation (a fingerprint) without a paired runbook step telling anyone to use it, and the docs-changed table in Components §5 doesn't include the file where that runbook step would naturally live. Separately, the prune's log-every-removed-entry mitigation for the coincidental-grant-narrowing case names no log destination, which makes it un-auditable in practice. Both gaps are addressable at plan time without changing the architecture — they are documentation/wiring omissions, not structural flaws — which is why this is CONCERNS and not FAIL.
+
+## CRITICAL
+
+1. **Wire the cloud-paste fingerprint into an actual runbook step**, not just a rendered line. Add a troubleshooting sentence to `.claude/cloud.md` / `.cursor/cloud.md` (or `.bkit/providers.md`, cross-linked) that names the symptom explicitly: "if a cloud agent's model calls hang/timeout with no error, re-run `bkit install`/`upgrade` locally, diff the fingerprint against what's currently pasted in the dashboard, and re-paste if they differ." Without this, the fingerprint is inert — nobody without prior suspicion of staleness will find it. Add this file to the Components §5 docs-changed table.
+2. **Name a concrete destination for the prune's "log every removed entry."** `console.log`/stdout during `bkit upgrade` is not durable enough to audit a silent narrowing discovered days later. At minimum, specify that removed entries are also visible in `bkit upgrade`'s exit summary / WriteSet report (whatever mechanism the codebase already uses for other install-time notices) so the removal is not lost the moment the terminal scrolls.
+
+## OPTIONAL
+
+1. Confirm explicitly (plan-time, not just design-time) that the `kimi-docs` row's `hosts: []` in the Populated Set table (design draft line ~167) is intentional. As written, `hosts=[]` means `BKIT_SHIPPED_NETWORK_HOSTS` (the exact-host list `renderCursorNetworkAllowlist` unions in) never carries `kimi.com` itself, even though `base: "kimi.com"` gives Claude's apex+`*.` expansion the grant. If Cursor cloud agents are expected to reach `kimi.com` docs the same way Claude does, this row's `hosts` field needs `["kimi.com"]`, or the asymmetry needs to be a stated, deliberate deferral rather than a table artifact nobody notices until a Cursor consumer files a #376-style bug report against `kimi.com` specifically.
+2. Given `renderCloudNetworkAllowlist`'s "Trusted default" branch is explicitly retired in Decisions, confirm at plan time whether `renderCursorNetworkAllowlist`'s parallel `declared.length === 0` branch (`bkit-cloud-env.ts:646-657`, "nothing extra is required here") also needs retiring — once `BKIT_SHIPPED_NETWORK_HOSTS` always unions in, a zero-`allowed-domains` consumer running Cursor in "Allowlist only" mode still needs the provider hosts, and the current zero-declared prose says the opposite. This isn't called out as its own decision row the way the Claude side is.
+3. Consider a low-cost counter/log on the Cursor hook's ask-rate for network hosts (even just a debug-log line, not a metric pipeline) so a consumer whose `.cursor/allowlist.json` degrades to an empty/near-empty set after a bad merge has something more concrete than "everything is asking" to paste into a bug report.
+
+## OUT OF SCOPE
+
+- A bootstrap-time reachability probe for cloud provider hosts (mentioned and correctly deferred in the draft's own Risks table) — would close the stale-paste detection gap structurally but is out of scope for this issue.
+- Any telemetry/alerting pipeline for install-time or runtime network-allow decisions — bkit ships no such pipeline today for any subsystem; not a gap specific to this design.
+- Practical dashboard field-size limits for the Claude-web/Cursor "Allowed domains" UI (draft's own Open Question 3) — an operability-adjacent unknown but explicitly flagged as needing measurement before the fan-out grows further, not a blocker for this change's ~19-base scope.

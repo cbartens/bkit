@@ -103,14 +103,17 @@ export function planSelfBump(
 
 /**
  * Detect a template's managed-block marker style from its content.
- * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed in
- * hash-comment files (`# <!-- bkit:start -->` in `.gitignore`/`.gitattributes`), so
- * it is checked FIRST; only files using the bare `# bkit:start` marker are hash-comment.
+ * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed or
+ * slash-prefixed in hash-comment/slash-comment files (`# <!-- bkit:start -->` in
+ * `.gitignore`/`.gitattributes`, `// <!-- bkit:start -->` in JS/TS), so it is checked
+ * FIRST; the slash-comment check is line-anchored so a prefixed HTML marker is never
+ * mistaken for the bare `// bkit:start` slash style.
  * Returns null when the template carries NO bkit block (→ not a block-merge file).
  */
 function detectMarkerStyle(templateContent: string): MarkerStyle | null {
   if (templateContent.includes("<!-- bkit:start -->")) return "html-comment";
   if (templateContent.includes("# bkit:start")) return "hash-comment";
+  if (/^\/\/ bkit:start$/m.test(templateContent)) return "slash-comment";
   return null;
 }
 
@@ -225,6 +228,12 @@ export interface UpgradeCandidate {
    * the consumer's `bkit.issueTracker` so install and upgrade emit byte-identical output.
    */
   contentOverride?: string;
+  /**
+   * `markered-text` only — carries `ManifestEntry.noMarkerMigration` through to
+   * `writeTier2`'s no-marker migration policy (see bkit-manifest.ts). Undefined
+   * (default) keeps the original append-blind behaviour.
+   */
+  noMarkerMigration?: string;
 }
 
 export interface UpgradeOptions {
@@ -261,7 +270,14 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
   // formats; the tier writers push exactly one entry per file they actually change.
   const ws: WriteSet = { writes: [] };
 
-  for (const { relPath, templatePath, format, seedOrPrint, contentOverride } of candidates) {
+  for (const {
+    relPath,
+    templatePath,
+    format,
+    seedOrPrint,
+    contentOverride,
+    noMarkerMigration,
+  } of candidates) {
     if (contentOverride === undefined && !fs.existsSync(templatePath)) {
       console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
       continue;
@@ -343,6 +359,9 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
           markerStyle ?? "html-comment",
           options.dryRun,
           ws,
+          noMarkerMigration
+            ? { relPath, canonicalHashes, wiringMessage: noMarkerMigration }
+            : undefined,
         );
       }
       if (ws.writes.length > before) {

@@ -1,0 +1,98 @@
+Verdict: CONCERNS
+
+<!-- verdict:end -->
+
+# Design Review
+
+Lens: Operability — failure modes, observability, on-call ergonomics.
+
+## Failure-Mode Enumeration
+
+**Ship-lane contention (Lane 1, `bkit-ship-global`).**
+
+- What fails: two-to-N ships arrive close together; GHA admits the running one, holds one pending, and for N>=3 silently drops the middle arrival(s) (queue depth 1, newer pending evicts older pending — V-2, inferred not verified).
+- Detection: the running/waiting ships are visible natively in the Actions run list (status `queued` vs `in_progress`). The evicted run is visible only as a terminated `bkit-cloud` run with `conclusion: cancelled` and zero started jobs — no bkit-authored signal (no comment, no label, no `status.jsonl` row), because the run never executes a step.
+- Blast radius: one PR per eviction (does not ship until manually re-dispatched); repo-wide in the sense that ship throughput degrades to a serial CI-cycle chain under any sustained concurrency (explicitly called out in Trade-offs as the practical throughput ceiling).
+
+**FID-lane contention (Lane 2, `bkit-fid-{FID}-{agent}`).**
+
+- What fails: two cloud runs for the same FID (e.g. a dispatched `/bkit-debug` and a CI-triggered `/bkit-ship`) queue at job level after the `resolve` job runs. This is a real behaviour change from today, where the cloud has _no_ cross-surface arbiter at all (C2) — so "both boot and race unarbitrated" becomes "one waits".
+- Detection: native GHA queued-job UI, plus the `resolve` job's `::notice::` naming phase/FID/lane for every run that boots.
+- Blast radius: one FID; contained. Risk R-2 (double queuing — a run can wait at both lanes) compounds latency for exactly the debug-after-failed-ship case, which is the highest-value case to keep fast.
+
+**Dequeued/stale-context ship (queued-run staleness, priority item 1).**
+
+- What fails, traced against `.bkit/workflows/bkit-ship.md`: nothing structurally new. Every fact the ship workflow acts on is re-read at the point of use, not inherited from the trigger payload:
+  - Step 1 resolves `BOOK_ROOT`/lock fresh at boot.
+  - Step 2 sub-step 4 re-lists the PR (`gh pr list --head ...`) and sub-step 6 re-reads `ENTRY_HEAD`/`MERGEABLE` fresh — this is the actual PR head at the moment the run _starts executing_, not at trigger time.
+  - Step 2 sub-step 7 re-reads `statusCheckRollup` fresh and Failure-Paths on any failed check.
+  - Step 2 sub-step 5 explicitly handles the "PR merged while I was waiting" case (`state = MERGED` → resume marker → skip to Step 9) — a queued ship dequeuing onto an already-shipped PR is a named, tested path, not an incidental one.
+  - Step 3 re-checks whether `origin/dev` is now an ancestor of `ENTRY_HEAD` (Path A vs B) — this is exactly the "dev moved underneath it" case, and it routes to Step 4 integration + Step 5 CI re-validation (`gh workflow run ci.yml` + poll, timeout `SHIP_CI_WAIT_TIMEOUT_S`, default visible in `bkit-ship-timeouts.sh`) before Step 6's `gh pr merge --match-head-commit` gate.
+  - **Conclusion:** the ship workflow acts on the _boot-time_ snapshot, never the _trigger-time_ snapshot, by construction — this predates #397 and is unaffected by it. Queueing does not introduce a new staleness hazard; it only changes how long a run sits before reaching its own already-fresh Step 2. Net effect vs today's `cancel-in-progress: true`: **strictly better**, not merely different — today's cancel can kill a run mid-flight after it has already pushed commits/labels (stuck `bkit:shipping`, no close row, no `outcome` row per the design's own Trade-offs list); the new model never does that. The cost is latency, not correctness, and the latency is bounded by the in-run 3600s workflow timeout (`bkit-ship.md` header `Timeouts` rule) plus whatever the currently-running ship's Failure Path takes to exit — i.e. worst case is on the order of ~an hour, not unbounded, but the design states no queued-duration alert exists (see On-Call Ergonomics).
+
+## Observability Coverage
+
+<!-- prettier-ignore -->
+| Failure mode | Structured log / notice | Metric / counter | Trace / correlation | Verdict |
+| --- | --- | --- | --- | --- |
+| Ship queued (native) | Free — GHA run list shows `queued` against the group | None | `run-name` renders phase+issue; `resolve`'s `::notice::` once booted | OK |
+| Ship evicted (N>=3) | **None** — run never executes a step, so no `::notice::`, no tracker comment, no `status.jsonl` row | **None** — no counter of eviction rate exists or is proposed | `run-name` is rendered at trigger time (computed from `inputs`/`github.event.*`, independent of job execution) so the evicted run _is_ named correctly in the Actions list — this is the only surviving signal | **Gap for a CRITICAL failure mode.** The design's own R-1 concedes "nothing in `status.jsonl` records 'I was evicted'"; the only recovery is an ad hoc `gh api .../runs?status=cancelled` query the design specifies but does not wire into any script, cron, or doc runbook beyond a promise to add it to `cloud.md`. |
+| Same-FID queued (job level) | `resolve`'s `::notice::` on the eventual boot | None | `lane` output names the FID | OK, same caveat as ship-queued |
+| Yielded run (contingency probe path only) | `::notice::` + exit 0, explicit no-`bkit:failed` | None | run-name + peer FID comparison logged in-line | OK — but only reachable if V-1 (job-level `concurrency` reading `needs.*`) fails and the contingency ships; unverified as of this review |
+| Cell-7 dev-CI-success no-op | `::notice::Non-terminal...` style pattern already exists (existing ctx step) | None | n/a | OK, no regression |
+| Consumer with non-`feat/`/`fix/` branch convention | **None** — the workflow silently classifies these runs into `bkit-auto-{head_branch}` instead of `bkit-ship-global`; nothing tells the consumer their ship-global guarantee doesn't apply | **None** | n/a | **Gap** — see Operational Dependencies / CRITICAL |
+
+Per Step 6 of this review's process, missing observability for the eviction failure mode (a CRITICAL-severity outcome — a merge-ready PR silently never ships) is itself a CRITICAL finding, not merely a documented trade-off, because the mitigation offered ("a manual `gh api` query, and a promise to write it into `cloud.md`") is not a runbook until it is actually a copy-pasteable command in a doc a 3am reader can find and run — the design records this as a TODO for the Plan/Build phase, not as delivered.
+
+## On-Call Ergonomics
+
+**Alert: none exist today or are proposed.** Every "alert" an operator would see is passive — the state of a run in the Actions UI — not a push notification, page, or tracker comment. This is consistent with bkit's existing observability posture (`docs/observability.md` scope: "No server-side telemetry pipeline, log drains, or tracing" for the CLI surface; this GHA-workflow surface has even less), so it is not a regression, but the design introduces a genuinely new operationally-relevant state (displaced/evicted run) without extending that posture to cover it.
+
+**Runbook obviousness (priority item 3 — waiting vs hung vs evicted):**
+
+- _Waiting_ (queued, one ship ahead): Actions UI shows `status: queued` against the run — visually distinct from `in_progress`. Distinguishable from a hang: yes, at a glance, if the operator knows to look at run `status` rather than assuming "not green yet = broken."
+- _Hung_ (a job actually started and is stuck): shows `status: in_progress` past its expected duration; the workflow's own 3600s timeout (bkit-ship.md header) and GHA's default job timeout eventually terminate it, but nothing pages when that threshold is crossed — an operator must notice absence of progress, not receive a signal.
+- _Evicted_ (displaced by a third ship): shows `conclusion: cancelled`, **zero jobs started** — visually similar to a run cancelled for any other reason (operator manually cancelled, workflow file redeployed mid-run, GHA-side infra cancel). The distinguishing signature ("zero started jobs" + group name) is a `gh api` query away, not a UI affordance. An operator unfamiliar with this design's internals will very plausibly read "cancelled" as "someone/something intentionally stopped this, fine" and move on — the PR then sits merge-ready and unshipped with no further trigger to revisit it (nothing re-fires CI on an already-green, unchanged PR). This is the operationally dangerous read: cancelled looks routine, but for this one shape it silently means "nobody re-tries this."
+- Recommendation (not yet in design): the recovery query from R-1 should be promoted from "documented in `cloud.md`" to an actual copy-paste command with the exact API filter and, ideally, a scheduled (even weekly, cron-triggered) check that comments on any PR whose ship run was evicted — turning "found it during a 3am investigation" into "found it by Tuesday." The design explicitly defers this (needs `actions: write`, belongs to #260's substrate) — reasonable to defer the automation, but the manual runbook line itself should not be deferred past this cycle, since it's the only recovery path for a CRITICAL-severity silent failure.
+
+**Recovery action:**
+
+- Waiting → automatic (GHA dequeues it).
+- Yielded (contingency path) → automatic no-op; the caller must re-dispatch on their own initiative since nothing announces the yield beyond the run's own log.
+- Evicted → **manual, judgement-requiring**: operator must run the Actions-API query, identify the PR, and manually re-dispatch `/bkit-ship`. Not idempotent by construction (nothing prevents dispatching it into another eviction under sustained N>=3 load), not automatic, and per the design's own framing "findable but not automatic" (Trade-offs, vs the reconciler approach).
+
+**Alert noise:** none of the mechanisms here can page on transient blips because none of them page at all — the entire signal surface is pull-based (an operator has to go look). This is a low-noise design (no false pages), traded directly against low-detectability (a real problem generates no push signal either). For a merge-ready PR silently stuck, "no noise" is not obviously the right trade — see CRITICAL.
+
+## Operational Dependencies
+
+- **New dashboard/query, not yet built:** the R-1 recovery query (`bkit-cloud` runs with `conclusion: cancelled` and zero started jobs) is new on-call surface that exists only as a design description; it needs to land as an actual runbook entry in `.bkit/cloud.md` (which the design already commits to updating for the "locks don't arbitrate cloud runs" correction — the recovery query should ride the same edit) before Build closes, not as a future nice-to-have.
+- **New `::notice::` convention:** every booting run now leaves one `resolve`-job `::notice::` line naming phase/FID/lane (R-5, R-6 §Components). This is a net observability improvement (today's duplicated per-job ctx steps do not have an equivalent single anchor line) and should be called out positively — it materially helps distinguish "which lane did this run occupy" during incident review.
+- **Postinstall advisory gap (open, Plan-phase item):** the design proposes a `bkit-postinstall.ts` advisory for a mismatched installed `bkit-cloud.yml` concurrency block (precedent: the existing string-based always-true-gate detector at `bkit-postinstall.ts:361-381`), but Open Question 4 leaves unresolved whether it checks presence (string) or semantics (parsed) — acknowledge as a real operational dependency the Plan phase must close, since a string-only detector will not catch the branch-prefix mismatch failure mode below.
+- **No alerting/paging infrastructure exists or is proposed** for any state introduced here — acceptable given bkit's stated observability scope (pull-based Actions UI + doc runbooks), but should be acknowledged explicitly rather than left implicit, given the severity of the one failure mode (eviction) that has zero automated signal.
+
+## Verdict Reasoning
+
+CONCERNS, not FAIL: the design is a net correctness and operability improvement over the status quo on its stated axis — no run is cancelled mid-flight anymore (removing the current stuck-label/missing-close-row failure mode), the ship workflow's existing re-derivation logic already makes a delayed boot self-healing (queued-run staleness is a non-issue by construction, verified by tracing `bkit-ship.md` Steps 2-6), and the two-lane model closes a cross-surface FID collision that today has _zero_ arbitration in the cloud. It is not PASS because two of the priority items surface CRITICAL-severity gaps that the design itself names but does not close:
+
+1. **N>=3 eviction (priority item 2) has no automated detection, no dashboard, and no runbook artifact yet — only a design-doc promise to write one.** A merge-ready PR silently never shipping, discoverable only via manual Actions-API archaeology, is exactly the failure shape that erodes trust in the automation the fastest, and the design correctly names this risk (R-1) but treats the mitigation as deferred rather than as a same-cycle deliverable.
+2. **Consumer blast radius on the branch-prefix allowlist (priority item 5) is silent, not degraded-with-signal.** A consumer whose branch convention isn't `feat/**`/`fix/**` gets _no_ ship-global guarantee at all (their ship traffic routes through the per-branch `bkit-auto-{head_branch}` group instead), with nothing in the postinstall advisory, the run output, or the docs telling them so. This is the highest-leverage operability gap in the whole design because it silently narrows the very guarantee being shipped, for an unknown fraction of the consumer base, with no way for them to discover it short of reading the group expression.
+
+Neither gap requires a redesign — both have straightforward remediation (turn the recovery query into a real runbook line; add a postinstall advisory or doc note for non-matching branch prefixes) — which is why this is CONCERNS rather than FAIL.
+
+## CRITICAL
+
+- **No automated signal for a ship-lane eviction (N>=3).** Before Build/Ship, the R-1 recovery query must land as a literal, copy-pasteable command in `.bkit/cloud.md` (not merely "the doc must state" as currently phrased in Decisions/R-1) — a 3am reader needs the exact `gh api` invocation, not a paraphrase of its shape. Strongly recommend also writing one `status.jsonl`-independent breadcrumb: even without `actions: write`, the _next_ run that boots for the same repo (any phase) could, as a cheap side effect of the already-planned `resolve` job, check for a recent same-lane `cancelled`+zero-jobs run and surface it in its own `::notice::` — turning "silent" into "surfaced on the next unrelated run," at zero new permissions cost.
+- **Silent scope-narrowing for consumers whose branches don't match `feat/**`/`fix/**`.** The allowlist discriminator is correct-by-construction for bkit's own convention but fails closed _without signal_ for any consumer with a different one — such a consumer's ships keep working (no error), they just never get the ship-global exclusivity this whole design exists to deliver, and nothing tells them that. This needs either (a) a postinstall advisory that inspects the consumer's actual branch-protection/naming convention and flags the mismatch, or (b) at minimum an explicit doc callout in `.bkit/cloud.md`/README naming the exact prefixes the guarantee depends on, so a consumer auditing their own setup can self-diagnose. Silent + undiscoverable is the failure mode to close; a documented limitation is acceptable, an invisible one is not.
+
+## OPTIONAL
+
+- Add a queued-duration threshold note to `cloud.md` (e.g. "if a dispatched ship shows `queued` for >N minutes, check whether the running ship has exceeded its own internal timeout") — gives on-call an actionable trigger instead of relying on intuition for the "waiting vs hung" distinction called out in On-Call Ergonomics.
+- Resolve Open Question 4 (postinstall advisory: string-presence vs parsed-semantics) in favour of parsed semantics before Build — a string-based detector, per the project's own doctrine ("validate shipped config with the real tool, not string presence"), would not catch subtler consumer drift such as a hand-edited `cancel-in-progress: true` reintroduced on one lane only.
+- Consider surfacing the `resolve` job's `::notice::` line (phase/FID/lane) as a PR/issue comment in addition to the Actions log, at least for the ship phase — it currently lives only in a place (Actions run log) that requires already knowing to look; a tracker comment would put it where the human is already watching (the issue thread), consistent with every other phase workflow's per-step comment convention.
+- The dual-agent same-FID double-ship (R-4) is correctly scoped out of this design, but since it is a real unarbitrated collision, it should get its own tracked issue with an explicit "no on-call signal exists for this either" note rather than staying only as a design-doc footnote.
+
+## OUT OF SCOPE
+
+- The deferred reconciler/sweeper for N>=3 (the design's own stated long-term fix, tied to #260's substrate and an `actions: write` bump) — correctly deferred; not a blocker for this design to land, but its absence is the direct cause of the CRITICAL eviction-detection gap above, so it should stay visibly tracked, not quietly dropped once this issue ships.
+- R-8 (adjacent defect: `gh workflow run ci.yml` requiring `actions: write` the cloud token doesn't have) — already correctly routed by the design to `docs/failures.jsonl` rather than folded in here; not re-litigated in this review.
+- Router/executor split (deferred target shape) — its operability profile (one payload shape, trivially observable queueing) is strictly better than the two-lane model reviewed here, but adopting it now is out of scope per the design's own YAGNI argument; noted for a future operability pass once #260/#324 land.

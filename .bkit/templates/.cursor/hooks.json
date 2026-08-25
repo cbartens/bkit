@@ -16,6 +16,10 @@
         "command": "node .cursor/hooks/guardrails.cjs",
         "matcher": "Read|TabRead",
         "failClosed": true
+      },
+      {
+        "command": "node .cursor/hooks/gateguard.cjs",
+        "matcher": "Write"
       }
     ]
   }

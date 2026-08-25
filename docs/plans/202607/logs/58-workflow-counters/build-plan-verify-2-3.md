@@ -53,14 +53,15 @@ Rule locates marker by **content** (`/--argjson da "\$DEBUG_ATTEMPT"[\s\S]*?debu
 
 Six acid probes; restore + `shasum` (`23c7339e…` on `bkit-debug.md`):
 
-| Probe (post-marker site)                        | Result               |
-| ----------------------------------------------- | -------------------- |
-| A. `DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))` | **REDS**             |
-| B. `DEBUG_ATTEMPT=$((N_PRIOR + 1))`             | GREEN — missed       |
-| C. `+1` inside jq                               | GREEN — missed       |
-| D. post-increment                               | GREEN — missed       |
+<!-- prettier-ignore -->
+| Probe (post-marker site) | Result |
+| --- | --- |
+| A. `DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))` | **REDS** |
+| B. `DEBUG_ATTEMPT=$((N_PRIOR + 1))` | GREEN — missed |
+| C. `+1` inside jq | GREEN — missed |
+| D. post-increment | GREEN — missed |
 | E. **New** post-marker block, buggy novel shape | **REDS** (count pin) |
-| F. **New** post-marker block, correct           | **REDS** (count pin) |
+| F. **New** post-marker block, correct | **REDS** (count pin) |
 
 `plusOneRe` = one literal shape; B/C/D escape on **existing** blocks. Backstop: `foldBlocks.length === 10` catches add/remove (E). F = deliberate tripwire.
 

@@ -11,13 +11,14 @@ Lens: Tightness, scope discipline, design-coverage.
 
 All five checked against the tree, not taken on trust. **Four verify cleanly; one is right but under-stated.**
 
-| #   | Draft's claim                                                       | Verdict                             | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| --- | ------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Shipped prose audit is VACUOUS, not narrow                          | **CONFIRMED**                       | `bkit-counter-prose-audit.test.ts:89-90`. Alternation splits top-level into `\bATTEMPT\b.*(<=\|>=\|<\|>)\s*`?MAX_`and`MAX_\w+\s*(<=\|>=\|<\|>)\s*\d`. Alt-1: `\bATTEMPT\b`cannot match inside`VERIFY_ATTEMPT` (`_`is a word char → no boundary). The only corpus line where`\bATTEMPT\b`*does* match is`bkit-build.md:472` (`{step}-{SUB_PLAN}-{ATTEMPT}.md`) — no comparison, so alt-1 still cannot fire. Alt-2: grep for `MAX_\w+\s*(<=\|>=\|<\|>)\s*\d`returns **zero** matches corpus-wide. Both`describe` blocks pass by matching nothing. Claim holds. |
-| 3   | `DEBUG_ATTEMPT` already derived, must stay CROSS-run                | **CONFIRMED**                       | `bkit-debug.md:180-181` — `[.[] \| select(.workflow=="debug")] \| last.debugAttempt // 0` then `+1`. `.[]` = all runs. Consumed at `:194` in a _different_ fenced block. The plan's read of the actual defect (cross-block, not cross-run) is correct.                                                                                                                                                                                                                                                                                                       |
-| 4   | Issue's 7-site table misses 3 sites                                 | **CONFIRMED**                       | `bkit-debug.md:417` (`NORMAL_ATTEMPT` > 1), `:418` (`= 1`), `:802` (`> 1`) — prose comparisons against literals. Real, and the widened audit would flag them.                                                                                                                                                                                                                                                                                                                                                                                                |
-| 5   | FOLD blob is 5 workflows / 15 sites, not 3                          | **CONFIRMED**                       | `FOLD='def lastIdx` count: build 4, debug 4, ship 3, plan 2, design 2 = **15 / 5 files**. Matches the Supersession Inventory exactly.                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 2   | "No `*_ATTEMPT` in prose" literally unachievable (~40 placeholders) | **DIRECTIONALLY RIGHT, COUNT SOFT** | 106 lines match `\{[A-Z][A-Z0-9_]*_ATTEMPT\}`, of which 44 are `${X_ATTEMPT}` shell expansions → ~62 lines carry a non-`$` brace placeholder (some fenced). "Roughly 40" is a plausible prose-only estimate but was not established. See OPTIONAL-1 for the exemption-regex consequence.                                                                                                                                                                                                                                                                     |
+<!-- prettier-ignore -->
+| # | Draft's claim | Verdict | Evidence |
+| --- | --- | --- | --- |
+| 1 | Shipped prose audit is VACUOUS, not narrow | **CONFIRMED** | `bkit-counter-prose-audit.test.ts:89-90`. Alternation splits top-level into `\bATTEMPT\b.*(<=\|>=\|<\|>)\s*`?MAX_`and`MAX_\w+\s*(<=\|>=\|<\|>)\s*\d`. Alt-1: `\bATTEMPT\b`cannot match inside`VERIFY_ATTEMPT` (`_`is a word char → no boundary). The only corpus line where`\bATTEMPT\b`*does* match is`bkit-build.md:472` (`{step}-{SUB_PLAN}-{ATTEMPT}.md`) — no comparison, so alt-1 still cannot fire. Alt-2: grep for `MAX_\w+\s*(<=\|>=\|<\|>)\s*\d`returns **zero** matches corpus-wide. Both`describe` blocks pass by matching nothing. Claim holds. |
+| 3 | `DEBUG_ATTEMPT` already derived, must stay CROSS-run | **CONFIRMED** | `bkit-debug.md:180-181` — `[.[] \| select(.workflow=="debug")] \| last.debugAttempt // 0` then `+1`. `.[]` = all runs. Consumed at `:194` in a _different_ fenced block. The plan's read of the actual defect (cross-block, not cross-run) is correct. |
+| 4 | Issue's 7-site table misses 3 sites | **CONFIRMED** | `bkit-debug.md:417` (`NORMAL_ATTEMPT` > 1), `:418` (`= 1`), `:802` (`> 1`) — prose comparisons against literals. Real, and the widened audit would flag them. |
+| 5 | FOLD blob is 5 workflows / 15 sites, not 3 | **CONFIRMED** | `FOLD='def lastIdx` count: build 4, debug 4, ship 3, plan 2, design 2 = **15 / 5 files**. Matches the Supersession Inventory exactly. |
+| 2 | "No `*_ATTEMPT` in prose" literally unachievable (~40 placeholders) | **DIRECTIONALLY RIGHT, COUNT SOFT** | 106 lines match `\{[A-Z][A-Z0-9_]*_ATTEMPT\}`, of which 44 are `${X_ATTEMPT}` shell expansions → ~62 lines carry a non-`$` brace placeholder (some fenced). "Roughly 40" is a plausible prose-only estimate but was not established. See OPTIONAL-1 for the exemption-regex consequence. |
 
 Other spot-checks, all accurate: `bkit-build.md:316` / `:367` / `:470` / `:526` / `:780,782` / `:804` / `:806` / `:911`; the literal-`1` challenge gate; `bkit-counter-bus.sh:27-62` primitives; 7 `MAX_*` in config (the shipped audit's `EXPECTED_CONSTANTS` lists only 6 — omits `MAX_CHALLENGE_REMEDIATE_ATTEMPT`, consistent with constraint 6); the 5 `counterValue 1` / `model-self-report` emitters at the exact cited lines; `ci.yml:500-502` `npx --yes bats tests/*.bats`; all 5 ledger keys present (`decisions.jsonl:36,37,38`, `deferrals.jsonl:31,32,33`), so T8.2's `= 3`/`= 3` assertions are correct. The plan also correctly silently repaired the issue's stale `bkit-build.md:909` → `:911`.
 
@@ -31,25 +32,26 @@ The plan's central acceptance criterion — _"No counter value originates in orc
 
 Full corpus of `--argjson {a,sa} "$*_ATTEMPT"` (verified):
 
-| File:line            | Counter                                        | Task?                                                                        |
-| -------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------- |
-| `bkit-build.md:538`  | `VERIFY_ATTEMPT`                               | T3.1 ✅                                                                      |
-| `bkit-build.md:612`  | `VERIFY_ATTEMPT`                               | ❌ **not in any task, and absent from the plan's own "Verified sites" list** |
-| `bkit-build.md:716`  | `CHALLENGE_REMEDIATE_ATTEMPT`                  | ❌ listed as a "challenge row" in the existence-check, no task converts it   |
-| `bkit-build.md:761`  | `CHALLENGE_REMEDIATE_ATTEMPT`                  | ❌ same                                                                      |
-| `bkit-build.md:818`  | `CHALLENGE_REMEDIATE_ATTEMPT`                  | T3.3 ✅                                                                      |
-| `bkit-build.md:936`  | `TEST_ATTEMPT`                                 | T3.2 ✅                                                                      |
-| `bkit-build.md:1006` | `TEST_ATTEMPT`                                 | ❌ not listed anywhere                                                       |
-| `bkit-build.md:1056` | `TEST_ATTEMPT`                                 | ❌ not listed anywhere                                                       |
-| `bkit-debug.md:400`  | `NORMAL_ATTEMPT`                               | T3.5 ✅                                                                      |
-| `bkit-debug.md:570`  | `DEBUG_ATTEMPT`                                | ❌ not listed                                                                |
-| `bkit-debug.md:643`  | `NORMAL_ATTEMPT`                               | ❌ not listed                                                                |
-| `bkit-debug.md:697`  | `NORMAL_ATTEMPT`                               | ❌ not listed                                                                |
-| `bkit-debug.md:756`  | `NORMAL_ATTEMPT` (`a`) + `SOAK_ATTEMPT` (`sa`) | ⚠️ T3.6 covers `sa` only; `a` uncovered                                      |
-| `bkit-debug.md:808`  | `NORMAL_ATTEMPT`                               | ❌ T3.5 converts the `:802` _prose_, not `:808`'s write                      |
-| `bkit-ship.md:562`   | `MERGE_ATTEMPT`                                | T3.7 ✅                                                                      |
-| `bkit-ship.md:625`   | `MERGE_ATTEMPT`                                | ❌ not listed                                                                |
-| `bkit-ship.md:685`   | `MERGE_ATTEMPT`                                | ❌ not listed                                                                |
+<!-- prettier-ignore -->
+| File:line | Counter | Task? |
+| --- | --- | --- |
+| `bkit-build.md:538` | `VERIFY_ATTEMPT` | T3.1 ✅ |
+| `bkit-build.md:612` | `VERIFY_ATTEMPT` | ❌ **not in any task, and absent from the plan's own "Verified sites" list** |
+| `bkit-build.md:716` | `CHALLENGE_REMEDIATE_ATTEMPT` | ❌ listed as a "challenge row" in the existence-check, no task converts it |
+| `bkit-build.md:761` | `CHALLENGE_REMEDIATE_ATTEMPT` | ❌ same |
+| `bkit-build.md:818` | `CHALLENGE_REMEDIATE_ATTEMPT` | T3.3 ✅ |
+| `bkit-build.md:936` | `TEST_ATTEMPT` | T3.2 ✅ |
+| `bkit-build.md:1006` | `TEST_ATTEMPT` | ❌ not listed anywhere |
+| `bkit-build.md:1056` | `TEST_ATTEMPT` | ❌ not listed anywhere |
+| `bkit-debug.md:400` | `NORMAL_ATTEMPT` | T3.5 ✅ |
+| `bkit-debug.md:570` | `DEBUG_ATTEMPT` | ❌ not listed |
+| `bkit-debug.md:643` | `NORMAL_ATTEMPT` | ❌ not listed |
+| `bkit-debug.md:697` | `NORMAL_ATTEMPT` | ❌ not listed |
+| `bkit-debug.md:756` | `NORMAL_ATTEMPT` (`a`) + `SOAK_ATTEMPT` (`sa`) | ⚠️ T3.6 covers `sa` only; `a` uncovered |
+| `bkit-debug.md:808` | `NORMAL_ATTEMPT` | ❌ T3.5 converts the `:802` _prose_, not `:808`'s write |
+| `bkit-ship.md:562` | `MERGE_ATTEMPT` | T3.7 ✅ |
+| `bkit-ship.md:625` | `MERGE_ATTEMPT` | ❌ not listed |
+| `bkit-ship.md:685` | `MERGE_ATTEMPT` | ❌ not listed |
 
 Confirmed by reading two of them: `bkit-build.md:608-615` (Step 6 sub-step 22) and `:1002-1009` (Step 14 sub-step 6) are each a **separate fenced block** that reads `$VERIFY_ATTEMPT` / `$TEST_ATTEMPT` with no derive in-block, and uses the value three times (`--argjson a`, the `artifacts` path, the commit subject). Shell state does not survive between orchestrator Bash calls — so every one of these is precisely the model-remembered-and-typed number the issue was filed to delete.
 

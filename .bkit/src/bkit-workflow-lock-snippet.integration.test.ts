@@ -32,14 +32,37 @@ const FID = "68-digital-agent-mvp";
 
 // Fabricate a canonical plan tree: <root>/docs/plans/<MONTH>/logs/<FID>/
 let root: string;
+// A tree where the SAME FID has logs in two month buckets — the split state the
+// multi-bucket guard exists to refuse rather than silently pick a side of.
+let splitRoot: string;
+// A tree with two features, one of which left a `.lock` behind (interrupted).
+let lockRoot: string;
+const OTHER_MONTH = "202608";
+const OTHER_FID = "70-some-other-feature";
 
 beforeAll(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-snippet-"));
   fs.mkdirSync(path.join(root, "docs", "plans", MONTH, "logs", FID), { recursive: true });
+
+  splitRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-split-"));
+  for (const m of [MONTH, OTHER_MONTH]) {
+    fs.mkdirSync(path.join(splitRoot, "docs", "plans", m, "logs", FID), { recursive: true });
+  }
+
+  // The interrupted feature is deliberately NOT the one the old `head -1` sort
+  // would pick: OTHER_FID sorts later and lives in the newer bucket, so a test
+  // that passes here cannot be passing by accident of ordering.
+  lockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-hint-"));
+  fs.mkdirSync(path.join(lockRoot, "docs", "plans", MONTH, "logs", FID), { recursive: true });
+  const lockedDir = path.join(lockRoot, "docs", "plans", OTHER_MONTH, "logs", OTHER_FID);
+  fs.mkdirSync(lockedDir, { recursive: true });
+  fs.writeFileSync(path.join(lockedDir, ".lock"), "2026-08-01T00:00:00Z design\n");
 });
 
 afterAll(() => {
-  fs.rmSync(root, { recursive: true, force: true });
+  for (const dir of [root, splitRoot, lockRoot]) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 // Run an extracted bash snippet with REPO_ROOT set and cwd at the fabricated
@@ -129,5 +152,82 @@ describe("FID-hint snippet (NF-1) stays correct", () => {
       encoding: "utf-8",
     }).trim();
     expect(out).toBe(FID);
+  });
+});
+
+// Every multi-bucket guard: the BUCKET_COUNT assignment plus the `-gt 1` bail-out
+// that follows it, extracted as a pair so the test runs the guard as shipped.
+const guardBlocks: Array<{ file: string; block: string }> = [];
+for (const file of workflowFiles) {
+  const lines = fs
+    .readFileSync(file, "utf-8")
+    .split("\n")
+    .map((l) => l.trim());
+  for (let i = 0; i < lines.length; i++) {
+    if (
+      lines[i].startsWith("BUCKET_COUNT=$(ls -d") &&
+      lines[i + 1]?.startsWith('[ "$BUCKET_COUNT" -gt 1 ]')
+    ) {
+      guardBlocks.push({ file: path.basename(file), block: `${lines[i]}\n${lines[i + 1]}` });
+    }
+  }
+}
+
+// Exit status of a guard block against a given tree. The trailing `exit 0` is
+// only reached when the guard does NOT fire — when it fires it exits first.
+function runGuard(block: string, repoRoot: string): number {
+  const script = `cd "$REPO_ROOT"\n${block.replaceAll("{FID}", FID)}\nexit 0`;
+  try {
+    execFileSync("bash", ["-c", script], {
+      env: { ...process.env, REPO_ROOT: repoRoot },
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return 0;
+  } catch (err) {
+    return (err as { status?: number }).status ?? 1;
+  }
+}
+
+describe("multi-bucket guard refuses a FID split across month buckets", () => {
+  it("every YYYYMM extraction is preceded by a guard", () => {
+    // A workflow that resolves the bucket WITHOUT the guard silently picks a
+    // side of a split: oldest keeps the plan and build history but reads a
+    // superseded design; newest reads the current design but makes an already
+    // planned-and-built feature look brand new.
+    expect(guardBlocks.length).toBe(yyyymmLines.length);
+  });
+
+  it.each(guardBlocks)("$file: passes when the FID has exactly one bucket", ({ block }) => {
+    expect(runGuard(block, root)).toBe(0);
+  });
+
+  it.each(guardBlocks)("$file: exits non-zero when the FID has two buckets", ({ block }) => {
+    expect(runGuard(block, splitRoot)).not.toBe(0);
+  });
+});
+
+describe("FID hint resolves the interrupted run by leftover lock", () => {
+  const lockHints = workflowFiles
+    .map((file) => ({ file, content: fs.readFileSync(file, "utf-8") }))
+    .map(({ file, content }) => {
+      const m = content.match(/`(ls -t [^`]*\/logs\/\*\/\.lock[^`]*NF-1[^`]*)`/);
+      return m ? { file: path.basename(file), cmd: m[1] } : null;
+    })
+    .filter((x): x is { file: string; cmd: string } => x !== null);
+
+  it("at least one workflow carries the lock-based hint", () => {
+    expect(lockHints.length).toBeGreaterThan(0);
+  });
+
+  it.each(lockHints)("$file: names the locked feature, not the oldest", ({ cmd }) => {
+    const script = `cd "$REPO_ROOT"\nprintf '%s' "$(${cmd})"`;
+    const out = execFileSync("bash", ["-c", script], {
+      env: { ...process.env, REPO_ROOT: lockRoot },
+      encoding: "utf-8",
+    }).trim();
+    expect(out).toBe(OTHER_FID);
+    // The pre-fix `head -1` over ascending buckets returned this instead.
+    expect(out).not.toBe(FID);
   });
 });

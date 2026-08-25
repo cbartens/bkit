@@ -548,6 +548,33 @@ export async function runMigrate(opts) {
     // pending/friction: .md absent = already done (either never existed or already migrated)
     const pendingAlreadyDone = !pendingMdExists;
     const frictionAlreadyDone = !frictionMdExists;
+    // A fresh consumer has no legacy `.md` ledgers AND no migrated rows, so neither
+    // `knAlreadyDone` nor `deAlreadyDone` holds and the run fell through to
+    // `abort("knowledge.md not found")` — printing "migrate failed" for a documented
+    // no-op. Nothing to migrate is a clean outcome, not a failure.
+    const noLegacyLedgers = !knMdExists &&
+        !deMdExists &&
+        !pendingMdExists &&
+        !frictionMdExists &&
+        !knJsonlNonEmpty &&
+        !deJsonlNonEmpty;
+    if (noLegacyLedgers) {
+        lines.push("[bkit-telemetry] migrate: no legacy .md ledgers found — nothing to migrate");
+        return {
+            ran: false,
+            dryRun,
+            knowledgeRowCount: 0,
+            decisionRowCount: 0,
+            pendingRowCount: 0,
+            frictionRowCount: 0,
+            knowledgeMdDeleted: false,
+            decisionsMdDeleted: false,
+            pendingMdDeleted: false,
+            frictionMdDeleted: false,
+            lines,
+            ok: true,
+        };
+    }
     if (knAlreadyDone && deAlreadyDone && pendingAlreadyDone && frictionAlreadyDone) {
         lines.push("[bkit-telemetry] migrate: already complete (idempotent no-op)");
         return {

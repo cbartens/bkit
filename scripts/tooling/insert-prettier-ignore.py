@@ -26,6 +26,41 @@ SEPARATOR_CELL = re.compile(r"^:?-{1,}:?$")
 # escaped as `\|` is literal cell content (GFM) and must NOT split the row —
 # prettier preserves it, so we must too, else `a\|b` corrupts to `a\ | b`.
 UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
+INLINE_CODE = re.compile(r"`[^`\n]*`")
+
+
+def escape_code_span_pipes(line: str) -> str:
+    """Escape every unescaped `|` inside this row's inline-code spans."""
+
+    def repl(m: re.Match[str]) -> str:
+        return UNESCAPED_PIPE.sub(r"\\|", m.group(0))
+
+    return INLINE_CODE.sub(repl, line)
+
+
+def maybe_escape(line: str, ncols: int) -> str:
+    """Escape code-span pipes only when doing so restores the column count.
+
+    Per GFM a pipe delimits a cell even inside a code span — `|| echo` in a
+    cell is already TWO cells. Splitting and rejoining it verbatim rewrites
+    it as ` |  | echo` and destroys the content, so it must be escaped to
+    `\\|` first.
+
+    But a row whose span pipe is ALREADY a live column delimiter (damage
+    that predates this script, or a deliberately split cell) must be left
+    alone — escaping it would merge two real cells. The separator row is the
+    arbiter: escape only if the escaped row lands exactly on the table's
+    column count. Comparing against the separator rather than against
+    whitespace makes the decision stable across repeat runs.
+    """
+    if not is_pipe_row(line) or "`" not in line:
+        return line
+    escaped = escape_code_span_pipes(line)
+    if escaped == line:
+        return line
+    if len(split_cells(escaped.rstrip("\n").strip()[1:-1])) == ncols:
+        return escaped
+    return line
 
 
 def split_cells(inner: str) -> list[str]:
@@ -128,11 +163,15 @@ def process_text(src: str) -> str:
                 # Already wrapped — preserve any blank lines we walked over
                 # (they were already appended; nothing to undo)
                 pass
-            out.append(strip_cell_padding(line))
-            out.append(normalize_separator(lines[i + 1]))
+            # Column count comes from the separator — the one row that
+            # cannot contain a code span, so it is never itself ambiguous.
+            sep = lines[i + 1]
+            ncols = len(split_cells(sep.rstrip("\n").strip()[1:-1]))
+            out.append(strip_cell_padding(maybe_escape(line, ncols)))
+            out.append(normalize_separator(sep))
             j = i + 2
             while j < len(lines) and is_pipe_row(lines[j]):
-                out.append(strip_cell_padding(lines[j]))
+                out.append(strip_cell_padding(maybe_escape(lines[j], ncols)))
                 j += 1
             i = j
             continue

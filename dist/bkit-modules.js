@@ -12,9 +12,9 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc, writeCursorCloudDoc } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -223,7 +223,23 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
                 continue;
             const dstPath = relPath;
             const prevLen = ws.writes.length;
-            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            if (relBase === path.join(".bkit", "scripts")) {
+                // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region —
+                // `bkit-ship-timeouts.sh` says so in its own header ("only bkit-owned defaults live
+                // here (Tier 1 — force-overwritten)"). They were being handed to writeTier2 with the
+                // html-comment marker style, which no shell script uses: `extractFullManagedBlock`
+                // returned null, writeTier2 returned early, and once seeded a modified script was
+                // never re-rendered and never entered the drift comparison — `bkit check` exited 0 on
+                // a tampered `bkit-ship-gate.sh`, the ONLY merge precondition for `/bkit-ship`. The
+                // upgrade engine already treats every one of them whole-file (non-markdown, no
+                // manifest entry → diffFile/conflict), so Tier 1 here is what makes install, upgrade
+                // and check agree. The two hash-comment `bkit:start` blocks in this directory are
+                // bkit-repo authoring markers, not a consumer ownership split.
+                writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+            }
+            else {
+                writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            }
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}core: ${dstPath}`);
             }
@@ -452,7 +468,12 @@ export function renderOpencodeAgentsCommands(ctx) {
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
     const version = ctx.version ?? readInstallingVersion();
     const written = [];
-    const provider = opencodeProvider ?? "ollama-local";
+    // The opencode host cannot render without a provider — `--opencode=<provider>` is
+    // unary at the CLI, so an absent value here is a caller bug, not a case to default.
+    if (!opencodeProvider) {
+        throw new Error("renderOpencodeAgentsCommands: ctx.opencodeProvider is required");
+    }
+    const provider = opencodeProvider;
     // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
     {
         const src = getPromptsRoot();
@@ -819,6 +840,7 @@ export function runClaudeModule(ctx) {
         }
         const prevLen = ws.writes.length;
         writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
+        enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
         }
@@ -838,15 +860,22 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // byte-equal-text — GateGuard advisory PreToolUse hook (Node script, fully
-    // bkit-owned). writeTier1 force-overwrites on install/upgrade; consumers tune
-    // behaviour via env vars (BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT), not by editing.
+    // markered-text (slash-comment) — GateGuard advisory PreToolUse hook. bkit owns
+    // only the advisory engine between the markers; consumers own the stdin/stdout
+    // driver from first install onward (env vars BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT
+    // still tune behaviour, same as before).
     {
         const src = path.join(claudeTemplates, "hooks", "gateguard.cjs");
         const dst = ".claude/hooks/gateguard.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
-            writeTier1(src, dst, tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }
@@ -1013,15 +1042,42 @@ export function runCursorModule(ctx) {
             }
         }
     }
-    // byte-equal-text — Cursor destructive-op / secret-exposure guardrails (parity with
-    // Claude permissions deny/ask and OpenCode permission map). Force-overwrite; consumers
-    // do not customise via deep-merge.
+    // markered-text (slash-comment) — Cursor destructive-op / secret-exposure guardrails
+    // (parity with Claude permissions deny/ask and OpenCode permission map). bkit owns
+    // only the decision engine between the markers; consumers own the stdin/stdout driver
+    // from first install onward, same split as the two GateGuard hooks.
     {
         const src = path.join(cursorTemplates, "hooks", "guardrails.cjs");
         const dst = ".cursor/hooks/guardrails.cjs";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
-            writeTier1(src, dst, tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GUARDRAILS_WIRING_INSTRUCTIONS,
+            });
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+            }
+        }
+    }
+    // markered-text (slash-comment) — GateGuard advisory PreToolUse hook for Cursor.
+    // Same managed block as the Claude twin; the driver outside it adapts Cursor's
+    // payload (relative file_path, no subagent marker) and emits Cursor's shape.
+    {
+        const src = path.join(cursorTemplates, "hooks", "gateguard.cjs");
+        const dst = ".cursor/hooks/gateguard.cjs";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}cursor: ${dst}`);
             }
@@ -1065,6 +1121,16 @@ export function runCursorModule(ctx) {
         }
         else if (result.suggested) {
             console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst} (exists; AI merge instructions printed)`);
+        }
+    }
+    // Cursor-only runtime curl/wget allowlist (guardrails.cjs reads `.cursor/allowlist.json`).
+    // Same domain set as Claude WebFetch / OpenCode bash allows — sourced from tooling
+    // defaults ∪ consumer `allowed-domains`. Not under `.bkit/` (IDE-scoped artifact).
+    {
+        const art = writeNetworkAllowlistArtifact(process.cwd(), dryRun);
+        if (art.wrote) {
+            ws.writes.push({ path: art.path, action: "write" });
+            console.log(`${logPrefix} ${tag}cursor: ${art.path}`);
         }
     }
     // Post-install advisory: macOS GUI-isolation note.
@@ -1114,40 +1180,11 @@ export function runCursorModule(ctx) {
 // These are sane defaults; consumers tune after install.
 // npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
 const OPENCODE_PROVIDER_DEFAULTS = {
-    "ollama-local": {
-        envVar: "OLLAMA_HOST",
-        baseURL: "http://localhost:11434/v1",
-        apiPlaceholder: "",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Ollama (Local)",
-    },
-    nvidia: {
-        envVar: "NVIDIA_API_KEY",
-        baseURL: "https://integrate.api.nvidia.com/v1",
-        // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
-        // and makes opencode reject the whole config) and read keys via {env:VAR} — never
-        // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
-        apiPlaceholder: "{env:NVIDIA_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "NVIDIA NIM",
-    },
-    // Free-tier fast cloud — same OpenAI-compatible driver as nvidia, different endpoint/key.
-    groq: {
-        envVar: "GROQ_API_KEY",
-        baseURL: "https://api.groq.com/openai/v1",
-        apiPlaceholder: "{env:GROQ_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Groq",
-    },
-    cerebras: {
-        envVar: "CEREBRAS_API_KEY",
-        baseURL: "https://api.cerebras.ai/v1",
-        apiPlaceholder: "{env:CEREBRAS_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Cerebras",
-    },
     // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
     // provider (NOT the any-endpoint fallback #245 removed).
+    // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
+    // and makes opencode reject the whole config) and read keys via {env:VAR} — never
+    // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
     openrouter: {
         envVar: "OPENROUTER_API_KEY",
         baseURL: "https://openrouter.ai/api/v1",
@@ -1155,31 +1192,14 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "OpenRouter",
     },
-    // Cloud-hosted Ollama (ollama.com) — DISTINCT key from `ollama-local` (localhost, no API
-    // key). Matches opencode's own naming where built-in `ollama` = the cloud service.
+    // Cloud-hosted Ollama (ollama.com). Matches opencode's own naming where built-in
+    // `ollama` = the cloud service.
     ollama: {
         envVar: "OLLAMA_API_KEY",
         baseURL: "https://ollama.com/v1",
         apiPlaceholder: "{env:OLLAMA_API_KEY}",
         npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Ollama (Cloud)",
-    },
-    // Coding-subscription gateways — same OpenAI-compatible npm driver as nvidia, one GLM/Kimi
-    // family each. Endpoints are the coding-plan hosts (cheapest for heavy agent use), NOT the
-    // pay-as-you-go platform APIs. See providers.md § Models.
-    zai: {
-        envVar: "ZAI_API_KEY",
-        baseURL: "https://api.z.ai/api/coding/paas/v4",
-        apiPlaceholder: "{env:ZAI_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Z.AI (GLM)",
-    },
-    moonshot: {
-        envVar: "MOONSHOT_API_KEY",
-        baseURL: "https://api.moonshot.ai/v1",
-        apiPlaceholder: "{env:MOONSHOT_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Moonshot (Kimi)",
+        displayName: "Ollama",
     },
     // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
     // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
@@ -1204,15 +1224,15 @@ const OPENCODE_PROVIDER_DEFAULTS = {
 };
 /**
  * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
- * (opencode → opencode, groq → groq, etc.). Model ids are `<providerId>/<model>`. Unknown
+ * (opencode → opencode, openrouter → openrouter, etc.). Model ids are `<providerId>/<model>`. Unknown
  * keys pass through unchanged.
  */
 export function opencodeProviderId(providerKey) {
     return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
 }
 /**
- * The provider secret env var name for a bkit provider key (`NVIDIA_API_KEY`, `OPENCODE_API_KEY`,
- * `OLLAMA_HOST` for the keyless local host, ...). Empty string for an unknown key. Mirrors
+ * The provider secret env var name for a bkit provider key (`OPENROUTER_API_KEY`,
+ * `OPENCODE_API_KEY`, ...). Empty string for an unknown key. Mirrors
  * {@link opencodeProviderId}; used to compare a self-installed opencode.yml handler's `env:`
  * secret against the installed provider.
  */
@@ -1270,7 +1290,7 @@ export function detectOpencodeYmlProviderDrift(cwd) {
     // The handler's hardcoded `model: <providerId>/<model>` line (opencode `run --model`).
     const ymlModel = content.match(/^\s*model:\s*(\S+)/m)?.[1] ?? null;
     const ymlPrefix = ymlModel ? ymlModel.split("/")[0] : null;
-    // The handler's hardcoded provider secret — an `env:` key like NVIDIA_API_KEY / OPENCODE_API_KEY.
+    // The handler's hardcoded provider secret — an `env:` key like OPENROUTER_API_KEY / OPENCODE_API_KEY.
     const ymlEnvVar = content.match(/^\s*([A-Z][A-Z0-9_]*(?:_API_KEY|_HOST)):/m)?.[1] ?? null;
     // Two independent drift signals. The model prefix is the precise one (it distinguishes the two
     // opencode gateways that share OPENCODE_API_KEY); the env var catches a wrong/absent secret.
@@ -1317,13 +1337,20 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * Render the opencode.json template with tracker-filtered mcp + provider config.
  * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
  * and fills in provider-specific fields.
+ *
+ * Also injects `curl *{domain}*` / `wget *{domain}*` **allow** rules (after the
+ * template's `curl *` / `wget *` ask) for {@link resolveNetworkAllowlist} so
+ * debug-fetch / provider hosts do not prompt. OpenCode bash is last-match-wins.
  */
-export function renderOpencodeJson(templatePath, tracker, provider) {
+export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
     // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
-    // a known key here. Fall back to the local default (never a synthesized placeholder URL)
-    // for any unexpected id rather than emitting a non-working endpoint.
-    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? OPENCODE_PROVIDER_DEFAULTS["ollama-local"];
+    // a known key here. An unknown id is a caller bug — fail loudly rather than emitting a
+    // non-working endpoint or silently substituting another provider.
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider];
+    if (!providerDefaults) {
+        throw new Error(`renderOpencodeJson: unknown opencode provider ${JSON.stringify(provider)}`);
+    }
     // Resolve tracker MCP entry
     // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
     // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
@@ -1356,21 +1383,20 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
         // opencode-side provider id carrying only the apiKey ({env:OPENCODE_API_KEY}).
         if (providerDefaults.builtin) {
             const pid = providerDefaults.providerId ?? provider;
-            const options = {};
-            if (providerDefaults.apiPlaceholder)
-                options.apiKey = providerDefaults.apiPlaceholder;
+            const options = { apiKey: providerDefaults.apiPlaceholder };
             parsed.provider = { [pid]: { options } };
+            injectOpencodeNetworkCurlAllows(parsed, cwd);
             return JSON.stringify(parsed, null, 2) + "\n";
         }
-        // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
-        // block with the npm-driver format: { npm, name, options: { baseURL } }
+        // For npm-based custom providers (e.g. openrouter), replace the api-openai provider
+        // block with the npm-driver format: { npm, name, options: { baseURL, apiKey } }
         if (providerDefaults.npmPackage) {
-            // Remote providers (nvidia) carry an apiKey as {env:VAR}; local (ollama-local) has
-            // an empty placeholder → no apiKey field. opencode rejects an unknown "api" field,
-            // so the block is rebuilt to the npm-driver shape only.
-            const options = { baseURL: providerDefaults.baseURL };
-            if (providerDefaults.apiPlaceholder)
-                options.apiKey = providerDefaults.apiPlaceholder;
+            // Every custom provider carries an apiKey as {env:VAR}. opencode rejects an unknown
+            // "api" field, so the block is rebuilt to the npm-driver shape only.
+            const options = {
+                baseURL: providerDefaults.baseURL,
+                apiKey: providerDefaults.apiPlaceholder,
+            };
             parsed.provider = {
                 [provider]: {
                     npm: providerDefaults.npmPackage,
@@ -1379,10 +1405,62 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
                 },
             };
         }
+        injectOpencodeNetworkCurlAllows(parsed, cwd);
         return JSON.stringify(parsed, null, 2) + "\n";
     }
     catch {
         return rendered;
+    }
+}
+/** Append curl/wget domain allows after template ask rules (OpenCode last-match-wins). */
+function injectOpencodeNetworkCurlAllows(parsed, cwd) {
+    const permission = parsed.permission;
+    if (!permission || typeof permission.bash !== "object" || permission.bash === null)
+        return;
+    const bash = permission.bash;
+    for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
+        bash[`curl *${base}*`] = "allow";
+        bash[`wget *${base}*`] = "allow";
+    }
+}
+/**
+ * Ensure Claude `WebFetch(domain:…)` allows cover {@link resolveNetworkAllowlist}.
+ * Claude deny→ask→allow cannot except curl-by-domain once `Bash(curl:*)` is ask —
+ * network allowlisting for Claude is WebFetch-only; shell curl stays under Bash(*).
+ * Called from install (`runClaudeModule`) and upgrade (mirror — upgrade does not
+ * dispatch modules).
+ *
+ * ADDITIVE ONLY — this never prunes. A domain dropped from a consumer's
+ * `allowed-domains` keeps its `WebFetch` grant, so `.agents/config.md` is the
+ * source of truth for ADDITIONS but not for removals. Pruning safely would need
+ * a record of what bkit itself wrote: nothing in `permissions.allow`
+ * distinguishes a bkit-derived entry from one the consumer added by hand, and
+ * removing the wrong one silently narrows their agent's reach. Tracked as
+ * follow-up on #394 rather than guessed at here.
+ */
+export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws) {
+    if (!fs.existsSync(settingsDst))
+        return;
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
+    }
+    catch {
+        return;
+    }
+    const allow = doc.permissions?.allow;
+    if (!Array.isArray(allow))
+        return;
+    const needed = resolveNetworkAllowlist(cwd).flatMap((d) => [`WebFetch(domain:${d})`]);
+    const missing = needed.filter((r) => !allow.includes(r));
+    if (missing.length === 0)
+        return;
+    if (!dryRun) {
+        doc.permissions.allow = [...allow, ...missing];
+        fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    }
+    if (!ws.writes.some((w) => w.path === settingsDst)) {
+        ws.writes.push({ path: settingsDst, action: "write" });
     }
 }
 /**
@@ -1523,7 +1601,11 @@ export function runOpencodeModule(ctx) {
     const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    const provider = ctx.opencodeProvider ?? "ollama-local";
+    // See renderOpencodeAgentsCommands — the opencode host is unary; no provider is a bug.
+    if (!ctx.opencodeProvider) {
+        throw new Error("runOpencodeModule: ctx.opencodeProvider is required");
+    }
+    const provider = ctx.opencodeProvider;
     // Source-rendered agents/commands (.opencode/agents + .opencode/commands). Extracted to
     // renderOpencodeAgentsCommands so `bkit upgrade` re-renders them identically (#251) —
     // bkit-owned output, force-overwritten.
@@ -1538,7 +1620,7 @@ export function runOpencodeModule(ctx) {
             // the consumer file. Install is additive: existing provider blocks are preserved.
             // reconcileOpencodeJson computes an identical writeset for dry-run vs real runs — no
             // `.bkit-staging` scratch file.
-            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
+            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider, process.cwd());
             const prevLen = ws.writes.length;
             reconcileOpencodeJson(rendered, jsonDst, dryRun, ws);
             if (ws.writes.length > prevLen) {
@@ -1546,18 +1628,24 @@ export function runOpencodeModule(ctx) {
             }
         }
     }
-    // --- gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite) ---
+    // --- gateguard.js — Tier-2 markered-text (slash-comment); see bkit-manifest.ts ---
     {
         const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
         const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
         const pluginDst = ".opencode/plugin/gateguard.js";
         if (fs.existsSync(pluginSrc)) {
-            // dryRun-gated — writeTier1 honours dryRun, so the dir is only needed for a real
+            // dryRun-gated — writeTier2 honours dryRun, so the dir is only needed for a real
             // write; keeps `bkit check` read-only when gateguard's parent dir is absent (#255 #8).
             if (!dryRun)
                 ensureDir(path.dirname(pluginDst));
             const prevLen = ws.writes.length;
-            writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(pluginSrc, pluginDst, ctx.tokens, "slash-comment", dryRun, ws, {
+                relPath: pluginDst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_JS_WIRING_INSTRUCTIONS,
+            });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
             }
@@ -1584,22 +1672,6 @@ export function runOpencodeModule(ctx) {
                         `     ${pd.envVar}=<your-api-key>\n` +
                         `  3. Built-in provider (no npm/baseURL). Models are referenced as ${modelPrefix}/<id>.\n`);
                 }
-                // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
-                // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
-                // apiPlaceholder (no API key) is the local marker (ollama-local only).
-                if (!pd.apiPlaceholder) {
-                    return (`  1. Ollama runs locally — no API key needed.\n` +
-                        `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
-                        `  3. Pull the seeded model: \`ollama pull qwen3-coder:30b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
-                        `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
-                        `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
-                        `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
-                        `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
-                        `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
-                        `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
-                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia) ignore them.\n` +
-                        `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`);
-                }
                 return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
                     `     ${pd.envVar}=<your-api-key>\n` +
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
@@ -1609,8 +1681,8 @@ export function runOpencodeModule(ctx) {
             `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
-            `  4. Model IDs: all ten providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zai, moonshot, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
+            `  4. Model IDs: all four providers (openrouter, ollama, opencode-zen, opencode-go) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama opus/convergent pins (kimi-k2.7-code, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode-go pins (minimax-m3, qwen3.7-plus, deepseek-v4-pro/-flash) — prefer pins that stay within the Go 5h usage window; opencode-zen pins are existence-validated via models.dev (the /zen/v1/models REST probe cannot see Go-only models — models.dev is the source of truth).\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }
@@ -1799,12 +1871,15 @@ const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists —
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose\` (fast staged
-  gate). The enforcing slop gate (\`pnpm slop:delta\`) and the heavier gates live in pre-push.
-  Most consumers using turbo or their own lint-staged config already cover the
-  equivalent — in that case, ignore this advisory and keep your existing hook.
-  If your hook does NOT already format staged files / run a prose lint,
-  consider adopting the reference, or merging the missing commands into yours.
+  bkit's reference pre-commit hook runs \`pnpm bkit:gate:format\` (fast staged gate —
+  prettier over staged files). Prose, the enforcing slop gate and the heavier gates
+  live in pre-push via \`pnpm bkit:gate:static-unit\`. Editing what a gate runs means
+  editing the \`bkit:gate:*\` scripts in package.json, not the hook —
+  the same scripts the bkit agent workflows dispatch through, so hooks and agents
+  cannot drift apart. Most consumers using turbo or their own lint-staged config
+  already cover the equivalent — in that case, ignore this advisory and keep your
+  existing hook. If your hook does NOT already format staged files, consider
+  adopting the reference, or merging the missing commands into yours.
 
   Monorepo note: do not add eslint to lint-staged. In a workspace it must run
   per-package via turbo (at pre-push) so each package's own flat config resolves;
@@ -1880,8 +1955,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Merge any new entries you find into your existing file — this file is for bkit
   and agent tooling secrets ONLY: tracker/cloud-agent tokens (GH_BKIT_TOKEN,
   GH_BKIT_TOKEN_INSTALL, LINEAR_API_KEY, ANTHROPIC_API_KEY, CURSOR_API_KEY) and opencode
-  provider keys (OPENCODE_API_KEY, NVIDIA_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY,
-  OPENROUTER_API_KEY, OLLAMA_API_KEY). App/stack creds do NOT belong here — your
+  provider keys (OPENCODE_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_KEY).
+  App/stack creds do NOT belong here — your
   app's runtime keys AND the /bkit-debug observability tokens (e.g. a Vercel or
   Supabase log-read token) live in your app env files (e.g. apps/web/.env.local,
   sourced by .envrc), never in .bkit/.env. Keep any project-specific additions you
@@ -2202,23 +2277,36 @@ export function runLintModule(ctx) {
     // agnostic) ci module (#265) — it is TS-exclusive; default is tsconfig-aware.
     const typecheckDefault = fs.existsSync("tsconfig.json")
         ? "tsc --noEmit"
-        : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
+        : TYPECHECK_NO_TSCONFIG_SCRIPT;
     const lintScripts = ensurePackageJsonScripts({
         typecheck: typecheckDefault,
+        // Runs eslint where a config exists, prints an honest skip line where none does —
+        // either way `bkit:gate:static`'s `pnpm lint` cannot fall through to an unrelated
+        // `lint` binary on PATH. Add-if-missing — a real consumer lint wins.
+        lint: LINT_SCRIPT,
         "format:check": "prettier --check .",
-        "lint:prose": 
-        // F9 (BAR-138): symmetric soft-skip — protect against missing vale
-        // binary AND missing referenced packages (e.g. write-good not synced
-        // after .vale.ini was rewritten or after a clean checkout). Hard-failing
-        // on a missing package would break local commits via the pre-commit
-        // hook with no actionable signal.
-        'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+        // F9 (BAR-138) soft-skip + worktree self-heal. Single source of truth in
+        // bkit-manifest.ts — the manifest default, this call, and the F9 advisory
+        // remedy MUST stay byte-identical or the uninstall stripper stops
+        // recognising the script as bkit-managed.
+        "lint:prose": LINT_PROSE_SCRIPT,
         "lint:slop": "slop-scan scan .",
         // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
         "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
-    }, dryRun, ws);
+        // The local gate every workflow and prompt now dispatches through (#437).
+        // Same single-source-of-truth rule as lint:prose above, enforced structurally
+        // here: both this call and the manifest default spread the SAME object.
+        ...BKIT_GATE_SCRIPTS,
+    }, dryRun, ws, 
+    // Re-point a superseded bkit lint:prose at the current one. add-if-missing
+    // alone would leave every existing consumer on the version that silently
+    // self-disables in worktrees and fresh checkouts.
+    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS });
     if (lintScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
+    }
+    if (lintScripts.replaced.length > 0) {
+        console.log(`${logPrefix} ${tag}lint: package.json scripts updated from a superseded bkit default [${lintScripts.replaced.join(", ")}]`);
     }
     if (lintScripts.missingPkg) {
         advisories.push({
@@ -2236,10 +2324,15 @@ export function runLintModule(ctx) {
             action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
         });
     }
-    // The `test` script is the consumer's responsibility — flag if absent so they know
-    // (the wired ci.yml step bodies call `pnpm test`). Moved here from runCiModule (#265):
-    // the agnostic --ci skeleton has the test step commented, so the advisory belongs with
-    // the TS toolchain that activates it.
+    // The unit-test script is the consumer's responsibility — flag if absent so they
+    // know (the wired ci.yml step bodies call it). Moved here from runCiModule (#265):
+    // the agnostic --ci skeleton has the test step commented, so the advisory belongs
+    // with the TS toolchain that activates it.
+    //
+    // Stays `test`, not `test:unit`, despite the siblings being test:integration /
+    // test:e2e / test:live: `npm test` is a package-manager builtin (its own npm-test(1)
+    // man page), runs without `run` on npm/pnpm/yarn, and fires pretest/posttest hooks.
+    // The irregularity is the ecosystem's, and renaming would forfeit all of that.
     if (!dryRun && !lintScripts.missingPkg && !lintScripts.malformed) {
         try {
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8"));
@@ -2251,9 +2344,74 @@ export function runLintModule(ctx) {
                     action: 'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
                 });
             }
+            // Every script a seeded bkit:gate* default chains MUST exist, or the gate
+            // dies on the first missing one and the workflow reads that as a real
+            // failure. Checked only where the value is still bkit's default — a
+            // consumer who rewrote the gate owns what it references (#437).
+            const declared = pkg.scripts ?? {};
+            // Tokens that follow `pnpm` but are not package.json scripts: the package
+            // manager's own subcommands (`install` in bkit:gate:install-static-unit-build,
+            // `audit` / `outdated` in the bkit:deps:* pair) and node_modules binaries pnpm
+            // resolves directly (`lint-staged` in bkit:gate:format). None can be "missing"
+            // in the sense this advisory reports.
+            const PNPM_NOT_A_SCRIPT = new Set([
+                "install",
+                "run",
+                "exec",
+                "dlx",
+                "audit",
+                "outdated",
+                "lint-staged",
+            ]);
+            const missing = new Set();
+            for (const [name, seeded] of Object.entries(BKIT_GATE_SCRIPTS)) {
+                if (declared[name] !== seeded)
+                    continue;
+                for (const [, called] of seeded.matchAll(/\bpnpm ([\w:-]+)/g)) {
+                    if (PNPM_NOT_A_SCRIPT.has(called))
+                        continue;
+                    if (!(called in declared) && !(called in BKIT_GATE_SCRIPTS))
+                        missing.add(called);
+                }
+            }
+            if (missing.size > 0) {
+                const names = [...missing].sort();
+                advisories.push({
+                    id: "gate-missing-called-scripts",
+                    severity: "advisory",
+                    detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.map((n) => `\`${n}\``).join(", ")}.`,
+                    action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.map((n) => `\`${n}\``).join(", ")} to package.json, or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
+                });
+            }
+            // A repo that HAS a deeper tier but never declares its gate is silently
+            // gated at bkit:gate:static-unit by both /bkit-build and /bkit-debug — the
+            // tier exists, CI runs it, and the agent loop never does. bkit cannot seed
+            // these (a stub would exit 0 and claim the coverage), so it detects the
+            // mismatch and hands over the exact line to paste (#437).
+            const unwired = [];
+            for (const { gate, parent, tier, declaredBy } of BKIT_OPTIONAL_GATES) {
+                const hasTier = declaredBy.some((s) => s in declared);
+                if (!hasTier || gate in declared)
+                    continue;
+                const tierCall = declaredBy.find((s) => s in declared) ?? tier;
+                unwired.push(`    "${gate}": "pnpm ${parent} && pnpm ${tierCall}"`);
+            }
+            if (unwired.length > 0) {
+                advisories.push({
+                    id: "gate-tier-not-wired",
+                    severity: "advisory",
+                    detect: "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build` and `/bkit-debug` gate at `bkit:gate:static-unit` and never execute them.",
+                    action: "Each workflow runs the DEEPEST gate you declare; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
+                        unwired.join("\n") +
+                        "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt).",
+                });
+            }
         }
         catch {
-            // Already handled above
+            // Fail-open: a malformed package.json is already surfaced by the
+            // lint-package-json-malformed advisory above (the guard at this point
+            // guarantees the first read succeeded); a transient re-read failure after
+            // the devDeps write only skips the no-test-script check, which is non-fatal.
         }
     }
     // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
@@ -2675,7 +2833,9 @@ export function runDependabotModule(ctx) {
                 fs.chmodSync(scriptDst, 0o755);
             }
             catch {
-                // non-fatal — surface via advisory below
+                // Fail-open: chmod is best-effort. The dependabot-setup-repo-state
+                // advisory below invokes the helper via `bash <script>` (no +x bit
+                // required), so a chmod failure does not block the documented setup path.
             }
         }
     }
@@ -2828,7 +2988,7 @@ export function runCloudModule(ctx) {
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +

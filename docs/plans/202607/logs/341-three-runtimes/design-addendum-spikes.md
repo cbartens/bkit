@@ -23,11 +23,12 @@ OQ1, §6c (toolset assumption), and the D26/§6 credential premise. Input for `/
 **Grounding** (verified against github/github-mcp-server, not assumed — §6c names were correct, just
 not enabled):
 
-| §6c gh command                         | real MCP tool                                               | note                              |
-| -------------------------------------- | ----------------------------------------------------------- | --------------------------------- |
-| `gh run list --branch X`               | `actions_list`                                              | list workflows/runs               |
-| `gh run view --json jobs`              | `actions_get`                                               | workflows/runs/jobs/artifacts     |
-| `gh run view --log-failed`             | `get_job_logs` (`failed_only=true`)                         | failed-job logs                   |
+<!-- prettier-ignore -->
+| §6c gh command | real MCP tool | note |
+| --- | --- | --- |
+| `gh run list --branch X` | `actions_list` | list workflows/runs |
+| `gh run view --json jobs` | `actions_get` | workflows/runs/jobs/artifacts |
+| `gh run view --log-failed` | `get_job_logs` (`failed_only=true`) | failed-job logs |
 | `gh run download -n playwright-report` | **`actions_get` → `download_workflow_run_artifact` method** | **exists — closes OQ1 / §4 seam** |
 
 **Consequences:**

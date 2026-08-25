@@ -50,11 +50,12 @@ Three real defects, all **fixed-and-tested-before-ship:**
 
 **All gates passed; three adversarial FAILs resolved.**
 
-| Sub-plan | History                                                                                                                                                                                                                                  |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1        | `build-plan-verify-1-1` CONCERNS → `build-plan-verify-1-2` **PASS**                                                                                                                                                                      |
-| 2        | `build-plan-verify-2-1` FAIL (fitted rule) → `build-plan-gaps-remediate-2-1` PASS → `build-plan-verify-2-2` FAIL (off-by-one) → `build-plan-gaps-remediate-2-2` PASS (PIVOT) → `build-plan-verify-2-3` **PASS**                          |
-| 3        | Inline by executor; worklist reconciled, prose deletions green (3 T5.1 REDs expected/cleared by WS-4)                                                                                                                                    |
+<!-- prettier-ignore -->
+| Sub-plan | History |
+| --- | --- |
+| 1 | `build-plan-verify-1-1` CONCERNS → `build-plan-verify-1-2` **PASS** |
+| 2 | `build-plan-verify-2-1` FAIL (fitted rule) → `build-plan-gaps-remediate-2-1` PASS → `build-plan-verify-2-2` FAIL (off-by-one) → `build-plan-gaps-remediate-2-2` PASS (PIVOT) → `build-plan-verify-2-3` **PASS** |
+| 3 | Inline by executor; worklist reconciled, prose deletions green (3 T5.1 REDs expected/cleared by WS-4) |
 | Holistic | `build-plan-verify-holistic` **CONCERNS** — end-to-end derivation proven, KN-26 pair coherent, mirrors drift-free, completeness 24/25 at 0 violations, cross-sub-plan seams sound; cosmetic comment-vocabulary nit (behaviourally inert) |
 
 **Attempt count:** Sub-plan 1: 2 (CONCERNS→PASS) | Sub-plan 2: 3 (FAIL→FAIL→PASS) | Sub-plan 3: 1 (inline, PASS) | Challenge: 1 (CONCERNS→PASS). All closed before advance.
@@ -63,15 +64,16 @@ Three real defects, all **fixed-and-tested-before-ship:**
 
 **All gates green; coverage for three defects.**
 
-| Suite                         | Result                                                                                                                                                                                   |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm typecheck`              | **clean**                                                                                                                                                                                |
-| `pnpm test` (vitest)          | **2297 passed** \| 2 skipped \| 1 todo, 0 failed (86 in counter-prose-audit: 81 pre-existing + 5 challenge; 2254 total includes 3 expected-RED T5.1 cleared by WS-4). Branch: **67.19%** |
-| `pnpm slop:delta`             | **net findings 0, net score 0.00** (jq coercion adds no shell try/catch)                                                                                                                 |
-| `pnpm format:check`           | **clean**                                                                                                                                                                                |
-| `npx --yes bats tests/*.bats` | **47/47 passed** (45 pre-existing + 2 new: T2.4b empty `--sub-plan`; jq-injection-via-step-name)                                                                                         |
-| `pnpm lint:prose`             | 1 pre-existing warning at `docs/architecture.md:156` (unrelated)                                                                                                                         |
-| Mirrors                       | `pnpm bkit check` → **0 write(s) would occur** (`.bkit/scripts/*` byte-identical to templates; `.claude/.cursor/.opencode` rendered, prettier-clean)                                     |
+<!-- prettier-ignore -->
+| Suite | Result |
+| --- | --- |
+| `pnpm typecheck` | **clean** |
+| `pnpm test` (vitest) | **2297 passed** \| 2 skipped \| 1 todo, 0 failed (86 in counter-prose-audit: 81 pre-existing + 5 challenge; 2254 total includes 3 expected-RED T5.1 cleared by WS-4). Branch: **67.19%** |
+| `pnpm slop:delta` | **net findings 0, net score 0.00** (jq coercion adds no shell try/catch) |
+| `pnpm format:check` | **clean** |
+| `npx --yes bats tests/*.bats` | **47/47 passed** (45 pre-existing + 2 new: T2.4b empty `--sub-plan`; jq-injection-via-step-name) |
+| `pnpm lint:prose` | 1 pre-existing warning at `docs/architecture.md:156` (unrelated) |
+| Mirrors | `pnpm bkit check` → **0 write(s) would occur** (`.bkit/scripts/*` byte-identical to templates; `.claude/.cursor/.opencode` rendered, prettier-clean) |
 
 First-run pass; no timeouts/flakes. 3 T5.1 REDs green post-WS-4 (verified in `build-plan-verify-holistic.md`).
 
@@ -79,11 +81,12 @@ First-run pass; no timeouts/flakes. 3 T5.1 REDs green post-WS-4 (verified in `bu
 
 **Challenge verdict:** CONCERNS (1 HIGH, 2 LOW accepted / non-blocking).
 
-| Severity | Finding                                                                                                                                                                                                                                                                                                                                                                                                    | Disposition |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| HIGH     | Arithmetic-injection in 3 `PRIOR_DEBUG_ATTEMPT` derives: jq `-r` unconstrained string + POSIX arithmetic; exploit `debugAttempt:"x[$(cmd)]"` in `status.jsonl`. Fixed: `(tonumber? // 0)` at `.bkit/workflows/bkit-debug.md:189, :219, :364`. Reachable via bash/GitHub CI (zsh/dash fail closed). Pre-fix executes `touch`, post-fix does not; `debugAttempt:5` → 6. Static guard + dynamic acid-test x3. | Fixed       |
-| LOW      | Empty `--sub-plan ""` → no-filter (counts all subPlans). Fail-safe (over-count → premature stop). T2.4b characterisation test.                                                                                                                                                                                                                                                                             | Accepted    |
-| LOW      | Resume run-boundary reset (build IN_PROGRESS, debug completes, build resumes → fresh budget). DE-25 design; operationally warned. T2.10 covers. Pre-existing.                                                                                                                                                                                                                                              | Accepted    |
+<!-- prettier-ignore -->
+| Severity | Finding | Disposition |
+| --- | --- | --- |
+| HIGH | Arithmetic-injection in 3 `PRIOR_DEBUG_ATTEMPT` derives: jq `-r` unconstrained string + POSIX arithmetic; exploit `debugAttempt:"x[$(cmd)]"` in `status.jsonl`. Fixed: `(tonumber? // 0)` at `.bkit/workflows/bkit-debug.md:189, :219, :364`. Reachable via bash/GitHub CI (zsh/dash fail closed). Pre-fix executes `touch`, post-fix does not; `debugAttempt:5` → 6. Static guard + dynamic acid-test x3. | Fixed |
+| LOW | Empty `--sub-plan ""` → no-filter (counts all subPlans). Fail-safe (over-count → premature stop). T2.4b characterisation test. | Accepted |
+| LOW | Resume run-boundary reset (build IN_PROGRESS, debug completes, build resumes → fresh budget). DE-25 design; operationally warned. T2.10 covers. Pre-existing. | Accepted |
 
 Max severity HIGH → Step 11 remediation (`CHALLENGE_REMEDIATE_ATTEMPT=0`), intended. Not FAIL (gated, fixed-and-tested).
 
@@ -91,10 +94,11 @@ Max severity HIGH → Step 11 remediation (`CHALLENGE_REMEDIATE_ATTEMPT=0`), int
 
 **Three defect suites + edge-case coverage (permanent, land with code):**
 
-| Suite                  | Source                                                    | Scope                                                                                                                                                                                                                                                                                                         |
-| ---------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Fitted-rule detection  | `build-plan-gaps-remediate-2-1`                           | 9 RED-PROOF T5.3 shapes: `"$NAME"`, unquoted, `${NAME}`, jq inline, nested 4-backtick. `.bkit/src/bkit-counter-prose-audit.test.ts:describe("#58 T5.3...")`                                                                                                                                                   |
-| Off-by-one prevention  | `build-plan-gaps-remediate-2-2`                           | `:366` marker offset → pre/post classify; 3 pre keep `+1`, 7 post don't. `describe("#58 DEBUG_ATTEMPT off-by-one regression")` — 10 blocks (3 pre, 7 post) pinned                                                                                                                                             |
+<!-- prettier-ignore -->
+| Suite | Source | Scope |
+| --- | --- | --- |
+| Fitted-rule detection | `build-plan-gaps-remediate-2-1` | 9 RED-PROOF T5.3 shapes: `"$NAME"`, unquoted, `${NAME}`, jq inline, nested 4-backtick. `.bkit/src/bkit-counter-prose-audit.test.ts:describe("#58 T5.3...")` |
+| Off-by-one prevention | `build-plan-gaps-remediate-2-2` | `:366` marker offset → pre/post classify; 3 pre keep `+1`, 7 post don't. `describe("#58 DEBUG_ATTEMPT off-by-one regression")` — 10 blocks (3 pre, 7 post) pinned |
 | Injection-sink closure | `build-challenge-remediate-log` + `build-challenge-tests` | Static: `PRIOR_DEBUG_ATTEMPT=$(jq ...)` + `$((PRIOR...))` requires `(tonumber? // 0)` or `case`. `describe("#58 build-challenge HIGH")`. Dynamic: poisoned `debugAttempt:"x[$(touch /tmp/MARKER)]"` + legit `debugAttempt:5` x3. Corpus-wide siblings: 0 unguarded sinks. RED-proof: reverted 1st site caught |
 
 **Edge-case (build-challenge-tests):** jq-injection-via-step-name negative-control; provenance integrity — REAL derive lines vs fixture (4 rows, 5 workflows); RED-proof: reverted `bkit-ship.md` `COUNTER_VALUE=1` caught.

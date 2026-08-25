@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -9,14 +9,14 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Local seed/test fixtures must never run against remote projects.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
+> - Local seed / test fixtures must never run against remote projects.
 
 <!-- bkit:end -->
 
-> Consumer install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → root `README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/cloud.md` / `.cursor/cloud.md`.
+> Consumer first-time install/auth (`GH_BKIT_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → package `README.md` at `node_modules/@cbartens/bkit/README.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/cloud.md` / `.cursor/cloud.md`.
 
 ## Required tools
 
@@ -67,10 +67,10 @@ Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude -
 Single package — no turbo / affected-graph. Run scripts directly:
 
 ```bash
-pnpm typecheck && pnpm format:check && pnpm lint:prose && pnpm test   # pre-push gates (docs/deployments.md § Pre-push checklist)
-pnpm bkit check                                                       # drift gate
-pnpm check:dist                                                       # dist freshness (source-repo only)
-pnpm exec bkit doctor                                                 # token + advisory sweep (read-only, never fails)
+pnpm bkit:gate:static-unit   # pre-push gates (docs/deployments.md § Pre-push checklist)
+pnpm bkit check              # drift gate
+pnpm bkit:check:dist         # dist freshness (source-repo only)
+pnpm exec bkit doctor        # token + advisory sweep (read-only, never fails)
 ```
 
 ## Troubleshooting
@@ -78,5 +78,5 @@ pnpm exec bkit doctor                                                 # token + 
 - **`pnpm install` 401/404 on `@cbartens/bkit`** — `GH_BKIT_TOKEN_INSTALL` unset (`echo "${GH_BKIT_TOKEN_INSTALL:-MISSING}"`), or token never written to pnpm user-level config. pnpm >=10.34.3 401s on project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` ref — run `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"` (see `docs/knowledge.jsonl` KN-CORE-7).
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done`/`Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix; unprefixed `Auto` retired.)
-- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/workflows.md` § Rebase Conflict Tiering.
+- **Lockfile rebase conflict in workflow** — Tier 2 auto-resolver `.bkit/scripts/bkit-rebase-resolve.sh` takes the rebase target's copy and regenerates it (pnpm, npm, yarn, bun, cargo, go, uv); see `.bkit/workflows.md` § Rebase Conflict Tiering.
 - **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` in setup script to force rebuild.

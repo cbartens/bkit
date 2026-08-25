@@ -4,24 +4,48 @@ Agent workflow system wiring Claude Code (and Cursor) into a five-phase Linear-i
 
 ## Why bkit
 
-bkit runs a coding agent through what a senior engineering team would insist on — design review, adversarial code challenge, test gate, release checklist — on every feature, with gates a human signs off on. Each phase fans work to specialised subagents, several in parallel under different lenses (bugs vs security), so output is reviewed by independent agents before you see it.
+Every feature runs through the gated pipeline a senior engineering team would insist on — design review, plan critique, adversarial code challenge, test gate, release checklist — with human sign-off at every hard stop. Five slash commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`) fan work out to 40+ specialised subagents. Rigor lives in the toolkit, not in one person's prompting.
 
-Three things that change how you work:
+### What makes bkit different
 
-- **Parallel by design.** Every run executes in its own isolated git worktree — run many pipelines at once (design one feature while building a second and shipping a third) with no branch-switching, stashing, or conflicts.
-- **Tied to your tracker.** bkit integrates with GitHub Issues or Linear: reads the issue for context, posts progress per phase, moves issue through states, links resulting PR back. Project management stays the source of truth.
-- **Consistent across the team.** Anyone, in Claude Code or Cursor, runs `/bkit-design` and gets the same reviewed, gated, tested pipeline. Rigor lives in the toolkit, not one person's prompting.
+- **Independent parallel review before you see output.** The same diff, design, or plan is reviewed by multiple subagents at once under distinct lenses (bug-hunting vs security; tightness vs dependency-correctness vs regression-risk) — with a circular-reasoning guard so sibling reviewers can't read each other's output. Two independent reasoners catch what one misses; you see the reconciled verdict, not the raw fan-out. Cross-tier model diversity on every parallel pair (Opus + Sonnet on Claude; Grok + Composer on Cursor) means two different model families review the same work.
+- **Every run isolated in its own git worktree.** Design one feature while building a second and shipping a third — no branch-switching, stashing, or conflicts. Many pipelines run concurrently against the same repo.
+- **Non-negotiable human gates.** Hard stops after design, plan, and ship. bkit recommends, never decides — production merges need explicit human approval. Peer frameworks treat human-in-the-loop as advisory prose; bkit treats it as a contract.
+- **Deterministic resume from state, not vendor session.** Every run's progress lives in `status.jsonl`; plan and design docs live under `docs/plans/`. A crashed or interrupted run picks up exactly where it left off. Nothing is tied to one IDE's session.
+- **Cross-host and cross-provider continuity.** Every host renders from the same `.bkit/` source — so any phase, or a resumed run, executes on whichever host and provider you have capacity for, with identical gates, hooks, and per-agent model pins. Hit a Claude weekly limit or a provider free-tier mid-feature? Pick up in Cursor or on local/free inference — same gated pipeline, no re-setup, no lost context. Dogfood on free local models, ship on your primary model.
+- **Per-agent model pins, immune to session drift.** Every subagent has an explicit model and effort tier — running `/bkit-plan` from a Sonnet session never silently downgrades the Opus-tier reviewers. Pins survive across hosts and providers.
+- **Single canonical source, mirrored to every IDE tree.** One `.bkit/` source regenerates `.claude/`, `.cursor/`, and `.opencode/` trees. No hand-maintained 11-tree sprawl; edit once, every host converges. `bkit check` is the CI drift gate.
+- **One feature in flight, enforced.** A repo-level concurrency lock prevents two pipelines from racing the same integration branch.
 
-Beyond pipeline and tracker integration, every `bkit install` wires engineering scaffolding a repo needs day one:
+### The pipeline at a glance
 
-- **A CI scaffold where green means validated.** Flat, wide GitHub Actions pipeline — `bkit-tests-scope` (plans what should run) fans out to every lane at once (`static` / `unit` / `build` / `integration` / `e2e` / `live` / `migration`); always-on `bkit-tests-check` capstone joins them and fails the build if any tier the plan expected was skipped. Nothing waits but the planner — wall-clock is the slowest lane, not the sum. "CI is green" means planned tests actually ran and passed; capstone is the single branch-protection required check, so partial/cached/light runs can't pass as validated. Direct pushes auto-escalate to full run. Complete multi-tier scaffold ships step-by-step in seeded `ci.yml`, ready to adopt as the project grows.
-- **Quality gates, local and CI in lockstep.** Typecheck, Prettier, Vale prose linter, LLM-slop scanner, actionlint, mirror/drift gate in seeded pre-commit/pre-push hooks **and** CI — same commands both places, so green local push = green CI run.
-- **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, pre-configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, CVE alerts bypass weekly schedule.
-- **Cloud agents.** Opt-in autonomous routing: CI finishes → Claude Code or Cursor cloud agent picks up — `bkit-ship` on green, `bkit-debug` on red — no local session.
-- **Run the pipeline on any model, keep the harness.** Beyond Claude Code and Cursor hosts, `bkit install --opencode=<provider>` adds third **opencode** execution host talking to backend directly — no router, no model-identity lie. Ten providers ship ready-to-run, curated per-agent pins: local **Ollama**, NVIDIA **NIM**, **Groq**, **Cerebras**, **OpenRouter**, cloud **Ollama**, **Z.AI** (GLM), **Moonshot** (Kimi), opencode **opencode-native** Zen + Go gateways (`OPENCODE_API_KEY`) — fully-local, free-tier, paid inference. Hosts additive (opencode alongside claude/cursor); subagents, gates, hooks, MCP config unchanged — only backend and per-agent model pins differ. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials and tool reachability. (See `.bkit/providers.md` § Supported hosts + Providers.)
-- **Switch IDE or provider mid-feature — continue with same settings.** Run state lives in `status.jsonl`, plan/design docs under `docs/plans/`, tracker issue — never one vendor's session — every host renders from same `.bkit/` source, so each phase or resumed run executes on whichever host and provider you have capacity for, with identical gates, hooks, per-agent model pins. Hit Claude weekly limit or provider free-tier mid-feature? Pick up in Cursor or free/local opencode — same gated pipeline, no re-setup, no lost context. Cheap to dogfood on free/local inference and ship on primary model.
+```
+/bkit-design  →  /bkit-plan  →  /bkit-build  →  /bkit-ship  →  merged
+                                  ↑    ↓
+                              /bkit-debug   (side-rail, on test failure)
+```
 
-For full pipeline and subagent reference, and mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see `.bkit/comparison.md`.
+Every phase dispatches subagents in parallel under distinct lenses; the diff, plan, or design is reviewed by independent reasoners before you see the reconciled verdict. Parallel groups per phase:
+
+- **Design** — fetches related issues; 3 brainstorms (pragmatic / tradeoff / risk) + 2 reviews (feasibility, cross-tier)
+- **Plan** — fetches related issues + prior deferrals + prior failures; 3 critiques (tightness / dependency / regression) + 2 scope-checks
+- **Build** — execute ⇄ verify loop; 2 challenges (bug-hunting + security); local test gate (`bkit:gate:static-unit`, or `bkit:gate:static-unit-integration` where declared); CI runs the full multi-tier scaffold on the PR
+- **Ship** — pre-merge completeness gate; waits for CI capstone (`bkit-tests-check`) green before merge; docs update + summary in parallel
+- **Debug** — fetches CI failure logs + e2e reports + diff vs last-passing CI + runtime logs + related issues; diagnose (reads prior `knowledge.jsonl`) → remediate; broader test tier (adds integration + e2e + optional `@live` canary); soak mode for non-localisable failures
+- **Autonomous loop (opt-in `bkit-auto`)** — CI completion auto-routes: `/bkit-ship` on green, `/bkit-debug` on red; debug re-pushes, CI re-runs, auto-routes again. Runs unattended in cloud (Claude Code on the web / Cursor Background Agents / opencode) until a human gate fires.
+
+Hard stops after Design, Plan, and Ship. For every subagent step in execution order (40+ distinct agents total), see `.bkit/comparison.md`.
+
+### What ships with every install
+
+- **Tracker as source of truth.** GitHub Issues or Linear: bkit reads the issue for context, posts progress per phase, moves the issue through states, and links the resulting PR back. Project management stays where it already lives.
+- **Multi-tier CI scaffold where green means validated.** Flat, wide GitHub Actions pipeline — a planner fans out to every lane at once (`static` / `unit` / `build` / `integration` / `e2e` / `live` / `migration`); an always-on capstone joins them and fails the build if any planned tier was skipped. Wall-clock is the slowest lane, not the sum. The capstone is the single branch-protection check, so partial or cached runs can't pass as validated. Ships step-by-step in seeded `ci.yml`, ready to adopt as the project grows.
+- **Quality gates, local and CI in lockstep.** Typecheck, Prettier, Vale prose linter, LLM-slop scanner, actionlint, and mirror/drift gate run in seeded pre-commit and pre-push hooks **and** in CI — same commands in both places, so a green local push is a green CI run.
+- **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, pre-configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, CVE alerts that bypass the weekly schedule.
+- **Cloud agents — autonomous ship-on-green / debug-on-red.** Opt-in: when CI finishes, a Claude Code or Cursor cloud agent picks up — `bkit-ship` on green, `bkit-debug` on red — with no local session required.
+- **Any model, same harness.** Beyond Claude Code and Cursor, `bkit install --opencode=<provider>` adds a third execution host talking to the backend directly — no router, no model-identity lie. Four providers ship ready-to-run with curated per-agent pins (OpenRouter, Ollama, opencode Zen + Go gateways). Subagents, gates, hooks, and MCP config stay unchanged — only the backend and per-agent pins differ. See `.bkit/providers.md`.
+
+For the full pipeline reference, every subagent in execution order, and the mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see `.bkit/comparison.md`.
 
 > [!IMPORTANT]
 > **`GH_BKIT_TOKEN_INSTALL` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
@@ -70,7 +94,7 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
 
 ### Upgrade — already installed
 
-Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
+Same paste block ships in `.bkit/README.md` (mirrored into consumer repos on install — keep both in sync when editing). Copy when the repo already has `@cbartens/bkit`. Prefer `bkit upgrade --latest` (bumps the package **and** resyncs managed files) — do **not** only `pnpm add`. Replace `<ENV-FILE-PATH>` if the token is not already loaded in the shell (direnv / `.bkit/.env`).
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
@@ -152,7 +176,7 @@ bkit check
 
 **Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--opencode=<provider>` `--ci` `--typescript` `--tooling`. `--ci` = stack-agnostic CI/quality foundation (ci.yml skeleton with Node/TS steps as commented examples + Vale prose-lint; no package.json footprint, runs green on any repo). `--typescript` adds Node/TS toolchain (tsc/slop-scan/prettier/husky + wired ci.yml step bodies), implies `--ci`. `--tooling` = back-compat alias for `--ci --typescript` (interdependent `ci + lint + git-hooks` bundle). Core implicit on every install — no `--core`/`--full`/`--lint`/`--git-hooks` flag.
 
-**Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zai`, `moonshot`, `opencode-zen`, `opencode-go`). Post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
+**Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 
 > **⚠️ Moving bkit versions: use `bkit upgrade --latest` (or `--to=<version>`).** Bumps `@cbartens/bkit` **and** resyncs `.agents/` payload + `.bkit/version` pin in one atomic step — two can never drift apart. Bare `pnpm add @cbartens/bkit` (or Renovate/Dependabot bump) only refreshes `package.json` + lockfile — does **not** resync; skipping resync reds CI on `bkit check` drift gate. If you bump package separately, run `bkit upgrade` afterward and commit resync alongside version bump in same PR.
 
@@ -215,7 +239,7 @@ pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL
 
 bkit ships repo-side scaffolding for both cloud agents via opt-in `bkit install --auto=<variant>` — `.claude/hooks/cloud-bootstrap.sh` (per-session install), `.cursor/Dockerfile` + `.cursor/environment.json` (Cursor cloud image), phase-routed `.github/workflows/bkit-cloud.yml`. (`.cursor/hooks.json` — Linear preflight wiring — ships with `--cursor`, not `--auto`.) Install without `--auto` ships zero cloud footprint. **Online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) configured once per machine / account.
 
-For **post-CI auto-routing** (ship-vs-debug after CI), bkit ships single `.github/workflows/bkit-cloud.yml` with TWO runtime-gated dispatch jobs — **claude** job (`claude-code-action`, runs when `ANTHROPIC_API_KEY` set) and **opencode** job (`opencode run` CLI, runs when `OPENCODE_PROVIDER_KEY` set) — plus `/bkit-auto` slash command both clouds invoke from single source (Cursor wires via dashboard trigger; no GHA on Cursor side). `bkit install --auto=opencode` requires `tracker=github` and remote (non-local) provider — `--opencode=ollama-local` cannot back cloud job (no Ollama server on runner).
+For **post-CI auto-routing** (ship-vs-debug after CI), bkit ships single `.github/workflows/bkit-cloud.yml` with TWO runtime-gated dispatch jobs — **claude** job (`claude-code-action`, runs when `ANTHROPIC_API_KEY` set) and **opencode** job (`opencode run` CLI, runs when `OPENCODE_PROVIDER_KEY` set) — plus `/bkit-auto` slash command both clouds invoke from single source (Cursor wires via dashboard trigger; no GHA on Cursor side). `bkit install --auto=opencode` requires `tracker=github`.
 
 Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: `.bkit/cloud.md`. Host-delta matrix: `.bkit/providers.md` § Runtime environment.
 
@@ -363,7 +387,7 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 | `dep-updater-none` / `-renovate` / `-dependabot` | Optional post-install decision — which dependency updater is wired. `none` nudges `bkit install --dependency=renovate` or `--dependency=dependabot` (mutually exclusive). See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --auto=<variant>`; `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
-| `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `NVIDIA_API_KEY`; none for `ollama-local`; `OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all ten providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
+| `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `OPENROUTER_API_KEY`; `OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
@@ -543,7 +567,7 @@ Lets consumers add own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) 
 
 ## Documentation
 
-**Full reference:** `.bkit/README.md` — what bkit does, prerequisites, triggering workflows, key files.
+**Full reference:** `.bkit/README.md` — what bkit does, prerequisites, upgrade paste + ongoing CLI, triggering workflows, key files. First-time install/auth stays in this root `README.md` (package README only — not copied to consumer repo root).
 
 **Workflow internals:** `.bkit/workflows.md`.
 

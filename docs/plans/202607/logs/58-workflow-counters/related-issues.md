@@ -4,12 +4,13 @@ Search unavailable.
 
 `mcp__github__search_issues` returned `total_count: 0` for every probe against this private repo:
 
-| Query                                                                     | Result |
-| ------------------------------------------------------------------------- | ------ |
-| `counter attempt status.jsonl workflow in:title,body` (owner/repo params) | 0      |
-| `counter attempt in:title,body` (owner/repo params)                       | 0      |
-| `repo:cbartens/bkit counter-bus`                                          | 0      |
-| **Control:** `repo:cbartens/bkit telemetry`                               | **0**  |
+<!-- prettier-ignore -->
+| Query | Result |
+| --- | --- |
+| `counter attempt status.jsonl workflow in:title,body` (owner/repo params) | 0 |
+| `counter attempt in:title,body` (owner/repo params) | 0 |
+| `repo:cbartens/bkit counter-bus` | 0 |
+| **Control:** `repo:cbartens/bkit telemetry` | **0** |
 
 The control probe settles it: #234 is the master telemetry issue and its body is dense with the word `telemetry`, so a correct index cannot return 0. This is the search returning nothing, not an absence of related issues — recording `None.` here would falsify the plan record.
 

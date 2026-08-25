@@ -34,16 +34,17 @@ bkit's workflows were authored for a **local developer laptop**, but they now ru
 
 ### §1. The three runtimes
 
-| Dimension                    | 1. local (laptop)                   | 2. gh-action runner                                                                    | 3. claude.ai runner                                                      |
-| ---------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Triggered by                 | dev runs `/bkit-*` in IDE           | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on ubuntu-latest | user starts a session at claude.ai/code (or Auto-fix webhook)            |
-| gh CLI auth                  | `gh auth login` keychain — reliable | default `GITHUB_TOKEN`, gh reads it — reliable transport                               | **fragile** (§2)                                                         |
-| Write / merge token          | dev's own creds (full)              | **GH_BKIT_TOKEN** (PAT/App) — not `GITHUB_TOKEN` (read-only + won't fire CI)           | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
-| GitHub MCP / built-in        | usually not configured              | optional                                                                               | proxy-managed → auth-reliable, but see §5                                |
-| git push                     | unrestricted                        | standard runner (branch-protection only)                                               | **proxy-restricted to the current working branch**                       |
-| Worktree `.worktrees/{FID}`  | native                              | works                                                                                  | **breaks** — session is on `claude/…`, no worktrees                      |
-| Network egress (debug-fetch) | full                                | full                                                                                   | **Trusted allowlist**; app backends need a Custom allowlist              |
-| Autonomous merge to dev      | ✅ gh                               | ✅ gh (GH_BKIT_TOKEN/App)                                                              | ✅ gh if authed, else MCP fallback (both server-side)                    |
+<!-- prettier-ignore -->
+| Dimension | 1. local (laptop) | 2. gh-action runner | 3. claude.ai runner |
+| --- | --- | --- | --- |
+| Triggered by | dev runs `/bkit-*` in IDE | CI event/label → `.github/workflows/{claude,opencode,bkit-cloud}.yml` on ubuntu-latest | user starts a session at claude.ai/code (or Auto-fix webhook) |
+| gh CLI auth | `gh auth login` keychain — reliable | default `GITHUB_TOKEN`, gh reads it — reliable transport | **fragile** (§2) |
+| Write / merge token | dev's own creds (full) | **GH_BKIT_TOKEN** (PAT/App) — not `GITHUB_TOKEN` (read-only + won't fire CI) | real tokens kept out of sandbox; server-side merge needs the fragile PAT |
+| GitHub MCP / built-in | usually not configured | optional | proxy-managed → auth-reliable, but see §5 |
+| git push | unrestricted | standard runner (branch-protection only) | **proxy-restricted to the current working branch** |
+| Worktree `.worktrees/{FID}` | native | works | **breaks** — session is on `claude/…`, no worktrees |
+| Network egress (debug-fetch) | full | full | **Trusted allowlist**; app backends need a Custom allowlist |
+| Autonomous merge to dev | ✅ gh | ✅ gh (GH_BKIT_TOKEN/App) | ✅ gh if authed, else MCP fallback (both server-side) |
 
 Detection primitives exist: `CLAUDE_CODE_REMOTE=true` (mode 3), `GITHUB_ACTIONS`/`CI` (mode 2), neither (mode 1).
 

@@ -9,9 +9,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
 > - Pre-push: typecheck + format:check + `pnpm test` (unit + in-process integration) + prose + slop:delta + `bkit check`; E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
 
@@ -19,7 +19,7 @@
 
 CI runs tiers through bkit scaffold — **one parallel lane (job) per tier**, not steps in one job (step-by-step: `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape: `deployments.md` § Run-level decision matrix).
 
-Graph **flat and wide** for static/unit/build/integration: scope fans out; capstone joins. **One exception (#385):** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane (ordering) — never gate live behind static/unit/build/e2e:
+Graph **flat and wide** for static/unit/build/integration: scope fans out; capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane (ordering) — never gate live behind static/unit/build/e2e:
 
 ```
   bkit-tests-scope ─┬─ bkit-tests-static       ─┬─ bkit-tests-check
@@ -41,7 +41,7 @@ Graph **flat and wide** for static/unit/build/integration: scope fans out; capst
 Adopt only lanes your repo has. Add lane the moment its tier exists — tier with no lane = tier nothing gates.
 
 - **`bkit-tests-scope`** (always-on) computes `run_level` (+ optional `run_migration`) + emits `bkit-test-plan` contract — _what should run_.
-- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration` (#385).
+- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration`.
 - **`bkit-tests-migration`** (optional; DB repos) — always-on ordering + provisioning lane: (1) fresh-DB replay + seed assert (plan-/path-gated per-step); (2) on every push to `dev`/`main`, remote `db push --linked --include-all` (un-gated by `run_migration` — self-heals a remote left behind). No job-level `if:` — e2e/live `needs:` it; a skip would cascade. Capstone asserts `success` whenever scope succeeded. See § Provision backing services fresh.
 - **`bkit-tests-live`** runs `@live` tier against deployed URL (`run_live`; drop job if no deploy). `needs:` planner + **migration** (when that lane owns remote push) — do **not** gate behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing: `@live` push-only, post-merge, PR-validated; non-compiling tree reds via own build).
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
@@ -57,7 +57,7 @@ Every lane must **declare** what it may reach; declaration enforced by lane env 
 | `bkit-tests-unit` | none — **mocked** | none | none |
 | `bkit-tests-build` | none | none | none |
 | `bkit-tests-integration` | none — **mocked** | **ephemeral, CI-local, fresh each run** | none |
-| `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** (plan-/path-gated) + **shared remote push** on every `dev`/`main` push (#385) | none |
+| `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** (plan-/path-gated) + **shared remote push** on every `dev`/`main` push | none |
 | `bkit-tests-e2e` | none — **mocked** | ephemeral **local** (PR) / the migrated shared one (push) | preview / deployed URL |
 | `bkit-tests-live` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
 
@@ -87,6 +87,48 @@ A declared tier therefore emits an **executed count** (a runner's machine summar
 
 **Never manufacture a vacuous green.** `passWithNoTests: true` (or `--passWithNoTests`) makes a runner report PASS with zero tests run — the exact hole the executed-count gate exists to close; it is a **banned override** in any bkit-managed test config. Two adjacent guards: emit the executed count as a build **output** (not a log line) so a build-cache replay (e.g. a task runner like turbo) restores the real number, and let a cache short-circuit report a `cached` sentinel (validated-on-cache, not a hollow 0); assert unit / integration counts only on **non-PR full runs** — a PR run is affected-scoped and can legitimately resolve to 0 affected tests.
 
+### Step names say whether a red is real
+
+One verb scheme across every step in `ci.yml`, so a red run can be triaged from the step name alone before opening a log:
+
+<!-- prettier-ignore -->
+| Verb | Means |
+|---|---|
+| `Assert` | a red here is a real failure |
+| `Check` | looks and reports, cannot red the lane |
+| `Run` | invokes a named tool or suite |
+| `Report` / `Upload` / `Count` / `Merge` / `Fetch` | move or publish results |
+
+`Guard`, `Validate`, `Verify` and `Audit` are **not** in the scheme. Each of them meant "fail the job if this isn't true" — which is what `Assert` means — so four spellings of one idea taught the reader nothing and hid the one distinction that matters. `Check` is the load-bearing half: it is reserved for a step that genuinely cannot red the lane, either because it carries `continue-on-error: true` or because its body only ever warns. A step named `Check` that can fail the build is the one naming error this scheme exists to prevent, because it trains you to skim past a real failure.
+
+Two smaller rules that follow from the same idea:
+
+- **Name the tool the way the tool is named.** `Run actionlint`, not `Run Actionlint`; `Run bkit Check`, not `Run Bkit Check`. A step name that misspells its own tool is a step name you cannot grep for.
+- **Drop a qualifier the job name already carries.** Inside `bkit-tests-unit`, `Run Unit Tests` beats `Run Vitest Unit Tests` — the lane already said which tier, and the runner is visible in the command. Keep a bracket only when it disambiguates two steps that would otherwise share a name and mirrors a literal flag or tool: `Run Slop Scan (full)` / `(delta)`, `Run Shell Tests (bats)`.
+
+### A guard asserts the rule, not the sentence that explains it
+
+A shape guard over a config file reads that file as text, so it is easy to anchor it on whatever string happens to be nearby. Anchor on the **rule**; a guard pinned to the prose around the rule fails the moment someone improves the comment, and passes for years after the rule itself is deleted.
+
+The failure mode is specific and it is not hypothetical: a guard asserting `expect(content).toMatch(/bootstrap paradox/)` was protecting a real invariant — that a lane checks the repo out before calling a local composite. Tidying the phrase "bootstrap paradox" out of the comment reddened the guard while the invariant was untouched. Assert the thing that must hold (`must already be checked out`, a step id, a flag, an `if:` shape), not the words chosen to describe it.
+
+Three practical rules:
+
+- **Pin the mechanism, not the wording.** `expect(step).not.toMatch(/exit [1-9]/)` proves a step is non-blocking; matching a comment that says "this only warns" proves nothing about the code.
+- **Derive the list, never hand-write it.** A guard that enumerates lanes goes stale the day a lane is added. Derive the set from the file under test — count the `VERBOSE_CI` declarations, read the `needs:` array — so a new lane is covered without editing the guard.
+- **Prove it can fail.** Put the bug back and watch the guard red before you trust it. A guard that has never failed is indistinguishable from a guard that cannot.
+
+**The exception, stated so it is not mistaken for the rule.** When the shipped artefact _is_ prose — a rules file an agent reads, a CLI help string, an advisory message — the wording is the behaviour, and asserting on it is correct. The distinction is whether the text is the deliverable or a description of one.
+
+### Composite actions: two things that cost a red CI to learn
+
+A composite action (`uses: ./.github/actions/setup`) is the right way to stop copy-pasting a setup block across lanes. Two of its rules are not obvious and neither fails loudly:
+
+- **A composite cannot own the checkout that fetches it.** A local `uses: ./…` path is resolved from the runner's own filesystem, so the repo must already be checked out before the runner can read the composite's `action.yml` at all. Putting `actions/checkout` inside the composite and making the composite each lane's first step is a bootstrap paradox — the lane reds with "can't find action.yml". Every adopting lane runs `actions/checkout` as its **own** first step, with its own explicit `fetch-depth`, before it calls the composite.
+- **Job-level `env:` reaches a composite step's process, but not its `env` expression context.** The `env` context inside a composite reflects only what the composite itself declares, so `if: env.VERBOSE_CI == '1'` on a composite step is **permanently false** — the step silently never runs, and nothing reds. Gate in the shell instead (`if [ "${VERBOSE_CI:-}" != "1" ]; then exit 0; fi`) and say so in a comment, or the next person tidies it back into an `if:`.
+
+The same expression-context trap has a neighbour outside composites: the `env` context is not available to a **job-level `env:` value** either, so `NODE_OPTIONS: ${{ env.VERBOSE_CI && '…' || '' }}` resolves empty on every run. Spell the marker test out — see § CI verbosity.
+
 ### E2E on PRs: run the full suite, watch which DB it hits
 
 Two PR-time E2E concerns, both gated on **real preconditions** (event, head ref), never a kill-switch flag:
@@ -106,6 +148,8 @@ Assign every behaviour its **lowest sufficient tier(s)** — the lowest tier tha
 | Crosses a LOCAL stateful boundary (own DB / own API, no 3rd party) | **Integration** vs a freshly-provisioned instance, no mocks at the boundary |
 | Crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model/LLM, payment, deployed schema, RLS/tenancy) | **@live (golden)** — reaches the real boundary, asserts a boundary-only signal |
 | User-visible UI flow / DOM state | **E2E** |
+| Design token value / reference-doc parity | **Unit** — reference doc vs each implementation, asserted independently (§ Design assertions) |
+| Rendered geometry, contrast, touch-target size | **E2E** — computed style + a11y scan in the existing browser project (§ Design assertions) |
 | New / changed migration or seed | **fresh-DB replay** (`bkit-tests-migration`) — replays from empty + the seed loads |
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
@@ -117,7 +161,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Static
 
-- Run the whole non-test gate set: typecheck · format check · lint · prose lint · code-slop scan (full **plus** a PR **delta** gate that fails only net-new findings) · drift check · workflow linter. The cheap deterministic subset (typecheck + unit + drift) also runs **pre-push**; the rest is CI fail-fast **before** any env pull or heavy tier.
+- Run the whole non-test gate set: typecheck · format check · lint · prose lint · code-slop scan (full **plus** a PR **delta** gate that fails only net-new findings) · drift check · workflow linter. Locally this set is one script, `bkit:gate:static`, and `bkit:gate:static-unit` chains the unit tier on top — the same scripts pre-push, the build loop and the remediate agents all run, so a green push and a green agent gate mean the same thing. CI runs the rest fail-fast **before** any env pull or heavy tier.
 - Scan a **clean tree** — run static **before** the test tiers write coverage / result artifacts, or the scan flags the artifacts instead of your code.
 - On PRs scope to the **affected graph** (e.g. a monorepo task runner's `--filter=...[base]`) over a **non-shallow checkout** (full history) — never a shallow clone that fails affected-selection open to "everything".
 - **Not:** a green CI that never ran the slop / drift / prose gates because they sat behind a test step that exited early.
@@ -161,7 +205,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 
 ### Migration-replay + seed (the fresh-DB gate)
 
-- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migration` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step (`deployments.md` § Applying migrations at deploy time) — that remote push also lives in the **same** always-on lane (#385), after the replay, so a from-empty failure never reaches shared remote.
+- Prove every migration **replays from an empty database** on a fresh ephemeral instance, then the **seed loads** — the always-on sibling gate `bkit-tests-migration` (§ Provision backing services fresh). Distinct from the deploy-time "apply only new migrations onto the already-migrated remote" step (`deployments.md` § Applying migrations at deploy time) — that remote push also lives in the **same** always-on lane, after the replay, so a from-empty failure never reaches shared remote.
 - **Assert the seed actually loaded** — check a known row exists. A reset / replay can exit 0 while a conditional insert silently no-ops or the seed aborts mid-file; a green replay is not proof the fixture is present (the seed analog of the hollow-boundary rule).
 - Generate the seed from a **single deterministic source** — a pure data definition with no wall-clock `now()`, no random values, explicit IDs / enums so triggers don't randomise it — and regenerate the checked-in seed file from it. Two hand-maintained copies drift.
 - **Replay-from-empty, not reused-volume.** A bare "start the local stack" can reuse a stale data volume and silently skip newer migrations — it is **not** a freshness proof; only a reset / replay from empty is.
@@ -173,6 +217,28 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 - After deploy, run a **fast, dependency-light** probe of the live surface (a handful of health / route / contract checks, or a tiny tagged browser subset) — breadth ("is the app fundamentally up?"), not depth.
 - It is an **observability gate, not a merge gate**: own workflow, never in branch protection. Trigger plumbing (post-CI vs post-deploy) → `deployments.md` § Smoke trigger plumbing.
 - **Not:** a smoke suite wired into branch protection, or one so heavy it can't run on every deploy.
+
+## Design assertions are a dimension, not a lane
+
+**NEVER add a design lane.** The lane axis is **resource profile** (a millisecond file read vs a booted app + browser), not subject matter — design assertions span both. A `bkit-tests-design` job (or a design-only browser project) splits one concern across two profiles and buys nothing existing lanes don't provide. Fold each assertion into the tier that already fits it: CI topology, the capstone's `needs:`, the browser-project partition all stay **unchanged** (a real consumer's full design-system rollout landed with `ci.yml` byte-unchanged).
+
+<!-- prettier-ignore -->
+| Design assertion | Lane |
+| --- | --- |
+| Token parity — reference doc vs each implementation (stylesheet variables, theme object) | `bkit-tests-unit` |
+| Static guards — no raw hex, no arbitrary-value utility classes | `bkit-tests-static` (lint rule, anchored on the **class boundary** so `p-[3px]` reds but a legitimate substring does not) |
+| Repo-wide raw-hex contract (scans the source tree off disk, no I/O beyond the filesystem) | `bkit-tests-unit` |
+| Contract depth — component-level token / test-id / behaviour assertions | `bkit-tests-unit` |
+| Computed style + measured geometry (resolved pixels, touch-target size) | `bkit-tests-e2e` — ordinary specs in the **existing** browser project, selected by path |
+| Accessibility scan (contrast, target size) | `bkit-tests-e2e` — the scanner is an imported helper, not a project fixture |
+| Design-source parity (a rendered style guide vs the reference doc) | `bkit-tests-unit` |
+| Visual regression (screenshot baselines) | **opt-in, not baseline** (§ Optional hardening) — highest maintenance cost of the set |
+
+- **One reference, asserted independently.** The reference doc owns the token contract and its parsing rules (`design.md` § Machine-checked reference). What lanes care about: each implementation is its **own** test, so one red names its culprit.
+- **Merge-gated from day one — never an advisory window.** Assertions live inside lanes the capstone already gates, so a design red blocks merge on the first PR that adds one. No promotion step to schedule → no deferral row to forget.
+- **A group tag carries zero routing power.** Tag design tests in the test **title** (NEVER a filename convention) + add a `test:design` script for local iteration only. The tag MUST NEVER appear in an execution gate or inverse-grep filter — a test without it still runs in its normal lane. Keep the **standard filename** in a location the package's include glob already matches: a bespoke `*.design.test.ts` or an unreached dir runs in **zero** lanes — green everywhere, covering nothing (§ Validated means executed). Pass-with-no-tests is mandatory on every fan-out; each runner spells that flag differently, and a browser runner hard-errors on a path / project name matching nothing.
+- **Cache footgun — design tests read files outside their own package.** A token-parity test reads the reference doc; a raw-hex contract scans the source tree. Under a per-package-hash runner, editing the reference doc changes no package hash → a warm cache replays a **PASS against a reference the code now contradicts**. Put the reference doc (+ any rendered style guide) in the runner's **global dependencies** + mark the design-selection task **uncached**. Same trap class: a design run overwriting the machine-readable results file the executed-count gate consumes — re-run the full suite before trusting either.
+- **Keep the first honest reds.** A first real geometry / a11y sweep surfaces genuine defects (undersized controls, failing contrast). File as issues, allowlist behind a **named constant**, and ship the allowlist's **stale-entry check** in the same change — an allowlist that never rejects a fixed entry decays into a silent exemption. Enumerate sweep scope by **role and tag**, NEVER by test-id presence (library-generated markup escapes the gate by construction). Measure **every** theme before asserting any, or a light-theme red hides dark-theme offenders.
 
 ## Schema-invariant DB checks (RLS coverage, etc.)
 
@@ -238,7 +304,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 **Knobs flipped under the marker:**
 
 - `TURBO_LOG_LEVEL=full` — surfaces Vitest/build output across all turbo steps (otherwise compressed to errors-only)
-- `NODE_OPTIONS=--trace-warnings --trace-deprecation` — stacks on deprecations / transitive-dep regressions
+- `NODE_OPTIONS=--trace-warnings --trace-deprecation` — stacks on deprecations / transitive-dep regressions. Set as a job-level `env:` key in static YAML, NEVER written to `$GITHUB_ENV`: the runner blocklists `NODE_OPTIONS` for that command, rejects the write with an `::error::`, and still concludes the step `success` — so the flag reaches nothing while the run goes green. Spell the `contains()` marker test out rather than reusing `env.VERBOSE_CI` (the `env` context is not available to a job-level `env:` value). A step with its own `env:` block replaces the job-level value rather than merging, so it must restate the flags
 - `DEBUG=vercel:*,supabase:*` — Vercel deploy + Supabase migration internal chain (no `pw:*` — duplicates Playwright trace)
 - Playwright (when `bkit-stub:e2e` enabled): appends `--trace=on` only — `--video` and `--screenshot` are `playwright.config.ts use:` keys, not CLI flags (Playwright errors on unknown CLI options). The trace.zip captures snapshots / network / console / source, which covers the dominant diagnose use case. Never pass `--reporter=line` — let `playwright.config.ts`'s chain run
 

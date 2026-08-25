@@ -59,14 +59,15 @@ That is **13 further sites** under D7's own "must ship in the same commit" logic
 
 ## Library / API Evaluation
 
-| Item                              | Verdict                                                                                                                                     |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `push_files` (GitHub MCP `repos`) | Exists, toolset enabled, signature fits D1-closure. Fails on payload size, conflict semantics, and merge expressiveness. **ADAPT.**         |
-| `get_file_contents`               | Exists — the correct primitive for the post-`push_files` re-read assert the draft currently specifies as a local `git show`. **USE-AS-IS.** |
-| bats + `tests/*.bats`             | Mature, CI-wired (`ci.yml:500-502`). Correct home for shim tests. **USE-AS-IS.**                                                            |
-| counter-bus sourcing idiom        | Real and generalisable **only** in its actual (stateless, re-source-per-block) form. **ADAPT** — see CRITICAL 1.                            |
-| `git push --dry-run`              | Unsound as a permission probe. **REJECT.**                                                                                                  |
-| Bundle / license / types          | N/A — no new dependency. One shell file + one bats file. Zero bundle cost.                                                                  |
+<!-- prettier-ignore -->
+| Item | Verdict |
+| --- | --- |
+| `push_files` (GitHub MCP `repos`) | Exists, toolset enabled, signature fits D1-closure. Fails on payload size, conflict semantics, and merge expressiveness. **ADAPT.** |
+| `get_file_contents` | Exists — the correct primitive for the post-`push_files` re-read assert the draft currently specifies as a local `git show`. **USE-AS-IS.** |
+| bats + `tests/*.bats` | Mature, CI-wired (`ci.yml:500-502`). Correct home for shim tests. **USE-AS-IS.** |
+| counter-bus sourcing idiom | Real and generalisable **only** in its actual (stateless, re-source-per-block) form. **ADAPT** — see CRITICAL 1. |
+| `git push --dry-run` | Unsound as a permission probe. **REJECT.** |
+| Bundle / license / types | N/A — no new dependency. One shell file + one bats file. Zero bundle cost. |
 
 ## Integration Risk
 

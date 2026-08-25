@@ -19,14 +19,15 @@ The KN-26 seam itself holds (see § Seam verdict). What does **not** hold is the
 
 WS-3 converts **three positions per counter** (derive / write / route). The corpus has far more. Every one of these is a **fenced** block reading a bare `$X_ATTEMPT`, and **no task in the runbook converts any of them**:
 
-| Counter                       | Unconverted fenced consumers (verified)                                                                                                                     | Task list covers                                                  |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `VERIFY_ATTEMPT`              | `bkit-build.md:612`, `:613`, `:615` (`build-plan-gaps-remediate`)                                                                                           | `:526`/`:538`/`:563` only                                         |
-| `CHALLENGE_REMEDIATE_ATTEMPT` | `bkit-build.md:716`, `:719`, `:761`, `:764`                                                                                                                 | T3.3 says "derive at `:806`; re-derive in the `:818` write block" |
-| `TEST_ATTEMPT`                | `bkit-build.md:1006`, `:1007`, `:1009`, `:1056`, `:1057`, `:1059`                                                                                           | `:911`/`:936`/`:960` only                                         |
-| `NORMAL_ATTEMPT`              | `bkit-debug.md:643`, `:646`, `:697`, `:698`, `:700`, `:705`, `:756`, `:757`, `:759`, `:764`, `:808`                                                         | `:372`/`:400`/`:424` (+`:417`/`:418`/`:802`)                      |
-| `DEBUG_ATTEMPT`               | `bkit-debug.md:332`, `:334`, `:376`, `:473`, `:482`, `:486`, `:489`, `:498`, `:502`, `:505`, `:511`, `:515`, `:518`, `:541`, `:551`, `:565`, `:570`, `:573` | T3.4 touches `:187-194` only                                      |
-| `MERGE_ATTEMPT`               | `bkit-ship.md:625`, `:626`, `:628`, `:685`, `:686`, `:688`                                                                                                  | `:519`/`:562`/`:586` only                                         |
+<!-- prettier-ignore -->
+| Counter | Unconverted fenced consumers (verified) | Task list covers |
+| --- | --- | --- |
+| `VERIFY_ATTEMPT` | `bkit-build.md:612`, `:613`, `:615` (`build-plan-gaps-remediate`) | `:526`/`:538`/`:563` only |
+| `CHALLENGE_REMEDIATE_ATTEMPT` | `bkit-build.md:716`, `:719`, `:761`, `:764` | T3.3 says "derive at `:806`; re-derive in the `:818` write block" |
+| `TEST_ATTEMPT` | `bkit-build.md:1006`, `:1007`, `:1009`, `:1056`, `:1057`, `:1059` | `:911`/`:936`/`:960` only |
+| `NORMAL_ATTEMPT` | `bkit-debug.md:643`, `:646`, `:697`, `:698`, `:700`, `:705`, `:756`, `:757`, `:759`, `:764`, `:808` | `:372`/`:400`/`:424` (+`:417`/`:418`/`:802`) |
+| `DEBUG_ATTEMPT` | `bkit-debug.md:332`, `:334`, `:376`, `:473`, `:482`, `:486`, `:489`, `:498`, `:502`, `:505`, `:511`, `:515`, `:518`, `:541`, `:551`, `:565`, `:570`, `:573` | T3.4 touches `:187-194` only |
+| `MERGE_ATTEMPT` | `bkit-ship.md:625`, `:626`, `:628`, `:685`, `:686`, `:688` | `:519`/`:562`/`:586` only |
 
 Today these work only because the model substitutes a literal (that is the issue's founding defect). **T4.1 removes the prose that instructs the substitution** (`Init counters:`, `Increment X + 1`) while leaving the blocks intact. The result is worse than the status quo: no derive, and no prose telling the model to substitute → `--argjson a "$TEST_ATTEMPT"` on an empty expansion → `jq: invalid JSON text` → Failure Path on `build-failure-diagnose`, `debug-failure-soak`, `ship-failure-remediate`, and every `debug-context-*` fetch.
 

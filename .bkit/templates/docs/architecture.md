@@ -9,10 +9,10 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Topology/boundaries only; operational rules and library lists → domain docs.
-> - Update on package add/remove or boundary shift.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
+> - Topology / boundaries only; operational rules and library lists → domain docs.
+> - Update on package add / remove or boundary shift.
 
 <!-- bkit:end -->

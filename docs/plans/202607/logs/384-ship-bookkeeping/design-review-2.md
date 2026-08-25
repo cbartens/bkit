@@ -84,20 +84,21 @@ Lens: Operability — failure modes, observability, on-call ergonomics.
 
 Project baseline (`docs/observability.md`): CLI uses load-bearing `[{Context}]` prefixes; workflow telemetry is `status.jsonl` / ledgers / friction — **no** metrics pipeline, traces, or on-call alert stack for ship. `docs/deployments.md` makes capstone `bkit-tests-check` the sole required check and documents `[skip ci]` / dispatch-gate / `run_level` contracts the gate depends on.
 
-| Failure                | Logs / status                                                           | Metrics                           | Traces / correlation                | Gap                                                                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------- | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| F1 merge unvalidated   | Gate refuse msgs + dual SHA + run URL; override row; pre-merge snapshot | None (exit codes only in-process) | FID + head SHA + run id in snapshot | Gate script stderr prefix not named (`[bkit-ship-gate]` or reuse `[bkit-telemetry]`) — greppable CI/session drains need a convention |
-| F2 API unknown         | Exit 20 + distinct copy                                                 | None                              | Same                                | Good: 20 ≠ 10. Rate-limit sampling **unmeasured** (Risk 4)                                                                           |
-| F3 no dispatch         | Unconditional dispatch narration; gate 10                               | None                              | workflow_run id after dispatch      | Covered                                                                                                                              |
-| F4 poll hang           | Dual cap → loud fail **if** caps work                                   | None                              | Missing if hang before status write | Design acknowledges; must emit status/failure row on timeout path                                                                    |
-| F5 degraded run_level  | **None**                                                                | None                              | None                                | **CRITICAL gap** — same blast as F1, no detection                                                                                    |
-| F6 BOOK_ROOT wrong     | Step 1 status carries resolved values; push fail loud; outbox           | None                              | BOOK_ROOT in start row              | Mode-3 optimistic default: failure is loud push, not early probe (probe correctly rejected)                                          |
-| F7 lock overhold       | Staleness fold; no dedicated "lock held for CI wait" row                | None                              | Lock file only                      | No structured signal when ship chooses to hold across re-validate                                                                    |
-| F8 Failure Path        | `.deferred-blocked`; `workflow-failed` on BOOK_ROOT; silencing removed  | None                              | FID log dir                         | Verify no path still depends on silent no-ops (Risk 6 — not yet done)                                                                |
-| F9 worktree destroy    | Step 12 records create-ownership                                        | None                              | —                                   | Ownership bit must be durable across resume (outbox or status)                                                                       |
-| F10 staging drift      | Vitest presence only; not runtime                                       | None                              | —                                   | Design Trade-offs: Tier 2 cannot assert honour — e2e ship required                                                                   |
-| F11 holes              | Advisory detector                                                       | Fail-open channel                 | Step-key schema published           | Intentional MTTD days for one release                                                                                                |
-| F12 upgrade regression | Consumer ship refuse / override                                         | None                              | —                                   | No pin/rollback runbook in design                                                                                                    |
+<!-- prettier-ignore -->
+| Failure | Logs / status | Metrics | Traces / correlation | Gap |
+| --- | --- | --- | --- | --- |
+| F1 merge unvalidated | Gate refuse msgs + dual SHA + run URL; override row; pre-merge snapshot | None (exit codes only in-process) | FID + head SHA + run id in snapshot | Gate script stderr prefix not named (`[bkit-ship-gate]` or reuse `[bkit-telemetry]`) — greppable CI/session drains need a convention |
+| F2 API unknown | Exit 20 + distinct copy | None | Same | Good: 20 ≠ 10. Rate-limit sampling **unmeasured** (Risk 4) |
+| F3 no dispatch | Unconditional dispatch narration; gate 10 | None | workflow_run id after dispatch | Covered |
+| F4 poll hang | Dual cap → loud fail **if** caps work | None | Missing if hang before status write | Design acknowledges; must emit status/failure row on timeout path |
+| F5 degraded run_level | **None** | None | None | **CRITICAL gap** — same blast as F1, no detection |
+| F6 BOOK_ROOT wrong | Step 1 status carries resolved values; push fail loud; outbox | None | BOOK_ROOT in start row | Mode-3 optimistic default: failure is loud push, not early probe (probe correctly rejected) |
+| F7 lock overhold | Staleness fold; no dedicated "lock held for CI wait" row | None | Lock file only | No structured signal when ship chooses to hold across re-validate |
+| F8 Failure Path | `.deferred-blocked`; `workflow-failed` on BOOK_ROOT; silencing removed | None | FID log dir | Verify no path still depends on silent no-ops (Risk 6 — not yet done) |
+| F9 worktree destroy | Step 12 records create-ownership | None | — | Ownership bit must be durable across resume (outbox or status) |
+| F10 staging drift | Vitest presence only; not runtime | None | — | Design Trade-offs: Tier 2 cannot assert honour — e2e ship required |
+| F11 holes | Advisory detector | Fail-open channel | Step-key schema published | Intentional MTTD days for one release |
+| F12 upgrade regression | Consumer ship refuse / override | None | — | No pin/rollback runbook in design |
 
 Missing observability for **F5** (CRITICAL severity blast, zero detection) drives the CONCERNS verdict more than any other single gap.
 
@@ -105,14 +106,15 @@ Missing observability for **F5** (CRITICAL severity blast, zero detection) drive
 
 This is agent/session "on-call" (developer running `/bkit-ship`), not paging. Anticipated pages ≈ gate refuse + handover + lock contention.
 
-| Alert / symptom                                     | Runbook from payload?                                                                   | Recovery                                                                      | Noise                                                                                                         |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Gate exit 10–14                                     | Yes — dual SHA + run URL + condition-specific code makes green-looking PR self-refuting | Refuse; re-validate or fix CI; logged override only as last resort            | Low if codes not collapsed; high if 11 (in-progress) pages as hard fail without poll-retry guidance in caller |
-| Gate exit 20                                        | Partial — "API/auth/rate limit" still needs `gh api rate_limit` / token scope chase     | Retry / fix PAT / wait; must **not** treat as "no run"                        | Risk of override-as-workaround under secondary limits (shared PAT across repos)                               |
-| Sweep FAIL → handover                               | Yes — once `.deferred-blocked` writer exists; routes to `@bkit-debug-abort-handover`    | Human judgement via handover artifact; never bare STOP                        | Low                                                                                                           |
-| Lock acquire fail / stale expiry during Path B wait | Weak — stale lock looks like abandoned run                                              | Human judgement; release-vs-hold policy **undecided** → wrong recovery common | **High** if deadlines unchanged: legitimate ships cause cascade expiries                                      |
-| Status holes (advisory)                             | Delta vs watermark                                                                      | Fix workflow / backfill; fail-open                                            | Tuned correctly by advisory-first (corpus 25–65% holey)                                                       |
-| Override used                                       | status.jsonl row                                                                        | Audit after; treat as incident                                                | Good — visible beats silent UI merge                                                                          |
+<!-- prettier-ignore -->
+| Alert / symptom | Runbook from payload? | Recovery | Noise |
+| --- | --- | --- | --- |
+| Gate exit 10–14 | Yes — dual SHA + run URL + condition-specific code makes green-looking PR self-refuting | Refuse; re-validate or fix CI; logged override only as last resort | Low if codes not collapsed; high if 11 (in-progress) pages as hard fail without poll-retry guidance in caller |
+| Gate exit 20 | Partial — "API/auth/rate limit" still needs `gh api rate_limit` / token scope chase | Retry / fix PAT / wait; must **not** treat as "no run" | Risk of override-as-workaround under secondary limits (shared PAT across repos) |
+| Sweep FAIL → handover | Yes — once `.deferred-blocked` writer exists; routes to `@bkit-debug-abort-handover` | Human judgement via handover artifact; never bare STOP | Low |
+| Lock acquire fail / stale expiry during Path B wait | Weak — stale lock looks like abandoned run | Human judgement; release-vs-hold policy **undecided** → wrong recovery common | **High** if deadlines unchanged: legitimate ships cause cascade expiries |
+| Status holes (advisory) | Delta vs watermark | Fix workflow / backfill; fail-open | Tuned correctly by advisory-first (corpus 25–65% holey) |
+| Override used | status.jsonl row | Audit after; treat as incident | Good — visible beats silent UI merge |
 
 Recovery actions that are automatic/idempotent: server-side B1 update-branch; force-with-lease B2; gate assert pure read; outbox flush at close. Human judgement required: override, non-mechanical conflict handover, lock policy under long CI wait, mode-3 flush via phase-close PR (#341).
 

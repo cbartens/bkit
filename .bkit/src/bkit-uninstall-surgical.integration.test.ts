@@ -228,37 +228,46 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 // ---------------------------------------------------------------------------
 
 describe("opencode uninstall — zero footprint after uninstall", () => {
-  it("uninstall(opencode) deletes .opencode/plugin/gateguard.js when hash matches (byte-equal-text)", async () => {
-    // gateguard.js is byte-equal-text — deleted only when hash matches tier3Hashes.
+  it("uninstall(opencode) strips the bkit block from gateguard.js, preserving the consumer's driver (markered-text)", async () => {
+    // gateguard.js is markered-text (slash-comment) — bkit owns only the content
+    // between `// bkit:start` / `// bkit:end`; the driver around it is consumer-owned
+    // from first install onward, so uninstall must strip the block and leave a
+    // working (consumer-authored) hook behind, not delete the file.
     const pluginPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
     fs.mkdirSync(path.dirname(pluginPath), { recursive: true });
-    const pluginContent = "// bkit gateguard";
+    const pluginContent =
+      "// consumer driver preamble\n" +
+      "// bkit:start\n" +
+      "\n" +
+      "function bkitGateguard() { return null; }\n" +
+      "\n" +
+      "// bkit:end\n" +
+      "export default function plugin() { return {}; }\n";
     fs.writeFileSync(pluginPath, pluginContent, "utf-8");
 
     // opencode.json (json format) — seed empty-ish content that fully contains template scope
-    // Use --force to ensure deletion regardless of hash (tests the delete path)
     const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
     fs.mkdirSync(path.dirname(opencodeJsonPath), { recursive: true });
     fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
 
-    // Write tier3Hashes so the byte-equal-text file can be identified as bkit-owned
-    const { sha256: computeSha256 } = await import("./bkit-version");
     const versionPath = path.join(tmpDir, ".bkit", "version");
-    const tier3Hashes: Record<string, string> = {
-      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
-    };
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
       "utf-8",
     );
 
-    // Use --force to also delete byte-equal-text files regardless of hash check
-    await runUninstall(["opencode"], makeCtx({ force: true }));
+    await runUninstall(["opencode"], makeCtx());
 
-    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be force-deleted").toBe(
-      false,
+    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should NOT be deleted").toBe(
+      true,
     );
+    const postContent = fs.readFileSync(pluginPath, "utf-8");
+    expect(postContent).toContain("// consumer driver preamble");
+    expect(postContent).toContain("export default function plugin() { return {}; }");
+    expect(postContent).not.toContain("// bkit:start");
+    expect(postContent).not.toContain("bkitGateguard");
+    expect(postContent).not.toContain("// bkit:end");
   });
 
   it("uninstall(opencode) strips bkit-managed scope from opencode.json; deletes when empty after strip", async () => {
@@ -332,14 +341,18 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
     fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
 
-    // gateguard.js (byte-equal-text) — record hash so uninstall can delete
-    const { sha256: computeSha256 } = await import("./bkit-version");
-    const pluginContent = "// bkit gateguard plugin";
+    // gateguard.js (markered-text) — bkit's footprint is the block only; the driver
+    // around it is consumer-owned and survives a full opencode uninstall.
+    const pluginContent =
+      "// consumer driver preamble\n" +
+      "// bkit:start\n" +
+      "\n" +
+      "function bkitGateguard() { return null; }\n" +
+      "\n" +
+      "// bkit:end\n" +
+      "export default function plugin() { return {}; }\n";
     const pluginPath = path.join(opencodeDir, "plugin", "gateguard.js");
     fs.writeFileSync(pluginPath, pluginContent, "utf-8");
-    const tier3Hashes: Record<string, string> = {
-      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
-    };
 
     // bkit-prefix dynamic mirrors
     const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-execute.md");
@@ -350,7 +363,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
       "utf-8",
     );
 
@@ -360,9 +373,15 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     expect(fs.existsSync(opencodeJsonPath), ".opencode/opencode.json should be deleted").toBe(
       false,
     );
-    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be deleted").toBe(
-      false,
-    );
+    // gateguard.js survives — it is the consumer's driver now; only bkit's block is gone
+    expect(
+      fs.existsSync(pluginPath),
+      ".opencode/plugin/gateguard.js should NOT be deleted (consumer owns the driver)",
+    ).toBe(true);
+    const postPluginContent = fs.readFileSync(pluginPath, "utf-8");
+    expect(postPluginContent).toContain("// consumer driver preamble");
+    expect(postPluginContent).not.toContain("// bkit:start");
+    expect(postPluginContent).not.toContain("bkitGateguard");
     // Dynamic mirrors gone
     expect(fs.existsSync(agentFile), "bkit-prefix agent mirror should be deleted").toBe(false);
     expect(fs.existsSync(cmdFile), "bkit-prefix command mirror should be deleted").toBe(false);
@@ -425,7 +444,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const agentsMd = path.join(tmpDir, "AGENTS.md");
     fs.writeFileSync(
       agentsMd,
-      "# AGENTS.md\n\n<!-- bkit:start -->\n\n**Read in full:** `.agents/rules.md`.\n\n<!-- bkit:end -->\n",
+      "# AGENTS.md\n\n<!-- bkit:start -->\n\n- **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.\n\n<!-- bkit:end -->\n",
       "utf-8",
     );
 
@@ -465,11 +484,14 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     JSON.stringify(
       {
         provider: {
-          groq: {
+          openrouter: {
             npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+            options: {
+              baseURL: "https://api.openrouter.com/openai/v1",
+              apiKey: "{env:OPENROUTER_API_KEY}",
+            },
           },
-          "ollama-local": {
+          ollama: {
             npm: "@ai-sdk/openai-compatible",
             options: { baseURL: "http://localhost:11434/v1", apiKey: "" },
           },
@@ -483,9 +505,12 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     JSON.stringify(
       {
         provider: {
-          groq: {
+          openrouter: {
             npm: "@ai-sdk/openai-compatible",
-            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+            options: {
+              baseURL: "https://api.openrouter.com/openai/v1",
+              apiKey: "{env:OPENROUTER_API_KEY}",
+            },
           },
         },
       },
@@ -522,8 +547,8 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
   it("removes exactly ONE provider block; the other provider remains intact", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "ollama-local",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "ollama",
     });
 
     // Seed a bkit-prefix agent mirror so we can detect if full teardown was (wrongly) triggered
@@ -531,18 +556,15 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     fs.mkdirSync(agentDir, { recursive: true });
     fs.writeFileSync(path.join(agentDir, "bkit-build-plan-execute.md"), "# agent", "utf-8");
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const oJson = readOpencodeJson();
     const providers = (oJson.provider ?? {}) as Record<string, unknown>;
 
-    // groq block removed
-    expect(providers.groq, "groq provider block should be removed").toBeUndefined();
-    // ollama-local block preserved
-    expect(
-      providers["ollama-local"],
-      "ollama-local provider block should be preserved",
-    ).toBeDefined();
+    // openrouter block removed
+    expect(providers.openrouter, "openrouter provider block should be removed").toBeUndefined();
+    // ollama block preserved
+    expect(providers["ollama"], "ollama provider block should be preserved").toBeDefined();
 
     // Full teardown must NOT have been triggered
     expect(
@@ -554,38 +576,38 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
   it("updates bkit.opencodeProviders array in package.json", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "ollama-local",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "ollama",
     });
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
-    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
-    // Active provider unchanged (groq was not active)
-    expect(bkit.opencodeProvider).toBe("ollama-local");
+    expect(bkit.opencodeProviders).toEqual(["ollama"]);
+    // Active provider unchanged (openrouter was not active)
+    expect(bkit.opencodeProvider).toBe("ollama");
   });
 
   it("re-points bkit.opencodeProvider when the active provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
-    // groq is the ACTIVE provider
+    // openrouter is the ACTIVE provider
     seedPackageJson({
-      opencodeProviders: ["groq", "ollama-local"],
-      opencodeProvider: "groq",
+      opencodeProviders: ["openrouter", "ollama"],
+      opencodeProvider: "openrouter",
     });
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     const bkit = readPackageJsonBkit();
     // opencodeProviders updated
-    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
+    expect(bkit.opencodeProviders).toEqual(["ollama"]);
     // Active provider re-pointed to first remaining
-    expect(bkit.opencodeProvider).toBe("ollama-local");
+    expect(bkit.opencodeProvider).toBe("ollama");
   });
 
   it("falls through to full teardown when the last provider is removed", async () => {
     seedOpencode(OPENCODE_JSON_ONE_PROVIDER);
-    seedPackageJson({ opencodeProviders: ["groq"], opencodeProvider: "groq" });
+    seedPackageJson({ opencodeProviders: ["openrouter"], opencodeProvider: "openrouter" });
 
     // Seed bkit-prefix mirrors so we can verify full teardown was triggered
     const agentDir = path.join(tmpDir, ".opencode", "agents");
@@ -606,7 +628,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
       "utf-8",
     );
 
-    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+    await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
     // Full teardown: bkit-prefix mirrors deleted
     expect(

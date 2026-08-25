@@ -3,16 +3,16 @@
 # Skills
 
 > [!CAUTION]
-> **Purpose:** Registry of installed agent skills and install/update commands.
+> **Purpose:** Registry of installed agent skills and install / update commands.
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Only invoke skills relevant to current workflow/task/step.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
+> - Only invoke skills relevant to current workflow / task / step.
 > - Discover via `npx skills find [query]` — do NOT hand-curate.
-> - Update when adopting/retiring core technologies.
+> - Update when adopting / retiring core technologies.
 > - Local project skills → `Project Skills` below the bkit-managed block; Universal Skills table stays in-block.
 > - Managed via [skills.sh](https://skills.sh). Installed to `.agents/skills/`.
 

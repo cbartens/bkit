@@ -23,3 +23,9 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-07-23T05:03:21Z","parentSha":"f360bb647bc1aa38cd1ff9bc969cec8ef8fefdac","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-07-23T05:05:03Z","parentSha":"2b7e7271566c2ed7b56511639904546c1725ed92","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-07-23T05:05:03Z"}
+{"type":"step-done","workflow":"ship","step":"ship-start-workflow","status":"DONE","at":"2026-07-30T23:52:10Z","parentSha":"90d7047384b9d173e5cc6b53011d314703240027","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-input.md"]}
+{"type":"runtime-resolved","workflow":"ship","at":"2026-07-30T23:53:56Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":""}
+{"type":"step-done","workflow":"ship","step":"ship-worktree-setup","status":"DONE","at":"2026-07-30T23:54:17Z","parentSha":"2b9b0a67cb694bef0c6d4f9c142f665019eb4f08","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-input.md"]}
+{"type":"step-done","workflow":"ship","step":"ship-regression-guard","status":"DONE","verdict":"PASS","at":"2026-07-30T23:54:17Z","parentSha":"2b9b0a67cb694bef0c6d4f9c142f665019eb4f08","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-deferred-sweep","status":"DONE","verdict":"FAIL","at":"2026-07-31T00:00:44Z","parentSha":"2b9b0a67cb694bef0c6d4f9c142f665019eb4f08","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-deferred-sweep.md"]}
+{"type":"workflow-failed","workflow":"ship","at":"2026-07-31T00:00:59Z"}

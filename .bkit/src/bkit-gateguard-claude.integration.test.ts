@@ -1,4 +1,4 @@
-// bkit-gateguard.integration.test.ts — behavioural tests for the shipped GateGuard
+// bkit-gateguard-claude.integration.test.ts — behavioural tests for the shipped GateGuard
 // PreToolUse hook (.bkit/templates/.claude/hooks/gateguard.cjs). Spawns the real
 // script with node, feeds a PreToolUse payload on stdin, and asserts the stdout
 // contract:
@@ -22,7 +22,10 @@ let sessionCounter = 0;
 // cases or across repeated test runs.
 function newSession(): string {
   sessionCounter += 1;
-  return `gg-test-${process.pid}-${sessionCounter}`;
+  // Dedup state is keyed by session id and lives in the OS temp dir for 24h, so a
+  // pid+counter id collides with an earlier run whenever the OS recycles the pid —
+  // the advisory is then suppressed and the assertion fails for no reason.
+  return `gg-test-${process.pid}-${sessionCounter}-${Math.random().toString(36).slice(2)}`;
 }
 
 interface RunResult {
@@ -203,10 +206,12 @@ describe("gateguard hook — no-op / fail-open cases", () => {
     expect(r.raw.trim()).toBe("");
   });
 
-  it("is subagent-exempt when agent_id is present", () => {
+  it("subagents are NOT exempt — an agent_id payload still gets the checklist", () => {
+    // Reversed deliberately: a subagent edit is still an edit, and the
+    // investigation it skips is the same investigation.
     const r = run(editPayload("src/sub.ts", newSession(), { agent_id: "subagent-123" }));
     expect(r.status).toBe(0);
-    expect(r.raw.trim()).toBe("");
+    expect(hookOutput(r)["additionalContext"]).toContain("[bkit GateGuard]");
   });
 
   it("ignores non-edit tools", () => {
@@ -235,5 +240,37 @@ describe("gateguard hook — no-op / fail-open cases", () => {
     const r = run(null, { rawInput: "" });
     expect(r.status).toBe(0);
     expect(r.raw.trim()).toBe("");
+  });
+});
+
+describe("gateguard hook — docs/*.md density advisory (#422)", () => {
+  it("appends the density advisory for a docs/ markdown file", () => {
+    const r = run(editPayload("docs/architecture.md", newSession()));
+    expect(r.status).toBe(0);
+    expect(hookOutput(r)["additionalContext"]).toContain("docs/*.md authoring");
+  });
+
+  it("does NOT match a Documents/ ancestor (segment match, not substring)", () => {
+    const r = run(editPayload("Documents/architecture.md", newSession()));
+    expect(r.status).toBe(0);
+    expect(hookOutput(r)["additionalContext"]).not.toContain("docs/*.md authoring");
+  });
+
+  it("excludes docs/plans/ (plan template governs those, not the docs register)", () => {
+    const r = run(editPayload("docs/plans/202608/logs/422-foo/design.md", newSession()));
+    expect(r.status).toBe(0);
+    expect(hookOutput(r)["additionalContext"]).not.toContain("docs/*.md authoring");
+  });
+
+  it("does NOT match docs/knowledge.jsonl (gated on .md)", () => {
+    const r = run(editPayload("docs/knowledge.jsonl", newSession()));
+    expect(r.status).toBe(0);
+    expect(hookOutput(r)["additionalContext"]).not.toContain("docs/*.md authoring");
+  });
+
+  it("matches a nested docs/ tree via segment match (.bkit/templates/docs/architecture.md)", () => {
+    const r = run(editPayload(".bkit/templates/docs/architecture.md", newSession()));
+    expect(r.status).toBe(0);
+    expect(hookOutput(r)["additionalContext"]).toContain("docs/*.md authoring");
   });
 });

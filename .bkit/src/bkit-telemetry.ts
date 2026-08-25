@@ -263,6 +263,78 @@ export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"
 /** The decision lifecycle — a separate axis from the triage ladder. */
 export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
+/**
+ * Why a `deferral` is in the ledger instead of done — the justification, on a
+ * different axis from `status` (how far the work has got) and `severity` (how
+ * much it matters).
+ *
+ * The field exists because being declared was the ONLY test for exemption:
+ * `@bkit-ship-deferred-sweep` builds its exempt set from whatever design, plan
+ * and this ledger declare out-of-scope, and exempt never blocks a ship. The
+ * agent that wanted out of the work also wrote the declaration granting it, so
+ * unfinished in-scope work left the same trace as genuine out-of-scope work and
+ * no reader could separate the two. A closed enum makes the claim testable:
+ *
+ * - `scope-declared` — a design or plan called this out of scope BEFORE the work
+ *   started. MUST carry a `references` pointer to that section; the ledger row
+ *   being the only place it was ever declared is the tell of the opposite case.
+ * - `hard-blocked` — an external blocker (missing credential, upstream fix,
+ *   another feature) makes it impossible now. MUST name the blocker.
+ * - `needs-decision` — a human decision is missing, and guessing it is worse than
+ *   waiting. Confirmation is unavailable inside `/bkit-*` workflows by design.
+ * - `own-cycle` — genuinely plan-sized: a new architecture, not a mechanical fix.
+ * - `unjustified` — ADJUDICATOR-ONLY (see UNJUSTIFIED_REASON).
+ *
+ * A writer who cannot pick one of the first four does not have a deferral; it has
+ * unfinished work (`.agents/rules.md` § Principles, "Finish over deferrals").
+ */
+export type DeferralReason =
+  "scope-declared" | "hard-blocked" | "needs-decision" | "own-cycle" | "unjustified";
+
+export const DEFERRAL_REASONS: Set<string> = new Set([
+  "scope-declared",
+  "hard-blocked",
+  "needs-decision",
+  "own-cycle",
+  "unjustified",
+]);
+
+/**
+ * The adjudication verdict: this was in-scope work that should have been finished.
+ * Written ONLY by a reviewer judging someone else's deferral — never self-assigned
+ * at write time, where the four justifications are the whole legal vocabulary.
+ *
+ * Set via same-`key` append like any other update, and NEVER rewritten afterwards:
+ * a later row that closes the entry carries `unjustified` through verbatim, because
+ * the rate it feeds (`computeDeferralDiscipline` in `bkit-analysis.ts`) measures how
+ * often an agent deferred work it should have done — not whether someone later
+ * cleaned up after it.
+ */
+export const UNJUSTIFIED_REASON = "unjustified";
+
+/**
+ * The subagents sanctioned to write a `deferral` row (`.bkit/jsonl.md`
+ * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
+ * write the kind at all.
+ *
+ * The list is data, not prose, because the prose alone did not hold. Both
+ * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` carry an
+ * explicit "NO out-of-scope deferral" contract line, and the executor still
+ * wrote rows — a blocked plan task is unfinished in-scope work, and routing it
+ * to the ledger converts it into something the build loop treats as settled.
+ * Its `BLOCKED` log line is the record; the next verify pass reads it.
+ *
+ * Orchestrator-written rows carry no `subagent` and are outside this check.
+ */
+export const DEFERRAL_WRITERS: Set<string> = new Set([
+  "bkit-design-generate",
+  "bkit-plan-generate",
+  "bkit-plan-update",
+  "bkit-build-challenge-remediate",
+  "bkit-debug-abort-handover",
+  "bkit-ship-deferred-sweep",
+]);
+
 // compliance — one row per run x rule (kind:"compliance")
 export interface CompliancePayload {
   rule: string;
@@ -415,6 +487,12 @@ export interface DeferralPayload {
   description: string;
   remediation?: string;
   source?: string;
+  /**
+   * Why this is deferred rather than done — see DeferralReason. Required on every
+   * row written from this version on; optional in the type because the ledger is
+   * append-only and pre-existing rows cannot grow a field they were never asked for.
+   */
+  reason?: DeferralReason;
   /** OPEN -> TRIAGED -> CLOSED. See TRIAGE_STATUSES; TRIAGED is still open work. */
   status?: TriageStatus;
 }
@@ -586,6 +664,24 @@ export function validate(event: unknown): ValidationResult {
     }
   } else if (e["status"] !== undefined) {
     return { ok: false, reason: `${kind} rows do not carry status` };
+  }
+
+  // reason — the deferral justification (see DeferralReason). Required on write:
+  // an unjustifiable deferral is unfinished work, and the whole point of the field
+  // is that it cannot be skipped. Enforced on write only; `parse` stays tolerant so
+  // rows appended before the field existed still read.
+  if (kind === "deferral") {
+    if (e["reason"] === undefined || e["reason"] === null) {
+      return { ok: false, reason: "deferral row missing required field: reason" };
+    }
+    if (!DEFERRAL_REASONS.has(e["reason"] as string)) {
+      return {
+        ok: false,
+        reason: `deferral reason must be one of ${[...DEFERRAL_REASONS].join("|")} (got: ${String(e["reason"])})`,
+      };
+    }
+  } else if (e["reason"] !== undefined) {
+    return { ok: false, reason: `${kind} rows do not carry reason` };
   }
 
   if (kind === "compliance") {

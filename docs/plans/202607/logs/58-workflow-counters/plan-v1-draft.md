@@ -76,7 +76,7 @@ An engineer runs `/bkit-build` on a feature whose tests keep failing. Every retr
 | Scenario | Expected Behavior |
 | --- | --- |
 | Counter expands empty / non-integer at a routing block | `decide_next` / `check_max` print **nothing** on stdout, emit a diagnostic on stderr, `return 2` → block exits 2 → orchestrator routes to **Failure Path**. Never "continue". |
-| `status.jsonl` missing or unreadable at a derive block | `counter_count` returns 2 → call site `|| exit 2` → **Failure Path**. Never a default of 0. |
+| `status.jsonl` missing or unreadable at a derive block | `counter_count` returns 2 → call site `\|\| exit 2` → **Failure Path**. Never a default of 0. |
 | Second run of the same workflow over one log (resume / re-invoke) | Active-run scoping (`fold \| map(select(.workflow==$w)) \| last \| .steps`) counts only the newest run's rows — a fresh budget, never the previous run's spent one (the DE-25 starvation). |
 | `PRIOR_STRATEGY` reads the same log with all-runs scoping | Left **unchanged and deliberately opposite**. Both sites carry a comment naming the asymmetry, so neither reads as a bug from the other's side. |
 | Two real retries of the same step | Survive the fold: each attempt's `--allow-empty` commit advances `parentSha`, so the dedup key `"S {workflow} {step} {parentSha} {at}"` differs. |
@@ -352,7 +352,7 @@ None.
 | **DB** | N/A — no database. | — |
 | **Code** | `git revert {SQUASH_SHA}` then `pnpm bkit install` to regenerate mirrors + `.bkit/version` hashes. | Single squash commit; revert restores the prose counters and the fail-open guard together (the KN-26 pair inverts cleanly). |
 | **Data** | None. `soakEntryAt` rows already in a `status.jsonl` are ignored by the reverted code; `counter` rows already emitted with `shell-bus` stay valid (documented enum member). Both are additive and forward-compatible. | No log migration either way. |
-| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. | |
+| **Risk window** | None — no deploy, no migration. A consumer only picks the change up on their next `bkit install` / version bump. |  |
 
 _Code-only — `git revert` sufficient._
 

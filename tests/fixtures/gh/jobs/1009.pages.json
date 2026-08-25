@@ -1,0 +1,13 @@
+[
+  {
+    "total_count": 3,
+    "jobs": [
+      { "name": "bkit-tests-check", "conclusion": "success", "steps": [] },
+      { "name": "lint", "conclusion": "success", "steps": [] }
+    ]
+  },
+  {
+    "total_count": 3,
+    "jobs": [{ "name": "test", "conclusion": "skipped", "steps": [] }]
+  }
+]

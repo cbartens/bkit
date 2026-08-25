@@ -22,7 +22,7 @@
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ARCHIVE_SHARD_TEMPLATE, MAX_ROWS_BEFORE_ROLLUP, foldFrom, parse, } from "./bkit-telemetry.js";
+import { ARCHIVE_SHARD_TEMPLATE, MAX_ROWS_BEFORE_ROLLUP, UNJUSTIFIED_REASON, foldFrom, parse, } from "./bkit-telemetry.js";
 export { ARCHIVE_SHARD_TEMPLATE, MAX_ROWS_BEFORE_ROLLUP };
 export function computeCounts(events) {
     const byKind = {};
@@ -184,11 +184,54 @@ export function computeVersionCompliance(rows) {
     }))
         .sort((a, b) => a.bkitVersion.localeCompare(b.bkitVersion, undefined, { numeric: true }));
 }
+/**
+ * Unjustified-rate per `(subagent, model)`.
+ *
+ * The point is attribution, not a leaderboard: a writer with a high rate has
+ * either a prompt that under-specifies when deferring is legal, or a turn budget
+ * that runs out before the work does — an agent nearing `maxTurns` writes a
+ * deferral instead of finishing. Those need different fixes, and the rate is what
+ * separates them from one-off judgement calls.
+ *
+ * Counts FOLDED entities, so an adjudication and its later close are one deferral,
+ * not three. `unjustified` is carried verbatim through later rows precisely so the
+ * rate keeps counting the deferral that should not have been written.
+ */
+export function computeDeferralDiscipline(rows) {
+    const byWriter = {};
+    for (const row of rows) {
+        const writer = row.subagent ?? (row.workflow ? `${row.workflow} (orchestrator)` : "unattributed");
+        const model = row.model ?? "unknown";
+        const id = `${writer}\u0000${model}`;
+        if (!byWriter[id])
+            byWriter[id] = { writer, model, total: 0, unjustifiedCount: 0, byReason: {} };
+        const w = byWriter[id];
+        w.total++;
+        const reason = row.reason ?? "unspecified";
+        w.byReason[reason] = (w.byReason[reason] ?? 0) + 1;
+        if (reason === UNJUSTIFIED_REASON)
+            w.unjustifiedCount++;
+    }
+    return Object.values(byWriter)
+        .map((w) => ({
+        writer: w.writer,
+        model: w.model,
+        total: w.total,
+        unjustifiedCount: w.unjustifiedCount,
+        unjustifiedRate: w.total > 0 ? w.unjustifiedCount / w.total : 0,
+        byReason: w.byReason,
+    }))
+        .sort((a, b) => b.unjustifiedCount - a.unjustifiedCount ||
+        b.unjustifiedRate - a.unjustifiedRate ||
+        b.total - a.total ||
+        a.writer.localeCompare(b.writer));
+}
 export function runAnalysis(paths) {
     const { state, rowCount, malformedLineCount } = foldFrom(paths);
     const events = [...state.values()];
     const outcomeRows = [];
     const complianceRows = [];
+    const deferralRows = [];
     for (const ev of events) {
         if (ev.kind === "outcome") {
             outcomeRows.push(ev);
@@ -196,12 +239,16 @@ export function runAnalysis(paths) {
         else if (ev.kind === "compliance") {
             complianceRows.push(ev);
         }
+        else if (ev.kind === "deferral") {
+            deferralRows.push(ev);
+        }
     }
     const counts = computeCounts(events);
     const elapsed = computeElapsedStats(outcomeRows);
     const regression = computeRegression(outcomeRows);
     const complianceRates = computeComplianceRates(complianceRows);
     const versionCompliance = computeVersionCompliance(complianceRows);
+    const deferralDiscipline = computeDeferralDiscipline(deferralRows);
     const reportLines = [
         `[bkit-analysis] Telemetry rows: ${rowCount} | malformed: ${malformedLineCount}`,
         `[bkit-analysis] Kinds: ${JSON.stringify(counts.byKind)}`,
@@ -233,7 +280,27 @@ export function runAnalysis(paths) {
             reportLines.push(`  v${v.bkitVersion}: ${(v.passRate * 100).toFixed(1)}% pass (${v.totalRuns} runs)`);
         }
     }
-    return { counts, elapsed, regression, complianceRates, versionCompliance, reportLines };
+    // Deferral discipline — who defers work they should have finished.
+    if (deferralDiscipline.length > 0) {
+        const totals = deferralDiscipline.reduce((acc, d) => ({ total: acc.total + d.total, unjust: acc.unjust + d.unjustifiedCount }), { total: 0, unjust: 0 });
+        reportLines.push(`[bkit-analysis] Deferral discipline: ${totals.unjust}/${totals.total} adjudicated unjustified (${((totals.unjust / totals.total) * 100).toFixed(1)}%), by writer:`);
+        for (const d of deferralDiscipline) {
+            const reasons = Object.entries(d.byReason)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([reason, n]) => `${reason}=${n}`)
+                .join(" ");
+            reportLines.push(`  ${d.writer} [${d.model}]: ${d.unjustifiedCount}/${d.total} unjustified (${(d.unjustifiedRate * 100).toFixed(1)}%) | ${reasons}`);
+        }
+    }
+    return {
+        counts,
+        elapsed,
+        regression,
+        complianceRates,
+        versionCompliance,
+        deferralDiscipline,
+        reportLines,
+    };
 }
 // ---------------------------------------------------------------------------
 // Rollup writer (WS4-T4) — emits archive shard at ARCHIVE_SHARD_TEMPLATE

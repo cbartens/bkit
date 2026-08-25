@@ -14,6 +14,8 @@
     "grep": "allow",
     "glob": "allow",
     "task": "allow",
+    "websearch": "allow",
+    "webfetch": "ask",
     "bash": {
       "*": "allow",
       "sudo *": "ask",
@@ -21,6 +23,8 @@
       "pnpm publish*": "ask",
       "npm publish*": "ask",
       "bun publish*": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
       "git reset --hard*": "ask",
       "git clean -fd*": "ask",
       "git clean -fdx*": "ask",
@@ -39,8 +43,28 @@
       "git push --force*": "deny",
       "git push -f*": "deny",
       "git push --force-with-lease*": "allow",
-      "curl *": "ask",
-      "wget *": "ask"
+      "curl *anthropic.com*": "allow",
+      "wget *anthropic.com*": "allow",
+      "curl *claude.com*": "allow",
+      "wget *claude.com*": "allow",
+      "curl *cursor.com*": "allow",
+      "wget *cursor.com*": "allow",
+      "curl *github.com*": "allow",
+      "wget *github.com*": "allow",
+      "curl *githubusercontent.com*": "allow",
+      "wget *githubusercontent.com*": "allow",
+      "curl *linear.app*": "allow",
+      "wget *linear.app*": "allow",
+      "curl *npmjs.com*": "allow",
+      "wget *npmjs.com*": "allow",
+      "curl *ollama.com*": "allow",
+      "wget *ollama.com*": "allow",
+      "curl *opencode.ai*": "allow",
+      "wget *opencode.ai*": "allow",
+      "curl *openrouter.ai*": "allow",
+      "wget *openrouter.ai*": "allow",
+      "curl *tavily.com*": "allow",
+      "wget *tavily.com*": "allow"
     }
   },
   "mcp": {
@@ -60,22 +84,6 @@
     "opencode-go": {
       "options": {
         "apiKey": "{env:OPENCODE_API_KEY}"
-      }
-    },
-    "nvidia": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "NVIDIA NIM",
-      "options": {
-        "baseURL": "https://integrate.api.nvidia.com/v1",
-        "apiKey": "{env:NVIDIA_API_KEY}"
-      }
-    },
-    "zai": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Z.AI (GLM)",
-      "options": {
-        "baseURL": "https://api.z.ai/api/coding/paas/v4",
-        "apiKey": "{env:ZAI_API_KEY}"
       }
     }
   }

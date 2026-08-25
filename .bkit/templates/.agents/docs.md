@@ -7,27 +7,27 @@
 >
 > **Rules:**
 >
-> - Read only docs relevant to current workflow/step/task.
-> - Follow workflow based reading suggestions first, then read more docs as step/task warrants.
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why. ONLY exceptions: Docs where purpose IS the record.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.
+> - Read only docs relevant to current workflow / step / task.
+> - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
 > - One row per doc — phase columns and one-line scope. Pointers only — do NOT duplicate text from indexed docs.
 > - Local project docs → `Project Documents` below the bkit-managed block; universal docs stay in-block.
 > - When two docs cover the same topic, that's a bug — pick a canonical home, link from the other.
 >
-> **Symbols:** `●` always read · `○` read if step/task touches this domain · `—` irrelevant.
+> **Symbols:** `●` always read · `○` read if step / task touches this domain · `—` irrelevant.
 
 ## Universal Documents
 
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `.agents/config.md` | — | — | — | ● | — | Agent/tooling config bkit PARSES — debug-fetch runtime-log contract (`/bkit-debug`) + cloud CLI provisioning. Not prose. |
+| `.agents/config.md` | — | — | — | ● | — | Agent / tooling config bkit parses, debug-fetch runtime-log contract, cloud CLI provisioning. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
 | `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
 | `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — tables, columns, RLS, indices, triggers. |
-| `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling. |
+| `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling, untrusted-content threat model. |
 | `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
 | `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI execution. |
 | `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / environment config / CI/CD pipeline rules — secrets sync, branch protection, run-level tiers. |

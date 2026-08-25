@@ -1,0 +1,26 @@
+{
+  "domains": [
+    "anthropic.com",
+    "*.anthropic.com",
+    "claude.com",
+    "*.claude.com",
+    "cursor.com",
+    "*.cursor.com",
+    "github.com",
+    "*.github.com",
+    "githubusercontent.com",
+    "*.githubusercontent.com",
+    "linear.app",
+    "*.linear.app",
+    "npmjs.com",
+    "*.npmjs.com",
+    "ollama.com",
+    "*.ollama.com",
+    "opencode.ai",
+    "*.opencode.ai",
+    "openrouter.ai",
+    "*.openrouter.ai",
+    "tavily.com",
+    "*.tavily.com"
+  ]
+}

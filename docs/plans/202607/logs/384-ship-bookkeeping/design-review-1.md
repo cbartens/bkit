@@ -52,14 +52,15 @@ Five capabilities the design requires, each checked against what GitHub and the 
 
 Buildable with the approved stack, with no new dependency of any kind.
 
-| Requirement                       | Status                                                                                                              |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `bash` + `jq` in a shipped script | Precedent: 5 of 8 scripts already use `jq`                                                                          |
-| `gh api` from a shipped script    | Precedent: `bkit-protect-main.sh`                                                                                   |
-| bats lane for a new script        | `ci.yml:502` globs `tests/*.bats`; no CI edit                                                                       |
-| vitest markdown invariant         | Four sibling suites; `REPO_ROOT` via `__dirname` is the house pattern                                               |
-| New npm dependency                | None required — `picomatch` stays the only runtime dep                                                              |
-| Coverage gate                     | Unaffected — `test:coverage:unit` enumerates specific `.bkit/src/*.ts`; a test-only addition adds no covered source |
+<!-- prettier-ignore -->
+| Requirement | Status |
+| --- | --- |
+| `bash` + `jq` in a shipped script | Precedent: 5 of 8 scripts already use `jq` |
+| `gh api` from a shipped script | Precedent: `bkit-protect-main.sh` |
+| bats lane for a new script | `ci.yml:502` globs `tests/*.bats`; no CI edit |
+| vitest markdown invariant | Four sibling suites; `REPO_ROOT` via `__dirname` is the house pattern |
+| New npm dependency | None required — `picomatch` stays the only runtime dep |
+| Coverage gate | Unaffected — `test:coverage:unit` enumerates specific `.bkit/src/*.ts`; a test-only addition adds no covered source |
 
 Confirmed against the tree, since the whole Tier-1 argument rests on them:
 
@@ -79,15 +80,16 @@ Three distribution constraints the design should carry into planning, all satisf
 
 No libraries. The evaluation surface is the GitHub REST/CLI API.
 
-| Surface                                                    | Assessment                                                                                                                                                                          |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /repos/{o}/{r}/actions/runs?head_sha=`                | Stable, documented, supports the filter. **But repo-wide** — see CRITICAL-2                                                                                                         |
-| `GET /repos/{o}/{r}/actions/workflows/{id}/runs?head_sha=` | Same filter, scoped to one workflow. This is the endpoint the gate wants                                                                                                            |
-| `GET /actions/runs/{id}/jobs`                              | Needed for capstone **presence**. Paginates at 30 — needs `--paginate`; bkit has 4 jobs, a matrix-heavy consumer will exceed one page and silently read "capstone absent" (exit 13) |
-| `gh pr merge --match-head-commit`                          | Available; closes the design's merge race                                                                                                                                           |
-| `gh pr merge --admin`                                      | Relevant to the override discussion — a supported, server-logged bypass                                                                                                             |
-| `gh workflow run`                                          | Requires `actions: write`. A read-scoped PAT makes Path B's unconditional dispatch unexecutable, surfacing as exit 20 forever                                                       |
-| `gh api rate_limit`                                        | Unmeasured, as the design says. Path B adds one poll loop per ship                                                                                                                  |
+<!-- prettier-ignore -->
+| Surface | Assessment |
+| --- | --- |
+| `GET /repos/{o}/{r}/actions/runs?head_sha=` | Stable, documented, supports the filter. **But repo-wide** — see CRITICAL-2 |
+| `GET /repos/{o}/{r}/actions/workflows/{id}/runs?head_sha=` | Same filter, scoped to one workflow. This is the endpoint the gate wants |
+| `GET /actions/runs/{id}/jobs` | Needed for capstone **presence**. Paginates at 30 — needs `--paginate`; bkit has 4 jobs, a matrix-heavy consumer will exceed one page and silently read "capstone absent" (exit 13) |
+| `gh pr merge --match-head-commit` | Available; closes the design's merge race |
+| `gh pr merge --admin` | Relevant to the override discussion — a supported, server-logged bypass |
+| `gh workflow run` | Requires `actions: write`. A read-scoped PAT makes Path B's unconditional dispatch unexecutable, surfacing as exit 20 forever |
+| `gh api rate_limit` | Unmeasured, as the design says. Path B adds one poll loop per ship |
 
 License, bundle size and type coverage are not applicable — no package is added, and the new artifacts are one `.sh` and one `.test.ts`.
 

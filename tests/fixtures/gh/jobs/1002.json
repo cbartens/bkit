@@ -1,0 +1,29 @@
+{
+  "total_count": 3,
+  "jobs": [
+    {
+      "id": 20021,
+      "name": "lint",
+      "head_sha": "failed",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1002/job/20021"
+    },
+    {
+      "id": 20022,
+      "name": "test",
+      "head_sha": "failed",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/example/example/actions/runs/1002/job/20022"
+    },
+    {
+      "id": 20023,
+      "name": "bkit-tests-check",
+      "head_sha": "failed",
+      "status": "completed",
+      "conclusion": "failure",
+      "html_url": "https://github.com/example/example/actions/runs/1002/job/20023"
+    }
+  ]
+}

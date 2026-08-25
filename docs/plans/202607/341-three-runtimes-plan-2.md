@@ -80,10 +80,10 @@ bkit's five phase workflows + `bkit-auto` now run in **four runtimes**: laptop (
 
 ## 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions). _(Unchecked → `REVISE`.)_
-- [ ] **Prerequisite:** Sub-Plan 1's T3 shim (`.bkit/scripts/bkit-runtime.sh`) landed — T7 extends it.
-- [ ] **Project Context:** `docs/knowledge.jsonl` (KN-11/DE-32 skip-ci-not-HEAD); the CI-dispatch alignment test (`.bkit/src/bkit-ci-dispatch-gate-alignment.test.ts`) already exists.
-- [ ] **Gate 1 - Verified.**
+- [x] **Human confirmations `[x]`** in parent (Acceptance / Breaking / Open Questions). _(Unchecked → `REVISE`.)_
+- [x] **Prerequisite:** Sub-Plan 1's T3 shim (`.bkit/scripts/bkit-runtime.sh`) landed — T7 extends it.
+- [x] **Project Context:** `docs/knowledge.jsonl` (KN-11/DE-32 skip-ci-not-HEAD); the CI-dispatch alignment test (`.bkit/src/bkit-ci-dispatch-gate-alignment.test.ts`) already exists.
+- [x] **Gate 1 - Verified.**
 
 ## Derived Test Matrix (this sub-plan)
 
@@ -97,36 +97,36 @@ _(T6's rules-invariant landing is verified by the rules-sync test + the design S
 
 ## Agent Execution Runbook
 
-- [ ] **T6 — WS-7: Invariants into `.agents/rules.md` (D10/D12/D13/D15/D17/D22).** Add skip-token-free-body, never-foreground-sleep, bounded+recorded+asserted-fallback, empty-MCP-inconclusive invariants; reframe `rules.md:71`; keep adopt-or-mint procedure OUT (D15). Update the single template mirror. **Verify the empty-MCP-inconclusive invariant (D12) actually governs the design Step-3.1 `0 hits -> None.` call site** — the one that produced the logged `search_issues` silent-zero failure (this run's own `related-issues.md` shows it still fires) — so the corroboration guarantee is wired into that call site, not merely prose-adjacent in `rules.md`. **Done when:** the four invariants + the `rules.md:71` reframe are present in the managed block (both mirrors); the rules-sync test passes; the design Step-3.1 zero-hit path reads the D12 corroboration invariant (not a bare `0 hits -> None`); consumption verified live in T16.
-- [ ] **T7 — WS-8: `bkit_wait_ci` + kernel extraction + the D11 reversal.** Add the `CAN_SLEEP=true` bash branch (`timeout`-wrapped) to the shim + the `CAN_SLEEP=false` prose yield branch to headers. **Re-census the sleeps at build first — the "7 sleeps / 4 constructs" and `bkit-ship.md:556 sleep 30` anchors are STALE** (live source has ~12 `sleep` occurrences across 5 workflow files; `bkit-ship.md` alone has 4 at `~:75/573/823/1102`, and there is NO `sleep 30` at `:556`). Only the **CI-wait polls** migrate to `bkit_wait_ci`; **legitimate retry/backoff sleeps stay** and MUST be distinguishable from CI-wait polls (else row 15 either false-fails valid backoff or is weakened to a hollow gate). **Delete** the blind CI-wait `sleep` in `bkit-ship.md` (D11 reversal — re-locate at build; record the reversal). Extract the two kernel blocks and **rewrite** `bkit-ci-dispatch-gate-alignment.test.ts` to assert alignment post-extraction. Verify the counter-bus carries the cross-turn attempt counter. **Done when:** no foreground **CI-wait** `sleep` sits outside the CI-wait rule (retry/backoff sleeps explicitly exempted and marked); **Integration (bats)** row 5 asserts the `timeout` cap fires on a blocked/never-returning sleep (never hangs); **Unit (vitest)** row 6 (`bkit-ci-dispatch-gate-alignment.test.ts`) still asserts byte-identity and passes.
+- [x] **T6 — WS-7: Invariants into `.agents/rules.md` (D10/D12/D13/D15/D17/D22).** Add skip-token-free-body, never-foreground-sleep, bounded+recorded+asserted-fallback, empty-MCP-inconclusive invariants; reframe `rules.md:71`; keep adopt-or-mint procedure OUT (D15). Update the single template mirror. **Verify the empty-MCP-inconclusive invariant (D12) actually governs the design Step-3.1 `0 hits -> None.` call site** — the one that produced the logged `search_issues` silent-zero failure (this run's own `related-issues.md` shows it still fires) — so the corroboration guarantee is wired into that call site, not merely prose-adjacent in `rules.md`. **Done when:** the four invariants + the `rules.md:71` reframe are present in the managed block (both mirrors); the rules-sync test passes; the design Step-3.1 zero-hit path reads the D12 corroboration invariant (not a bare `0 hits -> None`); consumption verified live in T16.
+- [x] **T7 — WS-8: `bkit_wait_ci` + kernel extraction + the D11 reversal.** Add the `CAN_SLEEP=true` bash branch (`timeout`-wrapped) to the shim + the `CAN_SLEEP=false` prose yield branch to headers. **Re-census the sleeps at build first — the "7 sleeps / 4 constructs" and `bkit-ship.md:556 sleep 30` anchors are STALE** (live source has ~12 `sleep` occurrences across 5 workflow files; `bkit-ship.md` alone has 4 at `~:75/573/823/1102`, and there is NO `sleep 30` at `:556`). Only the **CI-wait polls** migrate to `bkit_wait_ci`; **legitimate retry/backoff sleeps stay** and MUST be distinguishable from CI-wait polls (else row 15 either false-fails valid backoff or is weakened to a hollow gate). **Delete** the blind CI-wait `sleep` in `bkit-ship.md` (D11 reversal — re-locate at build; record the reversal). Extract the two kernel blocks and **rewrite** `bkit-ci-dispatch-gate-alignment.test.ts` to assert alignment post-extraction. Verify the counter-bus carries the cross-turn attempt counter. **Done when:** no foreground **CI-wait** `sleep` sits outside the CI-wait rule (retry/backoff sleeps explicitly exempted and marked); **Integration (bats)** row 5 asserts the `timeout` cap fires on a blocked/never-returning sleep (never hangs); **Unit (vitest)** row 6 (`bkit-ci-dispatch-gate-alignment.test.ts`) still asserts byte-identity and passes.
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** `bkit_wait_ci` extends the existing shim (not a parallel script); the rewritten alignment test asserts real byte-identity; no `.skip`/`@ts-ignore`/error-swallowing introduced.
-- [ ] **Gate 2 - Verified:** Every task checkbox independently verified.
+- [x] **No bolt-on / no gate-weakening:** `bkit_wait_ci` extends the existing shim (not a parallel script); the rewritten alignment test asserts real byte-identity; no `.skip`/`@ts-ignore`/error-swallowing introduced.
+- [x] **Gate 2 - Verified:** Every task checkbox independently verified.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage:** rows 5–6→T7 map to checked tasks; T6 rules-sync test passes.
-- [ ] **Update existing tests:** rewrite `bkit-ci-dispatch-gate-alignment.test.ts` for the kernel extraction (T7).
-- [ ] **Write new tests:** the `bkit_wait_ci` timeout assertion (row 5) added to `tests/bkit-runtime.bats`.
-- [ ] **Update documentation:** `docs/knowledge.jsonl` — capture the shim state-model gotcha (sourced state dies across Bash calls; re-source per block) + the D1 aetiology (skip-token in merge _body_, not title) as durable traps.
+- [x] **Verify test coverage:** rows 5–6→T7 map to checked tasks; T6 rules-sync test passes.
+- [x] **Update existing tests:** rewrite `bkit-ci-dispatch-gate-alignment.test.ts` for the kernel extraction (T7).
+- [x] **Write new tests:** the `bkit_wait_ci` timeout assertion (row 5) added to `tests/bkit-runtime.bats`.
+- [x] **Update documentation:** `docs/knowledge.jsonl` — capture the shim state-model gotcha (sourced state dies across Bash calls; re-source per block) + the D1 aetiology (skip-token in merge _body_, not title) as durable traps.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
-- [ ] **Gate 3 - Verified.**
+- [x] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
+- [x] **Gate 3 - Verified.**
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · vale · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate.
-- [ ] **New/updated:** `tests/bkit-runtime.bats` row 5 (timeout cap) + the rewritten `bkit-ci-dispatch-gate-alignment` (row 6) pass; rules-sync test green.
+- [x] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · vale · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate.
+- [x] **New/updated:** `tests/bkit-runtime.bats` row 5 (timeout cap) + the rewritten `bkit-ci-dispatch-gate-alignment` (row 6) pass; rules-sync test green.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof.
+- [x] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof.
 
 ## Merge Method
 

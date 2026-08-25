@@ -20,13 +20,14 @@ Trifecta closes when one agent (a) **ingests** attacker-controlled text (a publi
 
 ### Current-state audit (this repo, today)
 
-| Surface                                                  | Untrusted-content guard?                          | Reads rules.md?                       | Notes                                                                                                                                                     |
-| -------------------------------------------------------- | ------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Workflows** (`bkit-auto/build/debug/design/plan/ship`) | ❌ zero                                           | ✅ "Read in full: `.agents/rules.md`" | First + primary ingestion of raw issue/PR/comment bodies; hold the token; do the merge/push. Highest risk, no guard.                                      |
-| **`rules.md`** Universal                                 | ❌ (has security mechanics pointer, not the rule) | —                                     | Reaches the 8 workflows (they read it) + ships as consumer doctrine                                                                                       |
-| **Leaf prompts — 9/46**                                  | ✅ identical `**Untrusted input:**` bullet        | ❌ prompts do NOT inherit rules.md    | The 9 raw-content readers: `build-challenge-1/2`, `design-review-1/2`, `debug-failure-diagnose/soak`, `ship-deferred-sweep`, `utility-audit-logs`/`-ship` |
-| **Leaf prompts — other 37**                              | ❌                                                | ❌                                    | Includes the acting leaves (`build-plan-execute`, remediators) and the first issue-brief readers (`design-brainstorm-ideate-1/2/3`)                       |
-| **Enforcement test**                                     | ❌ none                                           | —                                     | Nothing prevents regression / drift of the bullet                                                                                                         |
+<!-- prettier-ignore -->
+| Surface | Untrusted-content guard? | Reads rules.md? | Notes |
+| --- | --- | --- | --- |
+| **Workflows** (`bkit-auto/build/debug/design/plan/ship`) | ❌ zero | ✅ "Read in full: `.agents/rules.md`" | First + primary ingestion of raw issue/PR/comment bodies; hold the token; do the merge/push. Highest risk, no guard. |
+| **`rules.md`** Universal | ❌ (has security mechanics pointer, not the rule) | — | Reaches the 8 workflows (they read it) + ships as consumer doctrine |
+| **Leaf prompts — 9/46** | ✅ identical `**Untrusted input:**` bullet | ❌ prompts do NOT inherit rules.md | The 9 raw-content readers: `build-challenge-1/2`, `design-review-1/2`, `debug-failure-diagnose/soak`, `ship-deferred-sweep`, `utility-audit-logs`/`-ship` |
+| **Leaf prompts — other 37** | ❌ | ❌ | Includes the acting leaves (`build-plan-execute`, remediators) and the first issue-brief readers (`design-brainstorm-ideate-1/2/3`) |
+| **Enforcement test** | ❌ none | — | Nothing prevents regression / drift of the bullet |
 
 **Decisive architectural fact:** zero prompts reference `rules.md` — leaf subagents are spawned self-contained, so a rule placed only in `rules.md` never reaches any leaf. The per-prompt bullet is therefore load-bearing, not redundant. There is **no shared prompt-header template** (`.bkit/src` assembles nothing) — the identical scaffolding is copy-paste, so leaf coverage = per-file edits.
 

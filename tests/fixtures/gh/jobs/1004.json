@@ -1,0 +1,21 @@
+{
+  "total_count": 2,
+  "jobs": [
+    {
+      "id": 20041,
+      "name": "lint",
+      "head_sha": "no-capstone",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1004/job/20041"
+    },
+    {
+      "id": 20042,
+      "name": "test",
+      "head_sha": "no-capstone",
+      "status": "completed",
+      "conclusion": "success",
+      "html_url": "https://github.com/example/example/actions/runs/1004/job/20042"
+    }
+  ]
+}

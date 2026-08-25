@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.10.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -9,9 +9,9 @@
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent readers only.
-> - Describe current state / rules, NOT reasons / history; state what to do; NOT why.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
+> - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
+> - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - List technology and usage; **Why** → `decisions.jsonl`.
 
 <!-- bkit:end -->
@@ -40,7 +40,7 @@
 | Technology | Config | Usage |
 | --- | --- | --- |
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/src/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
-| `check:dist` npm script | `bkit-tests-static` lane ("Verify Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
+| `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `ci.yml` template |
 | `picomatch` | `^4.0.4` — the ONLY runtime `dependency` | `.bkitignore` glob matching. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
 ## Execution Hosts
@@ -52,9 +52,9 @@ bkit renders agent payload for three IDE/agent-host runtimes. Hosts additive —
 | --- | --- | --- |
 | Claude Code (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
-| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; ten allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zai`, `moonshot`, `opencode-zen`, `opencode-go` |
+| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
 
-`ollama-local` = localhost/keyless; `ollama` = cloud (ollama.com) — distinct keys. OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` (`bkit-cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts`), `OPENCODE_PROVIDER_COLUMN` (`bkit-install.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
+OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:OPENCODE_API_KEY}` (no npm/`baseURL`; OpenCode routes per-model). Allowlist duplicated in three places MUST move together: `OPENCODE_PROVIDERS` (`bkit-cli.ts`), `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts`), `OPENCODE_PROVIDER_COLUMN` (`bkit-install.ts`). Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
 
 ## Testing
 
@@ -74,8 +74,8 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
-| Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose`). Guard-skips when vale / `write-good` is absent — CI installs both so it always enforces there |
-| actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm lint:workflows` guard-skips locally when absent |
+| Vale | `3.9.1`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm lint:prose`). Skips only when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and warns loudly on stderr if neither works. CI installs both so it always enforces there |
+| actionlint | `1.7.12`, downloaded in-lane (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
 | slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks
@@ -84,7 +84,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs typecheck + `pnpm test` (unit + in-process integration) + `pnpm bkit check` before push. Source-repo copy additionally runs `pnpm check:dist` (dist freshness gate); consumer template does not include it. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the SAME gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 
@@ -99,4 +99,4 @@ Single package — no turbo, no affected-graph. CI flat DAG: `bkit-tests-scope` 
 
 ## Naming Conventions
 
-See `.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.
+See `.agents/rules.md` § Project Rules → Naming Conventions for server actions, deployed functions, migrations, tests, and log format rules.

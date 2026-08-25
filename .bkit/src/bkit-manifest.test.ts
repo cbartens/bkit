@@ -7,6 +7,7 @@ import {
   getInstallManifest,
   getModuleManifest,
   getManagedPackageJsonKeys,
+  LINT_SCRIPT,
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
   CLOUD_MANIFEST_OPENCODE,
@@ -15,6 +16,8 @@ import {
   parseRenovateRunner,
   RENOVATE_RUNNERS,
   DEFAULT_RENOVATE_RUNNER,
+  LINT_PROSE_SCRIPT,
+  LEGACY_LINT_PROSE_SCRIPTS,
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
@@ -39,6 +42,18 @@ describe("CLAUDE.md ownership (#252: moved core → claude)", () => {
     const core = getModuleManifest("core");
     expect(core.some((e) => e.path === "CLAUDE.md")).toBe(false);
     expect(core.some((e) => e.path === "AGENTS.md")).toBe(true);
+  });
+});
+
+describe(".claude/hooks/gateguard.cjs ownership (markered-text: consumer owns the driver)", () => {
+  it("is owned by the claude module as markered-text, not seed-or-print", () => {
+    const entry = getInstallManifest().find((e) => e.path === ".claude/hooks/gateguard.cjs");
+    expect(entry).toBeDefined();
+    expect(entry!.module).toBe("claude");
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 });
 
@@ -300,11 +315,14 @@ describe("getInstallManifest", () => {
     expect(hooksEntry!.format).toBe("json");
   });
 
-  it("cursor manifest includes guardrails.cjs as byte-equal-text", () => {
+  it("cursor manifest includes guardrails.cjs as markered-text (consumer owns the driver)", () => {
     const entries = getInstallManifest(["cursor"]);
     const entry = entries.find((e) => e.path === ".cursor/hooks/guardrails.cjs");
     expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 
   it("claude manifest includes settings.json as json", () => {
@@ -456,13 +474,15 @@ describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
     expect(entry!.seedOrPrint ?? false).toBe(false);
   });
 
-  it("contains .opencode/plugin/gateguard.js as byte-equal-text (Tier-1 bkit-owned)", () => {
+  it("contains .opencode/plugin/gateguard.js as markered-text (consumer owns the driver)", () => {
     const entry = OPENCODE_MANIFEST.find((e) => e.path === ".opencode/plugin/gateguard.js");
     expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.format).toBe("markered-text");
     expect(entry!.module).toBe("opencode");
-    // gateguard.js is fully bkit-owned — must NOT be seed-or-print
+    // gateguard.js is not seed-or-print — bkit reconverges its block on every upgrade
     expect(entry!.seedOrPrint ?? false).toBe(false);
+    // opts in to the no-marker migration policy (pre-markers consumer installs)
+    expect(entry!.noMarkerMigration).toBeTruthy();
   });
 
   it("all OPENCODE_MANIFEST entries have module=opencode", () => {
@@ -560,6 +580,26 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
   });
 });
 
+describe("seeded lint script (dogfood parity)", () => {
+  it("is byte-identical to the `lint` script bkit runs on itself", () => {
+    // The shipped default exists because `bkit:gate:static` chains `pnpm lint` and bkit
+    // ships no linter: with no `lint` script, pnpm falls through to whatever `lint`
+    // binary is on PATH and the gate goes green through the wrong program. Pinning it to
+    // this repo's own script keeps the default one bkit actually exercises every run,
+    // rather than a second version that only consumers ever execute.
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.lint).toBe(LINT_SCRIPT);
+  });
+
+  it("never resolves to a bare `lint` invocation", () => {
+    // The failure mode this guards: any default that shells out to `lint` (rather than a
+    // named linter) reintroduces the PATH fall-through it was written to prevent.
+    expect(LINT_SCRIPT).not.toMatch(/(^|[;&|]\s*)lint\b/);
+  });
+});
+
 describe("getManagedPackageJsonKeys", () => {
   it("aggregates scripts from lint module: format:check, lint:prose, lint:slop", () => {
     const { scripts } = getManagedPackageJsonKeys(["lint"]);
@@ -617,6 +657,78 @@ describe("getManagedPackageJsonKeys", () => {
     for (const s of expected) {
       expect(Object.keys(scripts)).toContain(s);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LINT_PROSE_SCRIPT — shipped prose-gate contract
+//
+// This script runs in every consumer's pre-commit hook, so a quoting slip or a
+// dropped guard degrades the gate silently rather than loudly. These assert the
+// invariants that make it safe to embed and safe to trust.
+// ---------------------------------------------------------------------------
+
+describe("LINT_PROSE_SCRIPT", () => {
+  const body = LINT_PROSE_SCRIPT.replace(/^bash -c '/, "").replace(/'$/, "");
+
+  it("is wrapped in bash -c with no single quotes in the body", () => {
+    // An inner single quote would terminate the `bash -c '...'` wrapper early and
+    // mangle the rest of the script into stray shell words.
+    expect(LINT_PROSE_SCRIPT.startsWith("bash -c '")).toBe(true);
+    expect(LINT_PROSE_SCRIPT.endsWith("'")).toBe(true);
+    expect(body).not.toContain("'");
+  });
+
+  it("contains no backticks", () => {
+    // The old default put `vale sync` in backticks inside a DOUBLE-quoted echo,
+    // where a backtick command-substitutes instead of printing.
+    expect(body).not.toContain("`");
+  });
+
+  it("carries the F9 guard substring that bkit-preflight.ts greps for", () => {
+    // detectLintProseF9Vulnerable does a literal substring match; losing this
+    // exact form would make bkit advise consumers to "fix" the correct script.
+    expect(LINT_PROSE_SCRIPT).toContain("[ -d .vale/styles/write-good ]");
+  });
+
+  it("soft-skips instead of failing when the vale binary is absent", () => {
+    expect(body).toContain("command -v vale");
+    expect(body).toContain("vale not installed");
+  });
+
+  it("self-heals a missing write-good from the main worktree before falling back to sync", () => {
+    // The worktree hole: .vale/styles/write-good is gitignored, so it is absent in
+    // every fresh checkout and every `git worktree add`. --git-common-dir resolves
+    // the main worktree from inside a linked one, making this a zero-network copy.
+    expect(body).toContain("git rev-parse --git-common-dir");
+    expect(body).toContain("cp -R");
+    expect(body).toContain("vale sync");
+    expect(body.indexOf("git rev-parse --git-common-dir")).toBeLessThan(body.indexOf("vale sync"));
+  });
+
+  it("announces loudly on stderr when vale is present but self-heal failed", () => {
+    // The whole point of the change: this case used to emit one quiet line and
+    // exit 0, so a worktree commit bypassed prose linting and still looked green.
+    expect(body).toContain("PROSE LINT SKIPPED");
+    expect(body).toContain(">&2");
+  });
+
+  it("is not itself listed as a legacy value", () => {
+    expect(LEGACY_LINT_PROSE_SCRIPTS).not.toContain(LINT_PROSE_SCRIPT);
+  });
+
+  it("lists the previous shipped default as legacy so existing installs get re-pointed", () => {
+    expect(LEGACY_LINT_PROSE_SCRIPTS.length).toBeGreaterThan(0);
+    // The pre-fix default, verbatim — the value on every consumer that installed
+    // before this change. Must byte-match or those installs are never corrected.
+    expect(LEGACY_LINT_PROSE_SCRIPTS).toContain(
+      'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
+    );
+  });
+
+  it("is the exact value the lint module seeds into package.json", () => {
+    const { scripts } = getManagedPackageJsonKeys(["lint"]);
+    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
   });
 });
 

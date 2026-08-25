@@ -6,11 +6,12 @@ Search unavailable.
 
 `mcp__github__search_issues` returned `total_count: 0` for `runtime capability shim fallback worktree in:title,body` — the same silent-zero failure the design phase already diagnosed and logged (`docs/failures.jsonl` key `github-mcp-search-issues-silently-returns-zero-private-repo`, surfaced again in this run's own `related-failures.md`). Per that entry's remediation, a bare `0 hits -> None.` is not authoritative on this repo without corroboration, so this file corroborates via `gh` rather than repeating the design phase's mistake of trusting the zero.
 
-| Probe                                                                                  | Result                                                                                               |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `mcp__github__search_issues` `runtime capability shim fallback worktree in:title,body` | `total_count: 0`                                                                                     |
-| `gh search issues --repo cbartens/bkit worktree runtime`                               | 20 results (incl. #341, #342, #99, #134, #209)                                                       |
-| `gh api search/issues -f q='repo:cbartens/bkit is:issue is:open'`                      | `404 Not Found` (endpoint needs `q=` not `-f q=`; not re-diagnosed here, out of scope for this plan) |
+<!-- prettier-ignore -->
+| Probe | Result |
+| --- | --- |
+| `mcp__github__search_issues` `runtime capability shim fallback worktree in:title,body` | `total_count: 0` |
+| `gh search issues --repo cbartens/bkit worktree runtime` | 20 results (incl. #341, #342, #99, #134, #209) |
+| `gh api search/issues -f q='repo:cbartens/bkit is:issue is:open'` | `404 Not Found` (endpoint needs `q=` not `-f q=`; not re-diagnosed here, out of scope for this plan) |
 
 Still logged under the same failures.jsonl key — not duplicated.
 

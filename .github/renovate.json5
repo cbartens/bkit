@@ -5,7 +5,7 @@
 // Reference: https://docs.renovatebot.com/configuration-options/
 //
 // Renovate App install is one-click via GitHub UI (https://github.com/apps/renovate).
-// No `gh api` equivalent exists. See bkit issue #123 for the migration prompt.
+// No `gh api` equivalent exists.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
@@ -56,7 +56,7 @@
   commitMessagePrefix: "chore(deps):",
 
   // ─────────────────────────────────────────────────────────────────────
-  // pnpm 11 supply-chain freshness + Renovate-runner memory ceiling (#308).
+  // pnpm 11 supply-chain freshness + Renovate-runner memory ceiling.
   //
   // On a large pnpm-11 monorepo, `pnpm update --lockfile-only` — especially
   // alongside a pnpm-level `minimumReleaseAge` gate verifying publish
@@ -102,7 +102,7 @@
   // Respect ignore paths from .gitignore + add common monorepo cruft.
   // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
   // by consumer Renovate — scanning them only produces onboarding noise (and an
-  // unauthable `@cbartens/bkit` lookup). See issue #132.
+  // unauthable `@cbartens/bkit` lookup).
   // `bkit-cloud.yml` and (on self-hosted Renovate) `renovate.yml` are bkit-owned
   // too and SHA-pinned by design (new SHAs arrive via `bkit install`). They MUST be
   // ignored here, not merely fenced by the packageRule below: `enabled: false`
@@ -160,7 +160,7 @@
     // which re-syncs templates, substitutes tokens, and bumps the pin. A bare
     // version bump skips that and leaves the consumer split-brain. The package
     // also lives on GitHub Packages (restricted), which Mend's hosted runner has
-    // no token for — so Renovate only ever logs a "no-result" lookup. See #132.
+    // no token for — so Renovate only ever logs a "no-result" lookup.
     // ─────────────────────────────────────────────────────────────────────
     {
       matchPackageNames: ["@cbartens/bkit"],

@@ -380,7 +380,7 @@ export function detectCiYmlMissingActionlint(cwd) {
         severity: "advisory",
         detect: ".github/workflows/ci.yml (bkit-managed) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
         action: "Add an actionlint step among the static checks in .github/workflows/ci.yml (before the test/build group):\n\n" +
-            "      - name: Run Actionlint\n" +
+            "      - name: Run actionlint\n" +
             "        if: steps.cache.outputs.skip != 'true'\n" +
             "        run: |\n" +
             '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
@@ -761,12 +761,12 @@ export function detectValePackageNotSynced(cwd) {
         id: "vale-package-not-synced",
         severity: "advisory",
         detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. The lint:prose script soft-skips when write-good is absent, but prose linting won't work until synced.",
+        action: "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and warns loudly on stderr if it cannot — but until the package is present, prose linting does not run.",
     };
 }
 /**
  * Detect incomplete local workflow-lint tooling: `actionlint` and/or `shellcheck`
- * not on PATH. `pnpm lint:workflows` soft-skips without actionlint, and actionlint
+ * not on PATH. `pnpm bkit:lint:workflows` soft-skips without actionlint, and actionlint
  * skips shellcheck on `run:` blocks without shellcheck — so invalid GHA expressions
  * and shell issues in `.github/workflows/*` surface only in CI (the runner preinstalls
  * both). Recommends installing both for pre-push parity. Only fires when the repo has
@@ -794,8 +794,8 @@ export function detectWorkflowLintToolsMissing(cwd) {
     return {
         id: "workflow-lint-tools-missing",
         severity: "advisory",
-        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
-        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm lint:workflows` lints `.github/workflows/*` locally before you push.",
+        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm bkit:lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
+        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm bkit:lint:workflows` lints `.github/workflows/*` locally before you push.",
     };
 }
 const BKIT_STUBS = [
@@ -919,10 +919,14 @@ export function detectBkitStubs(cwd) {
         const content = readOnce(stub.file);
         if (content === null)
             continue;
-        // Sentinel must be a literal `# bkit-stub:<id>` followed by space or end-of-token,
-        // so partial-prefix matches (e.g. `bkit-stub:e2e-paths` for stub `e2e`) don't fire.
+        // Sentinel must be the full HEADER form — `# bkit-stub:<id> — <description>` — because that
+        // is the line the advisory tells you to delete. Requiring the em-dash separator keeps prose
+        // back-references ("the bkit-stub:coverage integration report posts from HERE") from firing
+        // an advisory that can never be dismissed: the block is enabled, its header is gone, and the
+        // only match left is a comment nobody was told to remove. Also subsumes the partial-prefix
+        // guard — `# bkit-stub:e2e —` cannot match stub `e2e-coverage` (a `-` follows, not a space).
         const sentinel = `# bkit-stub:${stub.id}`;
-        const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`);
+        const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+—`);
         if (!re.test(content))
             continue;
         stubSentinelPresent.add(stub.id);

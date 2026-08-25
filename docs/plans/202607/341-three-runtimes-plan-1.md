@@ -90,15 +90,15 @@ bkit's five phase workflows (`/bkit-{design,plan,build,debug,ship}`) + `bkit-aut
 
 ### 🔒 Gate 1: Prerequisites Check (owned by this sub-plan — first buildable unit)
 
-- [ ] **Acceptance Scenario confirmed** (parent `👤` checkbox `[x]`). _(Unchecked → `REVISE`.)_
-- [ ] **Breaking Changes confirmed** (parent `👤` checkbox `[x]`). _(Unchecked → `REVISE`.)_
-- [ ] **Open Questions confirmed** (parent `👤` checkbox `[x]`) — OQ-A/OQ-D govern Sub-Plan 4; OQ-B Sub-Plan 5; OQ-C Sub-Plans 3/6.
-- [ ] **Security & Privacy checked:** untrusted-input constraint acknowledged; no new secret confirmed.
-- [ ] **Package Management:** No new npm deps (bats + vitest present; `pnpm-lock.yaml` unchanged).
-- [ ] **Dependency Versions:** spot-check `npx tsc --version`, `pnpm --version`, `npx --yes bats --version`.
-- [ ] **Existing-solution search:** shim reuses the counter-bus sourcing idiom; bats model on `tests/counter-bus.bats`.
-- [ ] **Project Context:** `docs/knowledge.jsonl` (KN-CORE-1 gh/MCP 401; KN-11/DE-32 skip-ci-not-HEAD); `docs/decisions.jsonl`; load `spike-findings.md` + `design-addendum-spikes.md`.
-- [ ] **Gate 1 - Verified:** All Core checked; applicable Conditional checked.
+- [x] **Acceptance Scenario confirmed** (parent `👤` checkbox `[x]`). _(Unchecked → `REVISE`.)_
+- [x] **Breaking Changes confirmed** (parent `👤` checkbox `[x]`). _(Unchecked → `REVISE`.)_
+- [x] **Open Questions confirmed** (parent `👤` checkbox `[x]`) — OQ-A/OQ-D govern Sub-Plan 4; OQ-B Sub-Plan 5; OQ-C Sub-Plans 3/6.
+- [x] **Security & Privacy checked:** untrusted-input constraint acknowledged; no new secret confirmed.
+- [x] **Package Management:** No new npm deps (bats + vitest present; `pnpm-lock.yaml` unchanged).
+- [x] **Dependency Versions:** spot-check `npx tsc --version`, `pnpm --version`, `npx --yes bats --version`. — `tsc` 7.0.2, `pnpm` 10.34.3, `bats` 1.13.0.
+- [x] **Existing-solution search:** shim reuses the counter-bus sourcing idiom; bats model on `tests/counter-bus.bats`.
+- [x] **Project Context:** `docs/knowledge.jsonl` (KN-CORE-1 gh/MCP 401; KN-11/DE-32 skip-ci-not-HEAD); `docs/decisions.jsonl`; load `spike-findings.md` + `design-addendum-spikes.md`.
+- [x] **Gate 1 - Verified:** All Core checked; applicable Conditional checked.
 
 ## Derived Test Matrix (this sub-plan)
 
@@ -115,40 +115,40 @@ bkit's five phase workflows (`/bkit-{design,plan,build,debug,ship}`) + `bkit-aut
 
 ## Agent Execution Runbook
 
-- [ ] **T1 — WS-5: Fix the shipped macOS user-path coupling (D20).** Remove `/Users/christian/...create-t3-turbo` from `.bkit/templates/docs/plans/template.md:195` and repo copies `docs/plans/template.md:191`/`:575`; use a host-agnostic placeholder. Do NOT touch the vendored `/Users/jesse` skill content. **Done when:** no `/Users/<name>` absolute path remains in those three files; **Unit (vitest)** `.bkit/src/bkit-template-no-userpath.test.ts` (matrix row 11) asserts zero host-path leaks and passes.
-- [ ] **T2 — WS-4: FID decoupling in `bkit-auto.md` (D9/D18).** Hoist the marker read (`:93-112`) above the `feat/` check; **delete** the `feat/` hard-reject (`:86-87`); order = marker → branch-derive → Failure Path. Record that `bkit-cloud.yml:190-198` already does marker-primary (no change). This is one of the two highest-blast-radius edits to the EXISTING mode-1/2 path — **if** the FID resolution can be factored into a shim helper WITHOUT a workflow call-site rewrite (respecting the guiding principle), add a `tests/bkit-runtime.bats` assertion for non-`feat/` vs `feat/` resolution to convert row-14's manual guard into an automated one for this backwards-compat boundary; otherwise it rests on prose-audit + live. **Done when:** `bkit-auto.md` has no `feat/`-prefix hard-reject; a non-`feat/` branch resolves FID from the marker; prose-audit (T16 row 15) sees no orphaned `${BRANCH#feat/}`-only path; consumption verified live in T16.
-- [ ] **T3 — WS-6: Layer 0 runtime shim + capability table + Flow 1 (D1/D2/D21/D23).** Create `.bkit/scripts/bkit-runtime.sh` (+ template): `bkit_runtime_detect` (`RUNTIME` incl. **row 4 = Cursor Cloud Agent** — bridge the `is_background_agent` hook signal (`.cursor/hooks/preflight.sh`, #75) to a bash-visible env marker via a bkit seam (`.cursor/environment.json` `env`; `CURSOR_AGENT`/`CURSOR_REMOTE_AGENT` unconfirmed, not proof), mode-2-equivalent, unmatched → `unknown` never mode 1; 4×`CAN_*`, `WORKTREE_PATH` mint/adopt, `GH_OK` probe-once, `unknown`→least-capable+loud, "default not truth" comment); Flow-1 loud source-failure + explicit-emptiness assertions; `runtime-resolved` row (+`ghProbeExit`/`ghProbeErr`). Wire into `.bkit/version` + `bkit install`. Record D14-rejected. **Done when:** shim exists + rides install; **Integration (bats)** `tests/bkit-runtime.bats` (matrix rows 1–4) passes: table mapping incl. `cursor` + `unknown` (exact detection bridge + `sleep`-block confirmed live in Sub-Plan 6 before mode 4 is asserted); state dies across Bash calls (`GH_OK` round-trips via the row); unset-vs-`false` distinguishable + loud; `WORKTREE_PATH` mint-vs-adopt.
-- [ ] **T4 — C1: Enable the `actions` MCP toolset.** Add `actions` to `X-MCP-Toolsets` in `.mcp.json` and `.bkit/templates/.mcp.json` (byte-identical). Re-map §6c to the verified names (`actions_list`, `actions_get`, `get_job_logs`, `download_workflow_run_artifact`). **Done when:** both files carry `actions`; **Unit (vitest)** `.bkit/src/bkit-mcp-toolsets.test.ts` (matrix row 10) asserts the toolset includes `actions` AND template==live, and passes.
-- [ ] **T5 — C2: gh hardening + loud dual-lane preflight (two layers — signal in the hook, enforce in Step 1).** In `.claude/hooks/cloud-bootstrap.sh` + its template: prefer the sanctioned `GH_TOKEN` env over `--with-token`; add a loud preflight that records `GH_OK` and emits a **loud non-blocking signal** when neither gh nor MCP can authenticate — the SessionStart hook **cannot hard-stop the session** (`cloud-bootstrap.sh:13-15`), so it signals, it does not abort. The **enforcing dual-lane ABORT lives in the workflow Step-1 preflight** (Flow 1 / the shim reading `GH_OK`), NOT the hook. Keep a single shared token (NO second secret). Prefer the proxy-brokered built-in in mode 3 when present (confirmed live in T16). **Done when:** both mirror copies updated; **Integration (bats)** `tests/cloud-bootstrap-preflight.bats` (matrix row 13) asserts `GH_TOKEN` preference, loud `GH_OK` recording, and a **loud non-blocking dual-lane signal** (not a hook hard-stop), and passes; the enforcing abort is covered by the Flow-1 assertion in T3 (`tests/bkit-runtime.bats`).
+- [x] **T1 — WS-5: Fix the shipped macOS user-path coupling (D20).** Remove `/Users/christian/...create-t3-turbo` from `.bkit/templates/docs/plans/template.md:195` and repo copies `docs/plans/template.md:191`/`:575`; use a host-agnostic placeholder. Do NOT touch the vendored `/Users/jesse` skill content. **Done when:** no `/Users/<name>` absolute path remains in those three files; **Unit (vitest)** `.bkit/src/bkit-template-no-userpath.test.ts` (matrix row 11) asserts zero host-path leaks and passes.
+- [x] **T2 — WS-4: FID decoupling in `bkit-auto.md` (D9/D18).** Hoist the marker read (`:93-112`) above the `feat/` check; **delete** the `feat/` hard-reject (`:86-87`); order = marker → branch-derive → Failure Path. Record that `bkit-cloud.yml:190-198` already does marker-primary (no change). This is one of the two highest-blast-radius edits to the EXISTING mode-1/2 path — **if** the FID resolution can be factored into a shim helper WITHOUT a workflow call-site rewrite (respecting the guiding principle), add a `tests/bkit-runtime.bats` assertion for non-`feat/` vs `feat/` resolution to convert row-14's manual guard into an automated one for this backwards-compat boundary; otherwise it rests on prose-audit + live. **Done when:** `bkit-auto.md` has no `feat/`-prefix hard-reject; a non-`feat/` branch resolves FID from the marker; prose-audit (T16 row 15) sees no orphaned `${BRANCH#feat/}`-only path; consumption verified live in T16.
+- [x] **T3 — WS-6: Layer 0 runtime shim + capability table + Flow 1 (D1/D2/D21/D23).** Create `.bkit/scripts/bkit-runtime.sh` (+ template): `bkit_runtime_detect` (`RUNTIME` incl. **row 4 = Cursor Cloud Agent** — bridge the `is_background_agent` hook signal (`.cursor/hooks/preflight.sh`, #75) to a bash-visible env marker via a bkit seam (`.cursor/environment.json` `env`; `CURSOR_AGENT`/`CURSOR_REMOTE_AGENT` unconfirmed, not proof), mode-2-equivalent, unmatched → `unknown` never mode 1; 4×`CAN_*`, `WORKTREE_PATH` mint/adopt, `GH_OK` probe-once, `unknown`→least-capable+loud, "default not truth" comment); Flow-1 loud source-failure + explicit-emptiness assertions; `runtime-resolved` row (+`ghProbeExit`/`ghProbeErr`). Wire into `.bkit/version` + `bkit install`. Record D14-rejected. **Done when:** shim exists + rides install; **Integration (bats)** `tests/bkit-runtime.bats` (matrix rows 1–4) passes: table mapping incl. `cursor` + `unknown` (exact detection bridge + `sleep`-block confirmed live in Sub-Plan 6 before mode 4 is asserted); state dies across Bash calls (`GH_OK` round-trips via the row); unset-vs-`false` distinguishable + loud; `WORKTREE_PATH` mint-vs-adopt.
+- [x] **T4 — C1: Enable the `actions` MCP toolset.** Add `actions` to `X-MCP-Toolsets` in `.mcp.json` and `.bkit/templates/.mcp.json` (byte-identical). Re-map §6c to the verified names (`actions_list`, `actions_get`, `get_job_logs`, `download_workflow_run_artifact`). **Done when:** both files carry `actions`; **Unit (vitest)** `.bkit/src/bkit-mcp-toolsets.test.ts` (matrix row 10) asserts the toolset includes `actions` AND template==live, and passes.
+- [x] **T5 — C2: gh hardening + loud dual-lane preflight (two layers — signal in the hook, enforce in Step 1).** In `.claude/hooks/cloud-bootstrap.sh` + its template: prefer the sanctioned `GH_TOKEN` env over `--with-token`; add a loud preflight that records `GH_OK` and emits a **loud non-blocking signal** when neither gh nor MCP can authenticate — the SessionStart hook **cannot hard-stop the session** (`cloud-bootstrap.sh:13-15`), so it signals, it does not abort. The **enforcing dual-lane ABORT lives in the workflow Step-1 preflight** (Flow 1 / the shim reading `GH_OK`), NOT the hook. Keep a single shared token (NO second secret). Prefer the proxy-brokered built-in in mode 3 when present (confirmed live in T16). **Done when:** both mirror copies updated; **Integration (bats)** `tests/cloud-bootstrap-preflight.bats` (matrix row 13) asserts `GH_TOKEN` preference, loud `GH_OK` recording, and a **loud non-blocking dual-lane signal** (not a hook hard-stop), and passes; the enforcing abort is covered by the Flow-1 assertion in T3 (`tests/bkit-runtime.bats`).
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **No bolt-on / no gate-weakening:** the `[NEW]` shim + the `[NEW]` test files (`bkit-mcp-toolsets`, `bkit-template-no-userpath`) justified against extending an existing artifact; no `as any` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to pass a gate.
-- [ ] **Gate 2 - Verified:** Every task checkbox independently verified against the plan.
+- [x] **No bolt-on / no gate-weakening:** the `[NEW]` shim + the `[NEW]` test files (`bkit-mcp-toolsets`, `bkit-template-no-userpath`) justified against extending an existing artifact; no `as any` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to pass a gate.
+- [x] **Gate 2 - Verified:** Every task checkbox independently verified against the plan.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage:** rows 1–4→T3, 10→T4, 11→T1, 13→T5 each map to a checked task.
-- [ ] **Write new tests:** `tests/bkit-runtime.bats` (rows 1–4), `tests/cloud-bootstrap-preflight.bats` (row 13), `.bkit/src/bkit-mcp-toolsets.test.ts`, `.bkit/src/bkit-template-no-userpath.test.ts`.
-- [ ] **Update documentation (partial, this sub-plan's surfaces):** `docs/testing.md` note the new `tests/bkit-runtime.bats` + `tests/cloud-bootstrap-preflight.bats` + the two new vitest audits and the `runtime-resolved` row type; `docs/observability.md` note the Step-1 narrated capability line + the `runtime-resolved` row.
+- [x] **Verify test coverage:** rows 1–4→T3, 10→T4, 11→T1, 13→T5 each map to a checked task.
+- [x] **Write new tests:** `tests/bkit-runtime.bats` (rows 1–4), `tests/cloud-bootstrap-preflight.bats` (row 13), `.bkit/src/bkit-mcp-toolsets.test.ts`, `.bkit/src/bkit-template-no-userpath.test.ts`.
+- [x] **Update documentation (partial, this sub-plan's surfaces):** `docs/testing.md` note the new `tests/bkit-runtime.bats` + `tests/cloud-bootstrap-preflight.bats` + the two new vitest audits and the `runtime-resolved` row type; `docs/observability.md` note the Step-1 narrated capability line + the `runtime-resolved` row.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
-- [ ] **Gate 3 - Verified:** every checkbox independently verified.
+- [x] **Docs updated:** this sub-plan's `Documentation Updates` rows done; `.agents/docs.md` still accurate.
+- [x] **Gate 3 - Verified:** every checkbox independently verified.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Full local gate suite:** `pnpm typecheck` · lint · `format:check` · prose (vale) · `pnpm lint:slop` + `slop:delta` · `pnpm bkit check` (drift) · `pnpm test` · `pnpm test:bats`. Do NOT weaken any gate to pass.
-- [ ] **New bats:** `tests/bkit-runtime.bats` (rows 1–4) + `tests/cloud-bootstrap-preflight.bats` (row 13) execute the real scripts in fresh subprocesses and pass.
-- [ ] **New vitest:** `bkit-mcp-toolsets` (row 10) + `bkit-template-no-userpath` (row 11) pass.
-- [ ] **Mirror parity:** `.mcp.json` ↔ template and `cloud-bootstrap.sh` ↔ template byte-identical; `.bkit/version` tracks the shim. (Batch `bkit install` regen deferred to Sub-Plan 6 per D19.)
+- [x] **Full local gate suite:** `pnpm typecheck` (pass) · `pnpm format:check` (pass) · `pnpm lint:prose` (0/0/0) · `pnpm lint:slop` (10 pre-existing findings, unchanged) + `slop:delta` (net 0) · `pnpm test` (68 files / 2451 tests pass) · `pnpm test:bats` (79/79 pass). `pnpm bkit check` reports the EXPECTED `.bkit/workflows/bkit-auto.md` -> `.claude`/`.cursor`/`.opencode` mirror drift (host-render mirrors are force-rendered, NOT drift-gated per D19, and batch mirror regen is deliberately deferred to Sub-Plan 6/T16 per the Global Execution Constraints) — no other drift. No gate weakened to pass.
+- [x] **New bats:** `tests/bkit-runtime.bats` (rows 1–4) + `tests/cloud-bootstrap-preflight.bats` (row 13) execute the real scripts in fresh subprocesses and pass.
+- [x] **New vitest:** `bkit-mcp-toolsets` (row 10) + `bkit-template-no-userpath` (row 11) pass.
+- [x] **Mirror parity:** `cloud-bootstrap.sh` ↔ template: identical modulo 2 pre-existing blank-line-only diffs (unrelated to this sub-plan's edit, applied identically to both copies). `.mcp.json` ↔ template: NOT naively byte-identical by design (`.mcp.json` is Tier-3 seed-or-print, tracker-filtered at install time) — validated instead against the real `buildMcpJson("github")` render (`.bkit/src/bkit-mcp-toolsets.test.ts`), which is the correct invariant. `.bkit/version` will pick up the new `.bkit/scripts/bkit-runtime.sh` hash automatically at the Sub-Plan 6 batch `bkit install`/`upgrade` regen (core-template-dir auto-discovery — no manual hash edit needed).
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof (test output / CLI results).
+- [x] **Gate 4 - Verified:** every Automated Tests checkbox verified with explicit proof (test output / CLI results).
 
 ## Merge Method
 

@@ -339,8 +339,8 @@ describe("gateguard opencode plugin — off mode", () => {
 // 4. Subagent payload exempt — spike-recorded real payload shape
 // ---------------------------------------------------------------------------
 
-describe("gateguard opencode plugin — subagent exemption", () => {
-  it("spike-recorded subagent payload (bash tool, parentID set) is exempt — no advisory", async () => {
+describe("gateguard opencode plugin — subagents are NOT exempt", () => {
+  it("spike-recorded subagent payload (bash tool) stays a no-op — because bash is not an edit tool", async () => {
     // This fixture mirrors the REAL spike-recorded payload verbatim (spike-verdict.md §(d)):
     //   input_full: { tool: "bash", sessionID: "ses_151a398c0ffeeQ2FvAEXuBvm8W", callID: "toolu_01HfGgMJfUGA3gRNFr6pUrXB" }
     //   output_args: { command: "echo ...", description: "..." }
@@ -355,17 +355,20 @@ describe("gateguard opencode plugin — subagent exemption", () => {
     expect(result.stderrCaptured).toBe("");
   });
 
-  it("subagent session (any parentID non-empty) is always exempt, regardless of tool", async () => {
+  it("a subagent session editing a file DOES get the advisory (exemption removed)", async () => {
+    // Reversed deliberately: a subagent edit is still an edit. Dedup is per
+    // (session, file) and a subagent runs in its own session, so it gets the
+    // checklist once even for a file the orchestrator already touched.
     const session = newSession();
     const { hookInput, output } = writeHookInput("src/subagent-write.ts", session);
     const result = await invokeHook(plugin, subagentClient(), hookInput, output, {
       BKIT_GATEGUARD: undefined,
     });
     expect(result.threw).toBe(false);
-    expect(result.stderrCaptured).toBe("");
+    expect(result.stderrCaptured).toContain("[bkit GateGuard]");
   });
 
-  it("orchestrator session (parentID empty) is NOT exempt — advisory applies", async () => {
+  it("orchestrator session gets the advisory too — same treatment either way", async () => {
     const session = newSession();
     const { hookInput, output } = writeHookInput("src/orch.ts", session);
     const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
@@ -496,5 +499,107 @@ describe("gateguard opencode plugin — fail-open cases", () => {
     // No advisory since bash is not an edit tool
     // (note: subagent check happens first, but orchestrator session so continues to tool check)
     expect(result.stderrCaptured).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Managed-block boundary — consumers own the driver (tool.execute.before /
+// export default function plugin), bkit owns only the pure advisory engine.
+// ---------------------------------------------------------------------------
+
+describe("managed-block boundary", () => {
+  it("the bkit:start/bkit:end block contains no export", () => {
+    const src = fs.readFileSync(PLUGIN_PATH, "utf-8");
+    const start = src.indexOf("// bkit:start");
+    const end = src.indexOf("// bkit:end");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const block = src.slice(start, end);
+    expect(block).not.toContain("export");
+  });
+
+  it("bkit:end precedes the exported plugin declaration", () => {
+    const src = fs.readFileSync(PLUGIN_PATH, "utf-8");
+    const end = src.indexOf("// bkit:end");
+    const exportIdx = src.indexOf("export default function plugin");
+    expect(end).toBeGreaterThanOrEqual(0);
+    expect(exportIdx).toBeGreaterThan(end);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// docs/*.md density advisory (#422) — parity with the Claude twin
+// ---------------------------------------------------------------------------
+
+describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
+  it("appends the density advisory for a docs/ markdown file", async () => {
+    const plugin = await loadPlugin();
+    const session = newSession();
+    const { hookInput, output } = editHookInput("docs/architecture.md", session);
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.stderrCaptured).toContain("docs/*.md authoring");
+  });
+
+  it("does NOT match a Documents/ ancestor (segment match, not substring)", async () => {
+    const plugin = await loadPlugin();
+    const session = newSession();
+    const { hookInput, output } = editHookInput("Documents/architecture.md", session);
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+  });
+
+  it("excludes docs/plans/ (plan template governs those, not the docs register)", async () => {
+    const plugin = await loadPlugin();
+    const session = newSession();
+    const { hookInput, output } = editHookInput(
+      "docs/plans/202608/logs/422-foo/design.md",
+      session,
+    );
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+  });
+
+  it("does NOT match docs/knowledge.jsonl (gated on .md)", async () => {
+    const plugin = await loadPlugin();
+    const session = newSession();
+    const { hookInput, output } = editHookInput("docs/knowledge.jsonl", session);
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.stderrCaptured).not.toContain("docs/*.md authoring");
+  });
+
+  it("matches a nested docs/ tree via segment match (.bkit/templates/docs/architecture.md)", async () => {
+    const plugin = await loadPlugin();
+    const session = newSession();
+    const { hookInput, output } = editHookInput(".bkit/templates/docs/architecture.md", session);
+    const result = await invokeHook(plugin, orchestratorClient(), hookInput, output, {
+      BKIT_GATEGUARD: undefined,
+    });
+    expect(result.stderrCaptured).toContain("docs/*.md authoring");
+  });
+
+  it("twin parity: isDocsPath + docAuthoringAdvisory are byte-identical between the two hooks", () => {
+    const CJS_PATH = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
+    const jsSrc = fs.readFileSync(PLUGIN_PATH, "utf-8");
+    const cjsSrc = fs.readFileSync(CJS_PATH, "utf-8");
+
+    const extract = (src: string, fnStart: string) => {
+      const start = src.indexOf(fnStart);
+      expect(start, `${fnStart} not found`).toBeGreaterThanOrEqual(0);
+      const end = src.indexOf("\n}\n", start) + "\n}\n".length;
+      return src.slice(start, end);
+    };
+
+    expect(extract(jsSrc, "function isDocsPath(")).toBe(extract(cjsSrc, "function isDocsPath("));
+    expect(extract(jsSrc, "function docAuthoringAdvisory(")).toBe(
+      extract(cjsSrc, "function docAuthoringAdvisory("),
+    );
   });
 });

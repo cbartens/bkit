@@ -9,19 +9,20 @@ Lens: Scope, criteria, verification audit.
 
 ## Claims verified against the tree (all measured, none inherited)
 
-| Claim                                                                   | Result                                                                                                                                                |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 36 tasks / 36 `Done when`, one-to-one                                   | **TRUE** — 36 task lines, 36 `Done when` lines                                                                                                        |
-| 30 draft tasks preserved + 6 new (T2.0, T2.9, T2.10, T3.0, T3.4b, T5.3) | **TRUE** — draft's 30 IDs all present in v2                                                                                                           |
-| 15 template H2 sections, in order                                       | **TRUE** — exact match to `docs/plans/template.md` H2 order                                                                                           |
-| Gates 1–4 intact + Gate 2b at the T3.1–T3.7 → T3.8 seam                 | **TRUE** — Gate 2b sits between T3.7 and T3.8                                                                                                         |
-| 18 `--argjson` sites (build 8 / debug 7 / ship 3, 19 refs)              | **TRUE** — every line number in the plan matches the tree exactly                                                                                     |
-| `CI_ATTEMPTS` ×3 correctly excluded                                     | **TRUE** — `bkit-build.md:1258` assigns, `:1312` consumes, same fenced block (ends `:1318`); never crosses a process boundary                         |
-| 62 placeholder lines (build 26 / debug 26 / ship 10)                    | **TRUE** — exact                                                                                                                                      |
-| 48 `${X_ATTEMPT}` expansions needing lookbehind                         | **TRUE** — 12 + 31 + 5 = 48 occurrences                                                                                                               |
-| 17 matrix rows → 17 distinct tasks                                      | **TRUE** — bidirectional for the 17 named                                                                                                             |
-| `deferrals.jsonl` 6 rows, T8.2 asserts 6                                | **TRUE** — lines 31–36; `decisions.jsonl` 3 × `58-` keys (36–38), T8.2 asserts 3                                                                      |
-| Prose audit is vacuous as described                                     | **TRUE** — `\bATTEMPT\b` at `:89-90`; `EXPECTED_CONSTANTS` `:144-151` lists 6 of 7, omitting exactly `MAX_CHALLENGE_REMEDIATE_ATTEMPT` (config `:14`) |
+<!-- prettier-ignore -->
+| Claim | Result |
+| --- | --- |
+| 36 tasks / 36 `Done when`, one-to-one | **TRUE** — 36 task lines, 36 `Done when` lines |
+| 30 draft tasks preserved + 6 new (T2.0, T2.9, T2.10, T3.0, T3.4b, T5.3) | **TRUE** — draft's 30 IDs all present in v2 |
+| 15 template H2 sections, in order | **TRUE** — exact match to `docs/plans/template.md` H2 order |
+| Gates 1–4 intact + Gate 2b at the T3.1–T3.7 → T3.8 seam | **TRUE** — Gate 2b sits between T3.7 and T3.8 |
+| 18 `--argjson` sites (build 8 / debug 7 / ship 3, 19 refs) | **TRUE** — every line number in the plan matches the tree exactly |
+| `CI_ATTEMPTS` ×3 correctly excluded | **TRUE** — `bkit-build.md:1258` assigns, `:1312` consumes, same fenced block (ends `:1318`); never crosses a process boundary |
+| 62 placeholder lines (build 26 / debug 26 / ship 10) | **TRUE** — exact |
+| 48 `${X_ATTEMPT}` expansions needing lookbehind | **TRUE** — 12 + 31 + 5 = 48 occurrences |
+| 17 matrix rows → 17 distinct tasks | **TRUE** — bidirectional for the 17 named |
+| `deferrals.jsonl` 6 rows, T8.2 asserts 6 | **TRUE** — lines 31–36; `decisions.jsonl` 3 × `58-` keys (36–38), T8.2 asserts 3 |
+| Prose audit is vacuous as described | **TRUE** — `\bATTEMPT\b` at `:89-90`; `EXPECTED_CONSTANTS` `:144-151` lists 6 of 7, omitting exactly `MAX_CHALLENGE_REMEDIATE_ATTEMPT` (config `:14`) |
 
 No `Done when` was removed. One was narrowed (T6.2, draft `:459` → v2) — justified, but see CRITICAL 1–2.
 

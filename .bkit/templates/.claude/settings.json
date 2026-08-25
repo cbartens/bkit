@@ -17,28 +17,29 @@
       "WebFetch(domain:*.linear.app)",
       "WebFetch(domain:*.opencode.ai)",
       "WebFetch(domain:*.ollama.com)",
-      "WebFetch(domain:*.nvidia.com)",
-      "WebFetch(domain:z.ai)",
-      "WebFetch(domain:*.z.ai)",
-      "WebFetch(domain:moonshot.ai)",
-      "WebFetch(domain:*.moonshot.ai)",
-      "WebFetch(domain:kimi.com)",
-      "WebFetch(domain:*.kimi.com)",
+      "WebFetch(domain:*.openrouter.ai)",
       "WebFetch(domain:npmjs.com)",
-      "WebFetch(domain:*.npmjs.com)"
+      "WebFetch(domain:*.npmjs.com)",
+      "Bash(git push --force-with-lease:*)",
+      "Read(./.env.example)",
+      "Read(./**/.env.example)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)",
       "Bash(rm -rf $HOME/*)",
       "Bash(chmod -R 777 /:*)",
-      "Bash(git push --force:*)",
-      "Bash(git push -f:*)",
+      "Bash(git push --force)",
+      "Bash(git push --force *)",
+      "Bash(git push -f)",
+      "Bash(git push -f *)",
       "Read(./**/*.pem)",
       "Read(./**/*.p12)",
       "Read(./**/id_rsa)"
     ],
     "ask": [
+      "Bash(curl:*)",
+      "Bash(wget:*)",
       "Bash(sudo:*)",
       "Bash(brew install:*)",
       "Bash(pnpm publish:*)",
@@ -56,7 +57,10 @@
       "Bash(gh pr close:*)",
       "Bash(gh release delete:*)",
       "Read(./.env)",
-      "Read(./.env.*)"
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./.bkit/.env)"
     ],
     "defaultMode": "acceptEdits"
   },

@@ -254,7 +254,7 @@ jobs:
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
@@ -303,7 +303,7 @@ jobs:
       # the consumer scaffold's `main-lag-warning` block (kept marker-free here — bkit's own
       # ci.yml is intentionally degenerate, not the shipped scaffold). See docs/deployments.md
       # § "Promotion-lag warning".
-      - name: Check Main Lags Dev
+      - name: Check Default Branch Lags Dev
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -342,7 +342,7 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
 
-      - name: Run Prettier Format Check
+      - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
         run: pnpm format:check
 
@@ -388,7 +388,7 @@ jobs:
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
-      - name: Run Actionlint
+      - name: Run actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
@@ -406,13 +406,22 @@ jobs:
       # regenerated and committed whenever .bkit/src/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
-      - name: Verify Dist Freshness
+      - name: Assert Dist Freshness
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm check:dist
+        run: pnpm bkit:check:dist
 
-      - name: Run Bkit Check
+      - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+
+      # Tier-3 status-hole detector — ADVISORY, fail-open (the CLI exits 0 even
+      # when it finds holes). Decision 384-tier3-promotion gates promotion to a
+      # blocking gate on one release of fail-open signal without muting; that
+      # signal only accrues if something actually runs it, so it runs here.
+      # `|| true` is belt-and-braces: the CLI's own contract is exit 0 always.
+      - name: Check Status Holes
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm bkit:audit:status || true
 
   # ── bkit-tests-unit ──────────────────────────────────────────────────────
   # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —
@@ -433,7 +442,7 @@ jobs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -484,7 +493,7 @@ jobs:
       # integration tier (report-only) — SEPARATE lanes so each tier has its own honest number and
       # executed-count, mirroring how consumers (gether/fraser) run them. Dogfoods the per-tier
       # bkit-stub:coverage scaffold shipped to consumers. See testing.md § Coverage on PRs.
-      - name: Run Vitest Unit Tests
+      - name: Run Unit Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -535,7 +544,7 @@ jobs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -577,7 +586,7 @@ jobs:
       # INTEGRATION coverage run, scoped via --coverage.include to the engine surface
       # (modules/install/upgrade/uninstall) so the number reflects the flows integration is meant to
       # drive, not a whole-repo denominator. Report-only — NO --coverage.thresholds (see job header).
-      - name: Run Vitest Integration Tests
+      - name: Run Integration Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
@@ -618,7 +627,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Check Test Plan Followed
+      - name: Assert Test Plan Followed
         env:
           PLAN: ${{ needs.bkit-tests-scope.outputs.plan }}
           SCOPE_RESULT: ${{ needs.bkit-tests-scope.result }}

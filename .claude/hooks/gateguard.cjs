@@ -18,8 +18,8 @@
 //     0 with whatever was already emitted). Normal control paths use existence
 //     guards rather than try/catch so the only error sink is that one boundary —
 //     a hook that throws would break the consumer's session.
-//   - SUBAGENT EXEMPT: skipped when `agent_id` is present — bkit's workflow
-//     subagents are already scope-bounded by their own prompts.
+//   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, file)
+//     and a subagent carries its own session id, so it gets its own checklist.
 //   - DEDUP: warns once per (session, file); state lives in the OS temp dir keyed
 //     by session_id and is GC'd after 24h. Never writes into the consumer repo.
 //
@@ -31,10 +31,21 @@
 //
 //   BKIT_ALLOW_CONFIG_EDIT=1 → suppress the gate-config advisory (sanctioned edit).
 //
-// Host note: Claude-only. Cursor's hook model has no pre-edit context-injection
-// event; see .bkit/IDEs.md § GateGuard for the documented divergence.
+// Host note: twinned. `.cursor/hooks/gateguard.cjs` shares this managed block
+// byte-for-byte (Cursor's preToolUse delivers `additional_context` on an allow);
+// `.opencode/plugin/gateguard.js` carries the same advisories in ES-module form.
+// See .bkit/providers.md § GateGuard.
+//
+// OWNERSHIP: everything between the markers below is bkit-managed and is
+// overwritten on every `bkit install` / `bkit upgrade`. It is a pure advisory
+// engine only — no stdin read, no stdout write, no top-level invocation — so two
+// emitters (bkit's and yours) can never collide into one unparseable stdout
+// blob. Add your own logic in the driver that follows the managed block: call
+// `bkitGateguard(payload)`, fold in your own checks, and call `emit()` once.
 
 "use strict";
+
+// bkit:start
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -92,6 +103,31 @@ function reuseChecklist(filePath) {
   );
 }
 
+// docs/*.md authoring contract — path-scoped, appended to whichever base advisory
+// applies (first-touch / new-file / gate-config are orthogonal to this). Segment
+// match, not basename — every one of these directories holds same-named files.
+// Excludes docs/plans/ (the plan template governs those, not the docs register)
+// and non-.md files (docs/ also holds knowledge.jsonl, decisions.jsonl, etc.).
+function isDocsPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  const inDocs = p.startsWith("docs/") || p.includes("/docs/");
+  if (!inDocs) return false;
+  const inPlans = p.startsWith("docs/plans/") || p.includes("/docs/plans/");
+  return !inPlans;
+}
+
+function docAuthoringAdvisory() {
+  return (
+    `[bkit GateGuard] docs/*.md authoring:\n` +
+    `- Read THIS file's header block and follow its purpose and rules if present.\n` +
+    `- Check .agents/docs.md index first and confirm topic belongs in THIS doc, not another.\n` +
+    `- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
+    `- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n` +
+    `Advisory — proceed once satisfied.`
+  );
+}
+
 function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
@@ -137,66 +173,166 @@ function markWarned(sessionId, filePath) {
 }
 
 // Opportunistic TTL: drop session state files older than 24h so the temp dir does
-// not grow without bound. Runs last (after the advisory is emitted) so a cleanup
-// race surfacing at the top-level boundary cannot suppress the advisory.
+// not grow without bound. Runs last (after the advisory is decided) so a cleanup
+// race cannot suppress the advisory — the driver emits before this returns.
 function gcOldState() {
   const dir = stateDir();
   if (!fs.existsSync(dir)) return;
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   for (const name of fs.readdirSync(dir)) {
     const f = path.join(dir, name);
-    const stat = fs.statSync(f);
-    if (stat.mtimeMs < cutoff) fs.unlinkSync(f);
+    // throwIfNoEntry / force: the file can vanish between readdir and here (another
+    // session GCing the same dir); both calls tolerate that without a catch.
+    const stat = fs.statSync(f, { throwIfNoEntry: false });
+    if (stat && stat.mtimeMs < cutoff) fs.rmSync(f, { force: true });
   }
+}
+
+// Pure: takes the already-parsed hook payload, returns the advisory to emit or
+// null. Never touches process.stdin / process.stdout — the driver below owns
+// both, so bkit and consumer logic can never produce two JSON documents on one
+// stdout stream.
+function bkitGateguard(payload) {
+  const mode = process.env.BKIT_GATEGUARD;
+  if (mode === "off") return null;
+
+  // Subagents are NOT exempt: a subagent edit is still an edit, and the
+  // investigation it skips is the same investigation. Dedup is per (session, file)
+  // and a subagent carries its own session id, so it gets the checklist once for a
+  // file the orchestrator already touched.
+  if (!EDIT_TOOLS.has(payload.tool_name)) return null;
+
+  const input = payload.tool_input || {};
+  const filePath = input.file_path || input.path;
+  if (!filePath || typeof filePath !== "string") return null;
+
+  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
+
+  // Warn once per (session, file).
+  if (alreadyWarned(sessionId, filePath)) return null;
+
+  const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
+  // A Write to a not-yet-existing path is a NEW file — the bolt-on moment.
+  const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
+  const baseContext = gated
+    ? configAdvisory(filePath)
+    : isNewFile
+      ? reuseChecklist(filePath)
+      : investigationChecklist(filePath);
+  const context = isDocsPath(filePath)
+    ? `${baseContext}\n\n${docAuthoringAdvisory()}`
+    : baseContext;
+
+  markWarned(sessionId, filePath);
+  gcOldState();
+
+  return { mode: mode === "deny" ? "deny" : "advisory", context };
+}
+
+// bkit:end
+
+// ---------------------------------------------------------------------------
+// DOGFOOD ONLY — bkit's own authoring rules for its own execution surfaces.
+// This region exists ONLY in this repo's .claude/hooks/gateguard.cjs; it ships
+// in no template and reaches no consumer install (.bkit/workflows/ and
+// .bkit/prompts/ never exist outside this repo). Lives outside the managed
+// block so it survives every `bkit install` / `bkit upgrade`.
+// ---------------------------------------------------------------------------
+
+function isBkitWorkflowPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  return p.endsWith(".md") && (p.startsWith(".bkit/workflows/") || p.includes("/.bkit/workflows/"));
+}
+
+function isBkitPromptPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  return p.endsWith(".md") && (p.startsWith(".bkit/prompts/") || p.includes("/.bkit/prompts/"));
+}
+
+function workflowAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] .bkit/workflows/*.md authoring:\n" +
+    "- These files ARE their own template: ALWAYS `grep .bkit/workflows/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, routes, jump targets, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (subagent invocations, `bash` blocks, conditional routes, comment fences, gate checklists). Bash decides, prose routes; `→` is intentional process glyph, adopt do NOT convert; 1 process branch → inline; 2+ branches → labeled decision / route block.\n" +
+    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline behaviour justification. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/workflows.md`.\n" +
+    "- Cross-workflow alignment: Check for shared instructions and change in ALL workflows using them.\n" +
+    "- Self-contained: every file MUST stand alone; inline ALL instructions; NO file references. Exceptions: subagent context.\n" +
+    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function promptAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] .bkit/prompts/*.md authoring:\n" +
+    "- These files ARE their own template: ALWAYS `grep .bkit/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.\n" +
+    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline comments justifying behaviour. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/prompts.md`.\n" +
+    "- Cross-prompt alignment: Check for shared instructions and change in ALL prompts using them.\n" +
+    "- Self-contained: every prompt MUST stand alone; inline ALL instructions; NO file references. Exceptions: `.agents/docs.md`, `*.jsonl` ledgers.\n" +
+    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function bkitDocAuthoringAdvisory() {
+  return (
+    "[bkit GateGuard] bkit `.md` doc authoring:\n" +
+    "- Read THIS file's header block and follow its purpose and rules if present.\n" +
+    "- Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.\n" +
+    "- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n" +
+    "Advisory — proceed once satisfied."
+  );
+}
+
+function isBkitDocPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  // Own docs/** test, deliberately NOT the managed block's isDocsPath: this region
+  // must keep working whatever happens inside the markers. docs/** already gets the
+  // shipped advisory, and the two execution surfaces get their own — what is left is
+  // bkit's own reference docs under `.bkit/` and `.agents/`, templates included.
+  if (p.startsWith("docs/") || p.includes("/docs/")) return false;
+  if (isBkitWorkflowPath(p) || isBkitPromptPath(p)) return false;
+  return (
+    p.startsWith(".bkit/") ||
+    p.includes("/.bkit/") ||
+    p.startsWith(".agents/") ||
+    p.includes("/.agents/")
+  );
+}
+
+/** Returns the authoring advisory for a bkit execution-surface path, else null. */
+function dogfoodAuthoringAdvisory(filePath) {
+  if (isBkitWorkflowPath(filePath)) return workflowAuthoringAdvisory();
+  if (isBkitPromptPath(filePath)) return promptAuthoringAdvisory();
+  if (isBkitDocPath(filePath)) return bkitDocAuthoringAdvisory();
+  return null;
 }
 
 function emit(payload) {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: payload }));
 }
 
-function main() {
-  const mode = process.env.BKIT_GATEGUARD;
-  if (mode === "off") return;
-
-  const raw = fs.readFileSync(0, "utf-8");
-  if (!raw.trim()) return;
-  const payload = JSON.parse(raw);
-
-  // Subagent-exempt: agent_id is present only on subagent tool calls.
-  if (payload.agent_id) return;
-  if (!EDIT_TOOLS.has(payload.tool_name)) return;
-
-  const input = payload.tool_input || {};
-  const filePath = input.file_path || input.path;
-  if (!filePath || typeof filePath !== "string") return;
-
-  const sessionId = typeof payload.session_id === "string" ? payload.session_id : "no-session";
-
-  // Warn once per (session, file). Emit first, then record + GC, so a state-write
-  // or cleanup failure cannot swallow the advisory.
-  if (alreadyWarned(sessionId, filePath)) return;
-
-  const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
-  // A Write to a not-yet-existing path is a NEW file — the bolt-on moment.
-  const isNewFile = payload.tool_name === "Write" && !fs.existsSync(filePath);
-  const context = gated
-    ? configAdvisory(filePath)
-    : isNewFile
-      ? reuseChecklist(filePath)
-      : investigationChecklist(filePath);
-
-  if (mode === "deny") {
-    emit({ hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: context });
-  } else {
-    emit({ hookEventName: "PreToolUse", additionalContext: context });
-  }
-
-  markWarned(sessionId, filePath);
-  gcOldState();
-}
-
 try {
-  main();
+  const raw = fs.readFileSync(0, "utf-8");
+  if (raw.trim()) {
+    const payload = JSON.parse(raw);
+    const result = bkitGateguard(payload);
+    if (result) {
+      const input = payload.tool_input || {};
+      const filePath = input.file_path || input.path || "";
+      const dogfoodExtra = dogfoodAuthoringAdvisory(filePath);
+      const context = dogfoodExtra ? `${result.context}\n\n${dogfoodExtra}` : result.context;
+      emit(
+        result.mode === "deny"
+          ? {
+              hookEventName: "PreToolUse",
+              permissionDecision: "deny",
+              permissionDecisionReason: context,
+            }
+          : { hookEventName: "PreToolUse", additionalContext: context },
+      );
+    }
+  }
 } catch {
   process.exitCode = 0; // fail open — never block, never error out
 }

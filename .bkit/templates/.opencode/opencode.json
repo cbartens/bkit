@@ -14,6 +14,8 @@
     "grep": "allow",
     "glob": "allow",
     "task": "allow",
+    "websearch": "allow",
+    "webfetch": "ask",
     "bash": {
       "*": "allow",
       "sudo *": "ask",
@@ -21,6 +23,8 @@
       "pnpm publish*": "ask",
       "npm publish*": "ask",
       "bun publish*": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
       "git reset --hard*": "ask",
       "git clean -fd*": "ask",
       "git clean -fdx*": "ask",

@@ -6,7 +6,7 @@
 //
 // The dist arm (context 1 + 3) is EXPLICITLY asserted here in addition to the
 // tsx-from-source arm (context 2), because WS3-T2 leaves the dist/ arm
-// intentionally untouched and check:dist only exercises it indirectly.
+// intentionally untouched and bkit:check:dist only exercises it indirectly.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

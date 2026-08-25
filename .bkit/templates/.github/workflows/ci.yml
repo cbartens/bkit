@@ -44,19 +44,32 @@ jobs:
     # registry mapping; `pnpm config set` writes the shell-expanded literal token into
     # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
     # install step also keeps its own env: block for explicitness and for the tests that assert it.
+    #
+    # NODE_OPTIONS is set HERE, in static YAML, and must NEVER be written to $GITHUB_ENV.
+    # The runner blocklists NODE_OPTIONS for the $GITHUB_ENV / set-env workflow command,
+    # because a step able to set it at runtime could inject code into the runner's own node
+    # process. The write is REJECTED with
+    #   ##[error]Can't store NODE_OPTIONS output parameter using '$GITHUB_ENV' command.
+    # and — the part that hides it — the step's conclusion stays `success`, so the flag
+    # reaches nothing while the run goes green. Two more traps: the marker test is spelled
+    # out rather than reused as `env.VERBOSE_CI`, because the `env` context is NOT available
+    # to a job-level `env:` value and the shorter form resolves empty on every run; and a
+    # step with its own `env:` block REPLACES this value rather than merging, so such a step
+    # must restate the flags. See docs/testing.md § "CI verbosity".
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
       GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     # bkit:end verbose-ci-env
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
 
       # bkit:start ts-ci-steps optional
-      # Node/TS toolchain region (bkit #265). bkit seeds these step bodies ACTIVE when you
+      # Node/TS toolchain region. bkit seeds these step bodies ACTIVE when you
       # install `--typescript` (or `--tooling`), and COMMENTED OUT when you install `--ci`
       # alone (stack-agnostic skeleton). On a non-Node repo, adapt the commented examples to
       # your stack's setup / install / typecheck / lint / test commands.
@@ -66,17 +79,18 @@ jobs:
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
-      # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
-      # $GITHUB_ENV. Note that steps with their own `env:` block override $GITHUB_ENV —
-      # those steps must inline these vars in their env: declaration to stay verbose-aware.
+      # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
+      # that steps with their own `env:` block override $GITHUB_ENV — those steps must
+      # inline it in their env: declaration to stay verbose-aware. NODE_OPTIONS is
+      # deliberately NOT set here; the runner rejects that write while reporting success.
+      # See the job-level `env:` block above.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
         run: |
           echo "🔊 [verbose ci] marker active — escalating log detail"
-          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
       - name: Check SHA Cache
@@ -139,7 +153,7 @@ jobs:
       # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
       # bkit-owned: edit it in the bkit template, not here. `bkit check` raises a (non-blocking)
       # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
-      - name: Check Main Lags Dev
+      - name: Check Default Branch Lags Dev
         if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -172,7 +186,7 @@ jobs:
       # bkit:end main-lag-warning
 
       # bkit-stub:migrations-immutable — Block PRs modifying previously-merged migrations. To enable: uncomment the step below and delete this stub header.
-      # - name: Migrations Immutability Guard
+      # - name: Assert Migrations Immutable
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
       #   run: |
       #     git fetch origin "${{ github.base_ref }}" --depth=50 2>/dev/null || true
@@ -208,7 +222,7 @@ jobs:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
 
-      - name: Run Prettier Format Check
+      - name: Run Prettier
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
@@ -257,7 +271,7 @@ jobs:
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
       # workflows that are valid YAML but invalid GHA; actionlint catches that class.
-      - name: Run Actionlint
+      - name: Run actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
           # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
@@ -272,7 +286,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color
 
       # bkit:start ts-ci-steps optional
-      - name: Run Bkit Check
+      - name: Run bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
       # bkit:end ts-ci-steps
@@ -283,13 +297,15 @@ jobs:
   bkit-tests-unit:
     runs-on: ubuntu-latest
     # Env vars duplicated from bkit-tests-static's managed verbose-ci-env block.
-    # See the verbose-ci-env block comment in bkit-tests-static for documentation.
+    # See the verbose-ci-env block comment in bkit-tests-static for documentation —
+    # including why NODE_OPTIONS is a static YAML key here and never a $GITHUB_ENV write.
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
       GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history needed for E2E / supabase stubs when enabled.
           fetch-depth: 0
@@ -299,14 +315,15 @@ jobs:
         with:
           node-version: {{NODE_VERSION}}
 
-      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
       # bkit:end ts-ci-steps
 
+      # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
+      # rejects that write and still reports success. See bkit-tests-static's block comment.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
         run: |
           echo "🔊 [verbose ci] marker active — escalating log detail"
-          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
       - name: Check SHA Cache
@@ -381,7 +398,7 @@ jobs:
       # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — REMOTE `db push` belongs in `bkit-tests-migration`, NOT here
-      # and NOT in `bkit-tests-e2e` (#385 / consumer #451). Prefer the migration-lane stub below
+      # and NOT in `bkit-tests-e2e`. Prefer the migration-lane stub below
       # (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live `needs:` it).
       # Leaving the push inside e2e while live runs parallel to e2e is the PGRST202 race: @live can
       # hit a shared remote whose new RPCs/schema the push has not applied yet. To enable the
@@ -413,7 +430,7 @@ jobs:
       # REST — direct port-5432 from CI runners is IPv4-flaky. See JOB 3 and docs/testing.md § Schema-invariant DB checks.
 
       # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
-      # - name: Test Presence Audit
+      # - name: Check Test Presence
       #   if: steps.cache.outputs.skip != 'true'
       #   run: |
       #     for pkg in $(jq -r '.workspaces // [] | .[]' package.json 2>/dev/null) $(ls -d packages/*/ apps/*/ 2>/dev/null); do
@@ -425,13 +442,13 @@ jobs:
       #     done
 
       # bkit:start ts-ci-steps optional
-      - name: Run Vitest Tests
+      - name: Run Unit Tests
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: pnpm test
 
-      - name: Run Vitest Integration Tests
+      - name: Run Integration Tests
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
@@ -454,7 +471,7 @@ jobs:
       #      so a line covered only by integration reads as covered and hides a missing unit test):
       #        unit:        vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'
       #        integration: vitest run --coverage --coverage.reportsDirectory=coverage/integration <your integration selection>
-      #      Wire these into the "Run Vitest Tests" step(s) above (or your test / test:integration scripts). Separate dirs
+      #      Wire these into the "Run Unit Tests" step(s) above (or your test / test:integration scripts). Separate dirs
       #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
       #   3. Thresholds (opt-in) live PER TIER, never merged:
       #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
@@ -487,7 +504,7 @@ jobs:
       #   A distinct name: keys each sticky comment so the two do not collide.
       # - name: Report Unit Coverage on PR
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: unit
       #     json-summary-path: coverage/unit/coverage-summary.json
@@ -497,7 +514,7 @@ jobs:
       # - name: Report Integration Coverage on PR
       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: integration
       #     json-summary-path: coverage/integration/coverage-summary.json
@@ -587,7 +604,7 @@ jobs:
       # - name: Report E2E Coverage on PR
       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+      #   uses: davelosert/vitest-coverage-report-action@8b157684c6a6b259b97d45e72b44242865c0f6a5 # v2.12.2
       #   with:
       #     name: e2e
       #     json-summary-path: coverage/e2e/coverage-summary.json
@@ -625,13 +642,12 @@ jobs:
 #     if: github.event.workflow_run.conclusion == 'success'
 #     runs-on: ubuntu-latest
 #     steps:
-#       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #       - run: ./scripts/ci/smoke-test.sh
 
 # =============================================================================
 # FULL CI SCAFFOLD REFERENCE — every step, in execution order. Reference impl:
 # gether app-gether-life (proven turbo + Vercel + Supabase + Playwright monorepo).
-# Concept: bkit #203.
 #
 # The parallel bkit-tests-static + bkit-tests-unit jobs ABOVE are the any-repo
 # starter. Below is the complete proven scaffold. To adopt a tier, lift its steps KEEPING THIS ORDER (load-bearing:
@@ -649,7 +665,7 @@ jobs:
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
 #
 # The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.
-# ONE deliberate exception (#385 / consumer #451): when the migration lane owns the shared-remote
+# ONE deliberate exception: when the migration lane owns the shared-remote
 # `db push`, `bkit-tests-e2e` and `bkit-tests-live` `needs:` that lane so they cannot hit a schema
 # the push has not applied yet (and a from-empty replay failure cannot reach remote). Do NOT add
 # edges from live/e2e back onto static/unit/build — those remain the expensive wall-clock trap.
@@ -709,7 +725,12 @@ jobs:
 #     steps:
 #       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
 #       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
-#       - name: Resolve Base Ref             # [M] PR->origin/<base>; push->github.event.before; dispatch->HEAD~1
+#       - name: Resolve Base Ref             # [M] PR->origin/<base>; push->github.event.before; dispatch->no meaningful base
+#       #   DISPATCH IS NOT A DIFF. A workflow_dispatch has no base commit, so any fallback you pick (HEAD~1 and friends)
+#       #   scopes the run to whatever the LAST commit happened to touch — dispatch on a docs or plan-close HEAD and the
+#       #   "run everything" button buys a static+unit run that reports green having proved nothing. Short-circuit
+#       #   workflow_dispatch in the affected step to the same run-to-be-safe values you already emit when there is no
+#       #   base (everything affected), the way run_migration below already does, and never consult the diff on a dispatch.
 # bkit-stub:affected-graph — [M] turbo "what changed" engine (the Detect Affected Packages step).
 #       # Capture stdout/stderr SEPARATELY: 2>&1 merges turbo's banner into the JSON -> jq falls back to
 #       # [] = ghost-green. turbo error / no base / non-JSON -> global-dep fallback (web_affected=true). Drop for single-package.
@@ -728,9 +749,9 @@ jobs:
 #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
 #       - name: Decide Run Level             # [U] Layer 2 (how-much): force-build/PR/dispatch/push-main -> full; push-dev ->
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
-#       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (#291; emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
+#       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
-#       #     run_migration (#385): true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
+#       #     run_migration: true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
 #       - name: Generate Test Plan           # [U] id: scope. jq bkit-test-plan; validate with has()/!=null
 #       #     (NOT `// empty` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
@@ -757,23 +778,28 @@ jobs:
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
 #       - name: Fetch Base Branch            # [M/PR] if: pull_request — base for --filter/diffs
-#       - name: Guard Migration Immutability # [DB] if: PR — fail if an already-merged migration was edited (write a new one)
+#       - name: Assert Migrations Immutable # [DB] if: PR — fail if an already-merged migration was edited (write a new one)
 #       - name: Materialise Base Worktree    # [PR] base as detached worktree for slop-delta; loud-fail if it resolves to HEAD
 #       - name: Setup pnpm                    # [U]
 #       - name: Setup Node                    # [U] node-version: {{NODE_VERSION}}, cache: pnpm
-#       - name: Configure Verbose CI         # [U] if: VERBOSE_CI=='1' — write NODE_OPTIONS/DEBUG to $GITHUB_ENV (steps with own env: must re-declare)
+#       - name: Configure Verbose CI         # [U] if: VERBOSE_CI=='1' — write DEBUG to $GITHUB_ENV (steps with own env: must re-declare).
+#       #   NEVER write NODE_OPTIONS to $GITHUB_ENV: the runner blocklists it for that command (a runtime-settable
+#       #   NODE_OPTIONS could inject code into the runner's own node process), REJECTS the write with an ::error::,
+#       #   and still concludes the step `success` — so the flag reaches nothing while the run goes green. Set it as a
+#       #   job-level `env:` key in static YAML instead, spelling the contains() marker test out rather than reusing
+#       #   env.VERBOSE_CI (the env context is not available to a job-level env: value, so that form resolves empty).
 #       - name: Install Dependencies         # [U] pnpm install --frozen-lockfile
 #       - name: Install Vale                  # [U] pinned tarball + `vale sync` (else E100: write-good missing)
 #       - name: Run Lint                      # [U] static checks FAIL-FAST before env pull; PRs scope --filter=...[origin/<base>]
 #       - name: Run Typecheck                 # [U]
-#       - name: Run Prettier Format Check     # [U] CI-side format gate (hook-bypass net)
+#       - name: Run Prettier     # [U] CI-side format gate (hook-bypass net)
 #       - name: Run Vale Prose Lint           # [U] same root lint:prose pre-push runs (local==CI)
 #       - name: Run Slop Scan (full)          # [U] advisory baseline
 #       - name: Run Slop Scan (delta)         # [PR] the real gate — blocks new/worsened vs base worktree
 #       - name: Tear Down Base Worktree       # [PR] if: always() && pull_request
-#       - name: Run Bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
+#       - name: Run bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
 #       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
-#       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
+#       - name: Assert Environment Shape          # [D] env-shape checker (e.g. env-check.sh)
 #       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
 #       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
 #       #     [DB] BUILD-vs-MIGRATION RACE if the host auto-deploys on this push (build races this step; PG
@@ -783,17 +809,43 @@ jobs:
 #       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
 #       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
-#       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
+#       - name: Run Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
 #       - name: Report Coverage on PR # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e). With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
 #       - name: Build All Packages            # [D] source env first
-#       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
+#       - name: Run Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
 #       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
-#       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
+#       - name: Run E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
 #       #     [E/PR] run the full suite on PR and push (parity; shard a slow suite) AND, for migration-coupled
 #       #     PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
+#
+# === DESIGN ASSERTIONS — deliberately NOT a lane (there is no bkit-tests-design job) ===
+#   NOT a bkit-stub: nothing here is meant to be enabled. Design is a DIMENSION across the lanes
+#   above — the lane axis is resource profile (ms file read vs booted app + browser), not subject
+#   matter, and design assertions span both. Route them into the tiers that already exist and leave
+#   this file's topology alone (a real consumer's full design-system rollout landed with ci.yml
+#   BYTE-UNCHANGED — no new job, no new browser project, project-ran guard arg count unchanged):
+#     token parity (docs/design.md vs stylesheet vars AND theme object, asserted INDEPENDENTLY so a
+#       red names its culprit), repo-wide raw-hex contract, component contract depth,
+#       design-source parity ....................................... -> bkit-tests-unit
+#     no-raw-hex / no-arbitrary-value lint rule (anchor on the CLASS
+#       boundary so `p-[3px]` reds but a legitimate substring does not)  -> bkit-tests-static
+#     computed style, measured geometry, touch-target size, a11y scan -> bkit-tests-e2e, as ORDINARY
+#       specs inside the EXISTING browser project, selected by PATH (a runner hard-errors on an
+#       unknown --project name); the a11y scanner is an imported helper, not a project fixture
+#     visual regression / screenshot baselines ....................... -> opt-in, not baseline
+#   Capstone needs: UNCHANGED. Because the assertions sit in lanes bkit-tests-check already gates,
+#   design is merge-blocking from the first PR that adds one — no advisory window to schedule.
+#   A `test:design` selector script carries ZERO routing power: title tag only, never a grepInvert
+#   entry or an execution gate, and pass-with-no-tests on every fan-out.
+#   CACHE: design tests read files OUTSIDE their own package (docs/design.md, the whole src tree),
+#   so put docs/design.md — plus any rendered style guide it is checked against — in the task
+#   runner's globalDependencies and mark test:design uncached; else a warm cache replays PASS
+#   against a reference the code now contradicts.
+#   Full doctrine: docs/testing.md § "Design assertions are a dimension, not a lane";
+#   the token table + its parsing contract: docs/design.md § "Machine-checked reference".
 #
 # === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
 # bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
@@ -803,7 +855,7 @@ jobs:
 # bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
 #   bkit-tests-integration:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20
 #   #   own job-level permissions: { actions: read, contents: read, pull-requests: write } for the coverage comment.
-#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Vitest Integration Tests
+#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Integration Tests
 #       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
 #       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
 #
@@ -823,7 +875,7 @@ jobs:
 # browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
 # READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
 # bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
-# Do NOT put remote `db push` in this lane — that lives in bkit-tests-migration (#385).
+# Do NOT put remote `db push` in this lane — that lives in bkit-tests-migration.
 #   bkit-tests-e2e:
 #     needs: [bkit-tests-scope, bkit-tests-migration]
 #     if: >-
@@ -833,7 +885,7 @@ jobs:
 #       && needs.bkit-tests-migration.result != 'failure' }}
 #     timeout-minutes: 30
 #   #   own job-level permissions block (same three) for the coverage comment.
-#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
+#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run E2E Tests
 #       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
 #       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
 #
@@ -841,7 +893,7 @@ jobs:
 # bkit-stub:bkit-tests-migration — [DB] ALWAYS-ON lane that owns BOTH halves of migration handling:
 # (1) prove every migration replays from an EMPTY database (+ seed loads) on a fresh ephemeral
 # instance; (2) on every push to `dev`/`main`, `db push --linked --include-all` to the shared remote
-# (moved here out of e2e / the legacy supabase-migrate stub — #385 / consumer #451). WHEN: you have
+# (it belongs in neither e2e nor the supabase-migrate stub). WHEN: you have
 # a migrations dir. Catches what a warm `start` / remote-only push cannot: a stale-volume migration,
 # a seed that aborts on empty, OR a from-empty failure that would still have been pushed to shared
 # remote when replay and push lived in different jobs. bkit owns the always-on scaffold; you supply
@@ -878,7 +930,7 @@ jobs:
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
 # want post-deploy @live smoke. Parallel to static/unit/build; waits on migration when that lane
-# owns the remote push (#385). DROP if no deploy (bkit does).
+# owns the remote push. DROP if no deploy (bkit does).
 #   bkit-tests-live:
 #     needs: [bkit-tests-scope, bkit-tests-migration]
 #     if: >-
@@ -912,7 +964,7 @@ jobs:
 #
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
-# moment any tier is skippable. ~seconds, no checkout.
+# moment any tier is skippable. ~seconds; needs no checkout UNTIL you extract the gate (below).
 #   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migration,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
 #   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
 #   # cannot red the capstone, which is the hollow-green this job exists to prevent.
@@ -931,14 +983,32 @@ jobs:
 #       #   inventory, exit 0); flip to an assert later, once the allowlist of legitimately-never-run files
 #       #   is seeded from a real inventory. Adds a checkout + artifact download, so raise timeout-minutes
 #       #   above the seconds a pure aggregator needs.
-#       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
+#       #   ⚠️ That diagnostic checkout is continue-on-error and run-level-gated ONLY while it stays a diagnostic.
+#       #   The moment the gate below reads a file from the repo, the checkout becomes LOAD-BEARING — see the
+#       #   assert step's own note. Do not let the two share one gated, failure-tolerant checkout.
+#       # EXTRACT THIS GATE TO A FILE. It is the only branch-protection required check, so a false green here
+#       #   is a false green for the whole repo — and assertions written as a shell heredoc inside a YAML string
+#       #   are the one part of the repo that cannot be unit-tested. Move the decision into a script your normal
+#       #   test command already runs, taking the environment as an argument so it is callable from a test. The
+#       #   four tests worth writing are the ones proving it CANNOT pass: a lane that failed; a gated lane that
+#       #   ran when its job-level gate said it should have skipped; a tier reporting success having executed
+#       #   zero tests; and a plan that will not parse, which must RED rather than read as "nothing was required".
+#       #   ⚠️ Doing this gives the capstone a dependency it never had as inline shell — a file on disk. Add an
+#       #   UNGATED checkout that is NOT continue-on-error (a checkout failure must red at the checkout step,
+#       #   where the message is legible, not later as a module-resolution error inside the gate). A checkout
+#       #   gated on run_level == 'full' leaves every other run level with no script: the required check then
+#       #   exits non-zero with "cannot find module" WITHOUT EVER READING THE PLAN. Live paths that hit it:
+#       #   an affected-empty run (the "push a bare trigger commit" recovery), and a transient checkout failure
+#       #   that continue-on-error would otherwise swallow. Guard it — assert the checkout is neither gated nor
+#       #   continue-on-error, and that the gate step itself is neither.
+#       - name: Assert Test Plan Followed    # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
 #       #   NAMESPACE TRAP: bkit-tests-scope is the PLANNER, not a test lane, but it shares the bkit-tests-* namespace.
 #       #   Assert its result EXPLICITLY (as below) — a capstone that loops over "every bkit-tests-* lane" skips it,
 #       #   and a scope failure then leaves the capstone GREEN. Same for any external guard policing that namespace:
 #       #   exempt scope BY NAME and point the exemption at this assertion site.
 #       #   bkit-tests-scope==success; run_level!=none => static+unit+build==success (build is a lane result, no *_ran count); web_affected => bkit-tests-integration==success (its LANE result);
 #       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
-#       #   bkit-tests-migration==success whenever SCOPE succeeded (always-on ordering + push/replay lane #385 —
+#       #   bkit-tests-migration==success whenever SCOPE succeeded (always-on ordering + push/replay lane —
 #       #   independent of run_level / run_migration; a failed replay OR remote push reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),

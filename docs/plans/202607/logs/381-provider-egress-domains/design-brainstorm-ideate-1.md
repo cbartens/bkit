@@ -1,0 +1,108 @@
+# Design Brainstorm & Ideas
+
+Lens: Pragmatic — existing code, minimal new infra, ship fastest.
+
+## Verified ground truth (read before the approaches)
+
+**The list exists in four hand-synced places, not two.** The issue comments name two; the source has four:
+
+<!-- prettier-ignore -->
+| # | Copy | Location | Gating |
+| --- | --- | --- | --- |
+| 1 | `BKIT_SHIPPED_NETWORK_DOMAINS` | `.bkit/src/bkit-cloud-env.ts:471-485` | none (TS const) |
+| 2 | `SHIPPED_NETWORK_BASES` | `.cursor/hooks/guardrails.cjs:110-124` | canonicalHash `.bkit/version:71` |
+| 3 | same, template twin | `.bkit/templates/.cursor/hooks/guardrails.cjs:110-124` | tier3Hash `.bkit/version:11` |
+| 4 | `WebFetch(domain:…)` seed list | `.bkit/templates/.claude/settings.json:10-28` | canonicalHash `.bkit/version:16` |
+
+Copy 4 is a _partial_ copy and already drifts by construction: it has `github.com` + `*.github.com` but only `*.githubusercontent.com`, only `*.anthropic.com`, etc. `enrichClaudeSettingsWebFetch` (`bkit-modules.ts:1731-1758`) silently tops up the missing apexes at install, so the template list is a stale subset nobody notices.
+
+**The cloud generator never sees the shipped list at all.** `renderCloudNetworkAllowlist` (`bkit-cloud-env.ts:546-572`) and `renderCursorNetworkAllowlist` (`:646-670`) both call `extractAllowedDomains` (consumer-only), **not** `resolveNetworkAllowlist` (`:505-507`). So the cloud.md paste block contains zero tooling/provider hosts today — that is the actual #381 defect, and it is one call-site substitution wide. The three _local_ enforcement surfaces (`injectOpencodeNetworkCurlAllows` `bkit-modules.ts:1706-1714`, `enrichClaudeSettingsWebFetch`, `writeNetworkAllowlistArtifact` `bkit-cloud-env.ts:518-538`) already go through `resolveNetworkAllowlist` and get the shipped list.
+
+**The hardcoded list is already wrong for 4 shipped providers.** Registry baseURLs in `OPENCODE_PROVIDER_DEFAULTS` (`bkit-modules.ts:1397-1500`) vs `BKIT_SHIPPED_NETWORK_DOMAINS`:
+
+<!-- prettier-ignore -->
+| Provider / surface | Host | Base | In shipped list? |
+| --- | --- | --- | --- |
+| `groq` | `api.groq.com` | `groq.com` | **NO** |
+| `cerebras` | `api.cerebras.ai` | `cerebras.ai` | **NO** |
+| `openrouter` | `openrouter.ai` | `openrouter.ai` | **NO** |
+| GitHub MCP (`.bkit/templates/.mcp.json:9`, `.cursor/mcp.json:9`, `bkit-modules.ts:1651`) | `api.githubcopilot.com` | `githubcopilot.com` | **NO** |
+| `opencode-zen` / `opencode-go` catalog resolution (models.dev, `.bkit/prompts.md:223`) | `models.dev` | `models.dev` | **NO** |
+| `nvidia`, `ollama`, `zai`, `moonshot`, Linear MCP | — | `nvidia.com`, `ollama.com`, `z.ai`, `moonshot.ai`, `linear.app` | yes |
+| `ollama-local` | `localhost:11434` | — | correctly absent |
+
+So this is not only a future-proofing change: derivation fixes live gaps.
+
+**"All providers" (comment 3) — every registry bkit ships, and whether it contributes egress:**
+
+<!-- prettier-ignore -->
+| Registry | Location | Contributes? |
+| --- | --- | --- |
+| `OPENCODE_PROVIDER_DEFAULTS` (`baseURL`) | `bkit-modules.ts:1397-1500` | **Yes** — the primary source. `ollama-local` is loopback → excluded; `opencode-zen`/`opencode-go` have `baseURL: ""` → need a declared gateway host (`opencode.ai`) + `models.dev` |
+| `OPENCODE_PROVIDERS` / `OPENCODE_PROVIDER_ALIASES` | `bkit-cli.ts:43-74` | No hosts — the allowlist/alias mirror of the above; a parity test target, not an egress source |
+| `OPENCODE_PROVIDER_COLUMN` | `bkit-install.ts:320-334` | No hosts — same, third mirror |
+| MCP servers (github / linear) | `.bkit/templates/.mcp.json`, `.bkit/templates/.cursor/mcp.json`, inline in `renderOpencodeJson` `bkit-modules.ts:1649-1656` | **Yes** — `api.githubcopilot.com`, `mcp.linear.app`. Not a registry today; three hardcoded copies |
+| `ISSUE_TRACKERS` | `bkit-manifest.ts:71` | **Yes, indirectly** — `gh`/GraphQL egress to `github.com` / `linear.app`; already covered via the MCP hosts |
+| Agent-host modules (`claude`/`cursor`/`opencode`, `CLOUD_VARIANTS` `bkit-cli.ts:34`) | module set | **Yes** — `anthropic.com`, `claude.com`, `cursor.com`, `opencode.ai`. No table exists; needs a small one |
+| Package registries (`.npmrc` handling, `bkit-postinstall.ts:2057-2086`, `:420`) | — | **Yes** — `npmjs.com`, `npm.pkg.github.com` → `github.com`, `githubusercontent.com` |
+| `DEP_UPDATERS` / `RENOVATE_RUNNERS` | `bkit-manifest.ts:100`, `:132` | **No** — `developer.mend.io` / `depot.dev` egress happens in GitHub Actions runners, not in an agent session. Correctly absent today; do not add |
+| Docs hosts (`kimi.com`) | `settings.json` only | **No — not derivable.** Kimi's docs host is `kimi.com` while its API host is `api.moonshot.ai`. Must survive as an explicitly-declared non-derived entry or #376's WebFetch grant regresses |
+
+**Structural constraint that shapes every approach:** `bkit-modules.ts:62-64` already imports `resolveNetworkAllowlist` / `networkAllowlistBases` / `writeNetworkAllowlistArtifact` **from** `bkit-cloud-env.ts`. `bkit-cloud-env.ts` therefore cannot import `OPENCODE_PROVIDER_DEFAULTS` from `bkit-modules.ts` — that is a module cycle, and both symbols are module-init consts (top-level array spread), so the cycle would not be tolerable at runtime. Any derivation needs a **leaf** module both can import.
+
+**Other constraints verified:** `.cursor/hooks/guardrails.cjs` is written by `writeTier1` (`bkit-modules.ts:1272-1280`) with `format: "byte-equal-text"` in the manifest (`bkit-manifest.ts:267`) and is hash-gated twice, so any _per-consumer_ content in it breaks `bkit check`. `.cursor/allowlist.json` is **not** in the manifest — untracked, free to vary. `slop-scan.config.json:157` and `:175` carry per-symbol exemptions for `networkAllowlistBases` and `loadNetworkAllowlistBases`; refactors that rename or move them must move the exemption with them or `slop:delta` goes red.
+
+---
+
+## Approach A — Whole-registry derivation into a consumer-invariant shipped constant ⭐ Recommended
+
+**Summary.** Extract a leaf module (e.g. `.bkit/src/bkit-registry.ts`) holding `OPENCODE_PROVIDER_DEFAULTS` (moved, re-exported from `bkit-modules.ts` so no call site changes) plus two small new tables — MCP hosts and agent-host hosts — then compute `BKIT_SHIPPED_NETWORK_DOMAINS = [...NON_DERIVABLE_HOSTS, ...deriveEgressBases()]` over **every** registry entry, not the installed subset; point `renderCloudNetworkAllowlist` / `renderCursorNetworkAllowlist` at the union instead of `extractAllowedDomains`; empty `SHIPPED_NETWORK_BASES` in both `guardrails.cjs` copies and let `loadNetworkAllowlistBases` read `.cursor/allowlist.json` alone.
+
+Derivation rule: `new URL(baseURL).hostname` → drop loopback/private/non-`https` → registrable base via the existing `expandAllowedDomains` normalisation. Entries with `baseURL: ""` (`opencode-zen`, `opencode-go`) declare an explicit `egressHosts: ["opencode.ai", "models.dev"]` field on the registry entry — same shape as the existing optional `providerId` / `builtin` fields. `NON_DERIVABLE_HOSTS` holds exactly what no `baseURL` can yield: `kimi.com` (docs host), `githubusercontent.com`, `npmjs.com`.
+
+- **Complexity: MEDIUM.** One file move + re-export, one ~30-line derive function, two one-line call-site swaps in the cloud renderers, two 14-line deletions in the hooks. No codegen, no new runtime channel, no new artifact.
+- **Extensibility.** Adding a provider = one registry entry; every one of the four copies updates or is already empty. Adding a new _kind_ of provider (a future MCP server, a new agent host) = one row in the corresponding table. The hook needs no edit ever again.
+- **Risk.** Emptying the hook's fallback means a consumer who deletes or gitignores `.cursor/allowlist.json` gets "ask on every `curl`" — noisy but fail-safe, and `hostMatchesBase` / `curlWgetHostAllowed` (`guardrails.cjs:172-192`) are unchanged. Second risk: the `bkit-modules.ts` → `bkit-registry.ts` extraction touches a heavily-tested file; mitigated by re-exporting the symbol under its current name. Third: the derived set adds ~5 domains, so every hash in `.bkit/version` touching `settings.json` and both `guardrails.cjs` copies needs one regeneration (`bkit install` does it).
+- **Maintenance.** Lowest of the three — the hand-sync surface goes from four copies to one table. Two parity tests (registry ⊆ derived bases; `OPENCODE_PROVIDERS` ≡ `OPENCODE_PROVIDER_DEFAULTS` keys) close the gap that "no test references `SHIPPED_NETWORK_BASES`" left open.
+- **Reuse vs new.** Reuses `expandAllowedDomains`, `networkAllowlistBases`, `resolveNetworkAllowlist`, `writeNetworkAllowlistArtifact`, and the existing `.cursor/allowlist.json` runtime channel unchanged. Net-new: one leaf module, two small tables, one derive function.
+- **Note on prune.** Because the derived set is consumer-invariant, `enrichClaudeSettingsWebFetch`'s additive-only behaviour stops being a drift _amplifier_: the list changes only when bkit ships or drops a provider, i.e. at bkit-version scale, not per-consumer. Prune becomes a nice-to-have that can ship alongside (record the written set in `.bkit/version`, prune the difference on the next run) rather than a blocker. That is the central reason to prefer A over B.
+
+## Approach B — Installed-set derivation (the issue body's literal proposal)
+
+**Summary.** Same derivation, but keyed on `bkit.opencodeProviders` (read via `detectOpencodeProviders`, `bkit-install.ts:1698-1716`) so only _installed_ providers contribute. `BKIT_SHIPPED_NETWORK_DOMAINS` stops being a constant and becomes `resolveShippedNetworkDomains(cwd)`; the derived set varies per consumer.
+
+- **Complexity: HIGH.** Every consumer of the constant becomes `cwd`-parameterised, including test assertions at `bkit-cloud-env.test.ts:405-415`. Critically, a per-consumer set **cannot** feed either hash-gated copy: `.bkit/templates/.claude/settings.json:10-28` and both `guardrails.cjs` copies must be emptied outright (not derived), which is the same objection that killed rejected-alternative 1 in #376. And `enrichClaudeSettingsWebFetch` must gain a prune pass **in the same change** (comment 2), which needs a new record of bkit-written entries — a `.bkit/version` field or sidecar — since nothing in `permissions.allow` marks provenance.
+- **Extensibility.** Best _runtime_ reactivity: `bkit install --opencode=zai` adds `z.ai` and a later uninstall removes it. But every future surface that wants the list inherits the `cwd` dependency and the prune obligation.
+- **Risk.** Prune is the failure mode: removing a `WebFetch(domain:…)` a consumer added by hand silently narrows their agent's reach — the exact reason #394 refused to guess. A wrong prune is a silent capability loss with no error.
+- **Maintenance.** Highest. Two derived sets to reason about (installed vs shipped), a provenance record to keep honest across install/upgrade/uninstall, and a permanent per-consumer variance in a codebase whose drift detection is hash-based.
+- **Reuse vs new.** Reuses the same helpers as A, but adds net-new provenance state and a prune path, plus `cwd` threading through ~6 call sites.
+- **Worth noting the security argument is thin:** the list gates _outbound fetches the consumer's own agent initiates_, not an inbound surface. Carrying `groq.com` on a repo that installed `zai` costs approximately nothing.
+
+## Approach C — Keep the copies, forbid drift by parity test
+
+**Summary.** No derivation. Add `groq.com`, `cerebras.ai`, `openrouter.ai`, `githubcopilot.com`, `models.dev` to all four copies by hand, switch the two cloud renderers to the union (the one-line #381 defect fix), and add tests that (a) every `OPENCODE_PROVIDER_DEFAULTS` remote `baseURL` host has a matching base in `BKIT_SHIPPED_NETWORK_DOMAINS`, (b) `SHIPPED_NETWORK_BASES` parsed out of both `guardrails.cjs` files equals `BKIT_SHIPPED_NETWORK_DOMAINS`, (c) the `settings.json` template's `WebFetch(domain:…)` set covers the same bases.
+
+- **Complexity: LOW.** Smallest diff by a wide margin. Half a day. No module extraction, no cycle to dodge, no hash churn beyond the added domains.
+- **Extensibility.** Poor — adding a provider still means editing four files; the tests turn a silent degradation into a red build, which is a real improvement but not what the issue asks for ("auto-derive … so the guardrail copy stops being hand-maintained").
+- **Risk.** Test (b) must regex-parse a `.cjs` source (the hook exports nothing and the existing `bkit-cursor-guardrails.integration.test.ts` spawns it as a subprocess) — brittle to reformatting. Low blast radius if it breaks; it fails loudly.
+- **Maintenance.** Ongoing four-file edit per provider, forever, plus the parser.
+- **Reuse vs new.** Purely additive tests over existing code; zero new modules.
+- **Standalone verdict:** does not satisfy the issue. Its real value is as the **first commit of A** — land the parity tests and the cloud-renderer union first (they are independently correct and prove the target set), then let A delete the copies the tests were guarding.
+
+---
+
+## Decisions
+
+<!-- prettier-ignore -->
+| Decided | Alternatives | Why |
+| --- | --- | --- |
+| Approach A — whole-registry derivation into a consumer-invariant constant | B (installed-set), C (parity tests only) | A satisfies "auto-derive from the registry" and "all providers" while staying compatible with bkit's hash-gated drift detection; B forces per-consumer variance into surfaces that #376 already ruled must stay consumer-invariant, and drags a mandatory prune with it |
+| Extract a leaf `bkit-registry.ts`; re-export `OPENCODE_PROVIDER_DEFAULTS` from `bkit-modules.ts` | Derive inside `bkit-modules.ts`; lazy/function-level import to tolerate a cycle | `bkit-modules.ts:62-64` already imports from `bkit-cloud-env.ts`; both symbols are module-init consts, so a cycle is not survivable. Re-export keeps ~20 existing call sites and their tests untouched |
+| Derivation covers `OPENCODE_PROVIDER_DEFAULTS` + MCP hosts + agent-host hosts + package registries | opencode providers only (issue body) | Comment 3 widens scope to all providers; `api.githubcopilot.com` and `models.dev` are live gaps that opencode-only derivation would not close |
+| `DEP_UPDATERS` / `RENOVATE_RUNNERS` excluded | Include `developer.mend.io`, `depot.dev` | Their egress happens on GitHub Actions runners, not in an agent session; they are correctly absent today and adding them widens the allowlist for no reachable benefit |
+| Keep an explicit `NON_DERIVABLE_HOSTS` list (`kimi.com`, `githubusercontent.com`, `npmjs.com`) | Derive everything | Kimi's docs host (`kimi.com`) is unreachable from its API `baseURL` (`api.moonshot.ai`); dropping it silently regresses the #376 WebFetch grant |
+| Emit **both** the registrable base and the full API host from the derivation | base only (issue body) | Base + `*.` is right for Claude/OpenCode/allowlist.json, but `renderCursorNetworkAllowlist` deliberately does **not** wildcard-expand (`bkit-cloud-env.ts:641-645`), so a bare `z.ai` there may not cover `api.z.ai`. Cursor's narrow list wants the exact host |
+| Empty `SHIPPED_NETWORK_BASES` in both `guardrails.cjs` copies; rely on `.cursor/allowlist.json` | Build-time codegen of the constant into the template; leave hand-synced | The artifact is written on every cursor install (`bkit-modules.ts:1336`) and upgrade (`bkit-install.ts:2598`) — i.e. exactly when the hook exists. Missing file degrades to "ask on everything", which is fail-safe. Codegen is the fallback if that noise is judged unacceptable |
+| Switch `renderCloudNetworkAllowlist` / `renderCursorNetworkAllowlist` off `extractAllowedDomains` onto the union | leave as-is and only fix the shipped constant | This is the literal #381 bug: the cloud paste list currently carries zero tooling/provider hosts. Fixing the constant alone changes nothing for cloud egress |
+| Prune of `enrichClaudeSettingsWebFetch` ships as a follow-on, recorded via `.bkit/version` | prune blocks this issue (comment 2); no prune at all | Under A the derived set is consumer-invariant, so auto-derivation no longer amplifies the drift — the precondition behind "a prune pass should land with this issue" is removed. Under B it stays a hard blocker |
+| Land C's parity tests + cloud-renderer union as the first commit of A | single big-bang change | The tests independently pin the target set and catch the five currently-missing domains before any refactor moves code; `slop-scan.config.json:157`/`:175` exemptions also need to travel with the symbols, and a staged landing makes that visible |

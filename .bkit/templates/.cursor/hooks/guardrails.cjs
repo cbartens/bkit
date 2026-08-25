@@ -9,33 +9,39 @@
 // Output: JSON `{ permission: "allow"|"ask"|"deny", user_message?, agent_message? }`
 // Exit 0 always on a decided permission. failClosed:true in hooks.json blocks on crash.
 // Fail-open: a single top-level catch allows on unexpected errors (same shape as gateguard).
+//
+// OWNERSHIP: everything between the markers below is bkit-managed and is
+// overwritten on every `bkit install` / `bkit upgrade`. It is a pure decision
+// engine only — no stdin read, no stdout write, no top-level invocation — so two
+// emitters (bkit's and yours) can never collide into one unparseable stdout
+// blob. Add your own gates in the driver that follows the managed block: call
+// `bkitGuardrails(payload)`, fold in your own checks, and call `emit()` once.
 
 "use strict";
 
-const fs = require("node:fs");
+// bkit:start
 
-function emit(decision) {
-  process.stdout.write(JSON.stringify(decision) + "\n");
-}
+const fs = require("node:fs");
+const path = require("node:path");
 
 function allow() {
-  emit({ permission: "allow" });
+  return { permission: "allow" };
 }
 
 function ask(userMessage, agentMessage) {
-  emit({
+  return {
     permission: "ask",
     user_message: userMessage,
     agent_message: agentMessage ?? userMessage,
-  });
+  };
 }
 
 function deny(userMessage, agentMessage) {
-  emit({
+  return {
     permission: "deny",
     user_message: userMessage,
     agent_message: agentMessage ?? userMessage,
-  });
+  };
 }
 
 /** @param {string} cmd */
@@ -68,7 +74,8 @@ function decideShell(cmd) {
     );
   }
 
-  // Ask — matches Claude ask list
+  // Ask — privileged / destructive shell. curl/wget: ask UNLESS the URL host is
+  // on the shared network allowlist (shipped defaults + `.cursor/allowlist.json`).
   const askPatterns = [
     /\bsudo\b/,
     /\bbrew\s+install\b/,
@@ -93,7 +100,97 @@ function decideShell(cmd) {
     }
   }
 
+  if (/\bcurl\b/.test(c) || /\bwget\b/.test(c)) {
+    if (curlWgetHostAllowed(c)) return allow();
+    return ask(
+      "bkit Cursor guardrails: confirm outbound curl/wget (host not on network allowlist).",
+      `Command requires confirmation: ${c}`,
+    );
+  }
+
   return allow();
+}
+
+/** Tooling-only fallback — keep in sync with BKIT_SHIPPED_NETWORK_DOMAINS (no stack hosts). */
+const SHIPPED_NETWORK_BASES = [
+  "github.com",
+  "githubusercontent.com",
+  "anthropic.com",
+  "claude.com",
+  "cursor.com",
+  "linear.app",
+  "opencode.ai",
+  "ollama.com",
+  "openrouter.ai",
+  "npmjs.com",
+];
+
+function loadNetworkAllowlistBases() {
+  const bases = new Set(SHIPPED_NETWORK_BASES);
+  try {
+    const p = path.join(process.cwd(), ".cursor", "allowlist.json");
+    if (fs.existsSync(p)) {
+      const doc = JSON.parse(fs.readFileSync(p, "utf8"));
+      const domains = Array.isArray(doc.domains) ? doc.domains : [];
+      for (const d of domains) {
+        const b = String(d)
+          .replace(/^\*\./, "")
+          .trim();
+        if (b) bases.add(b);
+      }
+    }
+  } catch {
+    /* shipped fallback only — a corrupt/absent allowlist must not crash the
+       editor session; SHIPPED_NETWORK_BASES above is the correct fallback */
+  }
+  return bases;
+}
+
+/**
+ * Pull the HOST out of every `http(s)://…` URL in a command.
+ *
+ * Deliberately strict: only an explicit scheme counts. A scheme-less token
+ * cannot be told apart from a local path (`./deploy.sh`, `pkg.json`) without
+ * guessing, and guessing here converts an ask into an allow.
+ */
+function extractUrlHosts(cmd) {
+  const hosts = [];
+  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
+  let m;
+  while ((m = re.exec(cmd)) !== null) {
+    // Authority ends at the first /, ? or #.
+    let authority = m[1].split(/[/?#]/)[0];
+    // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
+    const at = authority.lastIndexOf("@");
+    if (at >= 0) authority = authority.slice(at + 1);
+    // Strip port.
+    authority = authority.split(":")[0];
+    if (authority) hosts.push(authority.toLowerCase());
+  }
+  return hosts;
+}
+
+/** Suffix match on host labels — `github.com` covers `api.github.com`, not `github.com.evil.tld`. */
+function hostMatchesBase(host, base) {
+  const b = String(base).toLowerCase();
+  return host === b || host.endsWith("." + b);
+}
+
+/**
+ * Allow curl/wget only when EVERY URL in the command targets an allowlisted host.
+ *
+ * Matching the allowlist against the whole command string (an `includes` over
+ * `cmd`) is trivially defeated: `curl https://evil.example/x?src=github.com`,
+ * `curl https://github.com.attacker.io/`, or any request carrying an
+ * allowlisted domain in a header or query param all read as allowed. The host
+ * is the only part of the command that decides where the bytes go, so it is the
+ * only part consulted. No parseable URL, or any host off the list → ask.
+ */
+function curlWgetHostAllowed(cmd) {
+  const hosts = extractUrlHosts(cmd);
+  if (hosts.length === 0) return false;
+  const bases = loadNetworkAllowlistBases();
+  return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }
 
 /** @param {string} filePath */
@@ -121,12 +218,12 @@ function decideRead(filePath) {
   return allow();
 }
 
-function main() {
-  const raw = fs.readFileSync(0, "utf8").trim();
-  if (!raw) return allow();
-
-  const payload = JSON.parse(raw);
-
+/**
+ * Entry point — pure. Takes the parsed hook payload, returns a decision object
+ * `{ permission, user_message?, agent_message? }`, or `null` when bkit has no
+ * opinion on this call (the caller decides what a no-opinion result means).
+ */
+function bkitGuardrails(payload) {
   // beforeShellExecution: { command }
   if (
     typeof payload.command === "string" &&
@@ -155,11 +252,33 @@ function main() {
     return decideRead(payload.path);
   }
 
-  return allow();
+  return null;
+}
+
+// bkit:end
+
+// --- driver (yours) ---------------------------------------------------------
+// Reads stdin, calls into the managed block, and emits EXACTLY ONE JSON document.
+// Add your own gates here: inspect the payload, and either return your own
+// decision or defer to bkit's. Cursor discards the whole hook's output if two
+// emitters both write to stdout.
+
+function emit(decision) {
+  process.stdout.write(JSON.stringify(decision) + "\n");
+}
+
+function main() {
+  const raw = fs.readFileSync(0, "utf8").trim();
+  if (!raw) return emit({ permission: "allow" });
+
+  const payload = JSON.parse(raw);
+  const decision = bkitGuardrails(payload);
+
+  emit(decision ?? { permission: "allow" });
 }
 
 try {
   main();
 } catch {
-  allow();
+  emit({ permission: "allow" });
 }

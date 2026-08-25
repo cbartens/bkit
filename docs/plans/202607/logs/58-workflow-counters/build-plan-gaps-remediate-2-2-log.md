@@ -38,14 +38,15 @@ DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="d
 [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
 ```
 
-| #   | Step / block                                                                                 | Lines (post-edit; orig in parens) |
-| --- | -------------------------------------------------------------------------------------------- | --------------------------------- |
-| 1   | Step 3 "Run verbatim" — `debug-input-${DEBUG_ATTEMPT}.md` `[live=off]`                       | `:421` → `:433`                   |
-| 2   | Step 4.2 CI-failure — `debug-context-ci-${DEBUG_ATTEMPT}.md`                                 | `:553` → `:568`                   |
-| 3   | Step 4.3 diff — `debug-context-diff-${DEBUG_ATTEMPT}.md`                                     | `:576` → `:594`                   |
-| 4   | Step 4.4 local-tests — `debug-context-tests-local-${DEBUG_ATTEMPT}.md`                       | `:596` → `:617`                   |
-| 5   | Step 4.5 e2e — `debug-context-tests-e2e-${DEBUG_ATTEMPT}.md` / `debug-e2e-${DEBUG_ATTEMPT}/` | `:608` → `:632`                   |
-| 6   | Step 4.7 runtime-fetch — `debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`                  | `:649` → `:676`                   |
+<!-- prettier-ignore -->
+| # | Step / block | Lines (post-edit; orig in parens) |
+| --- | --- | --- |
+| 1 | Step 3 "Run verbatim" — `debug-input-${DEBUG_ATTEMPT}.md` `[live=off]` | `:421` → `:433` |
+| 2 | Step 4.2 CI-failure — `debug-context-ci-${DEBUG_ATTEMPT}.md` | `:553` → `:568` |
+| 3 | Step 4.3 diff — `debug-context-diff-${DEBUG_ATTEMPT}.md` | `:576` → `:594` |
+| 4 | Step 4.4 local-tests — `debug-context-tests-local-${DEBUG_ATTEMPT}.md` | `:596` → `:617` |
+| 5 | Step 4.5 e2e — `debug-context-tests-e2e-${DEBUG_ATTEMPT}.md` / `debug-e2e-${DEBUG_ATTEMPT}/` | `:608` → `:632` |
+| 6 | Step 4.7 runtime-fetch — `debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md` | `:649` → `:676` |
 
 Pre-existing canonical form (originally `:678`, now `:705`, Step 4.9 status-update/artifact-glob) **not** touched — already right; 6 sites now match.
 
@@ -89,16 +90,17 @@ Verified: `npx vitest run .bkit/src/bkit-counter-prose-audit.test.ts -t "off-by-
 
 ## Verification run this session
 
-| Command                       | Result                                                                                                                                                                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm typecheck`              | clean                                                                                                                                                                                                                         |
-| `pnpm format:check`           | clean after formatting this log (prettier flagged only this new log mid-session)                                                                                                                                              |
-| `pnpm slop:delta`             | `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` — OK                                                                                                                                                        |
-| `pnpm lint:prose`             | 1 pre-existing warning at `docs/architecture.md:156` (not touched, same as attempt 1)                                                                                                                                         |
-| `pnpm test`                   | 2254 passed (up from 2251 — 3 new off-by-one regression tests), 3 failed (same expected-RED `T5.1: no bare *_ATTEMPT token in non-fenced prose` — out of scope, WS-4 in sub-plan 3), 2 skipped, 1 todo. No other regressions. |
-| `npx --yes bats tests/*.bats` | 68/68 green                                                                                                                                                                                                                   |
-| `git status --short`          | only `.bkit/src/bkit-counter-prose-audit.test.ts`, `.bkit/workflows/bkit-debug.md`, this log modified/added; no mirror drift                                                                                                  |
-| —                             | No `pnpm bkit install`. Fixture proof in scratch-dir `status.jsonl` — nothing to restore                                                                                                                                      |
+<!-- prettier-ignore -->
+| Command | Result |
+| --- | --- |
+| `pnpm typecheck` | clean |
+| `pnpm format:check` | clean after formatting this log (prettier flagged only this new log mid-session) |
+| `pnpm slop:delta` | `added 0, resolved 0, worsened 0; net findings 0, net score 0.00` — OK |
+| `pnpm lint:prose` | 1 pre-existing warning at `docs/architecture.md:156` (not touched, same as attempt 1) |
+| `pnpm test` | 2254 passed (up from 2251 — 3 new off-by-one regression tests), 3 failed (same expected-RED `T5.1: no bare *_ATTEMPT token in non-fenced prose` — out of scope, WS-4 in sub-plan 3), 2 skipped, 1 todo. No other regressions. |
+| `npx --yes bats tests/*.bats` | 68/68 green |
+| `git status --short` | only `.bkit/src/bkit-counter-prose-audit.test.ts`, `.bkit/workflows/bkit-debug.md`, this log modified/added; no mirror drift |
+| — | No `pnpm bkit install`. Fixture proof in scratch-dir `status.jsonl` — nothing to restore |
 
 ## Re-ticked boxes (evidence-gated)
 

@@ -12,7 +12,58 @@
 // "Consumer value wins" principle (DE-4): we never remove a key whose value
 // the consumer has modified from the bkit default.
 import * as fs from "node:fs";
-import { getManagedPackageJsonKeys } from "./bkit-manifest.js";
+import * as path from "node:path";
+import { getManagedPackageJsonKeys, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, TYPECHECK_NO_TSCONFIG_SCRIPT, } from "./bkit-manifest.js";
+/**
+ * Re-point a superseded bkit `lint:prose` at the current default.
+ *
+ * Install does this via runLintModule's `ensurePackageJsonScripts` legacyValues
+ * map, but install and upgrade are SEPARATE engines: upgrade is a manifest-driven
+ * template render that never touches package.json scripts. `bkit upgrade --latest`
+ * is the documented consumer path, so without this the corrected script would
+ * reach only consumers who happened to re-run `bkit install --tooling`.
+ * (Same both-engines requirement as the debug-fetch migration, #334.)
+ *
+ * REPLACE-ONLY — never creates the key. Upgrade must not force-create a script
+ * for a module the consumer never installed.
+ *
+ * Returns a log line when it acted, else null. Dry-run reports without writing.
+ */
+export function repointLegacyLintProse(cwd, dryRun) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return null;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    // Parse failure is a REPORTED state, not a swallowed one: upgrade must not
+    // abort half-finished over an unparseable consumer file (detectMalformedPackageJson
+    // is the surface that judges it), but a silent bail would leave the consumer
+    // wondering why the prose gate stayed on the superseded script.
+    let pkg = null;
+    let parseError = null;
+    try {
+        pkg = JSON.parse(raw);
+    }
+    catch (err) {
+        parseError = err.message;
+    }
+    if (parseError !== null || pkg === null) {
+        console.warn(`[bkit] lint:prose re-point skipped — package.json is not parseable JSON: ${parseError}`);
+        return null;
+    }
+    const scripts = pkg.scripts;
+    if (!scripts || !Object.prototype.hasOwnProperty.call(scripts, "lint:prose"))
+        return null;
+    if (!LEGACY_LINT_PROSE_SCRIPTS.includes(scripts["lint:prose"]))
+        return null;
+    if (!dryRun) {
+        scripts["lint:prose"] = LINT_PROSE_SCRIPT;
+        // Preserve indent style and trailing newline (mirrors ensurePackageJsonScripts).
+        const indentMatch = raw.match(/\n([ \t]+)"/);
+        const indent = indentMatch ? indentMatch[1] : "  ";
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + (raw.endsWith("\n") ? "\n" : ""), "utf-8");
+    }
+    return "upgrade: lint:prose re-pointed from a superseded bkit default (prose gate no longer self-disables in worktrees/fresh checkouts)";
+}
 // ---------------------------------------------------------------------------
 // stripManagedKeys — main entry point
 // ---------------------------------------------------------------------------
@@ -53,12 +104,26 @@ export function stripManagedKeys(modules = [], dryRun = false) {
     const pkgScripts = pkg.scripts ?? {};
     const pkgDevDeps = pkg.devDependencies ?? {};
     let changed = false;
+    // A superseded bkit default is still bkit's own script, so uninstall must
+    // reclaim it. Without this, a consumer who installed before the default
+    // changed and never re-ran install would keep an orphaned script after
+    // uninstall, because the byte-compare below only knew the CURRENT default.
+    //
+    // `typecheck` is here for a different reason: it has TWO current defaults, not a
+    // superseded one. runLintModule seeds `tsc --noEmit` in a repo with a tsconfig.json
+    // and the skip-noop in a repo without, so which value is bkit's own depends on the
+    // repo. Matching only the manifest string orphaned the script every time bkit had
+    // seeded the noop.
+    const legacyScriptValues = {
+        "lint:prose": LEGACY_LINT_PROSE_SCRIPTS,
+        typecheck: [TYPECHECK_NO_TSCONFIG_SCRIPT],
+    };
     // Scripts
     for (const [name, defaultValue] of Object.entries(defaultScripts)) {
         if (!Object.prototype.hasOwnProperty.call(pkgScripts, name))
             continue;
         const currentValue = pkgScripts[name];
-        if (currentValue === defaultValue) {
+        if (currentValue === defaultValue || (legacyScriptValues[name] ?? []).includes(currentValue)) {
             result.removedScripts.push(name);
             if (!dryRun) {
                 // eslint-disable-next-line @typescript-eslint/no-dynamic-delete

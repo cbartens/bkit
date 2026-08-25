@@ -270,10 +270,12 @@ export function managedVersionMarker(version: string): string {
  * Insert (or replace) the managed-version marker immediately after the rendered
  * file's frontmatter fence, always followed by exactly one blank line. Idempotent:
  * any existing marker is stripped first and leading body blanks are collapsed, so
- * stamping the same content twice yields identical bytes. Falls back to a top
- * prepend when the content has no frontmatter (e.g. cursor/opencode commands whose
- * transforms strip the frontmatter) — there too the marker is followed by a blank
- * line so the body never butts up against it.
+ * stamping the same content twice yields identical bytes. With no frontmatter (e.g.
+ * cursor/opencode commands whose transforms strip the frontmatter), the marker sinks
+ * below the content's first Markdown heading instead, so it never becomes the
+ * IDE-visible first line (#386); falls back to a top prepend only when there is no
+ * heading either — there too the marker is followed by a blank line so the body
+ * never butts up against it.
  */
 export function stampManagedVersion(content: string, version: string): string {
   const stripped = content.replace(MANAGED_MARKER_LINE_RE, "");
@@ -283,6 +285,16 @@ export function stampManagedVersion(content: string, version: string): string {
     const cut = fm[0].length;
     const body = stripped.slice(cut).replace(/^\n+/, "");
     return stripped.slice(0, cut) + marker + "\n\n" + body;
+  }
+  // No frontmatter — the cursor/opencode command transforms remove it (applyT1 /
+  // applyOpencodeCommand). A marker on line 1 becomes the IDE-visible command
+  // description (#386), so sink it below the first heading when there is one.
+  const heading = stripped.match(/^#{1,6} .*$/m);
+  if (heading?.index !== undefined) {
+    const cut = heading.index + heading[0].length;
+    const head = stripped.slice(0, cut);
+    const rest = stripped.slice(cut).replace(/^\n+/, "");
+    return rest ? `${head}\n\n${marker}\n\n${rest}` : `${head}\n\n${marker}\n`;
   }
   return marker + "\n\n" + stripped.replace(/^\n+/, "");
 }

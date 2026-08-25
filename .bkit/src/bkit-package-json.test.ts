@@ -3,7 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stripManagedKeys } from "./bkit-package-json";
+import { stripManagedKeys, repointLegacyLintProse } from "./bkit-package-json";
+import { LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS } from "./bkit-manifest";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -97,6 +98,40 @@ describe("stripManagedKeys — default script removal", () => {
     const scripts = pkg.scripts as Record<string, string>;
     expect(scripts).not.toHaveProperty("prepare");
     expect(scripts).toHaveProperty("build"); // consumer script preserved
+  });
+
+  it("removes lint:prose when value matches the CURRENT bkit default", () => {
+    writePkg({ name: "test", scripts: { "lint:prose": LINT_PROSE_SCRIPT, build: "tsc" } });
+    const result = stripManagedKeys(["lint"]);
+    expect(result.removedScripts).toContain("lint:prose");
+    const scripts = readPkg().scripts as Record<string, string>;
+    expect(scripts).not.toHaveProperty("lint:prose");
+    expect(scripts).toHaveProperty("build"); // consumer script preserved
+  });
+
+  it("removes lint:prose when value matches a SUPERSEDED bkit default", () => {
+    // A consumer who installed before the default changed and never re-ran
+    // install still has bkit's own script — uninstall must reclaim it, not
+    // orphan it as though they had customised it.
+    for (const legacy of LEGACY_LINT_PROSE_SCRIPTS) {
+      writePkg({ name: "test", scripts: { "lint:prose": legacy, build: "tsc" } });
+      const result = stripManagedKeys(["lint"]);
+      expect(result.removedScripts).toContain("lint:prose");
+      expect(result.preservedScripts).not.toContain("lint:prose");
+      const scripts = readPkg().scripts as Record<string, string>;
+      expect(scripts).not.toHaveProperty("lint:prose");
+      expect(scripts).toHaveProperty("build");
+    }
+  });
+
+  it("preserves a consumer-customised lint:prose matching neither current nor legacy", () => {
+    writePkg({ name: "test", scripts: { "lint:prose": "vale --glob='*.md' ." } });
+    const result = stripManagedKeys(["lint"]);
+    expect(result.preservedScripts).toContain("lint:prose");
+    expect(result.removedScripts).not.toContain("lint:prose");
+    expect((readPkg().scripts as Record<string, string>)["lint:prose"]).toBe(
+      "vale --glob='*.md' .",
+    );
   });
 });
 
@@ -276,5 +311,72 @@ describe("stripManagedKeys — manifest-driven key list", () => {
     expect(result.removedScripts).toContain("lint:slop");
     expect(result.removedScripts).toContain("typecheck");
     expect(result.removedScripts).not.toContain("prepare");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// repointLegacyLintProse — the upgrade-engine half of the lint:prose correction
+//
+// install and upgrade are SEPARATE engines. runLintModule handles install;
+// upgrade never touches package.json scripts, so without this helper the
+// documented `bkit upgrade --latest` path would leave a consumer on the
+// lint:prose that silently self-disables in worktrees.
+// ---------------------------------------------------------------------------
+
+describe("repointLegacyLintProse", () => {
+  const LEGACY = LEGACY_LINT_PROSE_SCRIPTS[0];
+
+  it("re-points a superseded bkit default to the current one", () => {
+    writePkg({ name: "t", scripts: { "lint:prose": LEGACY, build: "tsc" } });
+    const msg = repointLegacyLintProse(tmpDir, false);
+    expect(msg).toContain("re-pointed");
+    const scripts = readPkg().scripts as Record<string, string>;
+    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
+    expect(scripts.build).toBe("tsc"); // consumer script untouched
+  });
+
+  it("is replace-only — never creates lint:prose when absent", () => {
+    // Upgrade must not force-create a script for a module the consumer never
+    // installed (same rule that keeps upgrade from seeding opt-in module files).
+    writePkg({ name: "t", scripts: { build: "tsc" } });
+    expect(repointLegacyLintProse(tmpDir, false)).toBeNull();
+    expect(readPkg().scripts).not.toHaveProperty("lint:prose");
+  });
+
+  it("leaves a consumer-customised lint:prose alone", () => {
+    writePkg({ name: "t", scripts: { "lint:prose": "my-own-linter" } });
+    expect(repointLegacyLintProse(tmpDir, false)).toBeNull();
+    expect((readPkg().scripts as Record<string, string>)["lint:prose"]).toBe("my-own-linter");
+  });
+
+  it("is idempotent — a script already at the current default is a no-op", () => {
+    writePkg({ name: "t", scripts: { "lint:prose": LINT_PROSE_SCRIPT } });
+    expect(repointLegacyLintProse(tmpDir, false)).toBeNull();
+  });
+
+  it("dryRun reports without writing", () => {
+    writePkg({ name: "t", scripts: { "lint:prose": LEGACY } });
+    expect(repointLegacyLintProse(tmpDir, true)).toContain("re-pointed");
+    expect((readPkg().scripts as Record<string, string>)["lint:prose"]).toBe(LEGACY);
+  });
+
+  it("returns null on a missing or malformed package.json instead of throwing", () => {
+    // Never abort a half-finished upgrade over an unparseable consumer file.
+    fs.rmSync(path.join(tmpDir, "package.json"), { force: true });
+    expect(repointLegacyLintProse(tmpDir, false)).toBeNull();
+    fs.writeFileSync(path.join(tmpDir, "package.json"), "{ not json", "utf-8");
+    expect(repointLegacyLintProse(tmpDir, false)).toBeNull();
+  });
+
+  it("preserves 4-space indent style", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "t", scripts: { "lint:prose": LEGACY } }, null, 4) + "\n",
+      "utf-8",
+    );
+    repointLegacyLintProse(tmpDir, false);
+    const raw = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
+    expect(raw).toContain('\n    "name"');
+    expect(raw.endsWith("\n")).toBe(true);
   });
 });

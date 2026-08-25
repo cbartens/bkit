@@ -566,7 +566,7 @@ describe("#255 follow-up — upgrade does not force-create uninstalled host/tool
 // ---------------------------------------------------------------------------
 // #281 Task 3 — upgrade re-renders ALL installed provider blocks into opencode.json
 //
-// When multiple providers are installed (e.g. nvidia + ollama-local), `bkit upgrade`
+// When multiple providers are installed (e.g. openrouter + ollama), `bkit upgrade`
 // must re-render and reconverge EVERY provider's block into opencode.json — not just
 // the active one. This ensures template changes (new keys, updated placeholders) reach
 // all installed providers' blocks on every upgrade.
@@ -591,7 +591,7 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
     });
   }
 
-  it("upgrade reconverges ALL provider blocks — nvidia (active) + ollama-local (secondary)", () => {
+  it("upgrade reconverges ALL provider blocks — openrouter (active) + ollama (secondary)", () => {
     if (!fs.existsSync(tsxBin)) return; // CI without devDeps
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -600,11 +600,11 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
       "utf-8",
     );
 
-    // Install first provider (ollama-local) — becomes initial active
-    expect(runCli(["install", "--opencode=ollama-local", "--tracker=github"]).status).toBe(0);
+    // Install first provider (ollama) — becomes initial active
+    expect(runCli(["install", "--opencode=ollama", "--tracker=github"]).status).toBe(0);
 
-    // Install second provider (nvidia) — becomes the active provider (last installed)
-    expect(runCli(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    // Install second provider (openrouter) — becomes the active provider (last installed)
+    expect(runCli(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
 
     const opencodePath = path.join(tmpDir, ".opencode", "opencode.json");
     expect(fs.existsSync(opencodePath)).toBe(true);
@@ -613,40 +613,40 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
     const afterInstall = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
       provider?: Record<string, unknown>;
     };
-    expect(afterInstall.provider!["nvidia"]).toBeDefined();
-    expect(afterInstall.provider!["ollama-local"]).toBeDefined();
+    expect(afterInstall.provider!["openrouter"]).toBeDefined();
+    expect(afterInstall.provider!["ollama"]).toBeDefined();
 
-    // Simulate template drift for the NON-active (ollama-local) block:
+    // Simulate template drift for the NON-active (ollama) block:
     // remove its `npm` field so we can verify upgrade reconverges it.
     const drifted = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
       provider?: Record<string, Record<string, unknown>>;
     };
-    delete drifted.provider!["ollama-local"]!["npm"];
+    delete drifted.provider!["ollama"]!["npm"];
     fs.writeFileSync(opencodePath, JSON.stringify(drifted, null, 2) + "\n", "utf-8");
 
     // Confirm the npm field is gone before upgrade
     const withDrift = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
       provider?: Record<string, Record<string, unknown>>;
     };
-    expect(withDrift.provider!["ollama-local"]!["npm"]).toBeUndefined();
+    expect(withDrift.provider!["ollama"]!["npm"]).toBeUndefined();
 
-    // Run upgrade — Task 3 should reconverge the ollama-local block
+    // Run upgrade — Task 3 should reconverge the ollama block
     const upgrade = runCli(["upgrade", "--auto-apply"]);
     expect(upgrade.status).toBe(0);
 
-    // After upgrade: the ollama-local block must have its `npm` field restored (re-rendered)
+    // After upgrade: the ollama block must have its `npm` field restored (re-rendered)
     const afterUpgrade = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
       provider?: Record<string, Record<string, unknown>>;
     };
     expect(afterUpgrade.provider).toBeDefined();
-    expect(afterUpgrade.provider!["nvidia"]).toBeDefined();
-    expect(afterUpgrade.provider!["ollama-local"]).toBeDefined();
+    expect(afterUpgrade.provider!["openrouter"]).toBeDefined();
+    expect(afterUpgrade.provider!["ollama"]).toBeDefined();
 
-    // The reconverged ollama-local block must carry the template-rendered `npm` field
-    expect(afterUpgrade.provider!["ollama-local"]!["npm"]).toBe("@ai-sdk/openai-compatible");
+    // The reconverged ollama block must carry the template-rendered `npm` field
+    expect(afterUpgrade.provider!["ollama"]!["npm"]).toBe("@ai-sdk/openai-compatible");
 
-    // The nvidia (active) block must also be intact (handled by the candidates walk)
-    expect(afterUpgrade.provider!["nvidia"]!["npm"]).toBe("@ai-sdk/openai-compatible");
+    // The openrouter (active) block must also be intact (handled by the candidates walk)
+    expect(afterUpgrade.provider!["openrouter"]!["npm"]).toBe("@ai-sdk/openai-compatible");
   });
 });
 
@@ -675,7 +675,7 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     });
   }
 
-  it("bkit check exits 0 after installing two providers (nvidia + ollama-local)", () => {
+  it("bkit check exits 0 after installing two providers (openrouter + ollama)", () => {
     if (!fs.existsSync(tsxBin)) return; // CI without devDeps
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -685,8 +685,8 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
     );
 
     // Install both providers
-    expect(runCli(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
-    expect(runCli(["install", "--opencode=ollama-local", "--tracker=github"]).status).toBe(0);
+    expect(runCli(["install", "--opencode=openrouter", "--tracker=github"]).status).toBe(0);
+    expect(runCli(["install", "--opencode=opencode-go", "--tracker=github"]).status).toBe(0);
 
     // `bkit check --opencode` must exit 0 (no drift) — both provider blocks are already present
     const check = runCli(["check"]);
@@ -757,5 +757,94 @@ describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md →
     expect(result.stdout + result.stderr).toContain(
       "migrated 1 debug-fetch block(s) docs/observability.md → .agents/config.md",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #422 — gateguard.cjs/gateguard.js markered-text upgrade round-trip. This is the
+// regression test for the bkit-upgrade.ts detectMarkerStyle twin (site 9): if the
+// slash-comment marker style is added to the install engine only, `bkit upgrade`
+// silently stops managing these files with no error and no drift signal — nothing
+// else catches that. A real install, then a real upgrade, is the only way to prove it.
+// ---------------------------------------------------------------------------
+
+describe("#422 — gateguard markered-text upgrade round-trip (site-9 regression)", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("install, tamper outside the block AND stale the block content, upgrade: outside survives, block is refreshed", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const install = runCli(["install", "--claude", "--opencode=opencode-go", "--tracker=github"]);
+    expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+
+    const cjsPath = path.join(tmpDir, ".claude", "hooks", "gateguard.cjs");
+    const jsPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    const cjsOriginal = fs.readFileSync(cjsPath, "utf-8");
+    const jsOriginal = fs.readFileSync(jsPath, "utf-8");
+    expect(cjsOriginal).toContain("// bkit:start");
+    expect(jsOriginal).toContain("// bkit:start");
+
+    // Tamper OUTSIDE the block (consumer's own driver code — must survive) AND STALE
+    // the INSIDE-block content (must be refreshed back to the shipped template on
+    // upgrade). Block-merge is unconditional — this is the discriminating signal for
+    // the site-9 regression: without it, `detectMarkerStyle` mis-reads the `//
+    // bkit:start` template as null, writeTier2 finds no block to manage, and this
+    // stale content would silently survive the upgrade instead of being refreshed.
+    const cjsTampered = cjsOriginal
+      .replace(
+        /function isGateConfig/,
+        "function staleMarkerRegressionProbe() {}\nfunction isGateConfig",
+      )
+      .concat("\n// consumer's own extra driver logic\n");
+    fs.writeFileSync(cjsPath, cjsTampered, "utf-8");
+    const jsTampered = jsOriginal
+      .replace(
+        /function isGateConfig/,
+        "function staleMarkerRegressionProbe() {}\nfunction isGateConfig",
+      )
+      .concat("\n// consumer's own extra driver logic\n");
+    fs.writeFileSync(jsPath, jsTampered, "utf-8");
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, `upgrade failed:\n${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+
+    const cjsAfter = fs.readFileSync(cjsPath, "utf-8");
+    const jsAfter = fs.readFileSync(jsPath, "utf-8");
+    // Outside-block tamper survived.
+    expect(cjsAfter).toContain("// consumer's own extra driver logic");
+    expect(jsAfter).toContain("// consumer's own extra driver logic");
+    // Inside-block stale probe was refreshed away — proves the block round-tripped
+    // through a real write, not a silent site-9 no-op.
+    expect(cjsAfter).not.toContain("staleMarkerRegressionProbe");
+    expect(jsAfter).not.toContain("staleMarkerRegressionProbe");
+    expect(cjsAfter).toContain("// bkit:start");
+    expect(cjsAfter).toContain("// bkit:end");
+    expect(jsAfter).toContain("// bkit:start");
+    expect(jsAfter).toContain("// bkit:end");
+
+    const check = runCli(["check"]);
+    expect(check.status, `check failed:\n${check.stdout}\n${check.stderr}`).toBe(0);
   });
 });
