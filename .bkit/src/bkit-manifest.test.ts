@@ -7,6 +7,7 @@ import {
   getInstallManifest,
   getModuleManifest,
   getManagedPackageJsonKeys,
+  LINT_SCRIPT,
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
   CLOUD_MANIFEST_OPENCODE,
@@ -576,6 +577,26 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 
     const ws: import("./bkit-tiers").WriteSet = { writes: [] };
     expect(() => writeTier2JsonContained(srcPath, dstPath, false, ws)).not.toThrow();
+  });
+});
+
+describe("seeded lint script (dogfood parity)", () => {
+  it("is byte-identical to the `lint` script bkit runs on itself", () => {
+    // The shipped default exists because `bkit:gate:static` chains `pnpm lint` and bkit
+    // ships no linter: with no `lint` script, pnpm falls through to whatever `lint`
+    // binary is on PATH and the gate goes green through the wrong program. Pinning it to
+    // this repo's own script keeps the default one bkit actually exercises every run,
+    // rather than a second version that only consumers ever execute.
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.lint).toBe(LINT_SCRIPT);
+  });
+
+  it("never resolves to a bare `lint` invocation", () => {
+    // The failure mode this guards: any default that shells out to `lint` (rather than a
+    // named linter) reintroduces the PATH fall-through it was written to prevent.
+    expect(LINT_SCRIPT).not.toMatch(/(^|[;&|]\s*)lint\b/);
   });
 });
 

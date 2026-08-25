@@ -265,6 +265,20 @@ const CLAUDE_MANIFEST = [
 // `bash -c '...'`), and no backticks (a backtick inside the double-quoted echo
 // would command-substitute).
 export const LINT_PROSE_SCRIPT = 'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
+// The `typecheck` default install seeds in a repo with NO `tsconfig.json`. Both this
+// and `tsc --noEmit` are current bkit defaults — which one lands depends on the repo,
+// not on the bkit version — so the uninstall stripper must recognise both or it orphans
+// the script it seeded. Single source of truth for runLintModule and the stripper.
+// `bkit:gate:static` chains `pnpm lint`, and bkit ships no linter of its own — so in a
+// repo with no `lint` script pnpm falls back to whatever `lint` binary is on PATH and
+// the gate can go GREEN THROUGH THE WRONG PROGRAM (an Android SDK `lint` was observed).
+// Seed the eslint-aware default bkit already runs on itself: eslint where a config
+// exists, an honest skip line where none does — never a silent fall-through to a
+// stranger's binary. Add-if-missing, so a consumer's own `lint` always wins. The
+// `gate-missing-called-scripts` advisory still names what bkit cannot supply
+// (`build`, `test`).
+export const LINT_SCRIPT = "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'";
+export const TYPECHECK_NO_TSCONFIG_SCRIPT = 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
 // Prior bkit-shipped lint:prose defaults, newest first.
 //
 // Why this list exists: `ensurePackageJsonScripts` is add-if-missing — it NEVER
@@ -438,6 +452,10 @@ const CURSOR_MANIFEST = [
         module: "cursor",
         noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
     },
+    // Curl/wget host allowlist read at runtime by guardrails.cjs. No template backs it —
+    // `writeNetworkAllowlistArtifact` (bkit-cloud-env.ts) computes the domain set from the
+    // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
+    { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
     { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
     { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
     // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module
@@ -608,6 +626,9 @@ const LINT_MANIFEST = [
             scripts: {
                 // typecheck moved here from the (now agnostic) ci module — it is TS-exclusive (#265).
                 typecheck: "tsc --noEmit",
+                // Placeholder so `bkit:gate:static`'s `pnpm lint` cannot silently resolve to an
+                // unrelated PATH binary. Add-if-missing — a consumer's own `lint` always wins.
+                lint: LINT_SCRIPT,
                 "format:check": "prettier --check .",
                 "lint:prose": LINT_PROSE_SCRIPT,
                 "lint:slop": "slop-scan scan .",

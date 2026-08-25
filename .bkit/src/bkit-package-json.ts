@@ -18,6 +18,7 @@ import {
   getManagedPackageJsonKeys,
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
+  TYPECHECK_NO_TSCONFIG_SCRIPT,
   type ModuleName,
 } from "./bkit-manifest.js";
 
@@ -150,8 +151,15 @@ export function stripManagedKeys(
   // reclaim it. Without this, a consumer who installed before the default
   // changed and never re-ran install would keep an orphaned script after
   // uninstall, because the byte-compare below only knew the CURRENT default.
+  //
+  // `typecheck` is here for a different reason: it has TWO current defaults, not a
+  // superseded one. runLintModule seeds `tsc --noEmit` in a repo with a tsconfig.json
+  // and the skip-noop in a repo without, so which value is bkit's own depends on the
+  // repo. Matching only the manifest string orphaned the script every time bkit had
+  // seeded the noop.
   const legacyScriptValues: Record<string, readonly string[]> = {
     "lint:prose": LEGACY_LINT_PROSE_SCRIPTS,
+    typecheck: [TYPECHECK_NO_TSCONFIG_SCRIPT],
   };
 
   // Scripts

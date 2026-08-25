@@ -1837,6 +1837,20 @@ async function main() {
         console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
         const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
         const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], { writes: [] }, modules, process.cwd());
+        // #435 broken-install case: the opencode host is on disk but neither provider signal
+        // survives. `bkit check` and `bkit upgrade` both exit 1 with the fix; doctor — the verb
+        // whose help advertises diagnosing config drift — printed four opencode lines and never
+        // mentioned it. Reported here (enforcement stays with check, which is the gating verb).
+        if (fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+            if (detectOpencodeProvider(process.cwd()) === null) {
+                allFindings.push({
+                    id: "opencode-provider-missing",
+                    severity: "blocker",
+                    detect: "`.opencode/` is present but no provider is recorded — neither package.json `bkit.opencodeProvider` nor an `opencode.json` provider block.",
+                    action: `Re-run \`bkit install --opencode=<provider>\` (${OPENCODE_PROVIDERS.join(", ")}). Until then \`bkit check\` and \`bkit upgrade\` exit 1 rather than render every agent pin against a substitute provider.`,
+                });
+            }
+        }
         const banner = formatChecklist(allFindings);
         if (banner) {
             console.log(banner);

@@ -2889,6 +2889,8 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
 
 describe("renderOpencodeJson — opencode custom-provider format", () => {
   const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
+  // Resolved at collection time — the `it` bodies below run after a chdir into a temp repo.
+  const CLAUDE_SETTINGS_TEMPLATE = path.resolve(".bkit/templates/.claude/settings.json");
 
   it("openrouter (remote): npm driver, aggregator baseURL, apiKey via {env:OPENROUTER_API_KEY}", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
@@ -2971,6 +2973,24 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(keys.indexOf("git push --force-with-lease*")).toBeGreaterThan(
       keys.indexOf("git push --force*"),
     );
+  });
+
+  // The assertion above only checks the opencode direction ("must not be weaker than the
+  // Claude peer"), so a gap on the CLAUDE side survived it: `.claude/settings.json` shipped
+  // `Bash(*)` in `allow` with no curl/wget entry anywhere, while cursor's guardrails.cjs and
+  // opencode's permission map both asked. Assert the other direction too — the parity claim
+  // is symmetric, and network egress is the class that matters most.
+  it("claude settings gate every bash class opencode gates (reverse-direction parity)", () => {
+    const claudeSettings = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_TEMPLATE, "utf-8"));
+    const gated = new Set<string>([
+      ...claudeSettings.permissions.ask,
+      ...claudeSettings.permissions.deny,
+    ]);
+    // opencode `"<cmd> *": "ask"|"deny"` ↔ claude `Bash(<cmd>:*)` / `Bash(<cmd> *)`.
+    for (const cmd of ["curl", "wget", "sudo"]) {
+      const gatedHere = [...gated].some((p) => p.startsWith(`Bash(${cmd}`));
+      expect(gatedHere, `Bash(${cmd}...) must be gated on the Claude host too`).toBe(true);
+    }
   });
 
   it("injects consumer allowed-domains as curl/wget allows (stack-agnostic)", () => {

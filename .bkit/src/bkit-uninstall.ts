@@ -38,7 +38,11 @@ import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
-import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH } from "./bkit-cloud-env.js";
+import {
+  CLAUDE_CLOUD_RELPATH,
+  CURSOR_CLOUD_RELPATH,
+  resolveNetworkAllowlist,
+} from "./bkit-cloud-env.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,8 +201,23 @@ function _stripScope(
       if (Object.keys(cObj).length === 0) {
         delete consumer[key];
       }
+    } else if (Array.isArray(tVal) && Array.isArray(cVal)) {
+      // Both arrays — strip ELEMENT-WISE, not whole-array. Whole-array equality is
+      // wrong for any list install enriches after rendering the template: bkit adds
+      // apex-domain `WebFetch` entries to `.claude/settings.json` `permissions.allow`,
+      // so that array never equals the template and was misread as consumer
+      // customisation — leaving `allow` behind while `deny`/`ask` (not enriched, so
+      // byte-equal) were stripped. Net effect was a repo strictly MORE permissive
+      // after uninstall than before it.
+      const tSerialised = new Set(tVal.map((el) => JSON.stringify(el)));
+      const kept = cVal.filter((el) => !tSerialised.has(JSON.stringify(el)));
+      if (kept.length === 0) {
+        delete consumer[key];
+      } else {
+        consumer[key] = kept as JsonValue;
+      }
     } else {
-      // Leaf (primitive, array, null) — remove if deep-equal to template
+      // Leaf (primitive, null) — remove if deep-equal to template
       if (JSON.stringify(cVal) === JSON.stringify(tVal)) {
         delete consumer[key];
       }
@@ -260,6 +279,9 @@ export function buildDecisionTable(
   const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
   const bkitVer = readBkitVersion(versionFilePath);
   const tier3Hashes = bkitVer?.tier3Hashes ?? {};
+  // `generated` entries record their install-time hash here instead (no template backs
+  // them, so they are canonical rather than seed-or-print).
+  const canonicalHashes = bkitVer?.canonicalHashes ?? {};
 
   const table: FileSummary[] = [];
   const seen = new Set<string>();
@@ -350,8 +372,9 @@ export function buildDecisionTable(
           });
           break;
         }
-        const safe = shouldDeleteTier3(entry.path, absPath, tier3Hashes);
-        if (tier3Hashes[entry.path] === undefined) {
+        const hashes = entry.generated ? canonicalHashes : tier3Hashes;
+        const safe = shouldDeleteTier3(entry.path, absPath, hashes);
+        if (hashes[entry.path] === undefined) {
           table.push({
             file: entry.path,
             decision: "skip-tier3-unknown",
@@ -550,6 +573,29 @@ export async function runUninstall(
                 );
               }
               const templateDoc = JSON.parse(templateRaw) as Record<string, JsonValue>;
+              // `.claude/settings.json` is not written verbatim: after rendering the
+              // template, install appends one `WebFetch(domain:<d>)` grant per entry in
+              // the resolved network allowlist (enrichClaudeSettingsWebFetch). Stripping
+              // against the RAW template leaves those grants behind as if the consumer
+              // had added them. Recompute the same set — the very function that produced
+              // them — and treat it as part of the template, exactly as the opencode.json
+              // sentinel render above does.
+              if (summary.file === path.join(".claude", "settings.json")) {
+                const perms = templateDoc.permissions;
+                if (perms !== null && typeof perms === "object" && !Array.isArray(perms)) {
+                  const permsObj = perms as Record<string, JsonValue>;
+                  const allow = permsObj.allow;
+                  if (Array.isArray(allow)) {
+                    const enriched = resolveNetworkAllowlist(ctx.cwd).map(
+                      (d) => `WebFetch(domain:${d})`,
+                    );
+                    permsObj.allow = [
+                      ...allow,
+                      ...enriched.filter((e) => !allow.includes(e)),
+                    ] as JsonValue;
+                  }
+                }
+              }
               const stripped = stripTier2JsonScope(consumerDoc, templateDoc);
               const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
               if (Object.keys(stripped).length === 0) {

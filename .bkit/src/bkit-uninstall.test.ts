@@ -645,7 +645,7 @@ describe("stripTier2JsonScope", () => {
     expect(result.other).toBe("x");
   });
 
-  it("array preservation: arrays not template-equal are preserved", () => {
+  it("array stripping is element-wise: template members go, consumer members stay", () => {
     const template: Record<string, JsonValue> = {
       permissions: { allow: ["Skill(*)"] },
     };
@@ -653,8 +653,54 @@ describe("stripTier2JsonScope", () => {
       permissions: { allow: ["Skill(*)", "Bash(*)"] }, // consumer extended the allow list
     };
     const result = stripTier2JsonScope(consumer, template);
-    // Consumer permissions.allow differs from template → preserved
-    expect((result.permissions as Record<string, JsonValue>).allow).toBeDefined();
+    // Template member removed, consumer-added member kept — NOT whole-array preserve.
+    expect((result.permissions as Record<string, JsonValue>).allow).toEqual(["Bash(*)"]);
+  });
+
+  it("array key is dropped when every member came from the template", () => {
+    const template: Record<string, JsonValue> = {
+      permissions: { deny: ["Bash(rm -rf /*)"] },
+    };
+    const consumer: Record<string, JsonValue> = {
+      permissions: { deny: ["Bash(rm -rf /*)"] },
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    // deny fully template-owned → key removed, empty `permissions` pruned
+    expect(result.permissions).toBeUndefined();
+  });
+
+  it("install-enriched allow list does not survive while deny/ask are stripped", () => {
+    // Regression: install appends apex-domain WebFetch entries to `permissions.allow`
+    // after rendering the template, so that array never equalled the template and the
+    // old whole-array compare preserved it — while `deny`/`ask` (not enriched, so
+    // byte-equal) were stripped. Uninstall then left the repo MORE permissive than it
+    // found it. All three must strip together.
+    const template: Record<string, JsonValue> = {
+      permissions: {
+        allow: ["Skill(*)", "Bash(*)", "WebFetch(domain:github.com)"],
+        deny: ["Bash(git push --force)"],
+        ask: ["Read(./.env)"],
+      },
+    };
+    const consumer: Record<string, JsonValue> = {
+      permissions: {
+        // as written to disk by install: template members + enrichment
+        allow: [
+          "Skill(*)",
+          "Bash(*)",
+          "WebFetch(domain:github.com)",
+          "WebFetch(domain:*.acme.dev)",
+        ],
+        deny: ["Bash(git push --force)"],
+        ask: ["Read(./.env)"],
+      },
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    const perms = result.permissions as Record<string, JsonValue> | undefined;
+    // Only the enrichment entry survives — never `Bash(*)` with deny/ask gone.
+    expect(perms?.allow).toEqual(["WebFetch(domain:*.acme.dev)"]);
+    expect(perms?.deny).toBeUndefined();
+    expect(perms?.ask).toBeUndefined();
   });
 
   it("does not mutate consumer", () => {
@@ -669,6 +715,59 @@ describe("stripTier2JsonScope", () => {
 // ---------------------------------------------------------------------------
 // runUninstall — generated .claude/cloud.md cleanup (untracked secret-bearing file)
 // ---------------------------------------------------------------------------
+
+describe("runUninstall — .claude/settings.json leaves no grants behind", () => {
+  it("strips allow/deny/ask together, including install's WebFetch enrichment", async () => {
+    // Regression: the stripper compared whole arrays, so `permissions.allow` — which
+    // install enriches with apex-domain WebFetch grants AFTER rendering the template —
+    // never matched and was kept as consumer customisation, while `deny` and `ask`
+    // stripped cleanly. A full uninstall left `Bash(*)` in place with the guardrails
+    // gone: strictly more permissive than before bkit was installed.
+    const templateRaw = fs.readFileSync(
+      path.join(getTemplatesRoot(), ".claude", "settings.json"),
+      "utf-8",
+    );
+    const template = JSON.parse(templateRaw) as {
+      permissions: { allow: string[]; deny: string[]; ask: string[] };
+    };
+    // Simulate what install actually writes: the template plus enrichment.
+    const onDisk = JSON.parse(templateRaw) as typeof template;
+    onDisk.permissions.allow = [
+      ...onDisk.permissions.allow,
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:npmjs.com)",
+    ];
+    writeFile(".claude/settings.json", JSON.stringify(onDisk, null, 2) + "\n");
+
+    await runUninstall(["claude"], makeCtx());
+
+    // Everything in the file was bkit's — template plus enrichment — so nothing is
+    // left to keep and the file itself goes. Asserted unconditionally: an `if (exists)`
+    // guard here would pass vacuously the moment the strip regressed to leaving a husk.
+    expect(fileExists(".claude/settings.json")).toBe(false);
+    expect(template.permissions.allow).toContain("Bash(*)");
+  });
+
+  it("preserves a permission the consumer added themselves", async () => {
+    const templateRaw = fs.readFileSync(
+      path.join(getTemplatesRoot(), ".claude", "settings.json"),
+      "utf-8",
+    );
+    const onDisk = JSON.parse(templateRaw) as {
+      permissions: { allow: string[]; deny: string[]; ask: string[] };
+    };
+    onDisk.permissions.allow = [...onDisk.permissions.allow, "Bash(terraform apply:*)"];
+    writeFile(".claude/settings.json", JSON.stringify(onDisk, null, 2) + "\n");
+
+    await runUninstall(["claude"], makeCtx());
+
+    expect(fileExists(".claude/settings.json")).toBe(true);
+    const left = JSON.parse(readFile(".claude/settings.json")) as {
+      permissions?: { allow?: string[] };
+    };
+    expect(left.permissions?.allow).toEqual(["Bash(terraform apply:*)"]);
+  });
+});
 
 describe("runUninstall — .claude/cloud.md cleanup", () => {
   it("deletes .claude/cloud.md when the claude host is uninstalled", async () => {

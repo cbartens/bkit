@@ -388,7 +388,7 @@ $ARGUMENTS
    - **If** `TEST_EXIT` = 0 → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
    - **Else** → `TEST_VERDICT` = FAIL, `TEST_FAILURES` = count of failing test suites (>=1).
 4. Extract `TEST_SCOPE` from run block `TEST_SCOPE=` line.
-5. Update status:
+5. Update status (NO commit — see the note under Gate 3):
    ```bash
    TEST_FAILURES="{TEST_FAILURES}"
    TEST_SCOPE="{TEST_SCOPE}"
@@ -480,6 +480,13 @@ $ARGUMENTS
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)
 - [ ] Workflow status updated (step `debug-run-tests` recorded with `parentSha`, `verdict`, `scope`, `clamped`)
+
+> This step writes the status row but does NOT commit it, unlike every other step in
+> this workflow. That is deliberate: a `chore(...)` commit here becomes the pushed HEAD,
+> and a preview host whose ignored-build rule matches `^chore:` then cancels the preview,
+> which demotes CI to a partial tier and skips the very suites the debug loop is trying
+> to prove. `parentSha` advances transitively through Steps 4-6 instead. Do not add a
+> commit here to match Step 5 or the build workflow's twin of this step.
 
 
 - [ ] Issue comment attempted (`Step 3` section)

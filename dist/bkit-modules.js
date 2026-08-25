@@ -12,7 +12,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
@@ -223,7 +223,23 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
                 continue;
             const dstPath = relPath;
             const prevLen = ws.writes.length;
-            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            if (relBase === path.join(".bkit", "scripts")) {
+                // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region —
+                // `bkit-ship-timeouts.sh` says so in its own header ("only bkit-owned defaults live
+                // here (Tier 1 — force-overwritten)"). They were being handed to writeTier2 with the
+                // html-comment marker style, which no shell script uses: `extractFullManagedBlock`
+                // returned null, writeTier2 returned early, and once seeded a modified script was
+                // never re-rendered and never entered the drift comparison — `bkit check` exited 0 on
+                // a tampered `bkit-ship-gate.sh`, the ONLY merge precondition for `/bkit-ship`. The
+                // upgrade engine already treats every one of them whole-file (non-markdown, no
+                // manifest entry → diffFile/conflict), so Tier 1 here is what makes install, upgrade
+                // and check agree. The two hash-comment `bkit:start` blocks in this directory are
+                // bkit-repo authoring markers, not a consumer ownership split.
+                writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+            }
+            else {
+                writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            }
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}core: ${dstPath}`);
             }
@@ -2261,9 +2277,13 @@ export function runLintModule(ctx) {
     // agnostic) ci module (#265) — it is TS-exclusive; default is tsconfig-aware.
     const typecheckDefault = fs.existsSync("tsconfig.json")
         ? "tsc --noEmit"
-        : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
+        : TYPECHECK_NO_TSCONFIG_SCRIPT;
     const lintScripts = ensurePackageJsonScripts({
         typecheck: typecheckDefault,
+        // Runs eslint where a config exists, prints an honest skip line where none does —
+        // either way `bkit:gate:static`'s `pnpm lint` cannot fall through to an unrelated
+        // `lint` binary on PATH. Add-if-missing — a real consumer lint wins.
+        lint: LINT_SCRIPT,
         "format:check": "prettier --check .",
         // F9 (BAR-138) soft-skip + worktree self-heal. Single source of truth in
         // bkit-manifest.ts — the manifest default, this call, and the F9 advisory
