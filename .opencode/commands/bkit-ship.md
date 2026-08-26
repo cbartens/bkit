@@ -1079,8 +1079,9 @@ $ARGUMENTS
    # the write from @bkit-roadmap-refresh (the two rewrite DISJOINT marker blocks —
    # `roadmap-status` here, `roadmap-analysis` there — but not concurrently).
    # Nothing is staged here: docs/roadmap.md + docs/roadmap.jsonl are already in
-   # the bkit-book-commit.sh pathspec, staged by the single Step 13 commit
-   # (Step-10 staging is banned outright — bkit-ship-invariants.test.ts enforces it).
+   # the ship-close bookkeeping script's pathspec, staged by the single Step 13
+   # commit (Step-10 staging is banned outright — bkit-ship-invariants.test.ts
+   # enforces it).
    # TRACKER_ROWS is the wired-only enrichment file written by the `list_issues`
    # orchestrator step in the item 3 github/linear marker block. It matters MORE
    # here than at any other close: the fold is a FULL regenerate, so a ship that
