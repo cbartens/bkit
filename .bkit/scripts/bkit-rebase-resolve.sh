@@ -146,7 +146,7 @@ bkit_rebase_union() {
       mv "$_tmp/deduped" "$_tmp/merged"
       ;;
     *)
-      # docs/completed.md is prose: repeated blank lines and repeated headings
+      # docs/roadmap.md is prose: repeated blank lines and repeated headings
       # are legitimate, so it is unioned but never deduped.
       ;;
   esac

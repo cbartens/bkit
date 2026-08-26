@@ -41,7 +41,7 @@ const PROMPT_DIR = ".bkit/prompts";
  * These have no prompt-side declaration by design.
  */
 const EXEMPT_COMPUTED = new Set([
-  "DOCS_VERDICT", // ship derives it from `grep -c ... docs/completed.md`
+  "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on docs/roadmap.jsonl
   "MERGE_VERDICT", // ship derives it from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
   "FETCH_VERDICT", // debug derives it from debug-fetch block outcomes
