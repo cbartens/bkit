@@ -26,3 +26,4 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-08-26T07:22:14Z","parentSha":"4e6027098efc7f5bcad155f3236bd1b447ba8afb","artifacts":["docs/plans/202607/logs/381-provider-egress-domains/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-08-26T07:26:34Z","parentSha":"e53a1bad2035fcfcf0e2f3e3cd0db95434248c82","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-08-26T07:26:34Z"}
+{"type":"close-transport","shape":"local","sha":"a173050831c5e4a4b004da0f4749b853238ccc86","scanResult":"clean","at":"2026-08-26T07:29:17Z"}
