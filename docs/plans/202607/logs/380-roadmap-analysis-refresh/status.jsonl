@@ -67,3 +67,10 @@
 {"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","verdict":"FAIL","attempt":1,"failures":5,"at":"2026-07-29T12:14:46Z","parentSha":"6a5e37e6e500b48eaa28e72d510b142c1164ba2a","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/build-plan-verify-holistic.md"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-07-29T12:15:07Z"}
 {"type":"workflow-failed","workflow":"debug","at":"2026-07-30T12:10:29Z"}
+{"type":"step-done","workflow":"ship","step":"ship-start-workflow","status":"DONE","at":"2026-08-26T20:42:20Z","parentSha":"88dfae9cc260f604cb5b77ac87765d0338ee9ace","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-input.md"]}
+{"type":"runtime-resolved","workflow":"ship","at":"2026-08-26T20:42:50Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"step-done","workflow":"ship","step":"ship-worktree-setup","status":"DONE","at":"2026-08-26T20:43:11Z","parentSha":"594de8619374cfe6bf442cfe1cd1b1795ae901b2","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-input.md"]}
+{"type":"step-done","workflow":"ship","step":"ship-regression-guard","status":"DONE","verdict":"PASS","at":"2026-08-26T20:43:11Z","parentSha":"594de8619374cfe6bf442cfe1cd1b1795ae901b2","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-conflict-resolve","status":"DONE","verdict":"PASS","at":"2026-08-26T21:07:37Z","parentSha":"1b51b989a79e3d7b27483987b5e68f3e086eec56","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-conflict-resolve.md"]}
+{"type":"step-done","workflow":"ship","step":"ship-deferred-sweep","status":"DONE","verdict":"FAIL","at":"2026-08-26T21:21:51Z","parentSha":"1b51b989a79e3d7b27483987b5e68f3e086eec56","artifacts":["docs/plans/202607/logs/380-roadmap-analysis-refresh/ship-deferred-sweep.md"]}
+{"type":"workflow-failed","workflow":"ship","at":"2026-08-26T21:22:09Z"}
