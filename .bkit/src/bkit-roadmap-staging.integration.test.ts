@@ -108,6 +108,42 @@ describe("row 11: STRAY allowlist widened in design/plan; build/debug/ship exist
     }
   });
 
+  it("design + plan PR path pushes the close commits BEFORE gh pr create/merge reads the remote", () => {
+    // The PR path (RUNTIME_DEVPUSHES != true) commits the roadmap row locally
+    // and then hands off to `gh pr create` / `gh pr merge`, which act on the
+    // REMOTE. Without a push in between, neither the roadmap commit nor the
+    // preceding close-workflow commit is in the PR, and the board silently
+    // loses every design/plan close on this path. Order matters, not presence:
+    // a push placed after `gh pr merge` would still satisfy a presence check.
+    for (const [name, content] of [
+      ["design", DESIGN],
+      ["plan", PLAN],
+    ] as const) {
+      const roadmapCommit = content.indexOf(`docs({FID}): ${name} roadmap update bkit [skip ci]`);
+      expect(roadmapCommit, `${name}: PR-path roadmap commit not found`).toBeGreaterThan(-1);
+
+      const pushIdx = content.indexOf('git push --force-with-lease origin "$B"', roadmapCommit);
+      expect(pushIdx, `${name}: PR path never pushes after the roadmap commit`).toBeGreaterThan(-1);
+
+      const prCreate = content.indexOf("gh pr create --base dev --head", roadmapCommit);
+      expect(prCreate, `${name}: PR-path gh pr create not found`).toBeGreaterThan(-1);
+      expect(
+        pushIdx,
+        `${name}: the close-commit push must precede gh pr create, or the PR omits it`,
+      ).toBeLessThan(prCreate);
+
+      // The push is guarded by a non-empty branch assertion (workflow git rule).
+      const guard = content.indexOf("detached HEAD — refusing to push", roadmapCommit);
+      expect(guard, `${name}: push lacks the non-empty branch assertion`).toBeGreaterThan(-1);
+      expect(guard).toBeLessThan(pushIdx);
+
+      // ...and it runs AFTER the STRAY guard, so nothing unvetted is published.
+      const stray = content.indexOf("close-workflow diff carries non-doc files", roadmapCommit);
+      expect(stray, `${name}: PR-path STRAY guard not found`).toBeGreaterThan(-1);
+      expect(stray, `${name}: push must run after the STRAY guard`).toBeLessThan(pushIdx);
+    }
+  });
+
   it("build/debug carry the dev-lock ledger append (4th distinct staging shape)", () => {
     for (const [name, content] of [
       ["build", BUILD],

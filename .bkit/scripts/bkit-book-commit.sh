@@ -162,7 +162,6 @@ PATHSPECS=(
 )
 if [ "$SCOPE" = "full" ]; then
   PATHSPECS+=(
-    "docs/completed.md"
     "docs/deferrals.jsonl"
     "docs/failures.jsonl"
     "docs/knowledge.jsonl"

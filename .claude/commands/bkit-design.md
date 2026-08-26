@@ -778,6 +778,11 @@ description: "Design Feature — Autonomous design phase"
      git commit --allow-empty -m "docs({FID}): design roadmap update bkit [skip ci]" -- docs/roadmap.jsonl docs/roadmap.md
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "design close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+     # `gh pr create` / `gh pr merge` read the REMOTE: without this push the
+     # close-workflow and roadmap commits stay local and never reach dev.
+     B=$(git branch --show-current)
+     [ -n "$B" ] || { echo "detached HEAD — refusing to push the design close commits" >&2; exit 1; }
+     git push --force-with-lease origin "$B" || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
      PR_NUMBER=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
      if [ -z "$PR_NUMBER" ]; then
        gh pr create --base dev --head "{BRANCH}" --title "docs({FID}): design DONE" --body "" || { echo "gh pr create failed" >&2; exit 1; }
