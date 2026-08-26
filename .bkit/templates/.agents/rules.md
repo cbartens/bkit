@@ -64,6 +64,7 @@
 - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 - **Flaky tests:** ANY tests passing only on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 - **Tracker MCPs:** Issue update via configured MCP only; use CLI / HTTP shell-outs as backup / fallback only.
+- **Tracker text reads:** GitHub issue body + comment TEXT via raw `gh api` ONLY; NEVER `mcp__github__issue_read` — it sanitises bodies, deleting HTML comments (every `<!-- bkit:* -->` marker) and angle-bracket spans, silently. MCP reads stay valid for STRUCTURED fields (`state`, `labels`, `milestone`). Read-modify-write of a body MUST read raw or the write-back destroys what the read dropped.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 - **Tracker context cut:** Use `<!-- bkit:ignore-earlier -->` in issue body or comments to drop all previous content from workflow inputs; ALWAYS requires human confirmation.
 

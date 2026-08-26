@@ -3,7 +3,7 @@
  * comments out of future workflow inputs, and the ordering fix that makes the
  * `<!-- bkit:ignore-earlier -->` cut mean the same thing on both trackers.
  *
- * Three invariants, each a silent-failure mode if it slips:
+ * Four invariants, each a silent-failure mode if it slips:
  *  1. Every ```comment fence — the template a workflow posts FROM — opens with
  *     `<!-- bkit:generated -->` as the first body line. A template added later
  *     without the marker looks like human input forever; the fence count is
@@ -21,6 +21,15 @@
  *     above the last marker" into "keep the superseded revision, drop the
  *     current thinking" — and the artifact still looks plausibly trimmed, so
  *     nothing else would ever catch it.
+ *  4. No GitHub text read goes through `mcp__github__issue_read`. That tool
+ *     sanitises bodies before returning them: HTML comments are deleted outright,
+ *     so BOTH markers vanish from the text the filters run on, and angle-bracket
+ *     spans are eaten too. Backticks do not save a marker — the sanitiser works on
+ *     the raw markdown, so a code-spanned marker comes back as empty backticks.
+ *     That made invariants 1-3 assert the right words over input that could never
+ *     contain them; this guard is what stops the read path silently reverting.
+ *     Structured-field reads (`state`, `labels`, `milestone`) are unaffected and
+ *     stay on the MCP.
  */
 
 import * as fs from "node:fs";
@@ -106,7 +115,7 @@ describe("no comment-fetch call site filters or cuts", () => {
   // Filtering at the fetch is what this change moved away from: every call site
   // is another chance for one to drift, and the wording cannot then be shared with
   // the sweep. A filter reappearing here means the logic has split in two again.
-  const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments/;
+  const CALL_SITE_RE = /\/comments\?per_page=100|mcp__linear__list_comments/;
   const PROSE_LINE_RE = /^\s*>/;
 
   const callSites = (rel: string) =>
@@ -137,7 +146,7 @@ describe("no comment-fetch call site filters or cuts", () => {
 
 describe("every comment-fetch site normalises order the same way", () => {
   const SORT_STEP = "sort oldest to newest";
-  const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments/;
+  const CALL_SITE_RE = /\/comments\?per_page=100|mcp__linear__list_comments/;
   const PROSE_LINE_RE = /^\s*>/;
 
   const callSites = (rel: string) =>
@@ -160,6 +169,32 @@ describe("every comment-fetch site normalises order the same way", () => {
       }
     });
   }
+
+  it("reads GitHub comments raw, never through the sanitising MCP", () => {
+    for (const rel of WORKFLOW_FILES) {
+      expect(read(rel), `${rel} reverts to the MCP comment read`).not.toContain(
+        'method: "get_comments"',
+      );
+    }
+  });
+
+  it("no surviving mcp__github__issue_read call extracts body text", () => {
+    // The remaining MCP reads are structured-only (blocker `state`, `milestone`).
+    // `({` matches an actual call; the prohibition sentence at the gh api sites
+    // names the tool without invoking it, so it is not a call site.
+    const CALL_RE = /mcp__github__issue_read\(\{/;
+    for (const rel of WORKFLOW_FILES) {
+      const calls = read(rel)
+        .split("\n")
+        .filter((line) => CALL_RE.test(line) && !PROSE_LINE_RE.test(line));
+      for (const line of calls) {
+        expect(
+          line,
+          `MCP read extracts sanitised text: ${line.trim().slice(0, 80)}…`,
+        ).not.toContain("`body`");
+      }
+    }
+  });
 
   it("states the step as a sort, never as a tracker-specific reversal", () => {
     // A reversal is only correct for the order the call happens to return today;
