@@ -36,7 +36,8 @@ maxTurns: 100
    - `git rev-parse --abbrev-ref HEAD` == `dev`.
    - `git status --porcelain` empty.
    - `git rev-list --count origin/dev..dev` == 0.
-   - `pnpm test && pnpm typecheck && pnpm format:check && pnpm check:dist && pnpm bkit check` all green.
+   - `pnpm test && pnpm typecheck && pnpm format:check && pnpm bkit:check:dist && pnpm bkit check` all green.
+     Repo-only scripts carry the `bkit:` prefix (`bkit:check:dist`, `bkit:test:bats`, `bkit:audit:status`, `bkit:lint:workflows`); the unprefixed names are the consumer contract. Read the name out of `package.json#scripts` rather than trusting this line if a run reports "Command not found".
    - `package.json` version, `.bkit/version` `pinnedVersion`, `CHANGELOG.md` top entry all == `{VERSION}`, AND `## [{VERSION}]` block has >= 1 content line (reject bare bump).
    - no tag `v{VERSION}` (`git ls-remote --tags origin v{VERSION}`).
 3. Backmerge — **If** `git rev-list --count origin/dev..origin/main` == 0 → skip. **Else** `git fetch origin main dev` → confirm `git log origin/dev..origin/main --oneline` lists ONLY prior `chore(release):` squash commit(s) (dev strictly ahead; main carries nothing dev lacks) — if anything else → STOP, ask → `git merge origin/main -s ours -m "chore: backmerge main into dev pre-release"` → `git push origin dev`. Use `-s ours` (keep dev's tree verbatim, record main as merged), NEVER `-X ours`: near-identical `<!-- bkit:managed vX ... -->` marker line merges badly — git aligns dev's new-version marker and main's old-version marker as two independent insertions, so NO conflict fires (`-X ours` never resolves) and DUPLICATE marker lands in unpredictable subset of managed docs (recurring "duplicate bkit:managed marker after backmerge"). **If** merge reports conflicts → STOP, surface, ask.
