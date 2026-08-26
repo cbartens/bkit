@@ -13,3 +13,4 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-08-26T06:56:34Z","parentSha":"a81f187230870949e9262f6b047d3c5627fd9893","artifacts":["docs/plans/202608/logs/442-workflow-steps-needed/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-08-26T06:59:46Z","parentSha":"203bbe361b46e2f3d33b60228d9a6f4d3d6429ef","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-08-26T06:59:46Z"}
+{"type":"close-transport","shape":"local","sha":"c9ed6805cf16c4103e4690529f9e5358ef886b45","scanResult":"clean","at":"2026-08-26T07:01:40Z"}
