@@ -16,11 +16,12 @@
 ## Write Idiom
 
 ```bash
-jq -c -n '{ ts: 0, kind: "deferral", repo: $REPO, bkitVersion: $VER, step: $STEP, … } | .ts = (now*1000|floor)' \
+jq -c -n '{ ts: null, kind: "deferral", repo: $REPO, bkitVersion: $VER, step: $STEP, … } | .ts = (now*1000|floor)' \
   >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"
 ```
 
-- **`ts`:** Unix ms via `jq '… | .ts = (now*1000|floor)'`. NEVER `date +%s%3N` (BSD/macOS incompatible).
+- **`ts`:** Unix ms, ALWAYS minted by `jq`'s `now` AT APPEND TIME — `jq '… | .ts = (now*1000|floor)'`. The `ts: null` placeholder holds field order only; the pipe overwrites it. Drop the pipe and the row fails the envelope gate instead of landing a fake value — NEVER seed the placeholder with a number.
+- **`ts` is NEVER a literal.** Not hand-typed, not copied off an example row or the line above, not `date +%s%3N` (BSD/macOS incompatible). A fabricated past `ts` is indistinguishable from a real one and silently reorders the last-wins fold that every reader, `bkit harvest`, and every age report depend on. Whole-second values (`ts % 1000 == 0`) are rejected — a real mint is never round.
 - **Log prefix:** every telemetry log line starts `[bkit-telemetry]` — load-bearing for log-drain grep.
 
 ## Ledgers & Writers
@@ -46,7 +47,7 @@ One file per `kind`; writers:
 <!-- prettier-ignore -->
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `ts` | `number` | Unix milliseconds — primary id. Written via `jq '… \| .ts = (now*1000\|floor)'`. |
+| `ts` | `number` | Unix milliseconds — primary id. Minted via `jq '… \| .ts = (now*1000\|floor)'`, NEVER a literal (§ Write Idiom). |
 | `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
@@ -228,7 +229,7 @@ Fields that change after first write:
 **Hard, not stylistic:** `.gitattributes` sets `merge=union` on every append-only ledger — merges concatenate, never conflict. Union keeps BOTH sides of a conflicting hunk: edit a line and the stale copy survives beside its replacement; `fold` last-wins by `ts` -> stale wins whenever its `ts` is later.
 
 - **NEVER edit or delete a line.** Correct via same-`key` append.
-- **NEVER write a future `ts`.** Outranks every later correction, permanently — row can never be superseded. Mint at write time (§ Write Idiom), never by hand.
+- **NEVER hand-write `ts`, in EITHER direction** — mint at write time (§ Write Idiom). Future: outranks every later correction, permanently; row can never be superseded. Backdated: loses to rows it actually followed, so the correction it was meant to be silently never applies.
 
 `.bkit/friction.jsonl` excluded — rows ARE removed from it (§ Friction Is a Drained Queue); union would resurrect a drain.
 

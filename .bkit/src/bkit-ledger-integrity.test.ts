@@ -239,6 +239,56 @@ describe("live ledgers are machine-readable", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * A BACKDATED `ts` is the milder twin of the future one above, and the gate
+   * there cannot see it: a fabricated past value is indistinguishable from a
+   * real one, so it passes silently while still reordering the last-wins fold.
+   *
+   * What separates them is precision. `now*1000|floor` (`.bkit/jsonl.md`
+   * § Write Idiom) lands on a whole second once in a thousand rows; a
+   * hand-typed one is round, because a model writing a number by hand reaches
+   * for `…T00:00:00Z` and increments. The live ledgers carry the split as a
+   * controlled experiment: `.bkit/stats.jsonl`, appended only by the workflow
+   * shell via the idiom, is 0-for-63 whole-second, while the agent-appended
+   * ledgers — whose prompts say "in `.bkit/jsonl.md` format" and hand the model
+   * a JSON shape to author — are 44-for-270, including two decisions stamped
+   * the identical midnight value and three deferrals at a sequential
+   * `00:00:10/11/12`.
+   *
+   * Rows below the cutoff are that evidence and stay: the ledgers are
+   * append-only, and re-minting history would invent the very data this gate
+   * exists to keep out.
+   *
+   * Limits, stated rather than papered over: this catches round numbers, not
+   * dishonesty in general — a hand-typed `…006903` still passes, as does a
+   * fabricated round value backdated below the cutoff. It also fails the
+   * genuine 1-in-1000 mint. That one is not worth an escape hatch: re-run the
+   * append and take the new `ts`. Never hand-edit a digit to clear this test.
+   */
+  const HANDTYPED_TS_GATED_FROM = 1787788800000; // 2026-08-27T00:00:00Z
+
+  it("no row since the cutoff carries a hand-typed whole-second ts", () => {
+    const offenders: string[] = [];
+    for (const rel of Object.keys(LEDGERS)) {
+      for (const { line, raw } of rows(rel)) {
+        let row: Record<string, unknown>;
+        try {
+          row = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          continue; // reported by the parse test above
+        }
+        const ts = row.ts;
+        if (typeof ts !== "number" || ts < HANDTYPED_TS_GATED_FROM) continue;
+        if (ts % 1000 === 0) {
+          offenders.push(
+            `${rel}:${line}: ts=${ts} (${new Date(ts).toISOString()}) is whole-second`,
+          );
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
 });
 
 /**
