@@ -225,6 +225,8 @@ _staged() { git -C "$TEST_REPO" diff --cached --name-only; }
   DST="$TEST_TMP/dst"
   mkdir -p "$SRC/docs/plans/202608/logs/446u" "$DST/docs/plans/202608/logs/446u"
   git init -q "$SRC"
+  git -C "$SRC" config user.email t@t.t
+  git -C "$SRC" config user.name t
   printf '{"row":1}\n{"row":2}\n' > "$SRC/docs/plans/202608/logs/446u/status.jsonl"
   ( cd "$SRC" && git add -A && git commit -q -m srcinit )
   printf '{"row":1}\n' > "$DST/docs/plans/202608/logs/446u/status.jsonl"
@@ -239,6 +241,8 @@ _staged() { git -C "$TEST_REPO" diff --cached --name-only; }
   DST="$TEST_TMP/dst2"
   mkdir -p "$SRC" "$DST"
   git init -q "$SRC"
+  git -C "$SRC" config user.email t@t.t
+  git -C "$SRC" config user.name t
   echo x > "$SRC/README.md"
   ( cd "$SRC" && git add -A && git commit -q -m srcinit )
 
