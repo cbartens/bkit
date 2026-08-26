@@ -8,7 +8,7 @@
     ".github/workflows/renovate.yml": "b7ae6892521643844ad0d69d4f337b8853d97bf803d73d346fabd4867c6d55e4"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "f71f5d7c03aca124780bce6def141f8011185464df18caa61eb1f7c3bf7fbf3c",
+    "docs/deployments.md": "70b41b31bd3f4593a9b02d0c5af9d018dd95d7c29712d6d3dfe243f48b0fe3c3",
     "docs/testing.md": "1c6f0ca951791dfb583683a14ee519823d89e393d2b6cc03937260af4e3d0aef",
     ".claude/settings.json": "990d214a4a53d7bddcff82669b5ecc094638143133f19e1c1b7216f864938b6a",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
