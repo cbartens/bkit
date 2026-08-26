@@ -25,7 +25,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded `$BOOK_ROOT/.../status.jsonl`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap` that removes `.dev.lock` on `EXIT`.
-> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `BOOK_PATHS`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit and ONE push per run, both from one flush block — Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`. **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
+> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bash .bkit/scripts/bkit-book-commit.sh`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit and ONE push per run, both from one flush block — Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`. **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -148,18 +148,6 @@ description: "Ship Feature — Autonomous merge and archive"
      BOOK_ROOT="$REPO_ROOT"
    fi
    LOGDIR_REL="docs/plans/{YYYYMM}/logs/{FID}"
-   # BOOK_PATHS — re-derive; never inherit across a Bash-block boundary.
-   # Frozen staging allow-list (path-scoped; never -A).
-   BOOK_PATHS="$LOGDIR_REL/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
-   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
-   BOOK_PATHS="$BOOK_PATHS $(cd "$BOOK_ROOT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-   for d in .claude/skills .cursor/skills .opencode/skills; do
-     if [ -e "$BOOK_ROOT/$d" ] || git -C "$BOOK_ROOT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
-       BOOK_PATHS="$BOOK_PATHS $d"
-     fi
-   done
-   [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage; bookkeeping left uncommitted in $BOOK_ROOT" >&2; exit 1; }
    # Artifact reconciliation. NEVER `${WORKTREE_PATH:-…/{FID}}` — an inner `}` closes the expansion early.
    SRC_WT="${WORKTREE_PATH:-}"
    [ -n "$SRC_WT" ] || SRC_WT="$REPO_ROOT/.worktrees/{FID}"
@@ -169,18 +157,8 @@ description: "Ship Feature — Autonomous merge and archive"
        [ -f "$f" ] || continue
        [ -e "$BOOK_ROOT/$LOGDIR_REL/$(basename "$f")" ] || cp "$f" "$BOOK_ROOT/$LOGDIR_REL/"
      done
-     # Ledgers are append-only NDJSON — union rows in, NEVER copy over. Sweep
-     # every branch-side JSONL: `worktree remove --force` is where unswept rows die.
-     for L in $(cd "$SRC_WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null); do
-       [ -f "$SRC_WT/$L" ] || continue
-       mkdir -p "$BOOK_ROOT/$(dirname "$L")"
-       if [ -f "$BOOK_ROOT/$L" ]; then
-         NEW_ROWS=$(grep -F -x -v -f "$BOOK_ROOT/$L" "$SRC_WT/$L")
-         [ -n "$NEW_ROWS" ] && printf '%s\n' "$NEW_ROWS" >> "$BOOK_ROOT/$L"
-       else
-         cp "$SRC_WT/$L" "$BOOK_ROOT/$L"
-       fi
-     done
+     bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" union-ledgers --src="$SRC_WT" --dst="$BOOK_ROOT" \
+       || { echo "[bkit-book] ledger union failed ($SRC_WT -> $BOOK_ROOT)" >&2; exit 1; }
    fi
    FLUSH=1
    if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
@@ -213,12 +191,16 @@ description: "Ship Feature — Autonomous merge and archive"
    if [ "$FLUSH" = 1 ]; then
      [ -n "$TARGET" ] || { echo "push target empty (detached HEAD?) — refusing to push; bookkeeping left uncommitted in $WT" >&2; exit 1; }
      git -C "$WT" status --short
-     git -C "$WT" add $BOOK_PATHS
-     if git -C "$WT" diff --cached --quiet; then
-       echo "[bkit-ship] no bookkeeping delta to record — nothing committed, nothing pushed" >&2
+     BEFORE_SHA=$(git -C "$WT" rev-parse HEAD)
+     if bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=full --mode=commit --message="chore({FID}): ship FAILED bkit [skip ci]"; then
+       if [ "$(git -C "$WT" rev-parse HEAD)" != "$BEFORE_SHA" ]; then
+         git -C "$WT" push origin "$TARGET"
+       else
+         echo "[bkit-ship] no bookkeeping delta to record — nothing committed, nothing pushed" >&2
+       fi
      else
-       git -C "$WT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" -- $BOOK_PATHS
-       git -C "$WT" push origin "$TARGET"
+       echo "[bkit-ship] bookkeeping commit failed — FAILED bookkeeping left uncommitted in $WT" >&2
+       exit 1
      fi
    fi
    ```
@@ -246,9 +228,9 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 1 — Start Workflow
 
-**Goal:** resolve `BOOK_ROOT` + `BOOK_PATHS` once, create outbox, preflight `actions: write`, record start row.
+**Goal:** resolve `BOOK_ROOT` once, create outbox, preflight `actions: write`, record start row.
 
-1. Acquire concurrency lock and resolve `BOOK_ROOT` + `BOOK_PATHS`:
+1. Acquire concurrency lock and resolve `BOOK_ROOT`:
    ```bash
    RUNTIME_DEVPUSHES="{RUNTIME_DEVPUSHES}"
    STATUS_REL="{STATUS_REL}"
@@ -267,28 +249,6 @@ description: "Ship Feature — Autonomous merge and archive"
    else
      BOOK_ROOT="$REPO_ROOT"
    fi
-   # BOOK_PATHS — frozen staging allow-list (path-scoped; never -A):
-   #   docs/plans/{YYYYMM}/logs/{FID}/
-   #   docs/completed.md
-   #   docs/deferrals.jsonl
-   #   docs/failures.jsonl
-   #   docs/knowledge.jsonl
-   #   docs/decisions.jsonl
-   #   .bkit/friction.jsonl
-   #   .bkit/stats.jsonl
-   #   .agents/skills
-   #   skills-lock.json
-   BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
-   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
-   BOOK_PATHS="$BOOK_PATHS $(cd "$BOOK_ROOT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-   # Host skill mirrors — append ONLY when present on disk or tracked in the
-   # index; a pathspec matching neither is fatal.
-   for d in .claude/skills .cursor/skills .opencode/skills; do
-     if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
-       BOOK_PATHS="$BOOK_PATHS $d"
-     fi
-   done
    # Outbox: outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
    mkdir -p "$OUTBOX"
@@ -397,7 +357,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`, `BOOK_ROOT`, `BOOK_PATHS`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`, `BOOK_ROOT`)
 - [ ] `BOOK_ROOT` resolved (RUNTIME_DEVPUSHES-conditional)
 - [ ] Outbox created (`$OUTBOX`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
@@ -577,20 +537,9 @@ description: "Ship Feature — Autonomous merge and archive"
    3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
    4. **If** `RESOLVE_VERDICT` = PASS → commit and push (B2 is the ONLY step that pushes to `feat/{FID}`):
       ```bash
-      # BOOK_PATHS — re-derive; never inherit across a Bash-block boundary.
-      BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-      # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
-      # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
-      BOOK_PATHS="$BOOK_PATHS $(ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-      for d in .claude/skills .cursor/skills .opencode/skills; do
-        if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
-          BOOK_PATHS="$BOOK_PATHS $d"
-        fi
-      done
-      [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage" >&2; exit 1; }
-      # `-u` stages the subagent's conflict resolutions; BOOK_PATHS adds the
-      # bookkeeping allow-list. ONLY commit that pushes feat/{FID}.
-      git add -u && git add $BOOK_PATHS
+      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+      bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$(pwd)" --month={YYYYMM} --fid={FID} --scope=full --mode=stage --stage-tracked-updates \
+        || { echo "[bkit-book] conflict-resolve bookkeeping stage failed" >&2; exit 1; }
       git commit -m "chore({FID}): conflict-resolve bkit [skip ci]"
       git push --force-with-lease origin "feat/{FID}"
       ```
@@ -1318,22 +1267,12 @@ description: "Ship Feature — Autonomous merge and archive"
      echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/push for the close-workflow status/telemetry tail; recorded on the current branch instead" >&2
      WT=$(git rev-parse --show-toplevel)
    fi
-   # BOOK_ROOT + BOOK_PATHS — re-derive; never inherit across a Bash-block boundary.
+   # BOOK_ROOT — re-derive; never inherit across a Bash-block boundary.
    if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    else
      BOOK_ROOT="$REPO_ROOT"
    fi
-   BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
-   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
-   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
-   BOOK_PATHS="$BOOK_PATHS $(cd "$WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-   for d in .claude/skills .cursor/skills .opencode/skills; do
-     if [ -e "$WT/$d" ] || git -C "$WT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
-       BOOK_PATHS="$BOOK_PATHS $d"
-     fi
-   done
-   [ -n "$BOOK_PATHS" ] || { echo "BOOK_PATHS empty — refusing to stage" >&2; exit 1; }
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    STATS="$WT/.bkit/stats.jsonl"
    FRICTION="$WT/.bkit/friction.jsonl"
@@ -1407,8 +1346,8 @@ description: "Ship Feature — Autonomous merge and archive"
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    # Single path-scoped [skip ci] commit — flush all bookkeeping at once.
-   git -C "$WT" add $BOOK_PATHS
-   git -C "$WT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]" -- $BOOK_PATHS
+   bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=full --mode=commit-allow-empty --message="docs({FID}): ship DONE bkit [skip ci]" \
+     || { echo "[bkit-book] close-workflow bookkeeping commit failed" >&2; exit 1; }
    LOCK="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }

@@ -105,9 +105,11 @@ failure_path_block() {
   [ "$count" -eq 1 ]
 }
 
-@test "failure-path: exactly one commit in the whole path" {
+@test "failure-path: exactly one bookkeeping commit in the whole path" {
+  # #446: the commit itself now happens inside bkit-book-commit.sh
+  # (--mode=commit), not a literal 'commit -m' in the workflow markdown.
   block="$(failure_path_block)"
-  count=$(echo "$block" | grep -c 'commit -m' || true)
+  count=$(echo "$block" | grep -c -- '--mode=commit --message' || true)
   [ "$count" -eq 1 ]
 }
 
@@ -163,37 +165,43 @@ failure_path_block() {
 }
 
 # ---------------------------------------------------------------------------
-# 6. Staging blocks resolve BOOK_PATHS themselves
+# 6. Staging blocks call bkit-book-commit.sh, never a raw `git add $BOOK_PATHS`
 #
-# An empty BOOK_PATHS makes `git add` a silent no-op: it exits 0, stages
-# nothing, and the flush reports "no bookkeeping delta" — or, on the Close
-# path, `commit --allow-empty` lands an empty commit. Both look like success.
-# BOOK_ROOT fails loudly instead (paths resolve to /docs/...), so this
-# invariant is scoped to the two blocks that stage.
+# #446: a shell BOOK_PATHS variable built with unquoted word-splitting and an
+# `ls` glob that ABORTS under zsh when unmatched used to be re-derived inline
+# at each staging site. That is now bkit-book-commit.sh, invoked with an
+# explicit `bash` prefix so host shell never matters — it builds the pathspec
+# via `git ls-files` and refuses to reach `commit` on an empty list (exit 6;
+# unit-tested directly in tests/book-commit.bats, since an empty
+# --pathspec-from-file does not commit nothing, it commits whatever is
+# already staged). This section only asserts the ship.md call sites are
+# wired to the script, not the script's own internals.
 # ---------------------------------------------------------------------------
 
-# Every fenced bash block that runs `git add $BOOK_PATHS`.
-staging_blocks() {
+# Every fenced bash block that invokes bkit-book-commit.sh.
+book_commit_blocks() {
   awk '/```bash/ { n++; blk[n]="" } n { blk[n] = blk[n] "\n" $0 }
-       END { for (i = 1; i <= n; i++) if (blk[i] ~ /git .*add \$BOOK_PATHS/) print blk[i] "\n===BLOCK==="  }' "$SHIP_MD"
+       END { for (i = 1; i <= n; i++) if (blk[i] ~ /bkit-book-commit\.sh/) print blk[i] "\n===BLOCK==="  }' "$SHIP_MD"
 }
 
-@test "staging blocks assign BOOK_PATHS in the same block that consumes it" {
+@test "no fenced bash block stages via raw 'git add \$BOOK_PATHS'" {
+  count=$(grep -cE 'git .*add \$\{?BOOK_PATHS\}?' "$SHIP_MD" || true)
+  [ "$count" -eq 0 ]
+}
+
+@test "ship.md wires bkit-book-commit.sh into exactly 3 fenced bash blocks (Failure Path flush+union-ledgers, B2 stage, Close flush)" {
   count=0
   while IFS= read -r -d '' block; do
     [ -n "$(echo "$block" | tr -d '[:space:]')" ] || continue
     count=$((count + 1))
-    echo "$block" | grep -q 'BOOK_PATHS=' \
-      || { echo "block stages \$BOOK_PATHS without assigning it:" >&2; echo "$block" >&2; false; }
-  done < <(staging_blocks | awk -v RS='===BLOCK===' '{ printf "%s%c", $0, 0 }')
-  # Failure Path flush + conflict-resolve push + Close flush.
+  done < <(book_commit_blocks | awk -v RS='===BLOCK===' '{ printf "%s%c", $0, 0 }')
   [ "$count" -eq 3 ]
 }
 
-@test "staging blocks refuse to stage an empty BOOK_PATHS" {
+@test "every bkit-book-commit.sh invocation is guarded — a non-zero exit stops the step" {
   while IFS= read -r -d '' block; do
     [ -n "$(echo "$block" | tr -d '[:space:]')" ] || continue
-    echo "$block" | grep -q '\[ -n "\$BOOK_PATHS" \]' \
-      || { echo "staging block lacks the non-empty BOOK_PATHS guard:" >&2; echo "$block" >&2; false; }
-  done < <(staging_blocks | awk -v RS='===BLOCK===' '{ printf "%s%c", $0, 0 }')
+    echo "$block" | grep -qE '\|\|.*exit 1|if bash .*bkit-book-commit\.sh' \
+      || { echo "block invokes bkit-book-commit.sh without a failure guard:" >&2; echo "$block" >&2; false; }
+  done < <(book_commit_blocks | awk -v RS='===BLOCK===' '{ printf "%s%c", $0, 0 }')
 }

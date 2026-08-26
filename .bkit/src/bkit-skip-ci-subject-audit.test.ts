@@ -119,7 +119,14 @@ describe("skip-ci subject convention", () => {
   describe("(i) docs-only and intermediate commit subjects keep the token", () => {
     for (const { file, description, literal } of SKIP_CI_SUBJECTS) {
       it(`${file}: ${description} carries bkit [skip ci]`, () => {
-        expect(readWorkflow(file)).toContain(`-m "${literal}"`);
+        // #446: bookkeeping commits route through bkit-book-commit.sh, which
+        // takes the subject as `--message="..."` rather than a literal
+        // `git commit -m "..."` in the workflow markdown; either carrier is
+        // a legitimate match for the same invariant.
+        const content = readWorkflow(file);
+        const carriesLiteral =
+          content.includes(`-m "${literal}"`) || content.includes(`--message="${literal}"`);
+        expect(carriesLiteral).toBe(true);
       });
     }
   });

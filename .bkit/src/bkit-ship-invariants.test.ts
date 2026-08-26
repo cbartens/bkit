@@ -39,6 +39,15 @@ function readShip(): string {
   return fs.readFileSync(SHIP_MD, "utf-8");
 }
 
+// #446: the frozen staging allow-list moved out of bkit-ship.md's prose and
+// into bkit-book-commit.sh (git ls-files-built pathspec, never shell
+// word-splitting / an `ls` glob that aborts under zsh when unmatched).
+const BOOK_SCRIPT = path.join(REPO_ROOT, ".bkit/templates/.bkit/scripts/bkit-book-commit.sh");
+
+function readBookScript(): string {
+  return fs.readFileSync(BOOK_SCRIPT, "utf-8");
+}
+
 // ---------------------------------------------------------------------------
 // FROZEN — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
@@ -68,15 +77,18 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
 ] as const;
 
 // ---------------------------------------------------------------------------
-// FROZEN — BOOK_PATHS staging allow-list
+// FROZEN — bookkeeping staging allow-list
 // ---------------------------------------------------------------------------
 //
-// Verbatim from the design (§ `BOOK_ROOT` / `BOOK_PATHS`). Every `git add` in
-// bkit-ship.md MUST resolve via this list — never `-A`, never a bare `docs/`.
-// Published in the test as the frozen list the rewrite must match.
+// Verbatim from the design (§ `BOOK_ROOT` / `BOOK_PATHS`). Every stage/commit
+// in bkit-ship.md MUST resolve via this list (now built inside
+// bkit-book-commit.sh, #446) — never `-A`, never a bare `docs/`. Published in
+// the test as the frozen list the rewrite must match. The FID/YYYYMM log-dir
+// entry is checked separately below in its script form (`$MONTH`/`$FID`
+// shell variables + a trailing `/*` glob, not the literal `{YYYYMM}`/`{FID}`
+// template placeholders bkit-ship.md's own prose still uses).
 
 export const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
-  "docs/plans/{YYYYMM}/logs/{FID}/",
   "docs/completed.md",
   "docs/deferrals.jsonl",
   "docs/failures.jsonl",
@@ -167,37 +179,29 @@ describe("bkit-ship.md — BOOK_ROOT / BOOK_PATHS named conventions", () => {
     expect(ship).toMatch(/BOOK_ROOT/);
   });
 
-  it("defines BOOK_PATHS — the frozen staging allow-list", () => {
+  it("wires bookkeeping staging through bkit-book-commit.sh (#446 — frozen allow-list moved into the script)", () => {
     const ship = readShip();
-    // RED on current prose — BOOK_PATHS does not exist yet.
-    expect(ship).toMatch(/BOOK_PATHS/);
+    expect(ship).toMatch(/bkit-book-commit\.sh/);
   });
 
-  it("BOOK_PATHS resolves to the frozen allow-list (positive presence)", () => {
-    const ship = readShip();
-    // Every path in the design's frozen list must appear. RED on current prose
-    // because none of these literal paths are gathered under a BOOK_PATHS
-    // definition today (they appear ad-hoc).
+  it("bkit-book-commit.sh resolves to the frozen allow-list (positive presence)", () => {
+    const script = readBookScript();
+    // Every path in the design's frozen list must appear in the script that
+    // now builds the pathspec (git ls-files, never shell globbing).
     for (const p of BOOK_PATHS_ALLOW_LIST) {
-      // The `{YYYYMM}` / `{FID}` placeholders are literal in the design.
-      expect(ship).toContain(p);
+      expect(script).toContain(p);
     }
+    // FID/YYYYMM log-dir entry, in the script's own form ($MONTH/$FID shell
+    // variables + a trailing glob, not bkit-ship.md's literal placeholders).
+    expect(script).toContain('"docs/plans/$MONTH/logs/$FID/*"');
   });
 
-  it("every `git add` in bkit-ship.md resolves via BOOK_PATHS (no literal path adds)", () => {
+  it("every `git add` in bkit-ship.md resolves via bkit-book-commit.sh (no literal path adds)", () => {
     const ship = readShip();
-    // After the rewrite, fenced `git add` lines should reference $BOOK_PATHS
-    // (or expand it), never stage a literal path or `-A`. RED on current prose
-    // because today every step does `git add -A`.
-    const lines = ship.split("\n");
-    const violations: string[] = [];
-    for (const line of lines) {
-      if (!/\bgit\s+add\b/.test(line)) continue;
-      // `git add` MUST be followed by `$BOOK_PATHS` (the staged allow-list).
-      if (!/\bgit\s+add\b.*\$?BOOK_PATHS/.test(line)) {
-        violations.push(line.trim());
-      }
-    }
+    // After #446, fenced `git add` lines in bkit-ship.md must not exist at
+    // all — every stage/commit routes through bkit-book-commit.sh instead of
+    // a literal `git add <path>` in the workflow markdown.
+    const violations = ship.split("\n").filter((line) => /\bgit\s+add\b/.test(line));
     expect(violations).toEqual([]);
   });
 
@@ -344,9 +348,11 @@ describe("bkit-ship.md — .deferred-blocked writer under BOOK_ROOT", () => {
 describe("bkit-ship.md — build-challenge remediation regressions", () => {
   // Finding 1 (CRITICAL): B2 conflict resolution was silently lost —
   // `git add $BOOK_PATHS` staged only bookkeeping, not the resolved source
-  // files the conflict-resolve subagent wrote. Fix: `git add -u && git add
-  // $BOOK_PATHS` (stages tracked modifications first, then bookkeeping).
-  it("F1: B2 conflict-resolve stages tracked source modifications via 'git add -u' before bookkeeping", () => {
+  // files the conflict-resolve subagent wrote. Fix: stage tracked
+  // modifications first, then bookkeeping, before the single commit. #446
+  // moved this into bkit-book-commit.sh's `--stage-tracked-updates` flag
+  // (runs `git add -u` internally before building the bookkeeping pathspec).
+  it("F1: B2 conflict-resolve stages tracked source modifications before bookkeeping", () => {
     const ship = readShip();
     const lines = ship.split("\n");
     // The B2 block is the ONLY fenced block that force-pushes feat/{FID}.
@@ -360,10 +366,10 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     // (Fenced blocks in this workflow are indented under list items, so a
     // window-based scan is more robust than fence-boundary extraction.)
     const window = lines.slice(Math.max(0, forcePushIdx - 12), forcePushIdx + 1).join("\n");
-    // Must contain `git add -u` (stages resolved tracked source files).
-    expect(window).toMatch(/\bgit\s+add\s+-u\b/);
-    // And must still stage bookkeeping via $BOOK_PATHS.
-    expect(window).toMatch(/git\s+add.*BOOK_PATHS/);
+    // Must stage tracked source modifications (`--stage-tracked-updates`)
+    // AND bookkeeping (`bkit-book-commit.sh`) before the commit/push.
+    expect(window).toMatch(/--stage-tracked-updates/);
+    expect(window).toMatch(/bkit-book-commit\.sh/);
   });
 
   // Finding 2 (HIGH): the ship-revalidate-timeout row was NEVER written — jq

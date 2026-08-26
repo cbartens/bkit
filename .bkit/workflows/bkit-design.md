@@ -209,16 +209,10 @@ description: "Design Feature — Autonomous design phase"
 1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   # Ledger sweep — frozen list, then every OTHER bkit JSONL in the tree (any
-   # FID, any month bucket). Globs matching nothing drop out; a pathspec
-   # matching nothing is fatal to `git add`.
-   BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl"
-   BOOK_PATHS="$BOOK_PATHS $(cd "$REPO_ROOT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add $BOOK_PATHS
-     git diff --cached --quiet -- $BOOK_PATHS \
-       || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]" -- $BOOK_PATHS
+     bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$REPO_ROOT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]" \
+       || { echo "[bkit-book] pre-worktree bookkeeping commit failed" >&2; exit 1; }
    fi
    ```
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
@@ -921,12 +915,8 @@ description: "Design Feature — Autonomous design phase"
        '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
        >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
      bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID} >/dev/null
-     # Ledger sweep — frozen list, then every OTHER bkit JSONL in the tree (any
-     # FID, any month bucket). Globs matching nothing drop out; a pathspec
-     # matching nothing is fatal to `git add`.
-     BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl"
-     BOOK_PATHS="$BOOK_PATHS $(cd "$WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-     git add -- $BOOK_PATHS
+     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=stage \
+       || { echo "[bkit-book] design-close bookkeeping stage failed" >&2; exit 1; }
      git commit --allow-empty -m "docs({FID}): design DONE bkit [skip ci]"
      git push origin dev || { echo "dev push failed" >&2; exit 1; }
      git show "dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
