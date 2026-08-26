@@ -135,7 +135,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
    if ! (set -C; printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
-     LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
+     LOCK_WORKFLOW=$(awk '{print $(2)}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
@@ -589,7 +589,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    PARSE_MARKER='
      /^<!-- debug-fetch:start/ {
        idx++
-       line=$0
+       line=$(0)
        sub(/^<!-- debug-fetch:start[ \t]*/,"",line); sub(/[ \t]*-->$/,"",line)
        context="runtime"; name=""
        n=split(line, p, /[ \t]+/)
@@ -647,7 +647,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    # Repeated context+name pair → ordinal disambiguates the artifact path.
    PAIRS=$(printf '%s\n' "$SECTION" | awk '
      /^<!-- debug-fetch:start/ {
-       line=$0
+       line=$(0)
        sub(/^<!-- debug-fetch:start[ \t]*/,"",line); sub(/[ \t]*-->$/,"",line)
        context="runtime"; name=""
        n=split(line, p, /[ \t]+/)

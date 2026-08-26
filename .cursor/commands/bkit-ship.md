@@ -260,7 +260,7 @@ Ship Feature — Autonomous merge and archive
    LOCK="$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS="$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
    if ! (set -C; printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
-     LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
+     LOCK_WORKFLOW=$(awk '{print $(2)}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
      . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then

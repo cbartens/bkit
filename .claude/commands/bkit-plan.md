@@ -84,7 +84,7 @@ description: "Plan Feature — Autonomous plan generation"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
    if ! (set -C; printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
-     LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
+     LOCK_WORKFLOW=$(awk '{print $(2)}' "$LOCK")
      SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
      if [ -f "$SRC" ]; then
@@ -310,7 +310,7 @@ description: "Plan Feature — Autonomous plan generation"
    OUT="docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md"
    SRC="docs/deferrals.jsonl"
    if [ -f "$SRC" ]; then
-     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $0}' "$SRC")
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($(0)); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $(0)}' "$SRC")
      TOTAL=$(printf '%s' "$M" | grep -c . || true)
      if [ "$TOTAL" -gt 0 ]; then
        printf '%s\n' "$M" | sort -k1,1nr -k2,2nr | head -40 | cut -f3- > "$OUT"
@@ -332,7 +332,7 @@ description: "Plan Feature — Autonomous plan generation"
    OUT="docs/plans/{YYYYMM}/logs/{FID}/related-failures.md"
    SRC="docs/failures.jsonl"
    if [ -f "$SRC" ]; then
-     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($0); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $0}' "$SRC")
+     M=$(awk -v terms="$TERMS" 'BEGIN{n=split(tolower(terms),t,/[ ]+/); min=(n>=2?2:1)} {l=tolower($(0)); c=0; for(i=1;i<=n;i++) if(t[i]!="" && index(l,t[i])) c++; if(c>=min) printf "%d\t%d\t%s\n", c, NR, $(0)}' "$SRC")
      TOTAL=$(printf '%s' "$M" | grep -c . || true)
      if [ "$TOTAL" -gt 0 ]; then
        printf '%s\n' "$M" | sort -k1,1nr -k2,2nr | head -40 | cut -f3- > "$OUT"
