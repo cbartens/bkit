@@ -156,6 +156,9 @@ PATHSPECS=(
   "docs/plans/*/logs/*/*.jsonl"
   "docs/*.jsonl"
   ".bkit/*.jsonl"
+  # Generated roadmap board — a pure projection of docs/roadmap.jsonl, but a
+  # .md, so no *.jsonl glob above reaches it.
+  "docs/roadmap.md"
 )
 if [ "$SCOPE" = "full" ]; then
   PATHSPECS+=(

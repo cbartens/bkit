@@ -30,5 +30,11 @@ pnpm-lock.yaml
 .envrc
 .bkit/.env.example
 .opencode/opencode.json
+# Generated projection — bkit_roadmap_fold FULLY regenerates the
+# `roadmap-status` marker block on every workflow close, emitting unpadded
+# markdown tables. Prettier would re-pad them, so the committed board would
+# never be byte-equal to what the renderer emits and every close would carry a
+# formatting-only diff. The fold's output is the source of truth.
+docs/roadmap.md
 
 # bkit:end

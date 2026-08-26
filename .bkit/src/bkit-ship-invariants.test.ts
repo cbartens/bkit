@@ -250,6 +250,27 @@ describe("bkit-ship.md — status.jsonl writes resolve via BOOK_ROOT", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POSITIVE — ship verdict reader resolves docs/roadmap.jsonl under BOOK_ROOT
+// ---------------------------------------------------------------------------
+
+describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves under BOOK_ROOT (#380)", () => {
+  it("the SHIPPED_HIT jq read targets $BOOK_ROOT/docs/roadmap.jsonl, never a bare relative path", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    const shippedHitLine = lines.find((l) => /SHIPPED_HIT=\$\(/.test(l));
+    expect(shippedHitLine, "SHIPPED_HIT assignment line not found").toBeTruthy();
+    // Every other book-path read/write in this file resolves via $BOOK_ROOT
+    // (status.jsonl, .deferred-blocked). The ship-verdict reader must not be
+    // the one path that reads a bare relative `docs/roadmap.jsonl` — that
+    // silently resolves against the CURRENT WORKING DIRECTORY (worktree),
+    // not the dev tree the writer targets, and would FAIL to find a row the
+    // writer correctly wrote.
+    expect(shippedHitLine!).toMatch(/\$BOOK_ROOT\/docs\/roadmap\.jsonl/);
+    expect(shippedHitLine!).not.toMatch(/[^/$]docs\/roadmap\.jsonl/);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POSITIVE — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 

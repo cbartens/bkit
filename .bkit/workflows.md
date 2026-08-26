@@ -27,7 +27,8 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 ├── bkit-audit.md          # Workflow 6/6 — 7 steps; planned (not yet shipped)
 ├── bkit-auto.md          # Utility — phase-routed cloud dispatch (ship/debug by CI on a PR or post-merge `dev`; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
-└── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
+├── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
+└── bkit-roadmap.md        # Utility — on-demand; regenerate docs/roadmap.md board + analysis (#380)
 ```
 
 <!-- prettier-ignore -->
@@ -42,6 +43,7 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
+| `/bkit-roadmap` | no | n/a | Regenerated `docs/roadmap.md` (`roadmap-status` + `roadmap-analysis` blocks) |
 
 ## Workflow Authoring Rules
 
@@ -160,7 +162,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs → decides tracker mirror.
+**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,deferrals,failures,roadmap}.jsonl`. Workflow reads agent outputs → decides tracker mirror.
 
 ## Common Workflow Anatomy
 
@@ -724,7 +726,7 @@ Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate f
 <!-- prettier-ignore -->
 | Tier | Conflict shape | Recovery | Mechanism |
 | --- | --- | --- | --- |
-| 1 | Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/completed.md`, `.bkit/stats.jsonl`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
+| 1 | Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `docs/roadmap.md`, `.bkit/stats.jsonl`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
 | 2 | Any combination of the Tier-1 ledgers, `.bkit/friction.jsonl`, and the dependency lockfile (pnpm, npm, yarn, bun, cargo, go, uv) | `bkit_rebase_resolve` — union-resolves each ledger (`git merge-file --union` over the three index stages), takes + regenerates the lockfile, then drives `--continue` / `--skip` to completion | `.bkit/scripts/bkit-rebase-resolve.sh`, sourced in Step 2 of `bkit-build.md` / `bkit-debug.md` / `bkit-design.md` / `bkit-plan.md` |
 | 3 | Code, configs, anything else | Touch sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
 
@@ -903,7 +905,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 ### `/bkit-ship` — 13 steps
 
-**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `BOOK_PATHS` (frozen 10-path allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
+**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `BOOK_PATHS` (frozen 11-path allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
 
 **Summary is displayed verbatim before the Failure Path.** A FAIL summary's `Recommended Next Step` is the only handoff that reaches a human on that route — the Close Workflow step's final return is unreachable once the run enters the Failure Path. All five phase workflows carry it.
 
@@ -918,7 +920,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional) + `BOOK_PATHS` (frozen 10-path allow-list); create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
+| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional) + `BOOK_PATHS` (frozen 11-path allow-list); create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
 | 2 — Verify PR (Worktree Setup + Regression Guard) | — | Read PR head SHA (`ENTRY_HEAD`), mergeable state. Regression guard: no CI run for PR HEAD → FAIL; else assert prior failed steps now pass. Branch eligibility check. Resolve `PR_NUMBER`. Init `MERGE_ATTEMPT` = 0. Write ownership marker to outbox. |
 | 3 — Base Check | — | `git merge-base --is-ancestor origin/dev origin/feat/{FID}`: ancestor → Path A → Step 6; not ancestor → Path B → Step 4. |
 | 4 — Integrate (Path B only) | `@bkit-ship-conflict-resolve` _(B2 only)_ | B1 mergeable: `gh pr update-branch` → Step 5. B2 conflicting: worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease` → Step 5. Non-mechanical: handover. |
@@ -980,6 +982,19 @@ Human-triggered. Removes Claude worktree (optionally feature branch). Always int
 
 - **`{FID}` provided** → Single Worktree Path: warn if `AHEAD` > 0 commits not in `origin/dev`; confirm removal; `git worktree remove --force` + `git worktree prune`; offer to delete local branch (`-d` safe; `-D` only on explicit force confirm).
 - **No arg** → List All Path: enumerate `.worktrees/*` with branch / ahead / behind / last-commit; prompt user to enter `{FID}` or `all` or `x`.
+
+### `/bkit-roadmap` — utility
+
+On-demand refresh of `docs/roadmap.md` outside the close cycle. No args, no interaction, no hard stop.
+
+**Flow:**
+
+1. Source `bkit-roadmap-fold.sh`; call `bkit_roadmap_fold` — full regenerate of the `roadmap-status` block from `docs/roadmap.jsonl` (the on-demand board repair).
+2. Source `bkit-roadmap-reconcile.sh`; call `bkit_roadmap_drift_check` — warns on any live `feat/*` with no ledger row; never mutates the board.
+3. Invoke `@bkit-roadmap-refresh` — rewrites the `roadmap-analysis` block only.
+4. Print a summary (board regenerated, drift-check result, analysis verdict).
+
+Reuses the fold (WS-1/WS-2), the drift check (WS-4 Directive 4), and the analysis leaf (WS-3) as-is — no new fold/leaf/check.
 
 ### `/bkit-auto` — phase-routed dispatch
 
@@ -1424,7 +1439,7 @@ Pipeline writes structured ledgers at `docs/` root. Each has strict sole-writer 
 | --- | --- | --- | --- |
 | `docs/knowledge.jsonl` | `key` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
 | `docs/decisions.jsonl` | `key` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs, never authors them |
-| `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
+| `docs/roadmap.jsonl` | `key` (the FID) | ALL FIVE workflow closes; `@bkit-ship-update-docs` writes the `status:"SHIPPED"` row | Every close, `/bkit-ship` Step 10 |
 | `docs/deferrals.jsonl` | `key` | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 8), `@bkit-debug-abort-handover` (handover context), `@bkit-ship-deferred-sweep` (adjudication — same-`key` `reason` = `unjustified`) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 8, `/bkit-ship` Step 5, Failure Path handover |
 
 All other agents document blockers/out-of-scope in own log file (Plan Execution / Challenge Remediation / etc — each subagent H1 for canonical output name) — workflow reads at step boundaries, decides tracker mirror.

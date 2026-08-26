@@ -372,7 +372,8 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts unaffected. |
 | `docs/audits/` | Audit reports from `bkit-utility-audit-*` agents. Created on the first audit run. |
-| `docs/completed.md` | Shipped features index |
+| `docs/roadmap.jsonl` | Canonical feature-state ledger (`kind:"feature"`) — shipped features index (`status:"SHIPPED"`) + in-flight phase state, appended at every workflow close |
+| `docs/roadmap.md` | Generated phase-sectioned board + best-next-step analysis, projected from `docs/roadmap.jsonl`. Consumer-owned — never seeded/overwritten by `bkit install` |
 | `docs/deferrals.jsonl` | Deferred items |
 
 ### In the installed package, not your repo

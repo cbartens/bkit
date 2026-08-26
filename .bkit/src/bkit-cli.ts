@@ -745,17 +745,24 @@ Usage:
                                  in any repo. Deduplicates by per-kind composite
                                  identity. Advisory + fail-open: exits 0.
   bkit telemetry migrate [--dry-run]
-                                 Migrate docs/knowledge.md + docs/decisions.md to
-                                 docs/knowledge.jsonl + docs/decisions.jsonl (kind:"knowledge"
-                                 and kind:"decision" rows). Parity-gated + destructive: ports
+                                 Migrate docs/knowledge.md + docs/decisions.md +
+                                 docs/pending.md + .bkit/friction.md + docs/completed.md
+                                 (fifth pair, #380) to docs/knowledge.jsonl +
+                                 docs/decisions.jsonl + docs/deferrals.jsonl +
+                                 .bkit/friction.jsonl + docs/roadmap.jsonl (kind:"knowledge",
+                                 "decision", "deferral", "friction", and "feature" —
+                                 status:"SHIPPED" — rows). Parity-gated + destructive: ports
                                  each entry with its KN-N/DE-N id + legacy Related:
                                  graph in references[], its Severity and its
                                  Description prose, verifies
                                  row-count parity against a transient .md.bak, then DELETES
                                  the .md ONLY after parity is confirmed (idempotent: re-run
                                  is a no-op if migration already completed). A parity mismatch
-                                 or absent .md.bak ABORTS with ZERO .md deleted. NEVER called
-                                 from bkit upgrade — only via this explicit invocation.
+                                 or absent .md.bak ABORTS with ZERO .md deleted. Same run also
+                                 performs the #380 bootstrap seed: scans docs/plans/** for
+                                 in-flight FIDs and appends one docs/roadmap.jsonl row per FID
+                                 at its detected phase, skipping FIDs already in the ledger.
+                                 NEVER called from bkit upgrade — only via this explicit invocation.
                                  --dry-run: show what would be migrated without writing.
   bkit telemetry summary [--phase=<workflow>]
                                  Per-workflow telemetry report: THIS run's metrics

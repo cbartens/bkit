@@ -11,6 +11,7 @@ import {
   detectMalformedPackageJson,
   detectNotGitRepo,
   detectPrettierignoreNoMarkers,
+  detectCompletedMdUnmigrated,
   detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
@@ -201,6 +202,26 @@ describe("detectPrettierignoreNoMarkers", () => {
 
   it("returns null when .prettierignore is absent", () => {
     expect(detectPrettierignoreNoMarkers(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCompletedMdUnmigrated (#380)
+// ---------------------------------------------------------------------------
+
+describe("detectCompletedMdUnmigrated", () => {
+  it("returns an advisory when docs/completed.md is present", () => {
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "docs", "completed.md"), "# Completed\n", "utf-8");
+    const result = detectCompletedMdUnmigrated(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("completed-md-unmigrated");
+    expect(result!.severity).toBe("advisory");
+    expect(result!.action).toContain("bkit telemetry migrate");
+  });
+
+  it("returns null when docs/completed.md is absent (already migrated)", () => {
+    expect(detectCompletedMdUnmigrated(tmpDir)).toBeNull();
   });
 });
 

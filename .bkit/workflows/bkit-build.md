@@ -1356,9 +1356,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Re-read labels → update status, write close telemetry, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    <!-- bkit:tracker github start -->
    `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '{state, body, labels: [.labels[].name]}'` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`. RAW READ REQUIRED — NEVER `mcp__github__issue_read` for body / comment text: it sanitises bodies, deleting HTML comments (both bkit markers) and angle-bracket spans.
+   **Tracker enrichment (additive — never a precondition, NEVER `gh`/`search_issues`):** `mcp__github__list_issues({ owner: "{OWNER}", repo: "{REPO}", state: "open", labels: "bkit:design,bkit:plan,bkit:build,bkit:debug,bkit:ship", perPage: 100 })` → map `items` to a JSON array `[{ key: "#{number}", title, status: (from its `bkit:*` phase label: design→DESIGNED, plan→PLANNED, build→BUILT, debug→DEBUGGED, ship→SHIPPED), milestone: (milestone.title // null), blockedBy: (labels containing "blocked" ? "blocked" : null) }]` → write to `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.bkit/.roadmap-tracker-rows-{FID}.json`. On call error/timeout → write `[]` (treated inconclusive, never blocks the close).
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
    `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`.
+   **Tracker enrichment (additive — never a precondition, NEVER `gh`/`search_issues`):** `mcp__linear__list_issues({ team: "{LINEAR_TEAM}", state: "started", limit: 100 })` → map `issues` to the same row shape via `labels[].name` (a `bkit:*` phase label) and `project.name` as `milestone` → write to the same path. Fail-open identically: a call error/timeout writes `[]`.
    <!-- bkit:tracker linear end -->
    ```bash
    AUTO_ROUTE_SUFFIX=""
@@ -1383,6 +1385,61 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "build" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
    bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" build {YYYYMM} {FID} >/dev/null
+   # tracker enrichment (additive, never a precondition): the wired-only
+   # `list_issues` orchestrator step above (github/linear marker block) wrote
+   # TRACKER_ROWS when a tracker is connected; under `tracker: none` neither
+   # marker block rendered, so no file exists and enrichment is a fail-open
+   # no-op. Append the docs/roadmap.jsonl row for this phase on
+   # feat/{FID} (the `git add -A` below sweeps it) + regenerate docs/roadmap.md,
+   # then best-effort MIRROR the SAME line to dev under the dev-lock idiom
+   # (4th staging shape, Directive 5) — fail-open, NEVER gates the close.
+   TRACKER_ROWS="$REPO_ROOT/.bkit/.roadmap-tracker-rows-{FID}.json"
+   jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "build-close-workflow" --arg key "{FID}" \
+     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="build" | .step=$step | .key=$key | .category="agentic" | .description="Build closed for {FID}" | .status="BUILT"' \
+     >> "$WT/docs/roadmap.jsonl" || echo "[bkit-roadmap] append failed: $WT/docs/roadmap.jsonl"
+   ROADMAP_LINE=$(tail -1 "$WT/docs/roadmap.jsonl" 2>/dev/null)
+   ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" "$TRACKER_ROWS" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+   (
+     # Runtime fence — this mirror checks out and pushes `dev` in the MAIN
+     # checkout, which is only safe when the run owns a SEPARATE feature
+     # worktree. Derived from local facts, NOT from RUNTIME_WORKTREES /
+     # RUNTIME_DEVPUSHES: those are set by bkit_runtime_detect in an earlier,
+     # separate shell invocation and are NOT in scope in this fenced block, so
+     # testing them here would silently compare against unset. `$WT` ==
+     # `$REPO_ROOT` is adopt mode — the only working tree the session has — where a
+     # checkout would swap the branch out from under the in-progress build.
+     # The capability table moves both flags together (worktrees=true iff
+     # devpushes=true), so this is a faithful proxy for the double guard.
+     # Asserted inline rather than via `bkit_close_guard_checkout`: that helper
+     # installs its own EXIT trap, and bash traps REPLACE rather than chain, so
+     # it would clobber the DEVLOCK-removal trap below and leak the lock (same
+     # reasoning as ship Step 9). Fail-open — the feat-side row is written.
+     if [ "$WT" = "$REPO_ROOT" ]; then
+       echo "[bkit-roadmap] skipping dev-side roadmap mirror — adopt mode (worktree == main checkout); a dev checkout here would swap the branch under the run (feat-side row already written)" >&2
+       exit 0
+     fi
+     DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
+     DEADLINE=$(( $(date +%s) + 60 ))
+     until (set -C; printf '%s build {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
+       DEVLOCK_MTIME=$(stat -c %Y "$DEVLOCK" 2>/dev/null || stat -f %m "$DEVLOCK" 2>/dev/null || echo 0)
+       [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
+       [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "[bkit-roadmap] dev lock busy — skipping dev-side roadmap mirror (feat-side row already written)" >&2; exit 0; }
+       sleep 5
+     done
+     trap 'rm -f "$DEVLOCK"' EXIT
+     CUR_BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
+     if git -C "$REPO_ROOT" checkout dev 2>/dev/null && git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null; then
+       printf '%s\n' "$ROADMAP_LINE" >> "$REPO_ROOT/docs/roadmap.jsonl"
+       ( . "$REPO_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$REPO_ROOT" "$TRACKER_ROWS" ) || echo "[bkit-roadmap] fold skipped on dev" >&2
+       git -C "$REPO_ROOT" add -- docs/roadmap.jsonl docs/roadmap.md
+       git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): build roadmap update bkit [skip ci]" -- docs/roadmap.jsonl docs/roadmap.md
+       git -C "$REPO_ROOT" push origin dev || echo "[bkit-roadmap] dev push failed — feat-side row already written" >&2
+     else
+       echo "[bkit-roadmap] dev checkout/pull failed — skipping dev-side roadmap mirror" >&2
+     fi
+     git -C "$REPO_ROOT" checkout "$CUR_BRANCH" 2>/dev/null || true
+   ) || echo "[bkit-roadmap] dev-lock mirror subshell failed — never gates the close" >&2
+   rm -f "$TRACKER_ROWS" 2>/dev/null || true
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    HEAD_MSG=$(git log -1 --pretty=%B)
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then

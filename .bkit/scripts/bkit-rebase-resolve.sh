@@ -35,6 +35,15 @@
 # whereas a blocking conflict halts the workflow — so at REBASE time the union
 # is the cheaper error. Deliberate divergence from the attribute, not an
 # oversight.
+#
+# `docs/roadmap.md` is the one entry that is NOT append-only — it is a full
+# regenerate of `docs/roadmap.jsonl`, so a union leaves a board with duplicated
+# sections rather than interleaved rows. It is listed anyway because both sides
+# of any rebase have almost certainly re-folded it (every workflow close does),
+# making a conflict there the common case rather than the exception. Refusing
+# would route nearly every ship to the Failure Path; the union's duplicate is
+# erased by the very next fold, which rewrites the marker blocks wholesale. One
+# self-healing commit beats a halted workflow.
 
 # The auto-resolvable ledger set — ONE newline-separated list of globs, the
 # single source of truth for this file. Keep it in step with the `merge=union`
@@ -45,7 +54,8 @@ BKIT_REBASE_LEDGERS='docs/knowledge.jsonl
 docs/decisions.jsonl
 docs/deferrals.jsonl
 docs/failures.jsonl
-docs/completed.md
+docs/roadmap.jsonl
+docs/roadmap.md
 .bkit/stats.jsonl
 .bkit/friction.jsonl
 docs/plans/**/status.jsonl'

@@ -36,7 +36,7 @@
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
-| `docs/completed.md` | — | — | — | — | ● | Ledger of shipped plans — one entry per merged feature. Append-only. |
+| `docs/roadmap.jsonl` | ● | ● | ● | ● | ● | Canonical feature-state ledger (`kind:"feature"`) — appended at every phase close (`docs/roadmap.md`'s sole source of truth). Append-only. |
 | `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
@@ -52,3 +52,5 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
+| `docs/notes.md` | — | — | — | — | — | Human scratchpad — pre-formalized workflow/process gap observations. **Human-written only; agents do NOT append.** Promote entries to `docs/deferrals.jsonl` or a plan. |
+| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Generated phase-sectioned board + best-next-step analysis, projected from `docs/roadmap.jsonl` (#380). Consumer-owned — `bkit install` never creates/overwrites it. Machine marker blocks only; the `## Backlog / Ideas` region is a free-form consumer scratchpad. |
