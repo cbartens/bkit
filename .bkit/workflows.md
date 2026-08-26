@@ -1452,11 +1452,16 @@ Orchestrator behavior:
   - `docs/{deferrals,failures,knowledge,decisions}.jsonl` → `"$WT/docs/…"`. NEVER mix `$REPO_ROOT` and `show-toplevel` for the same ledger in one block.
 - **Friction/stats:** append to `$FRICTION` / `$STATS` at close; stage into the close commit that pushes (never leave dirty after push).
 - **Close commit pathspec (design/plan on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Ship: `BOOK_PATHS` on add+commit, carrying the same ledger pair. Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
+- **Ledger sweep (every path-scoped staging site):** the frozen allow-list names ONE `{FID}` and ONE `{YYYYMM}` — a `status.jsonl` under any other feature or month bucket, and any ledger added after the list was written, is appended to, never staged, and lost at the next `git worktree remove --force` / branch switch / clean. Every site that builds a pathspec therefore widens it with the tree's actual JSONL set before staging:
+  ```bash
+  BOOK_PATHS="$BOOK_PATHS $(cd "$WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
+  ```
+  Sweep root = the tree the following `git add` targets (`$REPO_ROOT` pre-worktree, `$WT` at close, `$BOOK_ROOT` in ship Step 1 / **Failure Path**, cwd in ship B2). Bounded to those three globs on purpose — a repo's own `*.jsonl` data or fixtures must NEVER ride into a `[skip ci]` bookkeeping commit. `ls` prints only what exists: a glob matching nothing drops out, and a pathspec matching nothing is fatal to `git add`. Inline at each site, NEVER a sourced helper — the `-A` ban stays. Ship's worktree→`BOOK_ROOT` reconciliation unions the same swept set row-wise (append-only NDJSON, never copy over).
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
 - **Tracker comment:** summary-only (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
 - **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
-- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$`.
-- **Pre-worktree allow-list:** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` (same ledger pair as close pathspec).
+- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$` — must admit everything the ledger sweep can stage.
+- **Pre-worktree allow-list:** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` (same ledger pair as close pathspec), plus the ledger sweep.
 
 ## Authoring Checklist for New / Refined Workflows
 

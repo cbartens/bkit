@@ -129,6 +129,9 @@ description: "Ship Feature — Autonomous merge and archive"
    # BOOK_PATHS — re-derive; never inherit across a Bash-block boundary.
    # Frozen staging allow-list (path-scoped; never -A).
    BOOK_PATHS="$LOGDIR_REL/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
+   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
+   BOOK_PATHS="$BOOK_PATHS $(cd "$BOOK_ROOT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
    for d in .claude/skills .cursor/skills .opencode/skills; do
      if [ -e "$BOOK_ROOT/$d" ] || git -C "$BOOK_ROOT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
        BOOK_PATHS="$BOOK_PATHS $d"
@@ -144,9 +147,11 @@ description: "Ship Feature — Autonomous merge and archive"
        [ -f "$f" ] || continue
        [ -e "$BOOK_ROOT/$LOGDIR_REL/$(basename "$f")" ] || cp "$f" "$BOOK_ROOT/$LOGDIR_REL/"
      done
-     # Ledgers are append-only NDJSON — union rows in, NEVER copy over.
-     for L in docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl; do
+     # Ledgers are append-only NDJSON — union rows in, NEVER copy over. Sweep
+     # every branch-side JSONL: `worktree remove --force` is where unswept rows die.
+     for L in $(cd "$SRC_WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null); do
        [ -f "$SRC_WT/$L" ] || continue
+       mkdir -p "$BOOK_ROOT/$(dirname "$L")"
        if [ -f "$BOOK_ROOT/$L" ]; then
          NEW_ROWS=$(grep -F -x -v -f "$BOOK_ROOT/$L" "$SRC_WT/$L")
          [ -n "$NEW_ROWS" ] && printf '%s\n' "$NEW_ROWS" >> "$BOOK_ROOT/$L"
@@ -245,6 +250,9 @@ description: "Ship Feature — Autonomous merge and archive"
    #   .agents/skills
    #   skills-lock.json
    BOOK_PATHS="docs/plans/$YYYYMM/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
+   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
+   BOOK_PATHS="$BOOK_PATHS $(cd "$BOOK_ROOT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
    # Host skill mirrors — append ONLY when present on disk or tracked in the
    # index; a pathspec matching neither is fatal.
    for d in .claude/skills .cursor/skills .opencode/skills; do
@@ -489,6 +497,9 @@ description: "Ship Feature — Autonomous merge and archive"
       ```bash
       # BOOK_PATHS — re-derive; never inherit across a Bash-block boundary.
       BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+      # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
+      # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
+      BOOK_PATHS="$BOOK_PATHS $(ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
       for d in .claude/skills .cursor/skills .opencode/skills; do
         if [ -e "$d" ] || git ls-files --error-unmatch "$d" >/dev/null 2>&1; then
           BOOK_PATHS="$BOOK_PATHS $d"
@@ -1151,6 +1162,9 @@ description: "Ship Feature — Autonomous merge and archive"
      BOOK_ROOT="$REPO_ROOT"
    fi
    BOOK_PATHS="docs/plans/{YYYYMM}/logs/{FID}/ docs/completed.md docs/deferrals.jsonl docs/failures.jsonl docs/knowledge.jsonl docs/decisions.jsonl .bkit/friction.jsonl .bkit/stats.jsonl .agents/skills skills-lock.json"
+   # Ledger sweep — every OTHER bkit JSONL in the tree (any FID, any month
+   # bucket). Globs matching nothing drop out; a pathspec matching nothing is fatal.
+   BOOK_PATHS="$BOOK_PATHS $(cd "$WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
    for d in .claude/skills .cursor/skills .opencode/skills; do
      if [ -e "$WT/$d" ] || git -C "$WT" ls-files --error-unmatch "$d" >/dev/null 2>&1; then
        BOOK_PATHS="$BOOK_PATHS $d"
