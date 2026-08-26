@@ -8,8 +8,8 @@
     ".github/workflows/renovate.yml": "b7ae6892521643844ad0d69d4f337b8853d97bf803d73d346fabd4867c6d55e4"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "4554b64ca46f8162686900733fa67b5d51820fe10c5c22008571debceb74c083",
-    "docs/testing.md": "0d65c7f98c9d41b00b13037b54f4f81d76107c9cf0b828c64f0a86637f940c05",
+    "docs/deployments.md": "f71f5d7c03aca124780bce6def141f8011185464df18caa61eb1f7c3bf7fbf3c",
+    "docs/testing.md": "1c6f0ca951791dfb583683a14ee519823d89e393d2b6cc03937260af4e3d0aef",
     ".claude/settings.json": "990d214a4a53d7bddcff82669b5ecc094638143133f19e1c1b7216f864938b6a",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
     ".agents/config.md": "4e6b4c8f7d27e06c8828ae6b5c70fe2f15281000f6fdf552e0cbd3dc30944465",
@@ -228,7 +228,7 @@
     ".opencode/commands/bkit-worktree-prune.md": "18a5a3bc64dedb2eb8a1955a3433c52dad2ac51d9452412a1f6db266bec9b6f7",
     ".opencode/commands/bkit-worktree-sync.md": "6878b8b5ffe8ac51505a2fda2efef022bf6b0e4b144dedcef853367a21b198f8",
     ".bkit/scripts/bkit-runtime.sh": "064520fe4b88a720c54c6b290818a38dc36ca3ca1e80171c31bee142413dfd5e",
-    ".bkit/scripts/bkit-ship-gate.sh": "9deb5b5dcae7f3574550a1b2ef0d5a92cb2ceabe8945300f2ac1bef1a9529fee",
+    ".bkit/scripts/bkit-ship-gate.sh": "d74d44d2aecccd88a3b38e17fe615c5067fa805167ce45c64cb141880212e01e",
     ".bkit/scripts/bkit-ship-timeouts.sh": "e2582cf39ed396e53baef129b3279fdf7cde9aadad8dc3dcd40c322090e769af",
     ".cursor/allowlist.json": "f21f5d66c90ef1debf8b6b3064cfc63b801a2ae7534e06e80a8b6f1cd4be0659",
     ".claude/agents/bkit-design-spike.md": "7f56faa89a2713ebe97ed30d133332ff1b3a8708a39f49f50d64c1dfc065e5e7",

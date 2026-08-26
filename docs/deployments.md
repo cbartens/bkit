@@ -556,8 +556,6 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Gate sites (2, not 3):** build Gate 17; debug Gate 10 PR-mode (sub-step 3) + LOCAL-mode (sub-step 9). Ship OUT — `SQUASH_SHA`-poll Step 13; CI-Dispatch there masks "essential tests skipped".
 
-**No duplicate dispatch on an already-triggered head (ship Step 5):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own. Before any `gh workflow run ci.yml --ref`, probe for a run at that exact head (`bkit_wait_ci`, presence-only) and dispatch ONLY on no-run. `ci.yml` concurrency keys `pull_request` by `head_ref` and `workflow_dispatch` by `run_id` — separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. The probe is not a pass condition; the completion poll must be head-anchored (`select(.headSha == $h)`) because an unfiltered `gh run list --limit 1` can return a completed run from a superseded head.
-
 **Open-PR pre-flight (build Step 17):** before `gh pr create`, probe `gh pr list --head … --base dev`. Open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). Probe fail → blind create.
 
 **Abort-push guard (build Failure Path + § Failure Path step 5):** before `[skip ci]` abort push, probe open PR. Open PR or probe fail → do NOT push; preserve remote HEAD. No PR → push. Probe fail inverts safe default.
