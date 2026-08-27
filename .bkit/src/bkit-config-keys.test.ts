@@ -122,13 +122,12 @@ describe("bkit.shipGateRequiredLanes", () => {
   const JQ_READ =
     '(.bkit.shipGateRequiredLanes // []) | if type == "array" then map(select(type == "string")) | join(",") else "" end';
 
-  function resolve(): string {
-    return execFileSync("jq", ["-r", JQ_READ, "package.json"], { encoding: "utf-8" }).trim();
-  }
-
   it("absent key resolves to the empty list (default: trust the capstone, never refuse)", () => {
     writePkg({ name: "consumer", bkit: {} });
-    expect(resolve()).toBe("");
+    const resolved = execFileSync("jq", ["-r", JQ_READ, "package.json"], {
+      encoding: "utf-8",
+    }).trim();
+    expect(resolved).toBe("");
   });
 
   it("resolves a declared lane list to the comma-separated form the gate consumes", () => {
@@ -136,17 +135,26 @@ describe("bkit.shipGateRequiredLanes", () => {
       name: "consumer",
       bkit: { shipGateRequiredLanes: ["bkit-tests-unit", "bkit-tests-static"] },
     });
-    expect(resolve()).toBe("bkit-tests-unit,bkit-tests-static");
+    const resolved = execFileSync("jq", ["-r", JQ_READ, "package.json"], {
+      encoding: "utf-8",
+    }).trim();
+    expect(resolved).toBe("bkit-tests-unit,bkit-tests-static");
   });
 
   it("a malformed value (string where an array belongs) degrades to empty, not to a jq error", () => {
     writePkg({ name: "consumer", bkit: { shipGateRequiredLanes: "bkit-tests-unit" } });
-    expect(resolve()).toBe("");
+    const resolved = execFileSync("jq", ["-r", JQ_READ, "package.json"], {
+      encoding: "utf-8",
+    }).trim();
+    expect(resolved).toBe("");
   });
 
   it("drops non-string entries rather than emitting them as lane names", () => {
     writePkg({ name: "consumer", bkit: { shipGateRequiredLanes: ["bkit-tests-unit", 42, null] } });
-    expect(resolve()).toBe("bkit-tests-unit");
+    const resolved = execFileSync("jq", ["-r", JQ_READ, "package.json"], {
+      encoding: "utf-8",
+    }).trim();
+    expect(resolved).toBe("bkit-tests-unit");
   });
 
   it("bkit's own package.json does NOT declare it — bkit's capstone asserts its own lanes", () => {
