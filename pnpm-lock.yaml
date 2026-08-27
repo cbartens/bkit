@@ -13,7 +13,7 @@ importers:
   .:
     dependencies:
       picomatch:
-        specifier: ^4.0.7
+        specifier: ^4.0.4
         version: 4.0.7
     devDependencies:
       '@types/node':
@@ -23,7 +23,7 @@ importers:
         specifier: ^4.0.3
         version: 4.0.3
       '@vitest/coverage-v8':
-        specifier: ^4.1.11
+        specifier: ^4.1.7
         version: 4.1.11(vitest@4.1.11)
       husky:
         specifier: ^9.1.7
@@ -38,7 +38,7 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0
       tsx:
-        specifier: ^4.23.12
+        specifier: ^4.19.2
         version: 4.23.12
       typescript:
         specifier: ^7.0.0
@@ -47,7 +47,7 @@ importers:
         specifier: ^6.4.2
         version: 6.4.3(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0)
       vitest:
-        specifier: ^4.1.11
+        specifier: ^4.1.7
         version: 4.1.11(@types/node@24.13.3)(@vitest/coverage-v8@4.1.11)(vite@6.4.3(@types/node@24.13.3)(tsx@4.23.12)(yaml@2.9.0))
 
 packages:
