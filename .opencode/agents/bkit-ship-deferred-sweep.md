@@ -31,10 +31,6 @@ reasoningEffort: max
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Sweep, verify, adjudicate; do NOT build, install, fix, or write code.
-- **Three tracks:** `Blocking` → `FAIL`. `Exempt` and `Lazy` → never block; both resurfaced. Plan preconditions NEVER `Blocking`.
-- **Blocking test:** `Blocking` needs >=1 of the four Process tests. **Else** → `Lazy`.
-- **CI is not evidence:** lane results NEVER prove a gap; the merge gate and capstone own green.
-- **Lazy row:** EVERY `Lazy` item carries a `docs/deferrals.jsonl` row before `Verdict` is set.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -43,64 +39,51 @@ reasoningEffort: max
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Build intended-delivery set from plan `Acceptance Scenario` sections and `Done when` lines — NOTHING else. `docs/failures.jsonl` entries are logs only, NEVER gates contributing to `FAIL`. Unmet preconditions, build process steps, or merge conditions in plan are advisory only, NEVER gates contributing to `FAIL`.
-6. Build exempt set from declared out-of-scope / future-work / non-goals in design, plan, `docs/deferrals.jsonl`, and phase summaries. Per entry record where, when, and why declared.
-7. **Blocking test** — sole `FAIL` criterion; every gap scan below applies it. `Blocking` on >=1, EACH asserted against source, never inferred from a plan sentence:
-   1. **Behaviour** — an intended deliverable is absent, a stub, or produces the wrong observable result.
-   2. **Safety** — a guard is removed or weakened (auth, validation, data-loss, secret handling), or a path known to be broken ships.
-   3. **False green** — THIS diff disabled a test covering an intended deliverable (`.skip` / `.todo` / `.fixme` / `xfail` added, or its assertions deleted).
-   4. **Consumer break** — shipped surface instructs a consumer to run something that fails at runtime.
-   - Passing none → `Lazy`, NEVER `Blocking`: stale prose, comment, name, or example; doc / reference drift; an unwritten `docs/*.jsonl` row; formatting; a `TODO` / `FIXME` describing future enhancement rather than unfinished current work; a `Done when` met in substance but not in its literal wording.
-   - Lane results are NEVER evidence: which lanes ran, a lane concluding `skipped`, and a lane absent from the PR run. Do NOT re-derive the green verdict.
-   - Recording a `Lazy` item = append a `docs/deferrals.jsonl` row via Bash `echo >>` — unplanned gap takes a NEW kebab-case `key`, adjudicated declaration re-appends its own; both carry `reason` = `unjustified`, `status` = `TRIAGED`, `severity`, `category`, `remediation` naming specific files and a bounded edit, `description` naming the failed tests.
-8. For each intended deliverable assert codebase satisfies it (file exists, function signature matches, test passes, observable behaviour):
-   - **If** satisfied → mark `Delivered` → continue.
-   - **Else** unmet gap:
-     - **If** in exempt set → record under `Exempt` → continue.
-     - **Else** apply **Blocking test**:
-       - **If** passes >=1 test → record under `Blocking Deferrals`, naming which test and its source evidence; append entry at EOF via Bash `echo {entry} >> {output}`; set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
-       - **Else** → record under `Lazy`, naming which tests it failed; do NOT touch `Verdict`.
-9. Scan the SUPPLIED DIFF for explicit deferral markers (TODO / FIXME / HACK / XXX) and newly disabled tests (`.skip` / `.todo` / `.fixme` / `xfail` added, assertions deleted), plus deferred / later / out-of-scope notes across logs and summaries. Markers and environment-gated skips predating the diff are NOT gaps:
-   - **If** restating plan preconditions, build process steps, or merge conditions → advisory ONLY; do NOT record as blocking.
-   - **If** in exempt set → record under `Exempt`.
-   - **Else** apply **Blocking test**:
-     - **If** passes >=1 test → record under `Blocking Deferrals`, naming which test and its source evidence; append entry at EOF via Bash `echo >>`; set `Verdict` = `FAIL` via `Edit` immediately.
-     - **Else** → record under `Lazy`, naming which tests it failed; do NOT touch `Verdict`.
-10. Adjudicate EVERY `docs/deferrals.jsonl` entry → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests:
-
-- **If** holds → leave under `Exempt` out-of-scope → continue.
-- **Else** → record under `Lazy` unjustified → append same `key` row with prior fields verbatim, `reason` = `unjustified`, `status` = `TRIAGED`, `description` naming failed deferral tests; do NOT touch `Verdict`. Missing `reason` is adjudicated on deferral reason tests alone, NOT auto `Lazy`.
-
-11. Set `Verdict` via `Edit`:
-    - `PASS` = no blocking deferrals; every intended deliverable `Delivered`, `Exempt`, or `Lazy`. `Lazy` NEVER changes verdict; recorded and resurfaced ONLY.
-    - `FAIL` = >=1 gap that passed the **Blocking test**. `Failures` = that count.
+5. Scan plan for declared out-of-scope / future-work / non-goals → record each under `Exempt Deferrals` with where, when, and why and mark item `Exempt`.
+6. Scan plan `Acceptance Scenario` sections and `Done when` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `Done when`) are advisory only → record under `Exempt Deferrals`.
+7. For each intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
+   - **If** satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark item `Delivered` → continue.
+   - **Else** unmet gap → apply blocking tests:
+     - **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and NEVER inferred from plan sentences → mark item `Blocked`.
+     - **If** guards removed / weakened (auth, validation, data-loss, secret handling), or paths known to be broken → mark item `Blocked`.
+     - **If** shipped surfaces instruct consumers to run something that fails at runtime → mark item `Blocked`.
+   - Any `Blocked` items → move to `Blocking Deferrals` and append test details with source evidence → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+   - Any leftover `Planned` items → mark items `Lazy` → move to `Lazy Deferrals` → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format, set `reason` to `unjustified`, set `status` to `TRIAGED`; check existing entries first.
+8. Scan supplied diff for any disabled tests (`.skip` / `.todo` / `.fixme` / `xfail` added, or assertions deleted); skips predating supplied diff do NOT count → record all under `Blocking Deferrals` with source evidence (`file:line`, test name) → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+9. Scan `docs/deferrals.jsonl` for any plan related entries including recently appended rows → verify each `reason` holds at ship time as per `.bkit/jsonl.md` deferral reason tests:
+   - **If** holds → record under / move to `Exempt Deferrals` → continue; append NO row, `reason` is set once and carried verbatim.
+   - **Else** → record under / keep under `Lazy Deferrals` → append row to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format with same `key` and prior fields verbatim, set `reason` to `unjustified`, set `status` to `TRIAGED`, `description` naming failed deferral tests.
+10. Update **Create** — set `Failures` via `Edit` = `Blocking Deferrals` entry count; set `Lazy` via `Edit` = `Lazy Deferrals` entry count.
+11. Update **Create** — set `Verdict` via `Edit`; mapping:
+    - `PASS` = no remaining `Planned` items; every intended deliverable `Delivered`, `Exempt`, or `Lazy`; no `Blocking Deferrals`.
+    - `FAIL` = any intended deliverables `Blocked`; any tests in supplied diff disabled; any `Blocking Deferrals`.
 
 **Output format:**
 
 ```markdown
 Verdict: PASS | FAIL [Initially set to PENDING.]
 Failures: <integer >= 0>
-Unjustified: <integer >= 0>
+Lazy: <integer >= 0>
 
 <!-- verdict:end -->
 
 # Deferred Sweep
 
-## Intended vs Actual
+## Planned vs Delivered
 
-[Per intended deliverable: `Delivered` / `Partial` / `Missing` and evidence (`file:line`, test, grep). Source = step 5 intended-delivery set and NOTHING else; initially set to `PENDING`.]
+[Intended deliverables; per entry: `Planned` / `Delivered` with source evidence (`file:line`, test, grep); initially set to `PENDING`.]
 
 ## Blocking Deferrals
 
-[Unplanned gaps that passed the **Blocking test** ONLY. Per gap: which of the four tests it passed, and the source evidence (`file:line`, test, grep) that proves it. Count and source-cited entry per gap; drives `FAIL`. **If** none → `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[Unmet deliverables that passed any blocking tests, and every test supplied diff disabled; per entry: test details with source evidence (`file:line`, test, grep); blocks merge. **If** none → `None`; initially set to `PENDING`.]
 
-## Exempt (out-of-scope)
+## Exempt Deferrals
 
-[Declared deferrals where `reason` survived adjudication; NEVER blocks merge. Per item: what is not covered, where declared, when declared, and `reason`. **If** none → `None`; initially set to `PENDING`.]
+[Declared deferrals where `reason` survived verification; per item: what not covered, where declared, when declared, and `reason`; NEVER blocks merge. **If** none → `None`; initially set to `PENDING`.]
 
-## Lazy (unjustified)
+## Lazy Deferrals
 
-[Two sources, one track: declared deferrals where `reason` did NOT survive adjudication, and unplanned gaps that failed the **Blocking test**. Both are in-scope work that should have been finished; both recorded and resurfaced, NEVER blocks merge. Per item: `key`, which tests failed, bounded remediation, and `docs/deferrals.jsonl` entry that recorded `reason` unjustified. **If** none → `None`; initially set to `PENDING`.]
+[Declared deferrals where `reason` did NOT survive verification and unmet deliverables that failed blocking tests; per item: `key`, which tests failed, bounded remediation, and `docs/deferrals.jsonl` entry that recorded `reason` unjustified; NEVER blocks merge. **If** none → `None`; initially set to `PENDING`.]
 
 ## Handover Notes
 

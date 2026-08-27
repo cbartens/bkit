@@ -8,6 +8,8 @@
     "*.cursor.com",
     "github.com",
     "*.github.com",
+    "githubcopilot.com",
+    "*.githubcopilot.com",
     "githubusercontent.com",
     "*.githubusercontent.com",
     "linear.app",

@@ -51,6 +51,8 @@
       "wget *cursor.com*": "allow",
       "curl *github.com*": "allow",
       "wget *github.com*": "allow",
+      "curl *githubcopilot.com*": "allow",
+      "wget *githubcopilot.com*": "allow",
       "curl *githubusercontent.com*": "allow",
       "wget *githubusercontent.com*": "allow",
       "curl *linear.app*": "allow",

@@ -31,7 +31,9 @@
       "WebFetch(domain:opencode.ai)",
       "WebFetch(domain:openrouter.ai)",
       "WebFetch(domain:tavily.com)",
-      "WebFetch(domain:*.tavily.com)"
+      "WebFetch(domain:*.tavily.com)",
+      "WebFetch(domain:githubcopilot.com)",
+      "WebFetch(domain:*.githubcopilot.com)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
