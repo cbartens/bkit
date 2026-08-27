@@ -79,7 +79,7 @@ jobs:
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       # bkit:end ts-ci-steps
 
       # Under [verbose ci]: propagate DEBUG to all subsequent steps via $GITHUB_ENV. Note
@@ -315,7 +315,7 @@ jobs:
         with:
           node-version: {{NODE_VERSION}}
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       # bkit:end ts-ci-steps
 
       # NODE_OPTIONS is a job-level `env:` key above, never a $GITHUB_ENV write — the runner
