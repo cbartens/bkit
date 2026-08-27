@@ -34,6 +34,7 @@
 #### Code Changes
 
 - **Skills:** Full list `.agents/skills.md`. Load only relevant, invoke via `skill` tool.
+- **Review docs first:** ALWAYS read index `.agents/docs.md` and lazy-load docs by phase matrix BEFORE edits; pull extra docs from catalog as warranted.
 - **Read files first:** ALWAYS read files BEFORE edits. NEVER edit on assumed contents.
 - **Verify changes first:** ALWAYS check what changes could break (callers / importers, DB schemas, APIs / SDKs) BEFORE touching symbols / signatures / contracts. NEVER assume blast radius.
 - **Verify symbols first:** ALWAYS confirm APIs / SDKs / flags / configs / imports exist as written BEFORE using (grep code, read docs, check live endpoints). NEVER assume or invent.
@@ -45,7 +46,6 @@
 
 #### Documentation
 
-- **Docs:** Index `.agents/docs.md`. Lazy-load by phase matrix; pull extras from catalog as warranted.
 - **Keep current:** ALWAYS update affected docs in SAME change as code they describe; NEVER as follow-up. Doc drift = regression.
 - **Authoring:** ALWAYS follow docs `Rules` headers. Describe current state / rules, NOT reasons / history; state what to do; NOT why. ONLY exceptions: Docs where purpose IS the record.
 - **Format:** Token-efficient dense phrasing. No filler / hedging / restating. Tables > prose, bullets > paragraphs.
