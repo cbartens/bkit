@@ -124,16 +124,46 @@ run_gate() {
 }
 
 # ---------------------------------------------------------------------------
-# 8. Code 16 — capstone green but a lane concluded 'skipped' (vacuous green)
+# 8. Code 16 — OPT-IN: refuses only for lanes named in shipGateRequiredLanes
+#
+# A skipped lane on its own is NOT a refusal. The jobs API gives no reason for a
+# skip, but the capstone takes every lane result as an input and asserts the plan
+# was followed, so its green settles it. Refusing on any skip made the gate
+# unsatisfiable for the CI shape bkit ships: lanes with an event-scoped `if:`
+# (native builds, `@live`) cannot run pre-merge at all, so every PR refused
+# forever. Consumers whose capstone does not assert can opt back in per lane.
 # ---------------------------------------------------------------------------
 
-@test "rejects-run-with-skipped-lanes (exit 16)" {
-  # Fixture jobs/1007.json: 'test' job concluded 'skipped'. GitHub reports no
-  # REASON for a skip (a job skipped by a job-level `if:` never reaches a runner
-  # and carries steps:[]), so the gate refuses and names the lane.
+@test "a skipped lane alone does NOT refuse — capstone green settles it (exit 0)" {
+  # Fixture jobs/1007.json: 'test' job concluded 'skipped', capstone green.
   run_gate --head skipped-lane
+  [ "$status" -eq 0 ]
+}
+
+@test "a skipped lane is REPORTED even when it does not refuse (never silent)" {
+  run_gate --head skipped-lane
+  [[ "$output" == *"[bkit-ship-gate] note: 1 lane(s) concluded 'skipped'"* ]]
+  [[ "$output" == *"test"* ]]
+  [[ "$output" == *"owns the planned-vs-vacuous judgement"* ]]
+}
+
+@test "rejects a skipped lane NAMED in --required-lanes (exit 16)" {
+  run_gate --head skipped-lane --required-lanes test
   [ "$status" -eq 16 ]
-  [[ "$output" == *"[bkit-ship-gate] capstone green but 1 lane(s) concluded 'skipped'"* ]]
+  [[ "$output" == *"required lane(s) concluded 'skipped'"* ]]
+  [[ "$output" == *"vacuous green: test"* ]]
+}
+
+@test "--required-lanes naming a DIFFERENT lane does not refuse (exit 0)" {
+  # Only the declared lane matters; an unrelated declaration must not refuse on
+  # the skip of some other lane.
+  run_gate --head skipped-lane --required-lanes some-other-lane
+  [ "$status" -eq 0 ]
+}
+
+@test "--required-lanes accepts a comma-separated list containing the skipped lane (exit 16)" {
+  run_gate --head skipped-lane --required-lanes "some-other-lane,test"
+  [ "$status" -eq 16 ]
   [[ "$output" == *"vacuous green: test"* ]]
 }
 
@@ -147,7 +177,9 @@ run_gate() {
   # `[ … -gt 0 ]` rejects as a non-integer — the lane check then silently stops
   # running and a vacuous green MERGES. Fixture jobs/1009.pages.json puts the
   # skipped lane on page 2 so an un-slurped read cannot see it.
-  run_gate --head paginated-skipped-lane
+  # Declared required, so the page-2 lane still has to be SEEN to refuse — the
+  # pagination regression this case exists for is unaffected by 16 going opt-in.
+  run_gate --head paginated-skipped-lane --required-lanes test
   [ "$status" -eq 16 ]
   [[ "$output" == *"vacuous green: test"* ]]
 }
@@ -155,7 +187,7 @@ run_gate() {
 @test "capstone on page 1 of a paginated jobs list still resolves" {
   # Same fixture, asserting the capstone lookup is not broken by pagination:
   # the refusal must be 16 (skipped lane), NOT 13 (capstone absent).
-  run_gate --head paginated-skipped-lane
+  run_gate --head paginated-skipped-lane --required-lanes test
   [ "$status" -ne 13 ]
   [[ "$output" != *"ABSENT from run"* ]]
 }
@@ -233,6 +265,36 @@ run_gate() {
   # No --capstone passed; the gate reads bkit.capstoneJob from REPO_ROOT/package.json.
   # The green-capstone fixture's capstone is named 'bkit-tests-check' (the default).
   run env bash -c "cd '$REPO_ROOT' && bash '$GATE_SH' assert --repo 'example/example' --head green-capstone"
+  [ "$status" -eq 0 ]
+}
+
+@test "config: bkit.shipGateRequiredLanes resolves from package.json when --required-lanes is omitted" {
+  # The declared-lane list is the only thing that can produce a code 16 now, so
+  # the package.json path has to work — a silently-empty read would mean a
+  # consumer who opted in gets no gate at all.
+  TMP_PKG_DIR="$BATS_TEST_TMPDIR/pkgcfg"
+  mkdir -p "$TMP_PKG_DIR"
+  printf '%s\n' '{"name":"x","bkit":{"shipGateRequiredLanes":["test"]}}' > "$TMP_PKG_DIR/package.json"
+  run env bash -c "cd '$TMP_PKG_DIR' && bash '$GATE_SH' assert --repo 'example/example' --head skipped-lane"
+  [ "$status" -eq 16 ]
+  [[ "$output" == *"vacuous green: test"* ]]
+}
+
+@test "config: absent shipGateRequiredLanes means no refusal (default is trust the capstone)" {
+  TMP_PKG_DIR="$BATS_TEST_TMPDIR/pkgcfg-absent"
+  mkdir -p "$TMP_PKG_DIR"
+  printf '%s\n' '{"name":"x"}' > "$TMP_PKG_DIR/package.json"
+  run env bash -c "cd '$TMP_PKG_DIR' && bash '$GATE_SH' assert --repo 'example/example' --head skipped-lane"
+  [ "$status" -eq 0 ]
+}
+
+@test "config: a malformed shipGateRequiredLanes falls back to empty, never crashes the gate" {
+  # A string where an array belongs must degrade to "no declared lanes", not to
+  # a jq error that takes the whole merge gate down under `set -euo pipefail`.
+  TMP_PKG_DIR="$BATS_TEST_TMPDIR/pkgcfg-bad"
+  mkdir -p "$TMP_PKG_DIR"
+  printf '%s\n' '{"name":"x","bkit":{"shipGateRequiredLanes":"test"}}' > "$TMP_PKG_DIR/package.json"
+  run env bash -c "cd '$TMP_PKG_DIR' && bash '$GATE_SH' assert --repo 'example/example' --head skipped-lane"
   [ "$status" -eq 0 ]
 }
 

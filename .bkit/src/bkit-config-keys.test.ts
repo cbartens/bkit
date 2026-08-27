@@ -108,6 +108,58 @@ describe("bkit.ciWorkflow", () => {
 });
 
 // ---------------------------------------------------------------------------
+// bkit.shipGateRequiredLanes — the opt-in surface for ship-gate code 16.
+//
+// Code 16 refuses a merge when a NAMED lane concluded `skipped`. It is opt-in
+// because a blanket refuse-on-any-skip is unsatisfiable for bkit's own CI shape:
+// a lane whose `if:` is event-scoped (native builds, `@live` on push to dev)
+// cannot run pre-merge at all, so demanding it refuses every PR forever.
+// The resolution below must therefore degrade to EMPTY on absent/malformed
+// input — an accidental refusal here blocks every ship in the consumer repo.
+// ---------------------------------------------------------------------------
+
+describe("bkit.shipGateRequiredLanes", () => {
+  const JQ_READ =
+    '(.bkit.shipGateRequiredLanes // []) | if type == "array" then map(select(type == "string")) | join(",") else "" end';
+
+  function resolve(): string {
+    return execFileSync("jq", ["-r", JQ_READ, "package.json"], { encoding: "utf-8" }).trim();
+  }
+
+  it("absent key resolves to the empty list (default: trust the capstone, never refuse)", () => {
+    writePkg({ name: "consumer", bkit: {} });
+    expect(resolve()).toBe("");
+  });
+
+  it("resolves a declared lane list to the comma-separated form the gate consumes", () => {
+    writePkg({
+      name: "consumer",
+      bkit: { shipGateRequiredLanes: ["bkit-tests-unit", "bkit-tests-static"] },
+    });
+    expect(resolve()).toBe("bkit-tests-unit,bkit-tests-static");
+  });
+
+  it("a malformed value (string where an array belongs) degrades to empty, not to a jq error", () => {
+    writePkg({ name: "consumer", bkit: { shipGateRequiredLanes: "bkit-tests-unit" } });
+    expect(resolve()).toBe("");
+  });
+
+  it("drops non-string entries rather than emitting them as lane names", () => {
+    writePkg({ name: "consumer", bkit: { shipGateRequiredLanes: ["bkit-tests-unit", 42, null] } });
+    expect(resolve()).toBe("bkit-tests-unit");
+  });
+
+  it("bkit's own package.json does NOT declare it — bkit's capstone asserts its own lanes", () => {
+    const pkgPath = path.join(REPO_ROOT, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(pkg.bkit?.shipGateRequiredLanes).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // stripManagedKeys leaves both keys intact (consumer-value-wins, but these
 // keys are not in the managed surface at all — scripts + devDependencies only)
 // ---------------------------------------------------------------------------
@@ -138,6 +190,21 @@ describe("stripManagedKeys leaves bkit.capstoneJob / bkit.ciWorkflow intact", ()
     const pkg = readPkg();
     const bkit = pkg.bkit as Record<string, unknown>;
     expect(bkit.capstoneJob).toBe("e2e-capstone");
+  });
+
+  it("preserves a consumer's shipGateRequiredLanes opt-in through a full module strip", () => {
+    // If a strip dropped this, a consumer who deliberately opted a lane back in
+    // would silently lose the gate on the next `bkit install`/`upgrade`.
+    writePkg({
+      name: "consumer",
+      bkit: { shipGateRequiredLanes: ["bkit-tests-unit"] },
+      devDependencies: {},
+    });
+    const result = stripManagedKeys([]);
+    expect(result.missingPkg).toBe(false);
+    const pkg = readPkg();
+    const bkit = pkg.bkit as Record<string, unknown>;
+    expect(bkit.shipGateRequiredLanes).toEqual(["bkit-tests-unit"]);
   });
 });
 

@@ -136,3 +136,9 @@ setup() {
   [ -n "$result" ]
   [ "$result" -ge 1 ]
 }
+
+@test "config: MAX_REVALIDATE_ATTEMPT is set and >= 1" {
+  result=$(bash -c ". '$COUNTER_CONFIG' && echo \$MAX_REVALIDATE_ATTEMPT")
+  [ -n "$result" ]
+  [ "$result" -ge 1 ]
+}

@@ -119,7 +119,7 @@ description: "Plan Feature — Autonomous plan generation"
        IDLE=$(( $(date +%s) - LAST_EPOCH ))
        [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
      else
-       LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+       LOCK_AGE=$(( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
        [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
      fi
      rm -f "$LOCK"
@@ -923,7 +923,7 @@ description: "Plan Feature — Autonomous plan generation"
      DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
      DEADLINE=$(( $(date +%s) + 600 ))
      until (set -C; printf '%s plan {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
-       DEVLOCK_MTIME=$(stat -f %m "$DEVLOCK" 2>/dev/null || stat -c %Y "$DEVLOCK" 2>/dev/null || echo 0)
+       DEVLOCK_MTIME=$(stat -c %Y "$DEVLOCK" 2>/dev/null || stat -f %m "$DEVLOCK" 2>/dev/null || echo 0)
        [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
        [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
        sleep 10

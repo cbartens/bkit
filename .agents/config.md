@@ -307,6 +307,7 @@ your-app.com
 <!-- allowed-domains:start -->
 
 github.com
+githubcopilot.com
 tavily.com
 
 <!-- allowed-domains:end -->

@@ -312,6 +312,114 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 4b. Ship Step 5 duplicate-dispatch probe.
+//
+// Ship stays out of the CI-Dispatch Gate (above) — no outcome vocabulary, no
+// self-heal, no pass-on-`no-ci`. But its Step 5 re-validate FOLLOWS a head move
+// (Path B `gh pr update-branch` / `--force-with-lease`) that has already fired a
+// `pull_request` run at that same SHA, so dispatching unconditionally produced a
+// second, redundant run every time. ci.yml's concurrency cannot absorb it:
+// `pull_request` groups by `head_ref`, `workflow_dispatch` by `run_id` — two
+// groups, neither cancels the other, both run to completion.
+//
+// Contract: probe with `bkit_wait_ci` (presence-only) and dispatch ONLY when it
+// finds nothing. The probe is never a pass condition — the completion poll and
+// `bkit-ship-gate.sh assert` at Gate 6 still own the verdict.
+// ---------------------------------------------------------------------------
+describe("bkit-ship.md — Step 5 probes before dispatching (no duplicate CI run)", () => {
+  const dispatchIdx = shipMd.indexOf("gh workflow run ci.yml --ref");
+
+  it("has exactly one gh workflow run dispatch site", () => {
+    expect(dispatchIdx).toBeGreaterThan(-1);
+    expect(shipMd.indexOf("gh workflow run ci.yml --ref", dispatchIdx + 1)).toBe(-1);
+  });
+
+  it("calls bkit_wait_ci and sources bkit-runtime.sh before that dispatch", () => {
+    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 900), dispatchIdx);
+    expect(preceding).toContain("bkit_wait_ci");
+    expect(preceding).toContain(".bkit/scripts/bkit-runtime.sh");
+  });
+
+  it("guards the dispatch on the probe result, not on head movement alone", () => {
+    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 900), dispatchIdx);
+    expect(preceding).toContain('[ "$CI_WAIT_RESULT" = "found" ]');
+    // The pre-fix form. Its return means every rebase-integrating ship burns a
+    // duplicate run on the SHA the push already triggered.
+    expect(shipMd).not.toContain("dispatch CI unconditionally");
+  });
+
+  it("records the probe outcome in a ship-revalidate-dispatch row", () => {
+    expect(shipMd).toContain("ship-revalidate-dispatch");
+    expect(shipMd).toContain("dispatched:$d");
+  });
+
+  it("anchors the completion poll on the head SHA (a superseded completed run must not pass it)", () => {
+    // Without a guaranteed-fresh dispatch, an unfiltered `--limit 1` can return
+    // a COMPLETED run from a head the rebase superseded.
+    expect(shipMd).toContain("select(.headSha == $h)");
+    expect(shipMd).not.toContain(
+      'gh run list --branch "feat/{FID}" --workflow ci.yml --limit 1 --json status,conclusion --jq',
+    );
+  });
+
+  it("keeps ship free of the gate's outcome vocabulary (probe is never a pass condition)", () => {
+    expect(shipMd).not.toContain('"self-healed"');
+    expect(shipMd).not.toContain('"no-ci"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4c. Step 6 gate refusal re-enters Step 5 as a POLL, and is bounded.
+//
+// Codes 10/11/14 route back to Step 5. Before this, sub-step 1 was gated on
+// `CURRENT_HEAD != ENTRY_HEAD` alone, so a refusal at an UNCHANGED head skipped
+// the poll entirely and fell straight through to the deferred sweep — a
+// high-effort subagent re-run per poll, and for code 10 an unbounded loop with
+// nothing in it able to change the gate's answer.
+// ---------------------------------------------------------------------------
+describe("bkit-ship.md — Step 6 gate-refusal re-entry is a bounded poll", () => {
+  it("Step 5 sub-step 1 also triggers on a gate-refusal re-entry, not head movement alone", () => {
+    expect(shipMd).toContain('[ "$REVALIDATE_REASON" = "gate-refusal" ]');
+    expect(shipMd).toContain('|| [ "$REVALIDATE_REASON" = "gate-refusal" ]; then');
+  });
+
+  it("a gate-refusal re-entry skips the deferred sweep (the jump lands past sub-steps 2-7)", () => {
+    // Sub-step 7 IS Step 5's Route: block, so jumping to Step 6 from sub-step 1
+    // is what makes the sweep first-pass-only. No second mechanism states it.
+    expect(shipMd).toContain("**If** `{REVALIDATE_REASON}` = `gate-refusal` → Step 6.");
+  });
+
+  it("bounds the re-entry against MAX_REVALIDATE_ATTEMPT via decide_next", () => {
+    expect(shipMd).toContain("MAX_REVALIDATE_ATTEMPT");
+    expect(shipMd).toContain(
+      'decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-5 failure-path',
+    );
+  });
+
+  it("derives the attempt from rows written since this run started, not all-runs", () => {
+    // An all-runs count would carry a prior ship's spent budget into a resumed
+    // run and refuse a legitimate first poll.
+    expect(shipMd).toContain('.step=="ship-start-workflow"');
+    expect(shipMd).toContain('select(.type=="ship-revalidate-dispatch" and .at > $s)');
+  });
+
+  it("MAX_REVALIDATE_ATTEMPT has exactly one definition, in bkit-counter-bus-config.sh", () => {
+    const config = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/scripts/bkit-counter-bus-config.sh"),
+      "utf-8",
+    );
+    expect(config).toMatch(/^MAX_REVALIDATE_ATTEMPT=\d+/m);
+    // The workflow must SOURCE it, never re-declare it (last-sourced-wins drift).
+    expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
+    const timeouts = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/scripts/bkit-ship-timeouts.sh"),
+      "utf-8",
+    );
+    expect(timeouts).not.toContain("MAX_REVALIDATE_ATTEMPT");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 6. retrigger-suppressed maps to unresolved ONLY (never no-ci)
 //    The assignment CI_REASON="retrigger-suppressed" must ALWAYS appear on a
 //    line that also sets CI_OUTCOME="unresolved" (same shell statement).

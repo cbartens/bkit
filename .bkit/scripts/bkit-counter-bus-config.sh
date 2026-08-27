@@ -20,6 +20,7 @@ MAX_SOAK_ATTEMPT=3
 
 # bkit-ship.md counters
 MAX_MERGE_ATTEMPT=3
+MAX_REVALIDATE_ATTEMPT=3   # Step 6 gate-refusal (10/11/14) poll-only re-entries into Step 5 sub-step 1
 
 # bkit-cloud.yml counters
 MAX_DEV_DISPATCH_ATTEMPTS=3   # #363 — cross-session dev-triggered debug dispatch cap (distinct failed dev CI SHAs per FID)

@@ -11,6 +11,7 @@
 # Contract:
 #   bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>]
 #                                      [--repo <o/r>] [--branch <name>] [--explain]
+#                                      [--required-lanes <a,b,c>]
 #
 # Run selection (decided before exit codes can mean anything):
 #   gh api /repos/{o}/{r}/actions/workflows/{ciWorkflow}/runs?head_sha=<sha>
@@ -37,7 +38,7 @@
 #   13  Selected run exists but capstone job ABSENT                         → refuse
 #   14  Green run exists, but at a SUPERSEDED SHA (needs --branch)          → refuse
 #   15  Selected run concluded `cancelled`                                  → refuse
-#   16  Capstone green but a lane concluded `skipped` (not full)            → refuse
+#   16  A lane named in `bkit.shipGateRequiredLanes` concluded `skipped`  → refuse
 #   20  API error / rate limit / auth                                       → refuse
 #
 # Code 14 requires `--branch`: the head-keyed run query is filtered SERVER-SIDE,
@@ -45,11 +46,23 @@
 # "never validated" (code 10) without a second, branch-scoped query. Callers that
 # omit `--branch` get code 10 for both; both route the same way in bkit-ship.md.
 #
-# Code 16 fires on ANY skipped non-capstone lane. The jobs API does not report
-# WHY a job was skipped (a job skipped by a job-level `if:` never reaches a
-# runner and carries no steps), so the gate cannot distinguish a planned skip
-# from a vacuous one — the capstone owns that assertion. A consumer whose CI
-# legitimately path-filters lanes uses BKIT_SHIP_GATE_OVERRIDE, which is audited.
+# Code 16 is OPT-IN and fires ONLY for lanes the consumer names in
+# `bkit.shipGateRequiredLanes` (package.json) or `--required-lanes a,b,c`.
+# Default is the empty list: a skipped lane is REPORTED, never refused.
+#
+# It used to refuse on ANY skipped non-capstone lane, which made the gate
+# unsatisfiable for the CI shape bkit itself ships. The jobs API reports no
+# REASON for a skip, so the gate cannot tell a planned skip from a vacuous one —
+# but the capstone can, and does: it takes every lane result as an input and
+# asserts the plan was followed. A lane whose `if:` is event-scoped (the shipped
+# template gates `@live` on a push to dev — real side effects must not fire off a
+# PR) can NEVER run pre-merge, so a pre-merge gate demanding it refuses every PR
+# forever. That is not a policy choice; it is unsatisfiable by construction. So
+# the capstone's green settles it, as this header always claimed, and codes 10-15
+# still carry the real anti-vacuity guarantees: a run exists, at THIS head,
+# completed, not cancelled, capstone present, capstone green. Name lanes in
+# `shipGateRequiredLanes` only if your capstone does NOT assert them itself.
+# BKIT_SHIP_GATE_OVERRIDE remains the audited escape hatch.
 #
 # `BKIT_SHIP_GATE_OVERRIDE=<sha>` is honoured ONLY when it equals the refused
 # head SHA (caller asserts "I know this head is the one I validated"); any
@@ -75,6 +88,7 @@ print_usage() {
 ACTION=""
 HEAD_SHA=""
 CAPSTONE=""
+REQUIRED_LANES=""
 WORKFLOW=""
 REPO=""
 BRANCH=""
@@ -85,6 +99,7 @@ while [ "$#" -gt 0 ]; do
     assert) ACTION="assert" ;;
     --head) HEAD_SHA="${2:-}"; shift ;;
     --capstone) CAPSTONE="${2:-}"; shift ;;
+    --required-lanes) REQUIRED_LANES="${2:-}"; shift ;;
     --workflow) WORKFLOW="${2:-}"; shift ;;
     --repo) REPO="${2:-}"; shift ;;
     --branch) BRANCH="${2:-}"; shift ;;
@@ -127,6 +142,15 @@ if [ -z "$WORKFLOW" ] && [ -f "package.json" ] && command -v jq >/dev/null 2>&1;
   WORKFLOW=$(jq -r '.bkit.ciWorkflow // "ci.yml"' package.json 2>/dev/null || printf '%s' "$WORKFLOW_DEFAULT")
 fi
 [ -n "$WORKFLOW" ] || WORKFLOW="$WORKFLOW_DEFAULT"
+
+# Required lanes: comma-separated on the flag, JSON array in package.json.
+# Absent/empty/malformed all resolve to the empty list — report, never refuse.
+if [ -z "$REQUIRED_LANES" ] && [ -f "package.json" ] && command -v jq >/dev/null 2>&1; then
+  REQUIRED_LANES=$(jq -r '
+    (.bkit.shipGateRequiredLanes // [])
+    | if type == "array" then map(select(type == "string")) | join(",") else "" end
+  ' package.json 2>/dev/null || printf '')
+fi
 
 if [ -z "$REPO" ]; then
   if command -v gh >/dev/null 2>&1; then
@@ -353,18 +377,18 @@ fi
 # 6. Lane check — any non-success conclusion is a vacuous green unless cache_skip
 # ---------------------------------------------------------------------------
 
-# A lane (non-capstone job) concluded `skipped` means the capstone's green did
-# not cover it. The jobs API reports no REASON for a skip: a job skipped by a
-# job-level `if:` is never assigned to a runner, so it carries an EMPTY `steps`
-# array — there is no observable difference between a planned path-filter skip
-# and a vacuous one. (An earlier revision tried to read a `cache`/`restore` step
-# name as cache-skip provenance; no skipped job ever carries steps, so that
-# carve-out could only ever match a hand-authored fixture. A cache HIT concludes
-# `success` with step-level skips and a `cache_skip` output — never `skipped`.)
+# The jobs API reports no REASON for a skip: a job skipped by a job-level `if:`
+# is never assigned to a runner, so it carries an EMPTY `steps` array — there is
+# no observable difference between a planned skip and a vacuous one. (An earlier
+# revision tried to read a `cache`/`restore` step name as cache-skip provenance;
+# no skipped job ever carries steps, so that carve-out could only ever match a
+# hand-authored fixture. A cache HIT concludes `success` with step-level skips
+# and a `cache_skip` output — never `skipped`.)
 #
-# So the gate refuses on any skipped lane and lets the capstone own the
-# planned-vs-vacuous judgement. A consumer whose CI legitimately path-filters
-# lanes proceeds via BKIT_SHIP_GATE_OVERRIDE, which writes an audit row.
+# The capstone CAN tell them apart — it takes every lane result as an input and
+# asserts the plan was followed — so its green settles it. Skipped lanes are
+# REPORTED for the human reading the log, and refuse ONLY when the consumer has
+# explicitly named one in `bkit.shipGateRequiredLanes`.
 SKIPPED_LANE_NAMES=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE" '
   .jobs
   | map(select(.name != $capstone and .conclusion == "skipped"))
@@ -379,8 +403,26 @@ SKIPPED_LANE_COUNT=$(printf '%s' "$JOBS_JSON" | jq -r --arg capstone "$CAPSTONE"
 ' 2>/dev/null || printf '0')
 
 if [ "${SKIPPED_LANE_COUNT:-0}" -gt 0 ]; then
-  err "capstone green but $SKIPPED_LANE_COUNT lane(s) concluded 'skipped' at head $HEAD_SHA — vacuous green: $SKIPPED_LANE_NAMES"
-  refuse 16 "$SELECTED_URL"
+  err "note: $SKIPPED_LANE_COUNT lane(s) concluded 'skipped' at head $HEAD_SHA: $SKIPPED_LANE_NAMES"
+  err "note: capstone '$CAPSTONE' is green and owns the planned-vs-vacuous judgement for those lanes"
+fi
+
+# Refuse only for lanes the consumer explicitly declared required.
+if [ -n "$REQUIRED_LANES" ] && [ "${SKIPPED_LANE_COUNT:-0}" -gt 0 ]; then
+  SKIPPED_REQUIRED=$(printf '%s' "$JOBS_JSON" | jq -r \
+    --arg capstone "$CAPSTONE" --arg required "$REQUIRED_LANES" '
+    ($required | split(",") | map(select(length > 0))) as $req
+    | .jobs
+    | map(select(.name != $capstone and .conclusion == "skipped"))
+    | map(.name // "<unnamed>")
+    | map(select(. as $n | $req | index($n)))
+    | join(", ")
+  ' 2>/dev/null || printf '')
+  if [ -n "$SKIPPED_REQUIRED" ]; then
+    err "required lane(s) concluded 'skipped' at head $HEAD_SHA — vacuous green: $SKIPPED_REQUIRED"
+    err "declared in bkit.shipGateRequiredLanes (or --required-lanes): $REQUIRED_LANES"
+    refuse 16 "$SELECTED_URL"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -431,12 +431,16 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
   it("F5: gate code 11 (poll) routes to Step 5 alongside codes 10 and 14", () => {
     const ship = readShip();
     const lines = ship.split("\n");
-    // The routing directive must list code 11 alongside 10/14 routing to Step 5.
-    const routingLine = lines.find((l) => /code\s+11/.test(l) && /Step\s+5/.test(l));
-    expect(routingLine, "code 11 must be routed to Step 5 (not Failure Path)").toBeTruthy();
-    // The same routing line must also mention codes 10 and 14 (all three poll-able codes together).
-    expect(routingLine!).toMatch(/14/);
-    expect(routingLine!).toMatch(/\b10\b/);
+    // One lead-in lists all three poll-able codes; the block it introduces owns
+    // the Step 5 route, so the destination sits on the exit-code bullets below.
+    const idx = lines.findIndex((l) => /code\s+11/.test(l));
+    expect(idx, "code 11 must have a routing lead-in").toBeGreaterThan(-1);
+    expect(lines[idx]).toMatch(/14/);
+    expect(lines[idx]).toMatch(/\b10\b/);
+    const block = lines.slice(idx, idx + 20).join("\n");
+    expect(block, "codes 10/11/14 must route to Step 5, not Failure Path").toMatch(
+      /\*\*If\*\* exit 0 \(printed `step-5`\).*Step 5\./,
+    );
   });
 
   // Finding 7 (MEDIUM): `GATE_EXIT=$?` was unreachable under `set -e` — a gate
