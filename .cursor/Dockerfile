@@ -14,7 +14,7 @@
 # Base image digest-pinned — an `ubuntu:26.04` tag is mutable, so pinning the digest keeps builds
 # reproducible and the supply chain fixed. Refresh with `docker pull ubuntu:26.04` (prints `Digest:`),
 # or let Renovate's dockerfile manager bump it. Consumer-owned — repin to your own base as needed.
-FROM ubuntu:26.04@sha256:3131b4cc82a783df6c9df078f86e01819a13594b865c2cad47bd1bca2b7063bb
+FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
 
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node ≥20 are on PATH
