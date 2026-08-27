@@ -198,7 +198,8 @@ export type TelemetryKind =
   | "deferral"
   | "failure"
   | "knowledge"
-  | "decision";
+  | "decision"
+  | "feature";
 
 export const VALID_KINDS: Set<string> = new Set([
   "compliance",
@@ -209,6 +210,7 @@ export const VALID_KINDS: Set<string> = new Set([
   "failure",
   "knowledge",
   "decision",
+  "feature",
 ]);
 
 /**
@@ -262,6 +264,30 @@ export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"
 
 /** The decision lifecycle — a separate axis from the triage ladder. */
 export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
+
+/**
+ * The `feature` kind's six-state phase ladder — the canonical status for
+ * `docs/roadmap.jsonl` (#380), appended once per phase close, same-`key`
+ * (the FID). `SHIPPED` projects into the roadmap's `## Shipped` section
+ * (last 10, ts desc); `ABANDONED` hides the FID from every section.
+ * `ABANDONED` is appended only by a human, or an agent on explicit human
+ * instruction — never inferred by a workflow.
+ *
+ * A separate axis from TRIAGE_STATUSES: `feature` carries no `severity`
+ * (`.bkit/jsonl.md` § Severity forbids it outside the friction/deferral/
+ * failure triage trio) — it tracks WHERE a feature is, not how badly
+ * something is broken.
+ */
+export type FeatureStatus = "DESIGNED" | "PLANNED" | "BUILT" | "DEBUGGED" | "SHIPPED" | "ABANDONED";
+
+export const FEATURE_STATUSES: Set<string> = new Set([
+  "DESIGNED",
+  "PLANNED",
+  "BUILT",
+  "DEBUGGED",
+  "SHIPPED",
+  "ABANDONED",
+]);
 
 /**
  * Why a `deferral` is in the ledger instead of done — the justification, on a
@@ -535,6 +561,21 @@ export interface DecisionPayload {
   status?: "ACTIVE" | "SUPERSEDED";
 }
 
+// feature — keyed by explicit `key` field (the FID). The canonical row for
+// `docs/roadmap.jsonl` (#380): a `deferral`/`failure` row MINUS `severity`,
+// PLUS the six-state FeatureStatus ladder in place of TriageStatus. Appended
+// at every one of the five phase closes (design/plan/build/debug/ship) —
+// same-`key` append, last-write-wins fold gives the current phase.
+export interface FeaturePayload {
+  /** DOMAIN category (shared vocabulary with deferral/failure), NOT completed.md's legacy product-shaped set. */
+  category: string;
+  /** Short title. `description` carries the prose. */
+  summary?: string;
+  description: string;
+  /** The phase ladder — REQUIRED, closed six-value enum. See FeatureStatus. */
+  status: FeatureStatus;
+}
+
 // ---------------------------------------------------------------------------
 // Discriminated union event type
 // ---------------------------------------------------------------------------
@@ -549,6 +590,7 @@ export type TelemetryEvent = TelemetryEnvelope &
     | ({ kind: "failure" } & FailurePayload)
     | ({ kind: "knowledge" } & KnowledgePayload)
     | ({ kind: "decision" } & DecisionPayload)
+    | ({ kind: "feature" } & FeaturePayload)
   );
 
 // ---------------------------------------------------------------------------
@@ -575,7 +617,8 @@ export function identity(event: TelemetryEvent): string {
     case "failure":
     case "knowledge":
     case "decision":
-      // instinct-loop kinds: identity = kind + key
+    case "feature":
+      // instinct-loop kinds (+ feature): identity = kind + key
       return `${event.kind} ${event.repo} ${event.key ?? event.ts}`;
   }
 }
@@ -660,6 +703,15 @@ export function validate(event: unknown): ValidationResult {
       return {
         ok: false,
         reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+      };
+    }
+  } else if (kind === "feature") {
+    // status is REQUIRED on feature (unlike the optional triage ladder) — the
+    // roadmap projection has no phase to render without it.
+    if (e["status"] === undefined || !FEATURE_STATUSES.has(e["status"] as string)) {
+      return {
+        ok: false,
+        reason: `feature status must be one of DESIGNED|PLANNED|BUILT|DEBUGGED|SHIPPED|ABANDONED (got: ${String(e["status"])})`,
       };
     }
   } else if (e["status"] !== undefined) {
@@ -754,6 +806,17 @@ export function validate(event: unknown): ValidationResult {
     }
     if (e["counterSource"] !== "model-self-report" && e["counterSource"] !== "shell-bus") {
       return { ok: false, reason: "counter counterSource must be model-self-report or shell-bus" };
+    }
+  }
+  if (kind === "feature") {
+    if (!e["key"] || typeof e["key"] !== "string") {
+      return { ok: false, reason: "feature row missing required field: key (the FID)" };
+    }
+    if (!e["category"] || typeof e["category"] !== "string") {
+      return { ok: false, reason: "feature row missing required payload field: category" };
+    }
+    if (!e["description"] || typeof e["description"] !== "string") {
+      return { ok: false, reason: "feature row missing required payload field: description" };
     }
   }
 

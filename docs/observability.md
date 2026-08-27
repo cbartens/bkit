@@ -40,7 +40,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-ship-gate]`. New prefix only alongside new module; else reuse owning module's prefix.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-ship-gate]` · `[bkit-roadmap]`. New prefix only alongside new module; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -79,6 +79,17 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 - `[bkit-analysis] counterSource trust: shell-bus=N (trusted) | model-self-report=N (untrusted, pre-P3)` — trust tier.
 - `[bkit-analysis] Per-rule compliance rates:` — compliance header.
 - `[bkit-analysis] writeRollupShard: {message}` — rollup status.
+
+### `[bkit-roadmap]` prefix
+
+`docs/roadmap.md`/`docs/roadmap.jsonl` fold + close-hook + drift-check + reverse-sync fail-open lines (#380). Every branch exits 0 — the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
+
+- `[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — close-hook fold fail-open (script absent).
+- `[bkit-roadmap] append failed: {path}` — ledger row append to `docs/roadmap.jsonl` failed (best-effort; exit 0).
+- `[bkit-roadmap] {message}` — fold bootstrap/self-heal/hint lines, including the empty-ledger `bkit telemetry migrate` hint before the migration has run.
+- `[bkit-roadmap] missing bkit-roadmap-reconcile.sh — run 'bkit install'` / `[bkit-roadmap] {FID}: live feat/* with no ledger row` — drift check (Directive 4, rescoped): warns only, never mutates `docs/roadmap.md`.
+- `[bkit-roadmap] reverse-sync skip {fid} — {reason}` / `[bkit-roadmap] reverse-sync applied {fid} -> {label}` / `[bkit-roadmap] reverse-sync conflict {fid}` / `[bkit-roadmap] reverse-sync no-op — tracker: none` — reverse tracker-label sync (Directive 3): settled-drift-guarded, best-effort, idempotent.
+- `[bkit-roadmap] analysis refresh failed — non-blocking, roadmap-status board (mechanical tier) is unaffected` — `@bkit-roadmap-refresh` (`roadmap-analysis` block) failed; the mechanical status tier is unaffected.
 
 ### `[bkit-ship-gate]` prefix
 

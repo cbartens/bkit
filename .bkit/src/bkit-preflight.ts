@@ -151,6 +151,26 @@ export function detectPrettierignoreNoMarkers(cwd: string): PreflightFinding | n
   };
 }
 
+/**
+ * #380 rollout advisory: `docs/completed.md` still present — the consumer has
+ * not yet run `bkit telemetry migrate` (which ports it to `docs/roadmap.jsonl`
+ * as `kind:"feature"` rows and performs the § S bootstrap seed). Advisory
+ * only, never a blocker — DE-39 forbids wiring the migrator to `bkit upgrade`,
+ * so an unmigrated repo simply gets an empty `docs/roadmap.md` board (never a
+ * wrong one) plus this nudge.
+ */
+export function detectCompletedMdUnmigrated(cwd: string): PreflightFinding | null {
+  const filePath = path.join(cwd, "docs", "completed.md");
+  if (!fs.existsSync(filePath)) return null;
+  return {
+    id: "completed-md-unmigrated",
+    severity: "advisory",
+    detect: "docs/completed.md still present — not yet migrated to docs/roadmap.jsonl (#380).",
+    action:
+      'Run `bkit telemetry migrate` to port docs/completed.md entries to docs/roadmap.jsonl (kind:"feature", status:"SHIPPED") and seed in-flight FIDs from docs/plans/**. Until then docs/roadmap.md\'s board is empty, not wrong.',
+  };
+}
+
 export function detectLintProseF9Vulnerable(cwd: string): PreflightFinding | null {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) return null;
@@ -1512,6 +1532,10 @@ export function runPreflight(
 
   const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
   if (gitignoreDup) advisories.push(gitignoreDup);
+
+  // #380 rollout: docs/completed.md still present -> not yet migrated
+  const completedMdUnmigrated = detectCompletedMdUnmigrated(cwd);
+  if (completedMdUnmigrated) advisories.push(completedMdUnmigrated);
 
   const prettierBroad = detectPrettierignoreScopeBroadening(cwd);
   if (prettierBroad) advisories.push(prettierBroad);

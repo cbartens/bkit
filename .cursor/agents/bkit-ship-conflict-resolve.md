@@ -31,7 +31,7 @@ tools:
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
 - **Allowed resolutions:**
-  - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/completed.md`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → union both sides. Do NOT hand-merge these; `bkit_rebase_resolve` (Process step 6) already did, byte-identically to `merge=union`. Interleaved / duplicated rows are resolved by the reader's last-wins-by-`ts` fold and are NOT a reason to emit `FAIL`.
+  - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `docs/roadmap.md`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → union both sides. Do NOT hand-merge these; `bkit_rebase_resolve` (Process step 6) already did, byte-identically to `merge=union`. Interleaved / duplicated rows are resolved by the reader's last-wins-by-`ts` fold and are NOT a reason to emit `FAIL`.
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
   - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
   - `package.json` dep-version bumped on one side only → take bump.

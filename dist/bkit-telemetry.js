@@ -121,6 +121,7 @@ export const VALID_KINDS = new Set([
     "failure",
     "knowledge",
     "decision",
+    "feature",
 ]);
 export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 /**
@@ -133,6 +134,14 @@ export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 /** The decision lifecycle — a separate axis from the triage ladder. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
+export const FEATURE_STATUSES = new Set([
+    "DESIGNED",
+    "PLANNED",
+    "BUILT",
+    "DEBUGGED",
+    "SHIPPED",
+    "ABANDONED",
+]);
 export const DEFERRAL_REASONS = new Set([
     "scope-declared",
     "hard-blocked",
@@ -196,7 +205,8 @@ export function identity(event) {
         case "failure":
         case "knowledge":
         case "decision":
-            // instinct-loop kinds: identity = kind + key
+        case "feature":
+            // instinct-loop kinds (+ feature): identity = kind + key
             return `${event.kind} ${event.repo} ${event.key ?? event.ts}`;
     }
 }
@@ -267,6 +277,16 @@ export function validate(event) {
             return {
                 ok: false,
                 reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+            };
+        }
+    }
+    else if (kind === "feature") {
+        // status is REQUIRED on feature (unlike the optional triage ladder) — the
+        // roadmap projection has no phase to render without it.
+        if (e["status"] === undefined || !FEATURE_STATUSES.has(e["status"])) {
+            return {
+                ok: false,
+                reason: `feature status must be one of DESIGNED|PLANNED|BUILT|DEBUGGED|SHIPPED|ABANDONED (got: ${String(e["status"])})`,
             };
         }
     }
@@ -362,6 +382,17 @@ export function validate(event) {
         }
         if (e["counterSource"] !== "model-self-report" && e["counterSource"] !== "shell-bus") {
             return { ok: false, reason: "counter counterSource must be model-self-report or shell-bus" };
+        }
+    }
+    if (kind === "feature") {
+        if (!e["key"] || typeof e["key"] !== "string") {
+            return { ok: false, reason: "feature row missing required field: key (the FID)" };
+        }
+        if (!e["category"] || typeof e["category"] !== "string") {
+            return { ok: false, reason: "feature row missing required payload field: category" };
+        }
+        if (!e["description"] || typeof e["description"] !== "string") {
+            return { ok: false, reason: "feature row missing required payload field: description" };
         }
     }
     return { ok: true };

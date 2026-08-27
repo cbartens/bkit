@@ -1,7 +1,7 @@
 # JSONL Entry Format
 
 > [!CAUTION]
-> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
+> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/roadmap.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
 >
 > **Rules:**
 >
@@ -39,6 +39,7 @@ One file per `kind`; writers:
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover` |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate` |
+| `feature` | `docs/roadmap.jsonl` | ALL FIVE phase closes (design/plan/build/debug/ship), same-`key` (the FID) append; `ABANDONED` appended only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** ONLY agents listed as writers for a given kind are allowed to write that specific kind; NO exceptions.
 
@@ -48,10 +49,10 @@ One file per `kind`; writers:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `ts` | `number` | Unix milliseconds — primary id. Minted via `jq '… \| .ts = (now*1000\|floor)'`, NEVER a literal (§ Write Idiom). |
-| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`. |
+| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
-| `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship` (part of the dedup tuple for `compliance`/`counter`/`outcome`). |
+| `workflow` | `string` | Emitting workflow: `design`/`plan`/`build`/`debug`/`ship`, or `roadmap` for the on-demand `/bkit-roadmap` utility (part of the dedup tuple for `compliance`/`counter`/`outcome`). |
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
@@ -70,6 +71,7 @@ One file per `kind`; writers:
 | `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
+| `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (REQUIRED — no severity; see `docs/roadmap.md`). |
 
 ## Who Wrote It — `step` vs `subagent` vs `model`
 
@@ -129,11 +131,11 @@ Prune gates (in order):
 
 ## Summary vs Description
 
-Kinds with BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`): `summary` = short title; `description` = prose. One sentence → `description` only.
+Kinds with BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`/`feature`): `summary` = short title; `description` = prose. One sentence → `description` only.
 
 ## Severity
 
-`severity` is REQUIRED on `friction` / `deferral` / `failure`, and MUST NOT appear on any other kind (`knowledge`/`decision` have no triage severity; `compliance`/`outcome`/`counter` are machine-generated). Closed enum — exactly these four, uppercase:
+`severity` is REQUIRED on `friction` / `deferral` / `failure`, and MUST NOT appear on any other kind (`knowledge`/`decision`/`feature` have no triage severity — `feature` tracks phase via `status`, not how badly something is broken; `compliance`/`outcome`/`counter` are machine-generated). Closed enum — exactly these four, uppercase:
 
 <!-- prettier-ignore -->
 | Value | Means |
@@ -460,6 +462,38 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "references": ["ISSUE-138", "ISSUE-130", "package.json", ".github/workflows/release.yml"]
 }
 ```
+
+`docs/roadmap.jsonl`:
+
+<!-- prettier-ignore -->
+```jsonl
+{
+  "ts": 1718900000800,
+  "kind": "feature",
+  "repo": "cbartens/bkit",
+  "bkitVersion": "4.2.0",
+  "workflow": "build",
+  "step": "build-close-workflow",
+  "key": "412-export-csv",
+  "category": "correctness",
+  "summary": "CSV export for the reporting page",
+  "description": "adds a bounded CSV export button to the reporting page, streamed server-side",
+  "status": "BUILT",
+  "references": ["412", "docs/plans/202607/412-export-csv-plan.md"]
+}
+```
+
+Row-update lifecycle — a feature moving through phases (`412-export-csv`): each phase close is a same-`key` append; `fold` returns the latest phase; `docs/roadmap.md` is a full regenerate from the folded ledger, never an upsert. Append an `ABANDONED` row (human, or an agent on explicit human instruction) to remove a FID from every board section; a `SHIPPED` FID needs no removal — it ages off the `## Shipped` last-10 window on its own:
+
+<!-- prettier-ignore -->
+```jsonl
+{ "ts": 1718900000000, "kind": "feature", "key": "412-export-csv", "category": "correctness", "summary": "CSV export for the reporting page", "description": "adds a bounded CSV export button to the reporting page", "status": "DESIGNED" }
+{ "ts": 1718900100000, "kind": "feature", "key": "412-export-csv", "category": "correctness", "summary": "CSV export for the reporting page", "description": "adds a bounded CSV export button to the reporting page", "status": "PLANNED" }
+{ "ts": 1718900200000, "kind": "feature", "key": "412-export-csv", "category": "correctness", "summary": "CSV export for the reporting page", "description": "adds a bounded CSV export button to the reporting page", "status": "BUILT" }
+{ "ts": 1718900300000, "kind": "feature", "key": "412-export-csv", "category": "correctness", "summary": "CSV export for the reporting page", "description": "adds a bounded CSV export button to the reporting page", "status": "SHIPPED", "references": ["412", "PR-533"] }
+```
+
+`docs/roadmap.jsonl` (`kind: "feature"`) also drives two `counter` (`.bkit/stats.jsonl`) `counterName`s: `ROADMAP_SCAN_COVERAGE` (per `@bkit-roadmap-refresh` pass, `counterValue` = percent of the frontier scanned, `counterSource: "shell-bus"`) and `ROADMAP_CADENCE_FIRE` (appended once per cadence fire — distinct `BUILT`-status FIDs since the last fire crossing `bkit.roadmap.buildCycles`, or `bkit.roadmap.stalenessDays` elapsed since that fire — `counterValue` = the fired count; no FID is ever carried on either row).
 
 Row-update lifecycle — `pnpm-tag-drop-readme-note` deferral, raised then closed by same-`key` append (§ Updating a Row). Envelope trimmed for delta; on disk = full single-line row:
 

@@ -41,10 +41,10 @@ maxTurns: 50
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; exclude `knowledge.jsonl`, `decisions.jsonl`.
 3. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
 4. Per doc, ALWAYS follow its `Rules` headers when making edits.
-5. Per doc, four passes in order: Sync (gaps vs shipped code) → Reorganize (dedup, move misplaced) → Compress (token-efficient) → Cross-Reference (inline `docs/*.md` links).
-6. **If** cycle delivered shipped plan → append `docs/completed.md` entry.
+5. Per doc, four passes in order: **Sync** (gaps vs shipped code) → **Reorganize** (dedup, move misplaced) → **Compress** (token-efficient) → **Cross-Reference** (inline `docs/*.md` links).
+6. **If** cycle delivered shipped plan → append a `docs/roadmap.jsonl` row (`.bkit/jsonl.md` write idiom, `kind:"feature"`, `key:"{FID}"`, `status:"SHIPPED"`, `category`/`summary`/`description`/`references` — the canonical feature-ledger entry). This row is written BEFORE `bkit-ship.md`'s Step 10 verdict step reads it.
 7. Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do NOT write `docs/deferrals.jsonl`).
-8. **If** no completed entry written **and** no docs updated **and** no pending items surfaced → output "No updates needed.".
+8. **If** no `docs/roadmap.jsonl` row written **and** no docs updated **and** no pending items surfaced → output "No updates needed.".
 9. Produce **Create** output.
 
 **Output format:**

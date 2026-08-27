@@ -119,6 +119,8 @@ describe("bkit.ciWorkflow", () => {
 // ---------------------------------------------------------------------------
 
 describe("bkit.shipGateRequiredLanes", () => {
+  // The exact jq program bkit-ship-gate.sh runs — kept verbatim so a drift in
+  // the script's read shows up here rather than silently resolving to empty.
   const JQ_READ =
     '(.bkit.shipGateRequiredLanes // []) | if type == "array" then map(select(type == "string")) | join(",") else "" end';
 

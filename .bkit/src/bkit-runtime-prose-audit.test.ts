@@ -74,6 +74,10 @@ const EXEMPT_RAW_SLEEPS: Array<{
   // which is exactly the branch where a foreground sleep is honoured.
   { file: "bkit-design.md", literal: "sleep 10", context: "DEVLOCK" },
   { file: "bkit-plan.md", literal: "sleep 10", context: "DEVLOCK" },
+  // #380 build/debug close — the dev-lock ROADMAP MIRROR poll (a distinct,
+  // short-deadline lock from ship's DEVLOCK above; fail-open, never a CI-wait).
+  { file: "bkit-build.md", literal: "sleep 5", context: "DEVLOCK" },
+  { file: "bkit-debug.md", literal: "sleep 5", context: "DEVLOCK" },
 ];
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {

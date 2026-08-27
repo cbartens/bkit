@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ARCHIVE_SHARD_TEMPLATE,
   DEFERRAL_REASONS,
+  FEATURE_STATUSES,
   MAX_ROWS_BEFORE_ROLLUP,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
@@ -123,6 +124,18 @@ function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
     ...baseEnvelope("decision"),
     key,
     summary: "chose the boring option",
+    ...overrides,
+  } as TelemetryEvent;
+}
+
+function featureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("feature"),
+    key,
+    category: "correctness",
+    summary: "CSV export for the reporting page",
+    description: "adds a bounded CSV export button to the reporting page",
+    status: "DESIGNED" as const,
     ...overrides,
   } as TelemetryEvent;
 }
@@ -424,6 +437,75 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
     };
     expect(current.status).toBe("TRIAGED");
     expect(current.references).toEqual(["#412"]);
+  });
+});
+
+// #380 — `feature` kind: the canonical row for docs/roadmap.jsonl, a
+// deferral/failure row MINUS severity, PLUS the six-state phase ladder.
+describe("feature kind — docs/roadmap.jsonl (#380)", () => {
+  it("is a valid kind, keyed by (kind, repo, key)", () => {
+    expect(VALID_KINDS.has("feature")).toBe(true);
+    const e = featureEvent("412-export-csv");
+    expect(identity(e)).toBe("feature cbartens/bkit 412-export-csv");
+  });
+
+  it("FEATURE_STATUSES is exactly the six-value phase ladder", () => {
+    expect([...FEATURE_STATUSES].sort()).toEqual(
+      ["ABANDONED", "BUILT", "DEBUGGED", "DESIGNED", "PLANNED", "SHIPPED"].sort(),
+    );
+  });
+
+  it.each(["DESIGNED", "PLANNED", "BUILT", "DEBUGGED", "SHIPPED", "ABANDONED"] as const)(
+    "accepts status %s",
+    (status) => {
+      const r = validate(featureEvent("412-export-csv", { status } as Partial<TelemetryEvent>));
+      expect(r.ok).toBe(true);
+    },
+  );
+
+  it("rejects a missing status — the roadmap has no phase to project without it", () => {
+    const e = { ...featureEvent("k"), status: undefined };
+    const r = validate(e);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("status");
+  });
+
+  it("rejects an off-ladder status", () => {
+    const r = validate({ ...featureEvent("k"), status: "OPEN" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("DESIGNED|PLANNED|BUILT|DEBUGGED|SHIPPED|ABANDONED");
+  });
+
+  it("does not carry severity — feature is not in SEVERITY_KINDS", () => {
+    expect(SEVERITY_KINDS.has("feature")).toBe(false);
+    const r = validate({ ...featureEvent("k"), severity: "HIGH" });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("do not carry severity");
+  });
+
+  it("requires key, category, and description", () => {
+    expect(validate({ ...featureEvent("k"), key: undefined }).ok).toBe(false);
+    expect(validate({ ...featureEvent("k"), category: undefined }).ok).toBe(false);
+    expect(validate({ ...featureEvent("k"), description: undefined }).ok).toBe(false);
+  });
+
+  it("a same-key append folds last-wins to the latest phase", () => {
+    const designed = featureEvent("412-export-csv", {
+      ts: 1_000,
+      status: "DESIGNED",
+    } as Partial<TelemetryEvent>);
+    const planned = featureEvent("412-export-csv", {
+      ts: 2_000,
+      status: "PLANNED",
+    } as Partial<TelemetryEvent>);
+    const built = featureEvent("412-export-csv", {
+      ts: 3_000,
+      status: "BUILT",
+    } as Partial<TelemetryEvent>);
+    const state = fold([planned, built, designed]);
+    expect(state.size).toBe(1);
+    const current = [...state.values()][0] as TelemetryEvent & { status?: string };
+    expect(current.status).toBe("BUILT");
   });
 });
 

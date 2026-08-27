@@ -89,7 +89,11 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
 // template placeholders bkit-ship.md's own prose still uses).
 
 export const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
-  "docs/completed.md",
+  // Generated roadmap board — a .md, so the script's `docs/*.jsonl` glob does
+  // not reach it and it must be named literally. Its ledger source
+  // (docs/roadmap.jsonl) is covered by that glob and is asserted as the glob
+  // below, not as a literal path.
+  "docs/roadmap.md",
   "docs/deferrals.jsonl",
   "docs/failures.jsonl",
   "docs/knowledge.jsonl",
@@ -194,6 +198,24 @@ describe("bkit-ship.md — BOOK_ROOT / BOOK_PATHS named conventions", () => {
     // FID/YYYYMM log-dir entry, in the script's own form ($MONTH/$FID shell
     // variables + a trailing glob, not bkit-ship.md's literal placeholders).
     expect(script).toContain('"docs/plans/$MONTH/logs/$FID/*"');
+    // docs/roadmap.jsonl reaches the pathspec via this glob, never as a literal
+    // path — assert the glob so the ledger's staging route stays covered.
+    expect(script).toContain('"docs/*.jsonl"');
+  });
+
+  it("the roadmap migration is complete — no docs/completed.md anywhere in the staging seam", () => {
+    // #380 deleted docs/completed.md in favour of docs/roadmap.jsonl. A merge
+    // with a branch predating that deletion silently reintroduces the path
+    // (it did, on 2026-08-26); these assertions fail loudly if it happens again.
+    expect(readBookScript()).not.toContain("docs/completed.md");
+    expect(BOOK_PATHS_ALLOW_LIST).not.toContain("docs/completed.md");
+    const repoBookScript = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/scripts/bkit-book-commit.sh"),
+      "utf-8",
+    );
+    expect(repoBookScript).not.toContain("docs/completed.md");
+    const version = fs.readFileSync(path.join(REPO_ROOT, ".bkit/version"), "utf-8");
+    expect(version).not.toContain("docs/completed.md");
   });
 
   it("every `git add` in bkit-ship.md resolves via bkit-book-commit.sh (no literal path adds)", () => {
@@ -246,6 +268,27 @@ describe("bkit-ship.md — status.jsonl writes resolve via BOOK_ROOT", () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POSITIVE — ship verdict reader resolves docs/roadmap.jsonl under BOOK_ROOT
+// ---------------------------------------------------------------------------
+
+describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves under BOOK_ROOT (#380)", () => {
+  it("the SHIPPED_HIT jq read targets $BOOK_ROOT/docs/roadmap.jsonl, never a bare relative path", () => {
+    const ship = readShip();
+    const lines = ship.split("\n");
+    const shippedHitLine = lines.find((l) => /SHIPPED_HIT=\$\(/.test(l));
+    expect(shippedHitLine, "SHIPPED_HIT assignment line not found").toBeTruthy();
+    // Every other book-path read/write in this file resolves via $BOOK_ROOT
+    // (status.jsonl, .deferred-blocked). The ship-verdict reader must not be
+    // the one path that reads a bare relative `docs/roadmap.jsonl` — that
+    // silently resolves against the CURRENT WORKING DIRECTORY (worktree),
+    // not the dev tree the writer targets, and would FAIL to find a row the
+    // writer correctly wrote.
+    expect(shippedHitLine!).toMatch(/\$BOOK_ROOT\/docs\/roadmap\.jsonl/);
+    expect(shippedHitLine!).not.toMatch(/[^/$]docs\/roadmap\.jsonl/);
   });
 });
 

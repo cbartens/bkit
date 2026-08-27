@@ -3,6 +3,13 @@
 //   docs/decisions.md  → docs/decisions.jsonl   (kind:"decision")
 //   docs/pending.md    → docs/deferrals.jsonl   (kind:"deferral")
 //   .bkit/friction.md  → .bkit/friction.jsonl   (kind:"friction")
+//   docs/completed.md  → docs/roadmap.jsonl     (kind:"feature", status:"SHIPPED") — #380 fifth pair
+//
+// The fifth pair also performs the #380 Addendum 3 § S BOOTSTRAP SEED, same run:
+// scans docs/plans/{YYYYMM}/{FID}-{design,plan}.md + folded per-FID status.jsonl
+// and appends ONE `feature` row per in-flight FID at its detected phase, skipping
+// FIDs already present in docs/roadmap.jsonl. Without it the roadmap projection
+// has no rows for work already in flight on day one.
 //
 // Safety contract (DE-39, KN-8 class):
 //   1. Creates a transient .md.bak before any write.
@@ -46,6 +53,10 @@ export interface MigrateResult {
   pendingRowCount: number;
   /** Number of friction rows ported from friction.md. */
   frictionRowCount: number;
+  /** Number of `feature` rows (status:"SHIPPED") ported from docs/completed.md (#380). */
+  featureRowCount: number;
+  /** Number of #380 § S bootstrap-seed rows appended for in-flight FIDs (docs/plans/** scan). */
+  seedRowCount: number;
   /** Whether knowledge.md was deleted (false on dry-run or if already migrated). */
   knowledgeMdDeleted: boolean;
   /** Whether decisions.md was deleted (false on dry-run or if already migrated). */
@@ -54,6 +65,8 @@ export interface MigrateResult {
   pendingMdDeleted: boolean;
   /** Whether .bkit/friction.md was deleted (false on dry-run or if already migrated). */
   frictionMdDeleted: boolean;
+  /** Whether docs/completed.md was deleted (false on dry-run or if already migrated) (#380). */
+  completedMdDeleted: boolean;
   /** Human-readable log lines. */
   lines: string[];
   /** Whether migration succeeded (false = parity-gate abort). */
@@ -354,6 +367,115 @@ export function parseFrictionMd(content: string): ParsedEntry[] {
       _lastConfirmed: lastConfirmedStr,
     };
     entries.push(entry);
+  }
+
+  return entries;
+}
+
+/**
+ * Legacy `docs/completed.md` domain vocabulary (`infra | agentic | backend |
+ * frontend | data | integrations | ai | testing | security | other`) mapped
+ * onto the current deferral/failure/feature domain set. Values already in the
+ * domain set pass through unchanged; everything else maps to its closest
+ * domain term, `other` if none (#380 Directive 2).
+ */
+export function mapCompletedCategory(value: string | undefined): string {
+  const DOMAIN_SET = new Set([
+    "agentic",
+    "correctness",
+    "testing",
+    "infra",
+    "tooling",
+    "observability",
+    "security",
+    "architecture",
+    "docs",
+    "other",
+  ]);
+  const raw = (value ?? "").toLowerCase().replace(/`/g, "").trim();
+  if (DOMAIN_SET.has(raw)) return raw;
+  switch (raw) {
+    case "backend":
+    case "frontend":
+    case "data":
+      return "correctness";
+    case "integrations":
+      return "infra";
+    case "ai":
+      return "agentic";
+    default:
+      return "other";
+  }
+}
+
+/**
+ * Parse a `docs/completed.md` corpus into structured entries — one per
+ * `## Title (YYYY-MM-DD)` heading, fields `**Category:**` / `**Artifacts:**` /
+ * `**Summary:**` / `**Related:**` (#380 Directive 2). Skips the managed
+ * `bkit:start`/`bkit:end` header block. A heading missing Category or Summary
+ * is NEVER silently skipped — it still produces a row (loud fallback), and a
+ * diagnostic is pushed to `diagnosticLines` when supplied.
+ */
+export function parseCompletedMd(content: string, diagnosticLines: string[]): ParsedEntry[] {
+  const body = stripManagedHeader(content);
+  const entries: ParsedEntry[] = [];
+  const lines = body.split("\n");
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line === undefined) {
+      i++;
+      continue;
+    }
+    // "## Title (YYYY-MM-DD)" — the date suffix is load-bearing for entryTs.
+    const match = /^## (.+?)\s*\((\d{4}-\d{2}-\d{2})\)\s*$/.exec(line);
+    if (!match) {
+      i++;
+      continue;
+    }
+
+    const titleRaw = (match[1] ?? "").trim();
+    const title = cleanTitle(titleRaw);
+
+    const bodyLines: string[] = [];
+    i++;
+    while (i < lines.length) {
+      const bl = lines[i];
+      if (bl === undefined) {
+        i++;
+        continue;
+      }
+      if (/^## /.test(bl)) break;
+      bodyLines.push(bl);
+      i++;
+    }
+    const entryBody = bodyLines.join("\n").trim();
+
+    const categoryRaw = extractField(entryBody, "Category");
+    const artifacts = extractField(entryBody, "Artifacts");
+    const summary = extractField(entryBody, "Summary");
+    const related = extractField(entryBody, "Related");
+
+    if (!categoryRaw || !summary) {
+      const diag = `[bkit-telemetry] migrate: completed.md entry "${title}" missing ${!categoryRaw ? "Category" : ""}${!categoryRaw && !summary ? "/" : ""}${!summary ? "Summary" : ""} — using loud fallback, NOT skipped`;
+      diagnosticLines.push(diag);
+    }
+
+    const references = [...(artifacts ? parseRelated(artifacts) : []), ...parseRelated(related)];
+
+    const key = stableKey("completed", title);
+    entries.push({
+      id: key,
+      key,
+      title,
+      body: entryBody,
+      summary: title,
+      detail: summary ?? entryBody,
+      category: mapCompletedCategory(categoryRaw),
+      references,
+      entryTs: parseTitleDate(`(${match[2]})`),
+    });
   }
 
   return entries;
@@ -682,6 +804,221 @@ function buildFrictionRow(
   } as TelemetryEvent;
 }
 
+/**
+ * Build a `feature` row (status:"SHIPPED") from a parsed `docs/completed.md`
+ * entry (#380 Directive 2). `key` = the entry's stable slug — legacy
+ * `completed.md` entries carry no FID, so the migrated key is NOT the FID
+ * scheme live workflow closes use; it is still a stable, unique, content-minted
+ * key, consistent with every other migrated ledger's key derivation.
+ */
+function buildFeatureRow(
+  entry: ParsedEntry,
+  opts: { repo: string; bkitVersion: string; baseTs: number; idx: number },
+): TelemetryEvent {
+  return {
+    ts: entry.entryTs ?? opts.baseTs + opts.idx,
+    kind: "feature",
+    repo: opts.repo,
+    bkitVersion: opts.bkitVersion,
+    workflow: "migrate",
+    step: "bkit-telemetry-migrate",
+    key: entry.key,
+    category: entry.category ?? "other",
+    summary: entry.title,
+    description: entry.detail ?? entry.title,
+    status: "SHIPPED",
+    references: entry.references,
+  } as TelemetryEvent;
+}
+
+// ---------------------------------------------------------------------------
+// #380 Addendum 3 § S — bootstrap seed (in-flight FID detection)
+// ---------------------------------------------------------------------------
+
+type InFlightStatus = "DESIGNED" | "PLANNED" | "BUILT" | "DEBUGGED";
+
+const STATUS_RANK: Record<InFlightStatus, number> = {
+  DESIGNED: 0,
+  PLANNED: 1,
+  BUILT: 2,
+  DEBUGGED: 3,
+};
+
+/**
+ * Parse one JSONL line, never throwing — returns `null` on a malformed line
+ * instead of raising. Callers own the loud diagnostic (never a silent skip):
+ * this helper's ONLY job is "did it parse", so the log line always names the
+ * caller's file/context rather than a generic message from inside a shared
+ * catch. Bounds the parse-MISS class to one non-throwing primitive instead of
+ * one log-and-continue `catch` per call site.
+ */
+function tryParseJsonLine<T>(line: string): T | null {
+  let parsed: T | null = null;
+  try {
+    parsed = JSON.parse(line) as T;
+  } catch {
+    parsed = null;
+  }
+  return parsed;
+}
+
+/**
+ * Read every `key` already present in `docs/roadmap.jsonl` (best-effort,
+ * tolerant of malformed lines) — the seed skips any FID already recorded,
+ * regardless of its current folded status (Addendum 3 § S: "skipping FIDs
+ * already present in the ledger").
+ */
+function existingRoadmapKeys(roadmapJsonlPath: string): Set<string> {
+  const keys = new Set<string>();
+  if (!fs.existsSync(roadmapJsonlPath)) return keys;
+  const raw = fs.readFileSync(roadmapJsonlPath, "utf-8");
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const obj = tryParseJsonLine<{ kind?: string; key?: string }>(trimmed);
+    if (obj === null) {
+      // tolerant — malformed lines are ignored, never abort the seed, but
+      // ALWAYS logged loudly (never a silent skip)
+      console.error(`[bkit-telemetry] seed: malformed docs/roadmap.jsonl line skipped`);
+      continue;
+    }
+    if (obj.kind === "feature" && typeof obj.key === "string") keys.add(obj.key);
+  }
+  return keys;
+}
+
+/**
+ * Detect an in-flight FID's phase from `docs/plans/{YYYYMM}/{FID}-{design,plan}.md`
+ * presence plus its folded `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (a
+ * `workflow-done` row for `build`/`debug` promotes the detected phase). This is
+ * the ONE-TIME bootstrap read the on-disk scan is repurposed into (Addendum 3
+ * § S) — NOT the per-close sensing source, which is the ledger itself.
+ */
+function detectInFlightStatus(planDir: string, fid: string, hasPlan: boolean): InFlightStatus {
+  let status: InFlightStatus = hasPlan ? "PLANNED" : "DESIGNED";
+  const statusJsonlPath = path.join(planDir, "logs", fid, "status.jsonl");
+  if (!fs.existsSync(statusJsonlPath)) return status;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(statusJsonlPath, "utf-8");
+  } catch (err) {
+    // best-effort — a read failure keeps the presence-derived status
+    console.error(`[bkit-telemetry] seed: could not read ${statusJsonlPath} — ${String(err)}`);
+    return status;
+  }
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const obj = tryParseJsonLine<{ type?: string; workflow?: string }>(trimmed);
+    if (obj === null) {
+      // tolerant — malformed status.jsonl lines are ignored, never abort the
+      // seed, but ALWAYS logged loudly (never a silent skip)
+      console.error(`[bkit-telemetry] seed: malformed ${statusJsonlPath} line skipped`);
+      continue;
+    }
+    if (obj.type !== "workflow-done") continue;
+    const promoted: InFlightStatus | undefined =
+      obj.workflow === "build" ? "BUILT" : obj.workflow === "debug" ? "DEBUGGED" : undefined;
+    if (promoted && STATUS_RANK[promoted] > STATUS_RANK[status]) status = promoted;
+  }
+  return status;
+}
+
+/**
+ * Scan `docs/plans/{YYYYMM}/` for `{FID}-design.md` / `{FID}-plan.md` and
+ * append one `feature` seed row per in-flight FID not already present in
+ * `docs/roadmap.jsonl`, at its detected status. Idempotent — re-running finds
+ * every FID already present via `existingRoadmapKeys` and adds nothing.
+ * Best-effort: any read error is logged and skipped, never thrown.
+ */
+export function seedInFlightFeatures(
+  cwd: string,
+  repo: string,
+  bkitVersion: string,
+  lines: string[],
+): TelemetryEvent[] {
+  const plansRoot = path.join(cwd, "docs", "plans");
+  const roadmapJsonlPath = path.join(cwd, "docs", "roadmap.jsonl");
+  if (!fs.existsSync(plansRoot)) return [];
+
+  const existing = existingRoadmapKeys(roadmapJsonlPath);
+  const seedRows: TelemetryEvent[] = [];
+  const baseTs = Math.floor(Date.now()) + 50000;
+  let idx = 0;
+
+  let monthDirs: string[];
+  try {
+    monthDirs = fs
+      .readdirSync(plansRoot, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && /^\d{6}$/.test(d.name))
+      .map((d) => d.name);
+  } catch (err) {
+    lines.push(`[bkit-telemetry] seed: could not read ${plansRoot} — ${String(err)}`);
+    return [];
+  }
+
+  for (const month of monthDirs) {
+    const planDir = path.join(plansRoot, month);
+    let files: string[];
+    try {
+      files = fs.readdirSync(planDir).filter((f) => f.endsWith(".md"));
+    } catch {
+      continue;
+    }
+    const fids = new Map<string, { hasDesign: boolean; hasPlan: boolean }>();
+    for (const f of files) {
+      const designMatch = /^(.+)-design\.md$/.exec(f);
+      const planMatch = /^(.+)-plan\.md$/.exec(f);
+      if (designMatch?.[1]) {
+        const fid = designMatch[1];
+        fids.set(fid, {
+          ...(fids.get(fid) ?? { hasDesign: false, hasPlan: false }),
+          hasDesign: true,
+        });
+      }
+      if (planMatch?.[1]) {
+        const fid = planMatch[1];
+        fids.set(fid, {
+          ...(fids.get(fid) ?? { hasDesign: false, hasPlan: false }),
+          hasPlan: true,
+        });
+      }
+    }
+    for (const [fid, presence] of fids) {
+      if (existing.has(fid)) continue;
+      const status = detectInFlightStatus(planDir, fid, presence.hasPlan);
+      const row: TelemetryEvent = {
+        ts: baseTs + idx,
+        kind: "feature",
+        repo,
+        bkitVersion,
+        workflow: "migrate",
+        step: "bkit-telemetry-migrate-seed",
+        key: fid,
+        category: "other",
+        summary: fid,
+        description: `Bootstrap-seeded from on-disk plan artifacts (docs/plans/${month}/); detected status ${status}.`,
+        status,
+      } as TelemetryEvent;
+      seedRows.push(row);
+      existing.add(fid);
+      idx++;
+    }
+  }
+
+  if (seedRows.length > 0) {
+    const ndjson = seedRows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    fs.appendFileSync(roadmapJsonlPath, ndjson, "utf-8");
+    lines.push(
+      `[bkit-telemetry] seed: appended ${seedRows.length} bootstrap feature row(s) to ${roadmapJsonlPath}`,
+    );
+  } else {
+    lines.push("[bkit-telemetry] seed: no new in-flight FIDs to seed");
+  }
+
+  return seedRows;
+}
+
 // ---------------------------------------------------------------------------
 // Core migration function
 // ---------------------------------------------------------------------------
@@ -705,35 +1042,72 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
   const frictionJsonlPath = path.join(cwd, ".bkit", "friction.jsonl");
   const frictionBakPath = frictionMdPath + ".bak";
 
-  // Idempotency: .md absent = already migrated for that pair.
-  // pending/friction: absent .md = skip (never existed or already migrated).
+  // Idempotency: .md absent = nothing to do for that pair, whether it was
+  // migrated already OR never existed to begin with (e.g. a consumer that
+  // only ever authored docs/completed.md and never had docs/knowledge.md /
+  // docs/decisions.md). Gating this on jsonl-non-empty (as a prior revision
+  // did) wrongly ABORTED the whole run — including the unrelated
+  // completed.md -> roadmap.jsonl pair — for any consumer missing one of the
+  // legacy pairs; every pair now shares the same absent-.md-means-skip rule
+  // pending/friction/completed already used.
   const knMdExists = fs.existsSync(knMdPath);
   const deMdExists = fs.existsSync(deMdPath);
   const pendingMdExists = fs.existsSync(pendingMdPath);
   const frictionMdExists = fs.existsSync(frictionMdPath);
 
-  const knJsonlNonEmpty =
-    fs.existsSync(knJsonlPath) && fs.readFileSync(knJsonlPath, "utf-8").trim().length > 0;
-  const deJsonlNonEmpty =
-    fs.existsSync(deJsonlPath) && fs.readFileSync(deJsonlPath, "utf-8").trim().length > 0;
-
-  const knAlreadyDone = !knMdExists && knJsonlNonEmpty;
-  const deAlreadyDone = !deMdExists && deJsonlNonEmpty;
+  const knAlreadyDone = !knMdExists;
+  const deAlreadyDone = !deMdExists;
   // pending/friction: .md absent = already done (either never existed or already migrated)
   const pendingAlreadyDone = !pendingMdExists;
   const frictionAlreadyDone = !frictionMdExists;
+
+  const completedMdPath = path.join(cwd, "docs", "completed.md");
+  const roadmapJsonlPath = path.join(cwd, "docs", "roadmap.jsonl");
+  const completedBakPath = completedMdPath + ".bak";
+  const completedMdExists = fs.existsSync(completedMdPath);
+  const completedAlreadyDone = !completedMdExists;
+
+  // Determine repo slug from package.json or git remote — resolved once, used
+  // by every row builder AND the § S bootstrap seed (needed even on the
+  // already-migrated fast path below).
+  const repo = detectRepo(cwd);
 
   // A fresh consumer has no legacy `.md` ledgers AND no migrated rows, so neither
   // `knAlreadyDone` nor `deAlreadyDone` holds and the run fell through to
   // `abort("knowledge.md not found")` — printing "migrate failed" for a documented
   // no-op. Nothing to migrate is a clean outcome, not a failure.
+  //
+  // These two are derived HERE and used ONLY by this check. They deliberately do
+  // NOT gate `knAlreadyDone` / `deAlreadyDone` above: gating idempotency on
+  // jsonl-non-empty aborted the whole run for any consumer missing one legacy
+  // pair, which is why every pair now shares the absent-.md-means-skip rule.
+  // "Already migrated" still needs a rows-exist signal, so the fresh-consumer
+  // test keeps it.
+  const knJsonlNonEmpty =
+    fs.existsSync(knJsonlPath) && fs.readFileSync(knJsonlPath, "utf-8").trim().length > 0;
+  const deJsonlNonEmpty =
+    fs.existsSync(deJsonlPath) && fs.readFileSync(deJsonlPath, "utf-8").trim().length > 0;
+  // roadmap.jsonl joins the rows-exist signal because it is a migration TARGET:
+  // a consumer whose only legacy ledger was `completed.md` has empty knowledge
+  // and decisions ledgers even after a successful migrate, so testing those two
+  // alone would report the second run as "nothing to migrate" on a repo that
+  // has in fact already migrated.
+  const roadmapJsonlNonEmpty =
+    fs.existsSync(roadmapJsonlPath) && fs.readFileSync(roadmapJsonlPath, "utf-8").trim().length > 0;
+  //
+  // `completed.md` counts as a legacy ledger here. Omitting it would send a
+  // consumer who only ever authored `docs/completed.md` — the exact case the
+  // idempotency comment above calls out — down the nothing-to-migrate return,
+  // stranding the one file that has rows to convert into `docs/roadmap.jsonl`.
   const noLegacyLedgers =
     !knMdExists &&
     !deMdExists &&
     !pendingMdExists &&
     !frictionMdExists &&
+    !completedMdExists &&
     !knJsonlNonEmpty &&
-    !deJsonlNonEmpty;
+    !deJsonlNonEmpty &&
+    !roadmapJsonlNonEmpty;
   if (noLegacyLedgers) {
     lines.push("[bkit-telemetry] migrate: no legacy .md ledgers found — nothing to migrate");
     return {
@@ -743,35 +1117,48 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
       decisionRowCount: 0,
       pendingRowCount: 0,
       frictionRowCount: 0,
+      featureRowCount: 0,
+      seedRowCount: 0,
       knowledgeMdDeleted: false,
       decisionsMdDeleted: false,
       pendingMdDeleted: false,
       frictionMdDeleted: false,
+      completedMdDeleted: false,
       lines,
       ok: true,
     };
   }
 
-  if (knAlreadyDone && deAlreadyDone && pendingAlreadyDone && frictionAlreadyDone) {
+  if (
+    knAlreadyDone &&
+    deAlreadyDone &&
+    pendingAlreadyDone &&
+    frictionAlreadyDone &&
+    completedAlreadyDone
+  ) {
     lines.push("[bkit-telemetry] migrate: already complete (idempotent no-op)");
+    // The § S bootstrap seed still runs on an already-migrated repo — it is
+    // idempotent (skips FIDs already present) and is the only path that seeds
+    // in-flight FIDs discovered/added to docs/plans/** AFTER the first migrate.
+    const seedRows = dryRun ? [] : seedInFlightFeatures(cwd, repo, bkitVersion, lines);
     return {
-      ran: false,
+      ran: seedRows.length > 0,
       dryRun,
       knowledgeRowCount: 0,
       decisionRowCount: 0,
       pendingRowCount: 0,
       frictionRowCount: 0,
+      featureRowCount: 0,
+      seedRowCount: seedRows.length,
       knowledgeMdDeleted: false,
       decisionsMdDeleted: false,
       pendingMdDeleted: false,
       frictionMdDeleted: false,
+      completedMdDeleted: false,
       lines,
       ok: true,
     };
   }
-
-  // Determine repo slug from package.json or git remote
-  const repo = detectRepo(cwd);
 
   // Use a stable base timestamp for this migration run
   const baseTs = Math.floor(Date.now());
@@ -783,9 +1170,6 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
   let knRows: TelemetryEvent[] = [];
 
   if (!knAlreadyDone) {
-    if (!knMdExists) {
-      return abort(`knowledge.md not found at ${knMdPath}`, lines);
-    }
     const knContent = fs.readFileSync(knMdPath, "utf-8");
     knEntries = parseKnowledgeMd(knContent);
     knRows = knEntries.map((entry, idx) =>
@@ -793,7 +1177,7 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     );
     lines.push(`[bkit-telemetry] migrate: parsed ${knEntries.length} knowledge entries`);
   } else {
-    lines.push("[bkit-telemetry] migrate: knowledge already migrated — skipping");
+    lines.push("[bkit-telemetry] migrate: knowledge.md absent — skipping");
   }
 
   // ---------------------------------------------------------------------------
@@ -803,9 +1187,6 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
   let deRows: TelemetryEvent[] = [];
 
   if (!deAlreadyDone) {
-    if (!deMdExists) {
-      return abort(`decisions.md not found at ${deMdPath}`, lines);
-    }
     const deContent = fs.readFileSync(deMdPath, "utf-8");
     deEntries = parseDecisionsMd(deContent);
     deRows = deEntries.map((entry, idx) =>
@@ -818,7 +1199,7 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     );
     lines.push(`[bkit-telemetry] migrate: parsed ${deEntries.length} decision entries`);
   } else {
-    lines.push("[bkit-telemetry] migrate: decisions already migrated — skipping");
+    lines.push("[bkit-telemetry] migrate: decisions.md absent — skipping");
   }
 
   // ---------------------------------------------------------------------------
@@ -857,6 +1238,25 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     lines.push("[bkit-telemetry] migrate: friction.md absent — skipping");
   }
 
+  // ---------------------------------------------------------------------------
+  // Parse docs/completed.md → docs/roadmap.jsonl `feature` rows (#380, fifth pair)
+  // ---------------------------------------------------------------------------
+  let completedEntries: ParsedEntry[] = [];
+  let featureRows: TelemetryEvent[] = [];
+
+  if (!completedAlreadyDone) {
+    const completedContent = fs.readFileSync(completedMdPath, "utf-8");
+    completedEntries = parseCompletedMd(completedContent, lines);
+    featureRows = completedEntries.map((entry, idx) =>
+      buildFeatureRow(entry, { repo, bkitVersion, baseTs: baseTs + 40000, idx }),
+    );
+    lines.push(
+      `[bkit-telemetry] migrate: parsed ${completedEntries.length} completed (feature) entries`,
+    );
+  } else {
+    lines.push("[bkit-telemetry] migrate: completed.md absent — skipping");
+  }
+
   // Dry-run: report and exit without writing
   if (dryRun) {
     lines.push(
@@ -871,6 +1271,9 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     lines.push(
       `[bkit-telemetry] migrate: dry-run — would append ${frictionRows.length} friction rows to ${frictionJsonlPath}`,
     );
+    lines.push(
+      `[bkit-telemetry] migrate: dry-run — would append ${featureRows.length} feature rows to ${roadmapJsonlPath} (+ bootstrap seed)`,
+    );
     lines.push("[bkit-telemetry] migrate: dry-run — no files written");
     return {
       ran: false,
@@ -879,10 +1282,13 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
       decisionRowCount: deRows.length,
       pendingRowCount: pendingRows.length,
       frictionRowCount: frictionRows.length,
+      featureRowCount: featureRows.length,
+      seedRowCount: 0,
       knowledgeMdDeleted: false,
       decisionsMdDeleted: false,
       pendingMdDeleted: false,
       frictionMdDeleted: false,
+      completedMdDeleted: false,
       lines,
       ok: true,
     };
@@ -1082,6 +1488,64 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     lines.push(`[bkit-telemetry] migrate: friction.md had 0 entries — deleted (no rows to append)`);
   }
 
+  // ---------------------------------------------------------------------------
+  // Parity-gated append cycle for docs/completed.md → docs/roadmap.jsonl (#380)
+  // ---------------------------------------------------------------------------
+  let completedMdDeleted = false;
+
+  if (!completedAlreadyDone && featureRows.length > 0) {
+    const completedContent = fs.readFileSync(completedMdPath, "utf-8");
+    fs.writeFileSync(completedBakPath, completedContent, "utf-8");
+    lines.push(`[bkit-telemetry] migrate: created ${completedBakPath}`);
+
+    const migratingPath = roadmapJsonlPath + ".migrating";
+    const newNdjson = featureRows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+    fs.writeFileSync(migratingPath, newNdjson, "utf-8");
+
+    if (!fs.existsSync(completedBakPath)) {
+      fs.unlinkSync(migratingPath);
+      return abort(
+        "ABORT: completed.md.bak absent after creation — parity gate triggered; ZERO .md deleted",
+        lines,
+      );
+    }
+    const bakEntries = parseCompletedMd(fs.readFileSync(completedBakPath, "utf-8"), []);
+    if (bakEntries.length !== featureRows.length) {
+      fs.unlinkSync(migratingPath);
+      return abort(
+        `ABORT: completed parity mismatch — .bak has ${bakEntries.length} entries, wrote ${featureRows.length} rows; ZERO .md deleted`,
+        lines,
+      );
+    }
+    lines.push(`[bkit-telemetry] migrate: completed parity confirmed (${featureRows.length} rows)`);
+
+    fs.appendFileSync(roadmapJsonlPath, fs.readFileSync(migratingPath, "utf-8"), "utf-8");
+    fs.unlinkSync(migratingPath);
+    lines.push(
+      `[bkit-telemetry] migrate: appended ${featureRows.length} feature rows to ${roadmapJsonlPath}`,
+    );
+
+    fs.unlinkSync(completedMdPath);
+    completedMdDeleted = true;
+    lines.push(`[bkit-telemetry] migrate: deleted ${completedMdPath}`);
+    fs.unlinkSync(completedBakPath);
+    lines.push(`[bkit-telemetry] migrate: removed ${completedBakPath}`);
+  } else if (!completedAlreadyDone && featureRows.length === 0) {
+    fs.unlinkSync(completedMdPath);
+    completedMdDeleted = true;
+    lines.push(
+      `[bkit-telemetry] migrate: completed.md had 0 entries — deleted (no rows to append)`,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // #380 Addendum 3 § S — bootstrap seed: one `feature` row per in-flight FID
+  // detected from docs/plans/** + folded status.jsonl, skipping FIDs already in
+  // docs/roadmap.jsonl (incl. the SHIPPED rows just ported above). Idempotent —
+  // re-running adds no duplicate.
+  // ---------------------------------------------------------------------------
+  const seedRows = seedInFlightFeatures(cwd, repo, bkitVersion, lines);
+
   lines.push("[bkit-telemetry] migrate: complete");
 
   return {
@@ -1091,10 +1555,13 @@ export async function runMigrate(opts: MigrateOptions): Promise<MigrateResult> {
     decisionRowCount: deRows.length,
     pendingRowCount: pendingRows.length,
     frictionRowCount: frictionRows.length,
+    featureRowCount: featureRows.length,
+    seedRowCount: seedRows.length,
     knowledgeMdDeleted: knMdDeleted,
     decisionsMdDeleted: deMdDeleted,
     pendingMdDeleted,
     frictionMdDeleted,
+    completedMdDeleted,
     lines,
     ok: true,
   };
@@ -1114,10 +1581,13 @@ function abort(message: string, lines: string[]): MigrateResult {
     decisionRowCount: 0,
     pendingRowCount: 0,
     frictionRowCount: 0,
+    featureRowCount: 0,
+    seedRowCount: 0,
     knowledgeMdDeleted: false,
     decisionsMdDeleted: false,
     pendingMdDeleted: false,
     frictionMdDeleted: false,
+    completedMdDeleted: false,
     lines,
     ok: false,
     error: message,

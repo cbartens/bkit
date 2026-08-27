@@ -49,12 +49,21 @@ tmp/**
 .worktrees/
 docs/plans/*/logs/**/raw/
 docs/plans/*/logs/**/.lock
+# Transient per-run workflow sentinels — written mid-run and cleared at the next
+# workflow start. They sit inside the BOOK_PATHS-staged logs dir, so without
+# these lines a Failure Path commit captures them and the next run's `rm -f`
+# then shows up as a spurious tracked deletion.
 docs/plans/*/logs/**/.deferred-blocked
 docs/plans/*/logs/**/.rebase-failed
 
 # bkit workflows — repo-global dev critical-section lock (cross-FID)
 .bkit/.dev.lock
 .bkit/.runtime-cursor
+
+# bkit workflows — #380 per-FID tracker-enrichment scratch file (never committed)
+.bkit/.roadmap-tracker-rows-*.json
+.bkit/.roadmap-reverse-sync-*.json
+.bkit/.roadmap-refresh-on-demand.md
 
 # Claude Code harness — /schedule daemon lock
 .claude/scheduled_tasks.lock

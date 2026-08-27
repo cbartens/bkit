@@ -684,7 +684,8 @@ Design Feature — Autonomous design phase
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
-3. Squash-merge to dev, write close telemetry, commit, push, and clean up:
+3. **Tracker enrichment (additive — never a precondition, NEVER `gh`/`search_issues`):** `mcp__github__list_issues({ owner: "{OWNER}", repo: "{REPO}", state: "open", labels: "bkit:design,bkit:plan,bkit:build,bkit:debug,bkit:ship", perPage: 100 })` → map `items` to a JSON array `[{ key: "#{number}", title, status: (from its `bkit:*` phase label: design→DESIGNED, plan→PLANNED, build→BUILT, debug→DEBUGGED, ship→SHIPPED), milestone: (milestone.title // null), blockedBy: (labels containing "blocked" ? "blocked" : null) }]` → write to `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.bkit/.roadmap-tracker-rows-{FID}.json`. On call error/timeout → write `[]` (treated inconclusive, never blocks the close).
+   Squash-merge to dev, write close telemetry, commit, push, and clean up:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
@@ -709,7 +710,7 @@ Design Feature — Autonomous design phase
      [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
      git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
      git merge --squash -X ours "feat/{FID}"
-     STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
+     STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "design close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
      WT=$(git rev-parse --show-toplevel)
      STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -730,6 +731,21 @@ Design Feature — Autonomous design phase
        '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
        >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
      bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID} >/dev/null
+     # tracker enrichment (additive, never a precondition): the
+     # wired-only `list_issues` orchestrator step above (github/linear marker
+     # block) wrote TRACKER_ROWS when a tracker is connected; under
+     # `tracker: none` neither marker block rendered, so no file exists and
+     # enrichment is a fail-open no-op. The ledger-first board
+     # below is already complete without it.
+     # append the docs/roadmap.jsonl row for this phase, then FULL-regenerate
+     # docs/roadmap.md from the ledger. Best-effort, fail-open: NEVER gates the close.
+     ROADMAP_JSONL="$WT/docs/roadmap.jsonl"
+     TRACKER_ROWS="$REPO_ROOT/.bkit/.roadmap-tracker-rows-{FID}.json"
+     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
+       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
+       >> "$ROADMAP_JSONL" || echo "[bkit-roadmap] append failed: $ROADMAP_JSONL"
+     ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" "$TRACKER_ROWS" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+     rm -f "$TRACKER_ROWS" 2>/dev/null || true
      bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=stage \
        || { echo "[bkit-book] design-close bookkeeping stage failed" >&2; exit 1; }
      git commit --allow-empty -m "docs({FID}): design DONE bkit [skip ci]"
@@ -744,8 +760,28 @@ Design Feature — Autonomous design phase
      git worktree prune
    else
      git fetch origin dev "{BRANCH}"
-     STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
+     # append the docs/roadmap.jsonl row for this phase + regenerate docs/roadmap.md
+     # on the feat branch BEFORE the PR merges, so the squash-merge below carries it
+     # to dev (widened STRAY allowlist permits both paths). Fail-open: never gates.
+     # Tracker enrichment reuses the same TRACKER_ROWS file the
+     # orchestrator step above wrote (or skipped, under `tracker: none`).
+     BKIT_VER=$(jq -r '.pinnedVersion // empty' ".bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+     REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+     TRACKER_ROWS="$REPO_ROOT/.bkit/.roadmap-tracker-rows-{FID}.json"
+     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
+       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
+       >> "docs/roadmap.jsonl" || echo "[bkit-roadmap] append failed: docs/roadmap.jsonl"
+     ( . ".bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "." "$TRACKER_ROWS" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+     rm -f "$TRACKER_ROWS" 2>/dev/null || true
+     git add -- docs/roadmap.jsonl docs/roadmap.md
+     git commit --allow-empty -m "docs({FID}): design roadmap update bkit [skip ci]" -- docs/roadmap.jsonl docs/roadmap.md
+     STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "design close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+     # `gh pr create` / `gh pr merge` read the REMOTE: without this push the
+     # close-workflow and roadmap commits stay local and never reach dev.
+     B=$(git branch --show-current)
+     [ -n "$B" ] || { echo "detached HEAD — refusing to push the design close commits" >&2; exit 1; }
+     git push --force-with-lease origin "$B" || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
      PR_NUMBER=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
      if [ -z "$PR_NUMBER" ]; then
        gh pr create --base dev --head "{BRANCH}" --title "docs({FID}): design DONE" --body "" || { echo "gh pr create failed" >&2; exit 1; }

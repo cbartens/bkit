@@ -3,7 +3,9 @@
 # Config
 
 > [!CAUTION]
-> **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`) and cloud CLI provisioning. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
+> **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`), cloud CLI provisioning, and the `docs/roadmap.md` cadence thresholds. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
+>
+> **Roadmap cadence (#380):** `bkit.roadmap.buildCycles` (default 10) / `bkit.roadmap.stalenessDays` (default 90) in `package.json` — NOT here; the numbers live in the manifest (`.bkit/src/bkit-manifest.ts` `resolveRoadmapCadence`), this is a pointer only.
 >
 > **Rules:**
 >

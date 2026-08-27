@@ -29,6 +29,9 @@ import {
   parseDecisionsMd,
   parsePendingMd,
   parseFrictionMd,
+  parseCompletedMd,
+  mapCompletedCategory,
+  seedInFlightFeatures,
   parseLegacyStatus,
   runMigrate,
   type MigrateOptions,
@@ -59,6 +62,7 @@ function setupFixtureDir(overrides: {
   frictionContent?: string;
   knJsonlContent?: string;
   deJsonlContent?: string;
+  completedContent?: string;
 }): string {
   const dir = makeTmpDir();
   const docsDir = path.join(dir, "docs");
@@ -98,8 +102,33 @@ function setupFixtureDir(overrides: {
   fs.writeFileSync(path.join(docsDir, "deferrals.jsonl"), "", "utf-8");
   fs.writeFileSync(path.join(bkitDir, "friction.jsonl"), "", "utf-8");
 
+  if (overrides.completedContent !== undefined) {
+    fs.writeFileSync(path.join(docsDir, "completed.md"), overrides.completedContent, "utf-8");
+  }
+
   return dir;
 }
+
+const FIXTURE_COMPLETED_MD = `<!-- bkit:start -->
+
+# Completed
+
+<!-- bkit:end -->
+
+## First shipped feature (2026-06-01)
+
+- **Category:** agentic
+- **Artifacts:** \`docs/plans/202606/first-shipped-plan.md\`
+- **Summary:** Shipped the first feature end to end.
+- **Related:** 401, PR-501, a1b2c3d
+
+## Second shipped feature (2026-06-05)
+
+- **Category:** backend
+- **Artifacts:** \`docs/plans/202606/second-shipped-plan.md\`
+- **Summary:** Shipped the second feature.
+- **Related:** 402
+`;
 
 const FIXTURE_KN_MD = `<!-- bkit:start -->
 
@@ -963,6 +992,241 @@ describe("migrate — idempotency", () => {
     expect(second.ran).toBe(false);
     const logLine = second.lines.find((l) => l.includes("already complete"));
     expect(logLine).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #380 Directive 2 — docs/completed.md → docs/roadmap.jsonl (fifth pair) +
+// Addendum 3 § S bootstrap seed (matrix rows 9, 24)
+// ---------------------------------------------------------------------------
+
+describe("mapCompletedCategory — legacy vocabulary onto the domain set", () => {
+  it.each([
+    ["infra", "infra"],
+    ["agentic", "agentic"],
+    ["testing", "testing"],
+    ["security", "security"],
+    ["backend", "correctness"],
+    ["frontend", "correctness"],
+    ["data", "correctness"],
+    ["integrations", "infra"],
+    ["ai", "agentic"],
+    ["unknown-legacy-term", "other"],
+    [undefined, "other"],
+  ] as const)("%s -> %s", (input, expected) => {
+    expect(mapCompletedCategory(input)).toBe(expected);
+  });
+});
+
+describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row 9)", () => {
+  it("every well-formed entry becomes a SHIPPED feature row; parity gate passes and DELETES completed.md", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+      completedContent: FIXTURE_COMPLETED_MD,
+    });
+
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    expect(result.featureRowCount).toBe(2);
+    expect(result.completedMdDeleted).toBe(true);
+    expect(fs.existsSync(path.join(dir, "docs", "completed.md"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "docs", "completed.md.bak"))).toBe(false);
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { kind?: string; status?: string; category?: string });
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.kind).toBe("feature");
+      expect(row.status).toBe("SHIPPED");
+    }
+    // "backend" legacy category on the second entry maps onto the domain set
+    expect(rows[1]?.category).toBe("correctness");
+  });
+
+  it("cleans up the .bak + .migrating temp files after a successful parity-gated append (mirrors the friction/pending abort-path contract)", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+      completedContent: FIXTURE_COMPLETED_MD,
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(result.ok).toBe(true);
+    expect(fs.existsSync(path.join(dir, "docs", "completed.md.bak"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "docs", "roadmap.jsonl.migrating"))).toBe(false);
+  });
+
+  it("re-run is an idempotent no-op for the completed.md pair", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+      completedContent: FIXTURE_COMPLETED_MD,
+    });
+    const first = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(first.featureRowCount).toBe(2);
+
+    const second = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(second.ran).toBe(false);
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    expect(rows).toHaveLength(2); // no duplicate append on re-run
+  });
+
+  it("a malformed entry (missing Category/Summary) yields a loud diagnostic, never a silent skip", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+      completedContent: `<!-- bkit:start -->
+
+# Completed
+
+<!-- bkit:end -->
+
+## Bare entry with no Category or Summary (2026-06-10)
+
+- **Artifacts:** \`docs/plans/202606/bare-plan.md\`
+`,
+    });
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(result.featureRowCount).toBe(1); // still produces a row — never skipped
+    const diag = result.lines.find((l) => l.includes("using loud fallback"));
+    expect(diag).toBeDefined();
+  });
+
+  it("regression: a consumer with ONLY docs/completed.md (no knowledge.md/decisions.md/pending.md/friction.md ever having existed) still migrates — does NOT abort on the unrelated absent pairs", async () => {
+    // Real-world shape: a fresh/scratch consumer that never authored the legacy
+    // knowledge/decisions/pending/friction .md ledgers but hand-maintained
+    // docs/completed.md. A prior revision gated knAlreadyDone/deAlreadyDone on
+    // "jsonl already non-empty", so an absent .md with an empty/absent .jsonl
+    // (the true first-run state) read as "not already done" and fell through to
+    // `return abort("knowledge.md not found ...")` — aborting the ENTIRE run,
+    // including the unrelated completed.md -> roadmap.jsonl pair this consumer
+    // actually wanted to migrate.
+    const dir = setupFixtureDir({
+      completedContent: FIXTURE_COMPLETED_MD,
+    });
+    // No knowledge.md/decisions.md/pending.md/friction.md were ever written by
+    // setupFixtureDir's overrides here — only the empty knowledge.jsonl /
+    // decisions.jsonl / deferrals.jsonl / friction.jsonl stubs it always seeds.
+
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+
+    expect(result.ok).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result.featureRowCount).toBe(2);
+    expect(result.completedMdDeleted).toBe(true);
+    expect(fs.existsSync(path.join(dir, "docs", "completed.md"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "docs", "roadmap.jsonl"))).toBe(true);
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { kind?: string; status?: string });
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.kind).toBe("feature");
+      expect(row.status).toBe("SHIPPED");
+    }
+
+    // Re-run is still an idempotent no-op afterward.
+    const second = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(second.ok).toBe(true);
+    expect(second.ran).toBe(false);
+    expect(second.lines.some((l) => l.includes("already complete"))).toBe(true);
+  });
+});
+
+describe("migrate — Addendum 3 § S bootstrap seed (#380, matrix row 24)", () => {
+  function makePlansFixture(dir: string): void {
+    const plansDir = path.join(dir, "docs", "plans", "202607");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(path.join(plansDir, "412-export-csv-design.md"), "# design\n", "utf-8");
+    fs.writeFileSync(path.join(plansDir, "412-export-csv-plan.md"), "# plan\n", "utf-8");
+    fs.writeFileSync(path.join(plansDir, "418-rate-limit-design.md"), "# design\n", "utf-8");
+    const logsDir = path.join(plansDir, "logs", "412-export-csv");
+    fs.mkdirSync(logsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(logsDir, "status.jsonl"),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: 1 })}\n${JSON.stringify({ type: "workflow-done", workflow: "build", at: 2 })}\n`,
+      "utf-8",
+    );
+  }
+
+  it("seeds one row per in-flight FID at its detected status; a plan+BUILT-status.jsonl FID resolves to BUILT, a design-only FID resolves to DESIGNED", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    makePlansFixture(dir);
+
+    const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(result.seedRowCount).toBe(2);
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { key?: string; status?: string });
+    const byKey = new Map(rows.map((r) => [r.key, r.status]));
+    expect(byKey.get("412-export-csv")).toBe("BUILT");
+    expect(byKey.get("418-rate-limit")).toBe("DESIGNED");
+  });
+
+  it("re-running adds no duplicate seed rows", async () => {
+    const dir = setupFixtureDir({
+      knContent: FIXTURE_KN_MD,
+      deContent: FIXTURE_DE_MD,
+      pendingContent: FIXTURE_PENDING_MD,
+      frictionContent: FIXTURE_FRICTION_MD,
+    });
+    makePlansFixture(dir);
+
+    await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    const second = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
+    expect(second.seedRowCount).toBe(0);
+
+    const rows = fs
+      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    expect(rows).toHaveLength(2);
+  });
+
+  it("seedInFlightFeatures skips FIDs already present in the ledger (incl. just-migrated SHIPPED rows)", () => {
+    const dir = setupFixtureDir({});
+    const plansDir = path.join(dir, "docs", "plans", "202607");
+    fs.mkdirSync(plansDir, { recursive: true });
+    fs.writeFileSync(path.join(plansDir, "999-already-shipped-design.md"), "# design\n", "utf-8");
+    fs.writeFileSync(
+      path.join(dir, "docs", "roadmap.jsonl"),
+      `${JSON.stringify({ ts: 1, kind: "feature", repo: "x/y", bkitVersion: "1", workflow: "ship", step: "s", key: "999-already-shipped", category: "other", description: "d", status: "SHIPPED" })}\n`,
+      "utf-8",
+    );
+    const lines: string[] = [];
+    const seedRows = seedInFlightFeatures(dir, "x/y", "1.0.0", lines);
+    expect(seedRows).toHaveLength(0);
   });
 });
 

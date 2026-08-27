@@ -442,6 +442,65 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Scenario 5b — docs/roadmap.md is consumer-owned (#380, Derived Test Matrix
+// row 18): `bkit install` must NEVER create/overwrite it, and a subsequent
+// `bkit check` dry-run must report clean drift (docs/roadmap.md is not part
+// of any managed marker set bkit tracks). Success Criterion 5's automated leg.
+// ---------------------------------------------------------------------------
+
+describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never creates it (#380 matrix row 18)", () => {
+  it("`bkit install --full` against a clean consumer does NOT create docs/roadmap.md, and `bkit check` reports clean drift", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const installResult = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const installCombined = `${installResult.stdout ?? ""}\n${installResult.stderr ?? ""}`;
+    expect(installResult.status, `install crashed:\n${installCombined}`).toBe(0);
+
+    // The load-bearing assertion: docs/roadmap.md is a generated projection
+    // owned by the fold/close-step scripts, never by bkit install itself.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "roadmap.md"))).toBe(false);
+
+    // A dry-run `bkit check` immediately after must also report clean drift —
+    // docs/roadmap.md never enters bkit's tracked write set, so there is
+    // nothing to flag as stale/missing for it.
+    const checkResult = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+    const checkCombined = `${checkResult.stdout ?? ""}\n${checkResult.stderr ?? ""}`;
+    expect(checkResult.status, `check crashed:\n${checkCombined}`).toBe(0);
+    expect(checkCombined).not.toContain("roadmap.md");
+    // docs/roadmap.md still must not have been created by the dry-run check.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "roadmap.md"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)
 //
 // When Phase 3 detects a blocker-severity finding (e.g. ci-yml-missing-token-env

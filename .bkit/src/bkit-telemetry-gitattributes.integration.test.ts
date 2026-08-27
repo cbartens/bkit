@@ -67,6 +67,28 @@ describe("gitattributes — consumer-inherited ledger JSONL files merge=union (W
   }
 });
 
+// #380 — docs/roadmap.jsonl replaces docs/completed.md as the canonical feature
+// ledger; docs/roadmap.md is the generated projection. Both merge=union.
+describe("gitattributes — docs/roadmap.jsonl + docs/roadmap.md (#380)", () => {
+  const ROADMAP_FILES = ["docs/roadmap.jsonl", "docs/roadmap.md"];
+
+  for (const filePath of ROADMAP_FILES) {
+    it(`${filePath} resolves merge=union`, () => {
+      const attr = gitCheckAttr(filePath);
+      expect(attr, `${filePath} should have merge=union`).toBe("union");
+    });
+  }
+
+  it("root + template .gitattributes no longer name docs/completed.md", () => {
+    for (const p of [".gitattributes", ".bkit/templates/.gitattributes"]) {
+      const content = fs.readFileSync(path.join(REPO_ROOT, p), "utf-8");
+      expect(content, `${p} must not reference docs/completed.md`).not.toContain(
+        "docs/completed.md",
+      );
+    }
+  });
+});
+
 /**
  * Structural half — WHICH SIDE of `# <!-- bkit:end -->` each rule sits on, which is
  * what decides whether a consumer inherits it from `bkit install` or has to add it
@@ -105,8 +127,11 @@ describe("gitattributes structural check — append-only ledgers ship, drained o
     "docs/decisions.jsonl",
     "docs/deferrals.jsonl",
     "docs/failures.jsonl",
+    // #380 retired docs/completed.md; docs/roadmap.jsonl is the canonical feature
+    // ledger in its place and docs/roadmap.md is its generated projection.
+    "docs/roadmap.jsonl",
+    "docs/roadmap.md",
     ".bkit/stats.jsonl",
-    "docs/completed.md",
   ];
 
   for (const filePath of SHIPPED) {

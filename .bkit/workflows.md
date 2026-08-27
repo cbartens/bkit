@@ -27,7 +27,8 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 ├── bkit-audit.md          # Workflow 6/6 — 7 steps; planned (not yet shipped)
 ├── bkit-auto.md          # Utility — phase-routed cloud dispatch (ship/debug by CI on a PR or post-merge `dev`; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
-└── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
+├── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
+└── bkit-roadmap.md        # Utility — on-demand; regenerate docs/roadmap.md board + analysis (#380)
 ```
 
 <!-- prettier-ignore -->
@@ -42,6 +43,7 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
+| `/bkit-roadmap` | no | n/a | Regenerated `docs/roadmap.md` (`roadmap-status` + `roadmap-analysis` blocks) |
 
 ## Workflow Authoring Rules
 
@@ -115,6 +117,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 - **Debug three attempt counters = mode-matched pairs**.
 - **Runtime capability table:** `.bkit/scripts/bkit-runtime.sh` classifies the runtime (`LOCAL` / `GITHUB_ACTION` / `CLOUD_CLAUDE` / `CLOUD_CURSOR` / `UNKNOWN`) and emits `RUNTIME_WORKTREES` / `RUNTIME_DEVPUSHES` / `RUNTIME_GITHUBCLI`. `CLOUD_CURSOR` is detected via a `.bkit/.runtime-cursor` marker written by `.cursor/hooks/preflight.sh` when `is_background_agent` is true (Cursor exposes that only on stdin JSON to the hook, not as an env var). `RUNTIME_DEVPUSHES` is a conservative DEFAULT, never probed — a `git push --dry-run` sends no ref-update, so a protected branch's pre-receive hook never fires and a false-positive would strand a cloud session on a `dev` checkout. `RUNTIME_GITHUBCLI` is the one live probe (`gh auth status`). An explicit falsy primitive (`CI=false`, `GITHUB_ACTIONS=false`) means ABSENCE, not ambiguity — treating it as ambiguous would cost a laptop its worktree model; only a non-truthy, non-falsy value goes `UNKNOWN`.
 - **Local happy path is byte-identical across the three runtimes:** every runtime branch is additive. `RUNTIME_DEVPUSHES=true` (laptop, GH-Actions runner) runs the local block verbatim — local `merge --squash -X ours`, `docs({FID}): {phase} DONE bkit [skip ci]`, direct `dev` push, worktree teardown. Only `RUNTIME_DEVPUSHES != true` (claude.ai cloud, `unknown`) takes the PR-merge branch. Never replace a working local call site to serve a cloud runtime; branch around it.
+- **PR-mode design/plan closes MUST push before `gh pr create`:** `gh pr create` / `gh pr merge` act on the REMOTE, so a close commit that is only committed locally never enters the PR and never reaches `dev`. The `RUNTIME_DEVPUSHES=true` branch pushes `dev` directly and is unaffected; the `false` branch produces two local commits (`chore({FID}): close-workflow` carrying the `status.jsonl` rows, then `docs({FID}): {phase} roadmap update` carrying `docs/roadmap.jsonl` + `docs/roadmap.md`) and needs an explicit `git push --force-with-lease origin "$B"` to publish them. Placed AFTER the STRAY guard so nothing unvetted is published, and before the `gh pr list` / `gh pr create` pair. Build/debug never had this gap — their close pushes the feature branch already. Omitting it silently loses every design/plan close on the PR path.
 - **`[skip ci]` scope:** deliberate `bkit [skip ci]` on docs-only commit SUBJECTS is the CI-minutes convention and stays. The defect it is confused with is a squash merge whose DEFAULT body concatenates the head branch's commit subjects and inherits a token — hence `bkit_close_guard_scan_body` scans the BODY only, and every close passes an explicit `--body ""`.
 - **Design/plan close never waits for CI:** it creates no PR on the local path, and on the PR path the merge subject carries `bkit [skip ci]` so no run is dispatched. A PR-create-then-wait-then-merge shape (build/debug + ship) is for code, not docs-only closes.
 - **`--delete-branch` is not used by the design/plan PR close:** `gh` also deletes the LOCAL branch, which fails when that branch is checked out in a worktree (`git branch -D` refuses) and returns non-zero AFTER a successful merge; in adopt mode it checks out the base first, stranding a cloud session on `dev`. Head-branch cleanup relies on the repo's auto-delete-head-branches setting.
@@ -160,7 +163,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs → decides tracker mirror.
+**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,deferrals,failures,roadmap}.jsonl`. Workflow reads agent outputs → decides tracker mirror.
 
 ## Common Workflow Anatomy
 
@@ -724,7 +727,7 @@ Every command has `## 🤖 Failure Path` before Step 1. Any step / tool / gate f
 <!-- prettier-ignore -->
 | Tier | Conflict shape | Recovery | Mechanism |
 | --- | --- | --- | --- |
-| 1 | Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/completed.md`, `.bkit/stats.jsonl`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
+| 1 | Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `docs/roadmap.md`, `.bkit/stats.jsonl`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.bkit/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
 | 2 | Any combination of the Tier-1 ledgers, `.bkit/friction.jsonl`, and the dependency lockfile (pnpm, npm, yarn, bun, cargo, go, uv) | `bkit_rebase_resolve` — union-resolves each ledger (`git merge-file --union` over the three index stages), takes + regenerates the lockfile, then drives `--continue` / `--skip` to completion | `.bkit/scripts/bkit-rebase-resolve.sh`, sourced in Step 2 of `bkit-build.md` / `bkit-debug.md` / `bkit-design.md` / `bkit-plan.md` |
 | 3 | Code, configs, anything else | Touch sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
 
@@ -903,7 +906,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 ### `/bkit-ship` — 13 steps
 
-**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `BOOK_PATHS` (frozen 10-path allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
+**Goal:** verify PR, merge to `dev`, clean up worktree. Path-scoped staging via `bkit-book-commit.sh` (frozen allow-list); `BOOK_ROOT` resolves the single tree every status/artifact write targets (`RUNTIME_DEVPUSHES=true` → `$REPO_ROOT`; `false` → current working branch tree). Outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/` survives Step 12 `worktree remove`.
 
 **Summary is displayed verbatim before the Failure Path.** A FAIL summary's `Recommended Next Step` is the only handoff that reaches a human on that route — the Close Workflow step's final return is unreachable once the run enters the Failure Path. All five phase workflows carry it.
 
@@ -913,12 +916,12 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Gate asserts carry `--branch`.** The gate's head-keyed run query is filtered server-side, so a moved head returns an empty list whether CI never ran or ran at a superseded SHA; only a second, branch-scoped query separates exit 14 from exit 10. Ship also exports `STATUS_PATH` before the assert so an override audit row lands in the run's own `BOOK_ROOT` log rather than the gate's literal-brace default.
 
-**Tier-1 carrier:** `bkit-ship-gate.sh` + `bkit-ship-timeouts.sh` (byte-identical pair in `.bkit/scripts/` + `.bkit/templates/.bkit/scripts/`). **Tier-2 carrier:** `bkit-ship-invariants.test.ts` (14 assertions: no `git add -A`, `BOOK_PATHS` staging, `BOOK_ROOT` status writes, `--match-head-commit`, canonical 14 step keys, `.dev.lock`/trap/EXIT, `.deferred-blocked` writer under `BOOK_ROOT`). **Tier-3 carrier:** detector corpus (Sub-plan 3).
+**Tier-1 carrier:** `bkit-ship-gate.sh` + `bkit-ship-timeouts.sh` (byte-identical pair in `.bkit/scripts/` + `.bkit/templates/.bkit/scripts/`). **Tier-2 carrier:** `bkit-ship-invariants.test.ts` (14 assertions: no `git add -A`, `bkit-book-commit.sh` staging, `BOOK_ROOT` status writes, `--match-head-commit`, canonical 14 step keys, `.dev.lock`/trap/EXIT, `.deferred-blocked` writer under `BOOK_ROOT`). **Tier-3 carrier:** detector corpus (Sub-plan 3).
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional) + `BOOK_PATHS` (frozen 10-path allow-list); create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
+| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional); staging pathspec built by `bkit-book-commit.sh`; create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
 | 2 — Verify PR (Worktree Setup + Regression Guard) | — | Read PR head SHA (`ENTRY_HEAD`), mergeable state. Regression guard: no CI run for PR HEAD → FAIL; else assert prior failed steps now pass. Branch eligibility check. Resolve `PR_NUMBER`. Init `MERGE_ATTEMPT` = 0. Write ownership marker to outbox. |
 | 3 — Base Check | — | `git merge-base --is-ancestor origin/dev origin/feat/{FID}`: ancestor → Path A → Step 6; not ancestor → Path B → Step 4. |
 | 4 — Integrate (Path B only) | `@bkit-ship-conflict-resolve` _(B2 only)_ | B1 mergeable: `gh pr update-branch` → Step 5. B2 conflicting: worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease` → Step 5. Non-mechanical: handover. |
@@ -930,7 +933,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 10 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | Both subagents in parallel. `update-docs` writes `ship-update-docs.md` + edits cataloged docs. `summary` writes `ship-summary.md`. Sibling-blind: `summary` MUST NOT read `update-docs.md`. |
 | 11 — Prune Skills | — | Uninstall any skill not listed in `.agents/skills.md` via `npx skills remove -y`. Reconciles the union of on-disk `.agents/skills/` directories and `skills-lock.json` keys — a disk-only scan strands lock entries whose directory was removed out-of-band. |
 | 12 — Worktree Cleanup | — | Ownership-scoped: only removes worktrees this run created (ownership marker in outbox + `status.jsonl` row; absent-default = "not mine"). `git worktree remove --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. |
-| 13 — Close Workflow | — | Assert squash-merge CI run completed + test tiers green. Single path-scoped `[skip ci]` commit via `BOOK_PATHS` → push `dev` (when `RUNTIME_DEVPUSHES=true`). Add `bkit:merged` label, drop `bkit:failed`. Final return displays `ship-summary.md` verbatim. **HARD STOP**. |
+| 13 — Close Workflow | — | Assert squash-merge CI run completed + test tiers green. Single path-scoped `[skip ci]` commit via `bkit-book-commit.sh` → push `dev` (when `RUNTIME_DEVPUSHES=true`). Add `bkit:merged` label, drop `bkit:failed`. Final return displays `ship-summary.md` verbatim. **HARD STOP**. |
 
 **Failure Path** resolves `BOOK_ROOT` (not `--git-common-dir`), aborts rebase before status append, writes `.deferred-blocked` sentinel (on deferred-sweep FAIL), and includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
@@ -980,6 +983,19 @@ Human-triggered. Removes Claude worktree (optionally feature branch). Always int
 
 - **`{FID}` provided** → Single Worktree Path: warn if `AHEAD` > 0 commits not in `origin/dev`; confirm removal; `git worktree remove --force` + `git worktree prune`; offer to delete local branch (`-d` safe; `-D` only on explicit force confirm).
 - **No arg** → List All Path: enumerate `.worktrees/*` with branch / ahead / behind / last-commit; prompt user to enter `{FID}` or `all` or `x`.
+
+### `/bkit-roadmap` — utility
+
+On-demand refresh of `docs/roadmap.md` outside the close cycle. No args, no interaction, no hard stop.
+
+**Flow:**
+
+1. Source `bkit-roadmap-fold.sh`; call `bkit_roadmap_fold` — full regenerate of the `roadmap-status` block from `docs/roadmap.jsonl` (the on-demand board repair).
+2. Source `bkit-roadmap-reconcile.sh`; call `bkit_roadmap_drift_check` — warns on any live `feat/*` with no ledger row; never mutates the board.
+3. Invoke `@bkit-roadmap-refresh` — rewrites the `roadmap-analysis` block only.
+4. Print a summary (board regenerated, drift-check result, analysis verdict).
+
+Reuses the fold (WS-1/WS-2), the drift check (WS-4 Directive 4), and the analysis leaf (WS-3) as-is — no new fold/leaf/check.
 
 ### `/bkit-auto` — phase-routed dispatch
 
@@ -1183,6 +1199,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 - **Debug Gate 10 PR-mode:** close-workflow push = CI trigger (sub-step 3). Poll in close-workflow block.
 - **Debug Gate 10 LOCAL-mode:** create-pr push (sub-step 9) = CI trigger. Poll in create-pr block. `AUTO_ROUTE_SUFFIX` from in-block var before `rm`; `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` (do NOT reorder `rm` or re-read removed file).
 - **Ship:** OUT of scope. Existing `SQUASH_SHA`-poll Step 13 (`gh run list --branch dev --commit "$SQUASH_SHA"`). CI-Dispatch at ship would mask "essential tests skipped" signal ship backstops.
+- **Ship Step 5 duplicate-dispatch probe (NOT the gate):** Step 5 re-validate calls `bkit_wait_ci` 60/10 for presence only, then dispatches `gh workflow run ci.yml` ONLY when the probe finds nothing. The head move it follows (Path B `gh pr update-branch` / `--force-with-lease`) already fires `pull_request` at the same SHA, and `ci.yml` groups `pull_request` by `head_ref` but `workflow_dispatch` by `run_id` — different groups, so neither cancels the other and both runs complete. The probe carries NO outcome vocabulary and is NEVER a pass condition (no `self-healed`/`no-ci` path exists at ship): the head-anchored completion poll below it and `bkit-ship-gate.sh assert` at Gate 6 still own the verdict, so the "masks essential tests skipped" objection does not apply. Probe `err` (incl. blocked sleep) → dispatch, i.e. the pre-fix behaviour. Row `ship-revalidate-dispatch` records `probe` / `dispatched` / `attempts`. The 60s budget is load-bearing: a `pull_request` run surfacing after it reproduces the duplicate this probe removes. Measured on `feat/380-roadmap-analysis-refresh` 2026-08-26, auto-fired runs appeared ~10-20s after the push — but auto-fire is intermittent here (`842afd51` produced none, cause unconfirmed), so the probe MUST keep failing safe to dispatch rather than reading a slow or absent run as "no CI".
 - **Ship Gate 5 + squash `--body ""`:** merge — squash subject = dev HEAD.
 
 **Gate outcomes (4-state terminal verdict):**
@@ -1380,7 +1397,7 @@ fi
 
 Carries workflow log + friction rows into new worktree branch. `/bkit-ship` appends ` bkit [skip ci]`; `/bkit-debug` Step 2 omits primitive — branches `origin/dev` for hotfix isolation.
 
-Allow-list, never deny-list: deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. Close on main (`design`/`plan`) and `/bkit-ship` Step 6 pre-merge use the pathspec `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl`; `/bkit-ship` close stages via `BOOK_PATHS` (§ `/bkit-ship`), which carries the same ledger pair.
+Allow-list, never deny-list: deny-list on main checkout = `git add -A` by another name. Pathspec on all three commands — bare `git commit` commits whole index, sweeping user-staged work (reported destructive backout → `git revert`). Pathspec on `git commit` bypasses index for everything else; `git diff --cached` guard same pathspec. Close on main (`design`/`plan`) and `/bkit-ship` Step 6 pre-merge use the pathspec `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl`; `/bkit-ship` close stages via `bkit-book-commit.sh` (§ `/bkit-ship`), which carries the same ledger pair.
 
 ## File path conventions
 
@@ -1424,7 +1441,7 @@ Pipeline writes structured ledgers at `docs/` root. Each has strict sole-writer 
 | --- | --- | --- | --- |
 | `docs/knowledge.jsonl` | `key` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
 | `docs/decisions.jsonl` | `key` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs, never authors them |
-| `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
+| `docs/roadmap.jsonl` | `key` (the FID) | ALL FIVE workflow closes; `@bkit-ship-update-docs` writes the `status:"SHIPPED"` row | Every close, `/bkit-ship` Step 10 |
 | `docs/deferrals.jsonl` | `key` | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 8), `@bkit-debug-abort-handover` (handover context), `@bkit-ship-deferred-sweep` (adjudication — same-`key` `reason` = `unjustified`) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 8, `/bkit-ship` Step 5, Failure Path handover |
 
 All other agents document blockers/out-of-scope in own log file (Plan Execution / Challenge Remediation / etc — each subagent H1 for canonical output name) — workflow reads at step boundaries, decides tracker mirror.
@@ -1456,16 +1473,12 @@ Orchestrator behavior:
   - `STATS="$WT/.bkit/stats.jsonl"` · `FRICTION="$WT/.bkit/friction.jsonl"`
   - `docs/{deferrals,failures,knowledge,decisions}.jsonl` → `"$WT/docs/…"`. NEVER mix `$REPO_ROOT` and `show-toplevel` for the same ledger in one block.
 - **Friction/stats:** append to `$FRICTION` / `$STATS` at close; stage into the close commit that pushes (never leave dirty after push).
-- **Close commit pathspec (design/plan on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Ship: `BOOK_PATHS` on add+commit, carrying the same ledger pair. Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
-- **Ledger sweep (every path-scoped staging site):** the frozen allow-list names ONE `{FID}` and ONE `{YYYYMM}` — a `status.jsonl` under any other feature or month bucket, and any ledger added after the list was written, is appended to, never staged, and lost at the next `git worktree remove --force` / branch switch / clean. Every site that builds a pathspec therefore widens it with the tree's actual JSONL set before staging:
-  ```bash
-  BOOK_PATHS="$BOOK_PATHS $(cd "$WT" && ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl 2>/dev/null | tr '\n' ' ')"
-  ```
-  Sweep root = the tree the following `git add` targets (`$REPO_ROOT` pre-worktree, `$WT` at close, `$BOOK_ROOT` in ship Step 1 / **Failure Path**, cwd in ship B2). Bounded to those three globs on purpose — a repo's own `*.jsonl` data or fixtures must NEVER ride into a `[skip ci]` bookkeeping commit. `ls` prints only what exists: a glob matching nothing drops out, and a pathspec matching nothing is fatal to `git add`. Inline at each site, NEVER a sourced helper — the `-A` ban stays. Ship's worktree→`BOOK_ROOT` reconciliation unions the same swept set row-wise (append-only NDJSON, never copy over).
+- **Close commit pathspec (design/plan on main):** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` on add+commit (allow-list). Ship: `bkit-book-commit.sh` builds the pathspec and stages+commits, carrying the same ledger pair. Build/debug (worktree sandbox): `git add -A` after writes — includes the same relative paths under `$WT`.
+- **Ledger sweep (every path-scoped staging site):** the `{FID}`/`{YYYYMM}` log-dir entry names ONE feature and ONE month bucket — a `status.jsonl` under any other bucket, and any ledger added after the list was written, would be appended to, never staged, and lost at the next `git worktree remove --force` / branch switch / clean. `bkit-book-commit.sh` therefore carries `docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl` in its own pathspec set alongside the log-dir entry, and passes the whole set to `git ls-files` — git expands the globs itself, so an unmatched glob is empty output (exit 0), never a zsh abort and never shell word-splitting. Sweep root = `--root=` (`$REPO_ROOT` pre-worktree, `$WT` at close, `$BOOK_ROOT` in ship Step 1 / **Failure Path**, cwd in ship B2). Bounded to those three globs on purpose — a repo's own `*.jsonl` data or fixtures must NEVER ride into a `[skip ci]` bookkeeping commit. The `-A` ban stays. Ship's worktree→`BOOK_ROOT` reconciliation unions the same swept set row-wise (append-only NDJSON, never copy over).
 - **Best-effort:** every append exits 0 (`jq … >> "$FILE" || echo "[bkit-telemetry] append failed: $FILE"`) — telemetry NEVER gates workflow.
 - **Tracker comment:** summary-only (`pnpm bkit telemetry summary --phase={phase}`) — NEVER re-append via `bkit-workflow-telemetry.sh` after push.
 - **Summary read:** close writes run row, grades compliance, posts per-workflow telemetry report (this run vs `med·5` — median of prior 5 same-workflow runs) in tracker comment; `> 5000` rows in `stats.jsonl` → `[bkit-telemetry] WARNING: MAX_ROWS_BEFORE_ROLLUP (5000) exceeded`.
-- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$` — must admit everything the ledger sweep can stage.
+- **STRAY allow-list (design/plan squash):** `^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$` — must admit everything the ledger sweep can stage. `docs/roadmap.md` needs its own alternative: it is the one staged path that is not a `.jsonl`.
 - **Pre-worktree allow-list:** `docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.jsonl .bkit/stats.jsonl` (same ledger pair as close pathspec), plus the ledger sweep.
 
 ## Authoring Checklist for New / Refined Workflows

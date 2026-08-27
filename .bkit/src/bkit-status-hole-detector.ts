@@ -48,6 +48,7 @@ export const SHIP_STEP_ORDER = [
   "ship-switch-to-dev",
   "ship-update-docs",
   "ship-summary",
+  "ship-roadmap-refresh",
   "ship-prune-skills",
   "ship-worktree-cleanup",
   "ship-close-workflow",
