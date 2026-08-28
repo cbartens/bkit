@@ -2,9 +2,17 @@
 
 ## Session Prompt
 
+```
 /bkit-ship #380
+```
 
-## Issue Description
+## Issue #380 — Constant roadmap analysis refresh
+
+URL: https://github.com/cbartens/bkit/issues/380
+State: open
+Labels: enhancement, bkit:ship, bkit:debug, bkit:failed
+
+### Description
 
 Constant roadmap analysis refresh written to roadmap.md
 Automated version of Bkit / Gether / Fraser 'roadmap' issues / ledgers
@@ -20,9 +28,9 @@ And every now and then inject #80 audits as next step and then integrate audit g
 Same for deferrals.jsonl and failures.jsonl, should be reviewed and integrated periodically
 Can later be integrated / evolved into #260
 
-## Issue Comments (oldest to newest, generated comments excluded)
+### Comments (oldest → newest, bkit:generated excluded)
 
-### Comment by cbartens at 2026-07-22T22:43:33Z
+#### 2026-07-22T22:43:33Z — cbartens
 
 ## Shaping notes — scope, forks, and next step
 
@@ -58,7 +66,7 @@ Can later be integrated / evolved into #260
 
 **Next step:** `bkit-design` on this issue — this comment can seed the brainstorm inputs.
 
-### Comment by cbartens at 2026-07-22T22:47:22Z
+#### 2026-07-22T22:47:22Z — cbartens
 
 > Where does the roadmap live?
 
@@ -68,7 +76,7 @@ Must be docs/roadmap.md
 
 yes "(b) ship-close only + an on-demand /bkit-roadmap utility" but maybe add something simpler as in mechanical roadmap.md update in each workflow to move issues from design -> plan -> build -> debug -> ship similar to tracker updates and analysis only on ship, that way other agents can see status in roadmap.md
 
-### Comment by cbartens at 2026-07-22T22:48:58Z
+#### 2026-07-22T22:48:58Z — cbartens
 
 ## Design Workflow
 
@@ -76,40 +84,40 @@ yes "(b) ship-close only + an on-demand /bkit-roadmap utility" but maybe add som
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 
-### Comment by cbartens at 2026-07-22T22:50:18Z
+#### 2026-07-22T22:50:18Z — cbartens
 
 ### Step 2 — Worktree Setup
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 [docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl)
 
-### Comment by cbartens at 2026-07-22T22:56:51Z
+#### 2026-07-22T22:56:51Z — cbartens
 
 ### Step 3 — Brainstorm & Ideate
 
-### Comment by cbartens at 2026-07-22T23:06:24Z
+#### 2026-07-22T23:06:24Z — cbartens
 
 ### Step 4 — Generate Design
 
 [design-v1-draft.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/design-v1-draft.md)
 
-### Comment by cbartens at 2026-07-22T23:10:26Z
+#### 2026-07-22T23:10:26Z — cbartens
 
 ### Step 5 — Design Review - Verdict: CONCERNS
 
-### Comment by cbartens at 2026-07-22T23:16:53Z
+#### 2026-07-22T23:16:53Z — cbartens
 
 ### Step 6 — Apply Review - Verdict: CONCERNS
 
 [design-v2-reviewed.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/design-v2-reviewed.md)
 
-### Comment by cbartens at 2026-07-22T23:19:06Z
+#### 2026-07-22T23:19:06Z — cbartens
 
 ### Step 7 — Design Organise - Verdict: PASS
 
 [design-v3-organised.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/design-v3-organised.md)
 
-### Comment by cbartens at 2026-07-22T23:27:41Z
+#### 2026-07-22T23:27:41Z — cbartens
 
 ### Step 8 — Summary - Verdict: PASS
 
@@ -187,7 +195,7 @@ _None._ Design is complete and ready for planning. All three OPEN questions are 
 Brief: Execute WS-1–WS-6 in sequence (foundation → mechanical → analysis → cadence → utility → mirror+dogfood). Confirm three open questions with owner before implementation details: build/debug dev-write policy, cadence numbers (propose N=5, 14d staleness), status-board columns + closed-issue handling. Caveat: per-workflow-shape staging integration (design/plan widen allowlist; build/debug/ship reuse existing) must land correctly in all five workflows — per-shape-aware CI/bats assertion is mandatory. Design: docs/plans/202607/logs/380-roadmap-analysis-refresh/design-v3-organised.md
 ```
 
-### Comment by cbartens at 2026-07-22T23:31:04Z
+#### 2026-07-22T23:31:04Z — cbartens
 
 ### Step 10 — Close Workflow
 
@@ -224,7 +232,7 @@ Brief: Execute WS-1–WS-6 in sequence (foundation → mechanical → analysis �
 
 [#380 Constant roadmap analysis refresh](https://github.com/cbartens/bkit/issues/380)
 
-### Comment by cbartens at 2026-07-23T03:17:33Z
+#### 2026-07-23T03:17:33Z — cbartens
 
 ## Post-design addition — roadmap must be tracker-optional (on-disk-first)
 
@@ -250,7 +258,7 @@ WS-1 (fold foundation) absorbs the on-disk scan + the ideas-region contract; WS-
 
 Committed to `dev` as a docs-only amendment (`docs(380-roadmap-analysis-refresh): fold tracker-optional on-disk sensing into design`). Ready for `/bkit-plan 380`.
 
-### Comment by cbartens at 2026-07-23T03:33:13Z
+#### 2026-07-23T03:33:13Z — cbartens
 
 ## Design revision 2 — `roadmap.md` is the CANONICAL home for issue state
 
@@ -272,7 +280,7 @@ Owner direction after review. This **inverts the authority model** (previously: 
 
 Committed to `dev` (`docs(380): canonical-home revision`).
 
-### Comment by cbartens at 2026-07-23T03:43:42Z
+#### 2026-07-23T03:43:42Z — cbartens
 
 ## Design re-review (post canonical-home revision) — both CONCERNS, no FAIL
 
@@ -290,7 +298,7 @@ All five are "plan must specify X" gaps, not design blockers — appropriate for
 
 **Verdict: design is plan-ready.** The gates are green (no FAIL across 4 review passes), the canonical-home + tracker-optional model is coherent, `completed.jsonl` is in-scope with its migration hazards mapped, and the crux (per-FID upsert + rollout backfill) is now an explicit directive. Recommend **`/bkit-plan 380`**, instructing the plan to resolve the five directives up front (WS-1 carries #2/#4, WS-2 carries #1/#5, WS-4 carries #3).
 
-### Comment by cbartens at 2026-07-23T03:50:52Z
+#### 2026-07-23T03:50:52Z — cbartens
 
 ## Plan Workflow
 
@@ -299,20 +307,20 @@ All five are "plan must specify X" gaps, not design blockers — appropriate for
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 Parent design: None (design workflow already ran on this same issue — canonical design doc: [380-roadmap-analysis-refresh-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/380-roadmap-analysis-refresh-design.md))
 
-### Comment by cbartens at 2026-07-23T03:52:55Z
+#### 2026-07-23T03:52:55Z — cbartens
 
 ### Step 2 — Worktree Setup
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 [docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl)
 
-### Comment by cbartens at 2026-07-23T04:06:09Z
+#### 2026-07-23T04:06:09Z — cbartens
 
 ### Step 3 — Generate Plan
 
 [plan-v1-draft.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/plan-v1-draft.md)
 
-### Comment by cbartens at 2026-07-23T04:08:15Z
+#### 2026-07-23T04:08:15Z — cbartens
 
 ### Step 4 — Fetch Context
 
@@ -322,37 +330,37 @@ Parent design: None (design workflow already ran on this same issue — canonica
 
 Note: `mcp__github__search_issues` returned `total_count: 0` for every query on this private repo, including a bare control query — the known, already-logged failure (`github-mcp-search-issues-silently-returns-zero-private-repo`, still OPEN). Verified against `gh issue list --search` (which found matches) before classifying as `Search unavailable.` rather than `None.`, per that failure's own remediation guidance.
 
-### Comment by cbartens at 2026-07-23T04:15:39Z
+#### 2026-07-23T04:15:39Z — cbartens
 
 ### Step 5 — Review Plan - Verdict: CONCERNS - Failures: 4
 
-### Comment by cbartens at 2026-07-23T04:29:01Z
+#### 2026-07-23T04:29:01Z — cbartens
 
 ### Step 6 — Apply Review - Verdict: PASS
 
 [plan-v2-reviewed.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/plan-v2-reviewed.md)
 
-### Comment by cbartens at 2026-07-23T04:37:08Z
+#### 2026-07-23T04:37:08Z — cbartens
 
 ### Step 7 — Scope Check - Verdict: PASS - Failures: 2
 
-### Comment by cbartens at 2026-07-23T04:44:56Z
+#### 2026-07-23T04:44:56Z — cbartens
 
 ### Step 8 — Apply Scope - Verdict: CONCERNS
 
 [plan-v3-checked.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/plan-v3-checked.md)
 
-### Comment by cbartens at 2026-07-23T04:46:13Z
+#### 2026-07-23T04:46:13Z — cbartens
 
 ### Step 9 — Complexity Check - Verdict: SPLIT
 
-### Comment by cbartens at 2026-07-23T05:00:35Z
+#### 2026-07-23T05:00:35Z — cbartens
 
 ### Step 10 — Complexity Split - Verdict: PASS
 
 [plan-v4-split.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202607/logs/380-roadmap-analysis-refresh/plan-v4-split.md)
 
-### Comment by cbartens at 2026-07-23T05:04:41Z
+#### 2026-07-23T05:04:41Z — cbartens
 
 ### Step 11 — Summary - Verdict: PASS
 
@@ -411,7 +419,7 @@ None. Plan is build-ready. Open questions (cadence numbers, board scope, complet
 Brief: Execute sub-plans sequentially (1 → 2 → 3): SP1 builds mechanical foundation + backfill, SP2 adds analysis + cadence/sync/reconcile, SP3 finishes utility + mirror regen + full verification. Gate 1 in SP1; Gates 2–4 + Manual Verification in SP3. Plan-docs: [plan-v4-split.md](./plan-v4-split.md), [plan-v4-1.md](./plan-v4-1.md), [plan-v4-2.md](./plan-v4-2.md), [plan-v4-3.md](./plan-v4-3.md).
 ```
 
-### Comment by cbartens at 2026-07-23T05:08:24Z
+#### 2026-07-23T05:08:24Z — cbartens
 
 ### Step 12 — Close Workflow
 
@@ -458,7 +466,7 @@ Brief: Execute sub-plans sequentially (1 → 2 → 3): SP1 builds mechanical fou
 
 [#380 Constant roadmap analysis refresh](https://github.com/cbartens/bkit/issues/380)
 
-### Comment by cbartens at 2026-07-25T00:49:26Z
+#### 2026-07-25T00:49:26Z — cbartens
 
 Agreed on all of it. A few things to pin down before I touch the plan docs.
 
@@ -472,7 +480,7 @@ Agreed on all of it. A few things to pin down before I touch the plan docs.
 
 That's just a stale background `find` command from earlier finishing up (part of my scope-check investigation a few turns back) — not new input. Still waiting on your answers to the three questions above: prerequisite issue vs. folded into #380 for the `stats.jsonl` rename, the file split/location choice, and whether "Ship = row removed from the board" matches what you intended.
 
-### Comment by cbartens at 2026-07-25T01:47:44Z
+#### 2026-07-25T01:47:44Z — cbartens
 
 ## Decisions — completed ledger, board cap, telemetry scope (owner, 2026-07-25)
 
@@ -531,7 +539,7 @@ Uncommitted on `dev` so far — say the word and I will commit.
 - **Cadence numbers** — `N` = 5 ship-cycles, staleness = 14 days (proposed defaults, unconfirmed).
 - **Harvest scope** — `bkit harvest`/`bkit analysis` ingestion of `completed.jsonl` currently declared out of scope; count-only would be the natural future add.
 
-### Comment by cbartens at 2026-07-27T00:10:10Z
+#### 2026-07-27T00:10:10Z — cbartens
 
 ## Design revision 3 — the feature ledger is canonical; `roadmap.md` becomes a projection
 
@@ -568,11 +576,11 @@ All five docs prettier-clean, uncommitted on `dev`. Cadence numbers and harvest 
 
 **Nothing blocking.** One item worth a decision before build: `ABANDONED` relies on someone remembering to append the row. When a tracker is wired there is a natural signal — an issue closed with no `SHIPPED` row — that the reverse-sync step could surface as a candidate rather than act on. Not planned; say the word if it should be.
 
-### Comment by cbartens at 2026-07-29T07:22:13Z
+#### 2026-07-29T07:22:13Z — cbartens
 
 My recommendation: run sub-plan 1 on Claude/opus, then sub-plans 2 and 3 on opencode/glm-5.2 — those are mostly additive (a new prompt file, a new utility workflow, doc/ledger updates) with far less silent-failure surface. If you'd rather do the whole thing on GLM for cost, that's a reasonable call too; just treat a thin build-challenge report as a signal to re-run the challenge step on Claude rather than as a pass.
 
-### Comment by cbartens at 2026-07-29T07:23:43Z
+#### 2026-07-29T07:23:43Z — cbartens
 
 ## Build Workflow
 
@@ -580,78 +588,78 @@ My recommendation: run sub-plan 1 on Claude/opus, then sub-plans 2 and 3 on open
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 
-### Comment by cbartens at 2026-07-29T07:25:11Z
+#### 2026-07-29T07:25:11Z — cbartens
 
 ### Step 2 — Worktree Setup
 
 [cbartens/bkit/tree/feat/380-roadmap-analysis-refresh](https://github.com/cbartens/bkit/tree/feat/380-roadmap-analysis-refresh)
 [docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl](https://github.com/cbartens/bkit/blob/feat/380-roadmap-analysis-refresh/docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl)
 
-### Comment by cbartens at 2026-07-29T07:25:31Z
+#### 2026-07-29T07:25:31Z — cbartens
 
 ### Step 3 — Branch Sync
 
 [cbartens/bkit/tree/feat/380-roadmap-analysis-refresh](https://github.com/cbartens/bkit/tree/feat/380-roadmap-analysis-refresh)
 
-### Comment by cbartens at 2026-07-29T07:26:26Z
+#### 2026-07-29T07:26:26Z — cbartens
 
 ### Step 4 — Install Skills
 
-### Comment by cbartens at 2026-07-29T08:08:01Z
+#### 2026-07-29T08:08:01Z — cbartens
 
 ### Step 5 — Plan Execute - Verdict: PASS - Sub-plan: 1/3
 
-### Comment by cbartens at 2026-07-29T08:15:55Z
+#### 2026-07-29T08:15:55Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: FAIL - Failures: 9 - Sub-plan: 1/3 - Attempt: 1
 
-### Comment by cbartens at 2026-07-29T08:33:27Z
+#### 2026-07-29T08:33:27Z — cbartens
 
 ### Step 7 — Plan Gaps Remediate - Verdict: PASS - Sub-plan: 1/3 - Attempt: 1 - Strategy: STANDARD
 
-### Comment by cbartens at 2026-07-29T08:48:18Z
+#### 2026-07-29T08:48:18Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: FAIL - Failures: 9 - Sub-plan: 1/3 - Attempt: 2
 
 Note: branch had been cut from a stale `origin/dev` and was missing plan revision `4840de2b`. `origin/dev` merged in, Tasks 5–7 re-executed against the revised spec, then re-verified.
 
-### Comment by cbartens at 2026-07-29T08:53:57Z
+#### 2026-07-29T08:53:57Z — cbartens
 
 ### Step 7 — Plan Gaps Remediate - Verdict: PASS - Sub-plan: 1/3 - Attempt: 2 - Strategy: PIVOT
 
-### Comment by cbartens at 2026-07-29T09:11:24Z
+#### 2026-07-29T09:11:24Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: CONCERNS - Failures: 0 - Sub-plan: 1/3 - Attempt: 3
 
 ### Step 7 — Plan Gaps Remediate - Verdict: CONCERNS - Sub-plan: 1/3 - Attempt: 3 - Strategy: FINAL
 
-### Comment by cbartens at 2026-07-29T09:16:44Z
+#### 2026-07-29T09:16:44Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: PASS - Failures: 0 - Sub-plan: 1/3 - Attempt: 4
 
 Sub-plan 1/3 (Foundation + Mechanical tier, WS-1 + WS-2) complete. Advancing to sub-plan 2/3.
 
-### Comment by cbartens at 2026-07-29T09:37:43Z
+#### 2026-07-29T09:37:43Z — cbartens
 
 ### Step 5 — Plan Execute - Verdict: PASS - Sub-plan: 2/3
 
-### Comment by cbartens at 2026-07-29T09:46:44Z
+#### 2026-07-29T09:46:44Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: FAIL - Failures: 4 - Sub-plan: 2/3 - Attempt: 1
 
 Blocking: 6 real test failures (status-hole-detector, counter-prose-audit), invalid MCP tool names asserted by their own test, and an unexecutable reverse-sync write.
 
-### Comment by cbartens at 2026-07-29T10:09:47Z
+#### 2026-07-29T10:09:47Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: FAIL - Failures: 1 - Sub-plan: 2/3 - Attempt: 2
 
 Suite is green again (2769 pass, 0 fail) and all four attempt-1 blockers confirmed closed. One new blocking gap in the reverse-sync remediation: it iterates every ledger FID rather than settled _drift_, passes a single-element `labels` array that would wipe co-existing labels, and oscillates `SHIPPED`→`bkit:ship` against Step 13's `bkit:merged`.
 
-### Comment by cbartens at 2026-07-29T10:24:11Z
+#### 2026-07-29T10:24:11Z — cbartens
 
 ### Step 7 — Plan Gaps Remediate - Verdict: PASS - Sub-plan: 2/3 - Attempt: 2 - Strategy: PIVOT
 
-### Comment by cbartens at 2026-07-29T10:43:06Z
+#### 2026-07-29T10:43:06Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: CONCERNS - Failures: 0 - Sub-plan: 2/3 - Attempt: 3
 
@@ -659,41 +667,41 @@ Suite is green again (2769 pass, 0 fail) and all four attempt-1 blockers confirm
 
 Reverse-sync blocker confirmed closed by mutation testing (5 reintroduced defects, each caught). Two MEDIUM residuals closed: `DEBUGGED`→`bkit:debug` additive-label collapse, and per-FID `git ls-remote` (50+ round trips) reduced to one bounded remote read.
 
-### Comment by cbartens at 2026-07-29T10:50:19Z
+#### 2026-07-29T10:50:19Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: PASS - Failures: 0 - Sub-plan: 2/3 - Attempt: 4
 
 Sub-plan 2/3 (Analysis + Cadence/Sync/Reconcile, WS-3 + WS-4) complete. Suite green at default timeout (2773 pass, 0 fail) — the earlier timeout failures were confirmed a machine-load artifact. Advancing to sub-plan 3/3.
 
-### Comment by cbartens at 2026-07-29T11:14:08Z
+#### 2026-07-29T11:14:08Z — cbartens
 
 ### Step 5 — Plan Execute - Verdict: PASS - Sub-plan: 3/3
 
 Batched mirror regen done (`bkit check` 0 writes), `slop:delta` back to net 0/0.00, and the two carried `docs/failures.jsonl` items closed.
 
-### Comment by cbartens at 2026-07-29T11:25:34Z
+#### 2026-07-29T11:25:34Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: CONCERNS - Failures: 2 - Sub-plan: 3/3 - Attempt: 1
 
 Mirror regen verified (all six ship mirrors clean of `docs/completed.md`, `bkit check` 0 writes) and `slop:delta` independently confirmed net 0. Two gaps: matrix row 18 has no covering test, and `bkit telemetry migrate` was inconclusive in a scratch consumer (exit 0, no output, no ledger written).
 
-### Comment by cbartens at 2026-07-29T11:44:34Z
+#### 2026-07-29T11:44:34Z — cbartens
 
 ### Step 7 — Plan Gaps Remediate - Verdict: PASS - Sub-plan: 3/3 - Attempt: 1 - Strategy: STANDARD
 
 GAP-2 turned out to be a real consumer-facing defect, not a bad invocation: `bkit telemetry migrate` gated `knowledge`/`decisions` on `!mdExists && jsonlNonEmpty` while the other three pairs gated on `!mdExists` alone, so any consumer without `docs/knowledge.md`/`docs/decisions.md` aborted the **entire** migrate run — including the `completed.md → roadmap.jsonl` port. Reproduced via a packed-tarball scratch consumer, fixed, regression test added.
 
-### Comment by cbartens at 2026-07-29T12:02:41Z
+#### 2026-07-29T12:02:41Z — cbartens
 
 ### Step 6 — Plan Verify - Verdict: PASS - Failures: 0 - Sub-plan: 3/3 - Attempt: 3
 
 All three sub-plans verified PASS. Gates green: 2780 tests, bats 189/189, typecheck, format:check, `slop:delta` net 0, `bkit check` 0 writes, `check:dist` clean.
 
-### Comment by cbartens at 2026-07-29T12:14:56Z
+#### 2026-07-29T12:14:56Z — cbartens
 
 ### Step 8 — Plan Verify Holistic - Verdict: FAIL - Failures: 5
 
-### Comment by cbartens at 2026-07-29T12:15:28Z
+#### 2026-07-29T12:15:28Z — cbartens
 
 ### Workflow Failure
 
@@ -714,7 +722,7 @@ Gates are green: 2780 tests, bats 189/189, typecheck, `check:dist`, `slop:delta`
 
 Work is committed on `feat/380-roadmap-analysis-refresh` (not pushed, no PR). Artifact: `docs/plans/202607/logs/380-roadmap-analysis-refresh/build-plan-verify-holistic.md`.
 
-### Comment by cbartens at 2026-07-30T12:09:21Z
+#### 2026-07-30T12:09:21Z — cbartens
 
 ## Debug Workflow
 
@@ -722,7 +730,7 @@ Work is committed on `feat/380-roadmap-analysis-refresh` (not pushed, no PR). Ar
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 
-### Comment by cbartens at 2026-07-30T12:10:39Z
+#### 2026-07-30T12:10:39Z — cbartens
 
 ### Workflow Failure
 
@@ -746,7 +754,7 @@ Rebase conflict
 
 Rebase aborted; branch left at its pre-rebase HEAD (`9ebd3361`). Lock released.
 
-### Comment by cbartens at 2026-07-30T12:20:46Z
+#### 2026-07-30T12:20:46Z — cbartens
 
 ### Workflow Handover
 
@@ -899,7 +907,7 @@ After resolving, verify with a fresh `git status` and `git diff b0d5b150..HEAD -
 - `docs/failures.jsonl` / `docs/deferrals.jsonl` — new rows appended by this handover (see below) recording the rebase-conflict block and the still-open 5 holistic gaps.
 - `.agents/rules.md` — source of the shared-doctrine-vs-feature-branch conflict-resolution rule applied above.
 
-### Comment by cbartens at 2026-07-30T23:53:26Z
+#### 2026-07-30T23:53:26Z — cbartens
 
 ## Ship Workflow
 
@@ -907,18 +915,18 @@ After resolving, verify with a fresh `git status` and `git diff b0d5b150..HEAD -
 
 [cbartens/bkit/tree/dev](https://github.com/cbartens/bkit/tree/dev)
 
-### Comment by cbartens at 2026-07-30T23:54:23Z
+#### 2026-07-30T23:54:23Z — cbartens
 
 ### Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
 [cbartens/bkit/tree/feat/380-roadmap-analysis-refresh](https://github.com/cbartens/bkit/tree/feat/380-roadmap-analysis-refresh)
 [docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl](https://github.com/cbartens/bkit/blob/feat/380-roadmap-analysis-refresh/docs/plans/202607/logs/380-roadmap-analysis-refresh/status.jsonl)
 
-### Comment by cbartens at 2026-07-31T00:00:48Z
+#### 2026-07-31T00:00:48Z — cbartens
 
 ### Step 5 — Re-validate + Deferred Sweep - Verdict: FAIL
 
-### Comment by cbartens at 2026-07-31T00:09:02Z
+#### 2026-07-31T00:09:02Z — cbartens
 
 ### Workflow Handover
 
@@ -1032,7 +1040,7 @@ None of the five appears in `docs/deferrals.jsonl`, any plan Out-of-Scope table,
 - `docs/deferrals.jsonl` key `380-debug-attempt-1-aborted-rebase-conflicts-before-diagnosis` — closed by this handover (rebase resolved by the human continuation); do not let closing it be mistaken for closing the 5 gaps themselves, which remain open.
 - `docs/deferrals.jsonl` key `380-bootstrap-seed-key-namespace-mismatch-vs-migrated-completed-md-keys` (OPEN, unrelated minor cosmetic issue, not blocking) — legacy migrated rows render synthesised `completed-…-<hash>` keys instead of FIDs in the `## Shipped` column; noted by the sweep as a corollary, not one of the 5 blockers.
 
-### Comment by cbartens at 2026-07-31T00:09:24Z
+#### 2026-07-31T00:09:24Z — cbartens
 
 ### Workflow Failure
 
@@ -1040,7 +1048,7 @@ Step: 5 — Re-validate + Deferred Sweep; Sub-step: 7
 Error: `@bkit-ship-deferred-sweep` returned Verdict: FAIL / Failures: 5 — pre-merge completeness gate found 5 unresolved cross-sub-plan integration gaps (see ship-deferred-sweep.md and the handover comment above). Routed to `@bkit-debug-abort-handover` via `.deferred-blocked` sentinel.
 Stderr: (n/a — no shell tool failure; subagent-reported verdict)
 
-### Comment by cbartens at 2026-07-31T00:27:34Z
+#### 2026-07-31T00:27:34Z — cbartens
 
 ### Ship blockers resolved — all 5 gaps closed
 
@@ -1062,7 +1070,7 @@ Also widened the `.bkit/jsonl.md` `workflow`-field enum to document the new `roa
 
 CI dispatched against the new head; ship can be re-run once it lands green.
 
-### Comment by cbartens at 2026-07-31T00:47:08Z
+#### 2026-07-31T00:47:08Z — cbartens
 
 ### dev integrated — PR #411 green and mergeable
 
@@ -1084,7 +1092,7 @@ The frozen `BOOK_PATHS_ALLOW_LIST` in `bkit-ship-invariants.test.ts` auto-merged
 
 Ready for `/bkit-ship 380` to be re-run.
 
-### Comment by cbartens at 2026-07-31T01:12:52Z
+#### 2026-07-31T01:12:52Z — cbartens
 
 ### Runtime-fencing risk closed — and a correction
 
@@ -1114,7 +1122,7 @@ Logged CLOSED as `380-devlock-roadmap-mirror-missing-adopt-mode-fence`.
 
 One consistency gap remains open by choice: ship's fold passes empty `TRACKER_ROWS`, so tracker-only FIDs (labelled issues with no ledger row) drop off the board at a ship close until the next design/plan/build/debug close re-enriches. Ledger-backed rows are unaffected. Recorded as `380-ship-close-fold-without-tracker-enrichment`.
 
-### Comment by cbartens at 2026-07-31T02:57:09Z
+#### 2026-07-31T02:57:09Z — cbartens
 
 ### What actually appears on `docs/roadmap.md` — and two fixes it surfaced
 
@@ -1184,7 +1192,7 @@ Ledgers: decision `380-ship-close-fold-without-tracker-enrichment` **reversed** 
 
 Commit `9bb06472`; CI running.
 
-### Comment by cbartens at 2026-08-06T01:25:55Z
+#### 2026-08-06T01:25:55Z — cbartens
 
 ## Related: #423 — the machine-readable half of this
 
@@ -1208,7 +1216,7 @@ Two things from #423 that bear on how this one gets built:
 
 Open for either issue to absorb the other; #423 open question 4 leaves the placement decision here.
 
-### Comment by cbartens at 2026-08-26T08:25:37Z
+#### 2026-08-26T08:25:37Z — cbartens
 
 ## Three decisions before re-integrating with `dev`
 
@@ -1266,7 +1274,7 @@ Two of the 22 real conflicts need judgement rather than mechanics:
 - **All 5 workflow files.** `dev` restructured exactly the close steps this branch hooks into — #438 (one central rule set), #440 (one marker per name), #437 (collapsed gate lanes), #422 (GateGuard), plus #431, #427 and #421. This is a per-hunk union; the usual "take `dev` for `.bkit/workflows`" shortcut does not apply, because the roadmap fold hooks _are_ edits to those steps.
 - **`docs/completed.md`, modify/delete.** This branch deletes it, `docs/roadmap.jsonl` having replaced it. `dev` has written to it twice since the merge base — `17435d7b` (GateGuard) and `e9d928a7` (the 4.12.0 release entry). Those two entries get folded into the 51-row ledger before the delete is taken, so a month of history is not dropped on the way past.
 
-### Comment by cbartens at 2026-08-26T11:00:06Z
+#### 2026-08-26T11:00:06Z — cbartens
 
 ## Correction to the decisions comment, and what the merge actually found
 
@@ -1318,7 +1326,83 @@ Local gates on the final commit: **3673 tests / 105 files**, **214 bats / 0 fail
 
 **#423 stays standalone**, unchanged from the decision above.
 
-## Plan
+#### 2026-08-26T20:32:45Z — cbartens
+
+## Ship run 2 stopped at the gate; all four gaps now fixed on the branch
+
+Short version: the second ship attempt was refused by the pre-merge completeness gate with 4 real findings. I fixed all four, added tests that actually catch them, and committed to `feat/380-roadmap-analysis-refresh` as `594de861`. **That commit is not pushed yet** — the PR still shows the un-fixed code.
+
+### What the gate found, and what it did not
+
+`@bkit-ship-deferred-sweep` returned `Verdict: FAIL / Failures: 4 / Unjustified: 1` at PR head `11a74fd4`. Steps 1–4 (start, worktree setup, regression guard) all passed; every CI check on the PR was green. This was not a test failure or a broken build — it was the gate comparing what the plan promised against what the branch actually delivers.
+
+Worth stating plainly, because it is easy to lose: **all five gaps from the 2026-07-31 sweep are genuinely fixed.** The sweep re-verified each one against the current files rather than trusting the old log. The four findings below are new — one long-standing bug nobody had exercised, and three regressions that the 2026-08-26 reintegration with `dev` reintroduced.
+
+The workflow then ran its Failure Path to completion and hard-stopped: `workflow-failed` recorded at `2026-08-26T20:11:13Z`, bookkeeping committed and pushed to `dev` as `88dfae9c`, lock released, handover written. PR #411 was not merged.
+
+### The four fixes
+
+**1. Design and plan closes were losing their work whenever a PR was involved.** This is the only one that changed behaviour, and it is the reason the roadmap board kept looking stale.
+
+The close path appends the roadmap row, regenerates the board, and commits — then calls `gh pr create` and `gh pr merge`. Those two commands act on the **remote** branch. Nothing pushed in between. So the roadmap commit, _and_ the `close-workflow` commit carrying the `status.jsonl` rows, both sat on the local branch and never entered the PR. Every design or plan close that went through a pull request silently dropped its board update.
+
+This has been there since the original build. Neither the per-sub-plan verifies nor the first sweep caught it, because neither exercised that branch end to end. Build and debug never had the problem — their close already pushes the feature branch.
+
+Fix: one guarded push in each file — `bkit-design.md:974` and `bkit-plan.md:1015`. I placed it **after** the STRAY guard rather than before it, so a close carrying unexpected files still aborts before anything is published. The sweep suggested before; after is strictly safer and the guard's result is identical either way.
+
+**2. `.bkit/version` still claimed ownership of a file this feature deletes.** The `docs/completed.md` entry in `canonicalHashes` survived the reintegration because `dev`'s side of that line won the merge. It would never have healed itself: `bkit install` merges previous hashes forward on every run, and the uninstall safe-delete guard reads that list. One line removed.
+
+**3. The conflict-resolution agent was being told the wrong thing.** `.bkit/prompts/bkit-ship-conflict-resolve.md` still listed `docs/completed.md` as a ledger that can be auto-merged by taking both sides, and named neither roadmap file. So during a rebase conflict the agent would not have known `docs/roadmap.jsonl` and `docs/roadmap.md` are safe to union. The two other copies of that same list (`.bkit/workflows.md:724` and `bkit-rebase-resolve.sh`) were already correct on this branch — only the prompt was missed. Now consistent with them.
+
+**4. A test was pinning the bug in place.** `bkit-book-commit.sh` had gained both roadmap paths but kept `docs/completed.md`, and `BOOK_PATHS_ALLOW_LIST` in `bkit-ship-invariants.test.ts` asserted every entry is present in the script — so the test actively _required_ the script to keep naming a deleted file. Staging itself worked fine, which is why nothing broke visibly. Removed from both script copies (kept byte-identical), and the allow-list now carries `docs/roadmap.md`. `docs/roadmap.jsonl` reaches the pathspec through the `docs/*.jsonl` glob, so I assert that glob rather than the literal path — asserting the path would fail for the wrong reason.
+
+### Tests
+
+Two new assertions, both **verified to fail against the un-fixed tree** before I trusted them:
+
+- `bkit-roadmap-staging.integration.test.ts:111` checks ordering, not just presence: the push must come after the roadmap commit, after the STRAY guard, and before `gh pr create`. A push placed after `gh pr merge` would satisfy a presence check while fixing nothing.
+- `bkit-ship-invariants.test.ts:206` fails if `docs/completed.md` reappears anywhere in the staging seam — the script (both copies), the allow-list, or `.bkit/version`. This is the guard against the exact drift that produced findings 2–4: a merge with a branch predating the deletion quietly puts the path back.
+
+### Two things found along the way
+
+**An apostrophe in a shell-block comment can break a detector.** I wrote `bkit-book-commit.sh's` in a comment inside a fenced block in `bkit-ship.md`. The block-locality audit blanks single-quoted spans before looking for assignments, so my stray apostrophe paired with a later one and swallowed a real `TRACKER_ROWS=` assignment between them — two tests failed pointing at a variable that was correctly assigned two lines above its use. Reworded to avoid the apostrophe. Flagging it because the failure message points nowhere near the actual cause.
+
+**Shipped docs cannot cite issue numbers.** My first draft of the rationale in `.bkit/workflows.md` referenced `#380` and `#446`; `bkit-shipped-docs-refs.test.ts` rejects that. Rewritten to describe the reason instead.
+
+### Also done
+
+- Dropped the stale `BOOK_PATHS` prose left behind when `bkit-book-commit.sh` replaced that mechanism — `bkit-ship.md:1198` and four places in `.bkit/workflows.md`'s ship section. Added the rationale for the push fix to `.bkit/workflows.md`, where explanations belong.
+- Supplied the missing `reason` on the one OPEN deferral that lacked it (`380-bootstrap-seed-key-namespace-mismatch-vs-migrated-completed-md-keys`), as a same-key append with `reason: "needs-decision"` stating both options. Not adjudicated `unjustified` — the remediation is a choice between two designs, not a bounded edit.
+- Regenerated the host mirrors for all four edited source files (12 re-rendered, then 3 more after the apostrophe fix).
+
+### Deliberately left alone
+
+- The stale sub-plan 2 prose about the cadence reusing `.bkit/stats.jsonl` `outcome` rows. The shipped code is correct; only the plan text is wrong, and plan artifacts are historical records.
+- `build-plan-verify-holistic.md`'s `Verdict: FAIL / Failures: 5` header. All five are fixed and closed in `docs/failures.jsonl`; the log correctly records what was true when written.
+- `BOOK_PATHS` mentions in two unrelated sections of `.bkit/workflows.md` (around lines 1393 and 1469). Genuinely stale, but they are documentation debt from the change that replaced that mechanism, not part of this feature's surface. Worth a separate sweep.
+
+### Gate results
+
+`594de861`, working tree clean:
+
+| Gate              | Result                                                           |
+| ----------------- | ---------------------------------------------------------------- |
+| `vitest`          | 3710 passed, 2 skipped, 2 todo (was 3707 — the 3 new assertions) |
+| `bats`            | 227 ok                                                           |
+| `typecheck`       | clean                                                            |
+| `format:check`    | clean                                                            |
+| `lint:prose`      | 0 errors (2 pre-existing warnings in `docs/testing.md`)          |
+| `bkit:check:dist` | clean                                                            |
+| `slop:delta`      | added 8, resolved 8, net findings 0, net score 0.00              |
+| `bkit check`      | 0 writes would occur                                             |
+
+### What is needed next
+
+`594de861` is committed locally and **not pushed**. `origin/feat/380-roadmap-analysis-refresh` is one commit behind — which is a fair demonstration of finding 1: a local commit the remote cannot see is invisible to the PR.
+
+Re-shipping is a new ship run, not a resumption of the stopped one. It needs the branch pushed, then `/bkit-ship #380`, which will re-dispatch CI at the new head and re-run the sweep against the fixes.
+
+## Plan — docs/plans/202607/380-roadmap-analysis-refresh-plan.md
 
 Verdict: PASS
 

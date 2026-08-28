@@ -55,7 +55,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-comply.ts      # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   ├── bkit-harvest.ts     # Cross-repo harvest CLI (#234 WS-4, #343) — COPIES consumer .bkit/stats.jsonl (never modified); MOVES .bkit/friction.jsonl into harvest/ at repo root, pruning drained rows from the consumer; COUNT-ONLY for docs/{deferrals,failures}.jsonl; deduplicates by per-kind composite identity; prune gated on byte-for-byte content (NOT identity — fold collapses colliding rows) after copy→fsync→read-back; store accumulates, never cleared; never commits in any repo; `bkit harvest`
 │   ├── bkit-analysis.ts    # Analysis CLI (#234 WS-4) — counts/rates/elapsed, #183 size↔outcome regression, dispatch-size threshold, counterSource trust labelling, per-rule compliance rate over kind:"compliance" rows; rollup writer (writeRollupShard); `bkit analysis`
-│   ├── bkit-telemetry-migrate.ts # Legacy .md → .jsonl migration CLI (#234 WS-5) — parity-gated destructive migration of docs/knowledge.md, docs/decisions.md, docs/pending.md → deferrals.jsonl, .bkit/friction.md; KN-/DE- ids + legacy Related: graph preserved in references[]; Severity mapped onto CRITICAL|HIGH|MEDIUM|LOW; Description prose → description (title → summary); Discarded: → alternatives; friction Workflow:/Step: preserved as the envelope workflow/step (where it happened, not the migrate transport); `bkit telemetry migrate [--dry-run]`
+│   ├── bkit-telemetry-migrate.ts # Legacy .md → .jsonl migration CLI (#234 WS-5, #380) — parity-gated destructive migration of docs/knowledge.md, docs/decisions.md, docs/pending.md → deferrals.jsonl, .bkit/friction.md, docs/completed.md → docs/roadmap.jsonl (fifth pair, plus the in-flight bootstrap seed); KN-/DE- ids + legacy Related: graph preserved in references[]; Severity mapped onto CRITICAL|HIGH|MEDIUM|LOW; Description prose → description (title → summary); Discarded: → alternatives; friction Workflow:/Step: preserved as the envelope workflow/step (where it happened, not the migrate transport); `bkit telemetry migrate [--dry-run]`
 │   ├── bkit-telemetry-lint.ts # Read-only alias-collision scan (#361) — flags one DE-<n>/KN-<n> claimed by >1 slug key (the retired scan-highest-and-increment race that merge=union appended silently) + minted keys written outside the one-shot migrate; `bkit telemetry validate` (exit 1 on collision); shared by the postinstall advisory + the normaliser
 │   └── bkit-telemetry-normalise.ts # One-shot idempotent normaliser (#361) — drops deprecated aliases[] into references[], keeps ts, re-keys ONLY colliding rows (strip the shared number, preserve it as a references[] pointer); parity-gated (.bak + row-count), original untouched on abort; `bkit telemetry normalise [--dry-run]`
 ├── dist/                   # Compiled output (committed; published in tarball)
@@ -169,6 +169,23 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, sibling `ts`, legacy `KN-N`/`DE-N`. No separate identity: design `aliases[]` folded in once sequential `DE-{N}` proved un-mintable under concurrency. `ts` = id; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References.
 
 Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race live (#361). Close via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) + `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
+
+## Roadmap Ledger & Board (#380)
+
+`docs/roadmap.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated two-tier board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). `docs/completed.md` is retired — deleted by the migration, no reader remains.
+
+**Components:**
+
+- `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`, FULLY regenerates the `bkit:roadmap-status` block from the ledger (never an upsert). Runs at all five workflow closes and on demand.
+- `.bkit/scripts/bkit-roadmap-cadence.sh` — threshold evaluator; fires once per `bkit.roadmap.buildCycles` distinct `BUILT` FIDs since the last `ROADMAP_CADENCE_FIRE`, or `bkit.roadmap.stalenessDays` elapsed since that fire (package.json manifest keys via `bkit-manifest.ts`, defaults 10/90).
+- `.bkit/scripts/bkit-roadmap-reconcile.sh` — read-only drift check; warns on a live `feat/*` with no ledger row. Never mutates the board.
+- `.bkit/prompts/bkit-roadmap-refresh.md` (`@bkit-roadmap-refresh`) — opus analysis tier; writes only the `bkit:roadmap-analysis` block, at ship close and on demand.
+- `.bkit/workflows/bkit-roadmap.md` (`/bkit-roadmap`) — on-demand utility composing fold + drift check + analysis leaf.
+- `bkit-telemetry-migrate.ts` fifth pair — `docs/completed.md` → `docs/roadmap.jsonl` at `status:"SHIPPED"`, plus the bootstrap seed (one row per in-flight FID from `docs/plans/**`). Unreachable from `bkit upgrade`; the `completed-md-unmigrated` preflight advisory names the command (`docs/setup.md` § Roadmap ledger migration).
+
+**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only bytes strictly between the two marker pairs; the `## Backlog / Ideas` region below them is never regenerated and is a declared read-input for the analysis tier. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
+
+Sensing is on-disk-first, tracker-additive: the board builds under `tracker: none`, and a tracker `list_issues` read (never `search_issues`) only enriches it. Every roadmap branch exits 0 and never gates a close — grep keys in `docs/observability.md` § `[bkit-roadmap]`. Row contract: `.bkit/jsonl.md` § Per-Kind Fields. Test inventory: `docs/testing.md`.
 
 ## Distribution
 
