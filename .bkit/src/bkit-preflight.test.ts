@@ -1748,13 +1748,12 @@ describe("[mcp-env] detector outputs", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectBkitNotOnPath", () => {
-  const savedPath = process.env.PATH;
-  const savedCI = process.env.CI;
+  const origEnv = { ...process.env };
 
   afterEach(() => {
-    process.env.PATH = savedPath;
-    if (savedCI === undefined) delete process.env.CI;
-    else process.env.CI = savedCI;
+    // Restore env after each test in this suite
+    Object.keys(process.env).forEach((k) => delete process.env[k]);
+    Object.assign(process.env, origEnv);
   });
 
   it("returns null in CI environment", () => {
@@ -1770,6 +1769,8 @@ describe("detectBkitNotOnPath", () => {
     fs.chmodSync(fakeBkit, 0o755);
     process.env.PATH = `${fakeDir}:${process.env.PATH}`;
     delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
     try {
       expect(detectBkitNotOnPath()).toBeNull();
     } finally {
@@ -1780,6 +1781,8 @@ describe("detectBkitNotOnPath", () => {
   it("returns advisory when `bkit` is not on PATH", () => {
     process.env.PATH = "/nonexistent-path-for-test";
     delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
     const finding = detectBkitNotOnPath();
     expect(finding).not.toBeNull();
     expect(finding?.id).toBe("bkit-not-on-path");
