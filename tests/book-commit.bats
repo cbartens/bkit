@@ -158,9 +158,11 @@ _staged() { git -C "$TEST_REPO" diff --cached --name-only; }
   echo '{"more":1}' >> "$TEST_REPO/docs/plans/202608/logs/446f/status.jsonl"
 
   before="$(_head)"
-  chmod 0555 "$TEST_REPO/.git"
+  # A pre-existing index.lock makes `git add` refuse for every uid, including
+  # root — which bypasses chmod-based permission blocks on `.git`.
+  : >"$TEST_REPO/.git/index.lock"
   run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202608 --fid=446f --scope=core --mode=commit --message="should fail"
-  chmod 0755 "$TEST_REPO/.git"
+  rm -f "$TEST_REPO/.git/index.lock"
 
   [ "$status" -ne 0 ]
   [[ "$output" != *"nothing to commit"* ]]

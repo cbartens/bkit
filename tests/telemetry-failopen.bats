@@ -37,11 +37,11 @@ teardown() {
   jq -e '.kind == "counter"' "$FILE"
 }
 
-@test "best-effort append: write to read-only directory exits 0 (fail-open)" {
-  # Create a read-only directory to force write failure
+@test "best-effort append: write to an unwritable path exits 0 (fail-open)" {
+  # A regular file as a path component — the redirect fails with ENOTDIR for
+  # every uid, including root, which bypasses chmod-based permission blocks.
   RODIR="$TMPDIR_LOCAL/readonly"
-  mkdir -p "$RODIR"
-  chmod 555 "$RODIR"
+  : >"$RODIR"
   FILE="$RODIR/stats.jsonl"
   # Run the best-effort idiom — must NOT exit non-zero even on failure
   OUTPUT=$(jq -nc \
@@ -121,10 +121,9 @@ teardown() {
 
 # #380 matrix row 22 — every new [bkit-roadmap] fail branch exits 0 (never gates the close).
 
-@test "#380: docs/roadmap.jsonl append to a read-only directory is fail-open (exit 0)" {
+@test "#380: docs/roadmap.jsonl append to an unwritable path is fail-open (exit 0)" {
   RODIR="$TMPDIR_LOCAL/readonly-docs"
-  mkdir -p "$RODIR"
-  chmod 555 "$RODIR"
+  : >"$RODIR"
   FILE="$RODIR/roadmap.jsonl"
   OUTPUT=$(jq -nc --arg key "412-export-csv" \
     '. | .ts=(now*1000|floor) | .kind="feature" | .repo="x/y" | .bkitVersion="1" | .workflow="build" | .step="build-close-workflow" | .key=$key | .category="agentic" | .description="d" | .status="BUILT"' \
@@ -132,7 +131,6 @@ teardown() {
   STATUS=$?
   [ "$STATUS" -eq 0 ]
   [[ "$OUTPUT" == *"[bkit-roadmap]"* ]]
-  chmod 755 "$RODIR"
 }
 
 @test "#380: bkit_roadmap_fold with jq absent from PATH is fail-open (exit 0, [bkit-roadmap] stderr)" {
@@ -156,10 +154,9 @@ teardown() {
   [[ "$output" == "SKIP 0" ]]
 }
 
-@test "#380: .bkit/stats.jsonl ROADMAP_CADENCE_FIRE append to a read-only directory is fail-open (exit 0)" {
+@test "#380: .bkit/stats.jsonl ROADMAP_CADENCE_FIRE append to an unwritable path is fail-open (exit 0)" {
   RODIR="$TMPDIR_LOCAL/readonly-stats"
-  mkdir -p "$RODIR"
-  chmod 555 "$RODIR"
+  : >"$RODIR"
   FILE="$RODIR/stats.jsonl"
   OUTPUT=$(jq -nc --arg repo "x/y" --argjson cv 10 --arg p "abc123" \
     '. | .ts=(now*1000|floor) | .kind="counter" | .workflow="ship" | .repo=$repo | .step="ship-roadmap-cadence" | .counterName="ROADMAP_CADENCE_FIRE" | .counterValue=$cv | .counterSource="shell-bus" | .parentSha=$p' \
@@ -167,7 +164,6 @@ teardown() {
   STATUS=$?
   [ "$STATUS" -eq 0 ]
   [[ "$OUTPUT" == *"[bkit-roadmap]"* ]]
-  chmod 755 "$RODIR"
 }
 
 @test "#380: bkit_roadmap_drift_check with jq absent from PATH is fail-open (exit 0, no stdout warning)" {

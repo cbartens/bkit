@@ -189,6 +189,21 @@ def process_file(path: Path) -> bool:
     return False
 
 
+# Generated boards prettier never formats (they are in `.prettierignore`) and
+# whose marker blocks a fold FULLY regenerates on every workflow close. A
+# marker injected here is wiped by the next fold — pure churn — so these are
+# excluded even when passed as an explicit file arg.
+GENERATED_BOARDS = {Path("docs/roadmap.md")}
+
+
+def is_generated_board(path: Path) -> bool:
+    try:
+        rel = path.resolve().relative_to(Path.cwd().resolve())
+    except ValueError:
+        rel = path
+    return rel in GENERATED_BOARDS or path in GENERATED_BOARDS
+
+
 def collect_targets(args: list[str]) -> list[Path]:
     if args:
         roots = [Path(a) for a in args]
@@ -200,6 +215,7 @@ def collect_targets(args: list[str]) -> list[Path]:
             files.append(root)
         elif root.is_dir():
             files.extend(root.rglob("*.md"))
+    files = [f for f in files if not is_generated_board(f)]
     # Exclude vendored skill docs — any file inside a `skills/` DIRECTORY
     # (.agents/skills/**, etc.); third-party content we must not reformat.
     # Checks parent dirs only (f.parent.parts), so a file merely named
