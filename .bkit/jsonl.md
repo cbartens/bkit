@@ -71,7 +71,7 @@ One file per `kind`; writers:
 | `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
-| `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (REQUIRED — no severity; see `docs/roadmap.md`). |
+| `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (REQUIRED — no severity; see `docs/roadmap.md`), `shippedAt:number?` (§ Ship Date). |
 
 ## Who Wrote It — `step` vs `subagent` vs `model`
 
@@ -175,6 +175,14 @@ Kinds with BOTH (`friction`/`deferral`/`failure`/`knowledge`/`decision`/`feature
 4. `scope-declared` with no pre-existing declaration — the row is the ONLY place it was called out of scope.
 
 Test 4 carries the weight: genuine deferral declared out of scope BEFORE work started; unjustified declared at moment of avoidance. Both timestamps in ledger.
+
+## Ship Date
+
+`shippedAt` OPTIONAL on `feature`, absent elsewhere. Unix ms the feature shipped. `docs/roadmap.md` § Shipped ranks on `shippedAt // ts`.
+
+- Set ONLY on `status:"SHIPPED"` rows, and ONLY when the ship predates the append — a backfill or migration. Live phase close: OMIT, `ts` already IS the ship time.
+- MAY be a literal (unlike `ts`, § Write Idiom) — it is not row identity. Source it: issue `closed_at`, migrated `docs/completed.md` entry date, merge-commit date.
+- NEVER a guess. No defensible source = omit and accept `ts` ordering.
 
 ## Categories
 

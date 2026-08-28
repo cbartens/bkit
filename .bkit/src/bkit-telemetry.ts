@@ -574,6 +574,20 @@ export interface FeaturePayload {
   description: string;
   /** The phase ladder — REQUIRED, closed six-value enum. See FeatureStatus. */
   status: FeatureStatus;
+  /**
+   * Unix ms the feature ACTUALLY shipped, when that differs from `ts`.
+   *
+   * `ts` is append time and MUST be minted at append (§ Write Idiom), so a
+   * historic row backfilled today sorts as the newest ship. `shippedAt` is not
+   * part of the row identity, so it MAY carry a historic literal: an issue's
+   * `closed_at`, or a migrated `docs/completed.md` entry's own date. The board's
+   * Shipped section ranks on `shippedAt // ts`, so a backfill lands in its real
+   * place instead of evicting genuinely recent ships.
+   *
+   * Optional. A live phase close can omit it — there `ts` already IS the ship
+   * time. Only meaningful on `status: "SHIPPED"` rows.
+   */
+  shippedAt?: number;
 }
 
 // ---------------------------------------------------------------------------

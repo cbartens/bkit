@@ -40,8 +40,17 @@ bkit_roadmap_source_status_fold() {
 
 # jq projection: fold docs/roadmap.jsonl by `key` last-wins (highest `ts`),
 # bucket by folded status. ABANDONED rows are excluded from every bucket
-# (hidden from the whole board). SHIPPED capped at the newest 10 by ts desc;
-# older SHIPPED rows stay in the ledger and simply fall off the board.
+# (hidden from the whole board). SHIPPED capped at the newest 10 by
+# `shippedAt // ts` desc; older SHIPPED rows stay in the ledger and simply fall
+# off the board.
+#
+# Ranking on `shippedAt` with a `ts` fallback is what keeps a BACKFILL honest.
+# `ts` is append time and `.bkit/jsonl.md` § Write Idiom forbids a literal, so
+# rows written today for work that shipped months ago would otherwise sort as
+# the newest ships and evict the real ones. `shippedAt` is not part of the row
+# identity, so it MAY hold a historic value (an issue's `closed_at`, a migrated
+# `docs/completed.md` entry's date). A live phase close omits it — there `ts`
+# already IS the ship time, and the fallback covers every pre-existing row.
 #
 # Tracker enrichment (#380 matrix row 20): `--argjson tracker` is an ARRAY of
 # `{key, status, title?, category?, ts?, milestone?, blockedBy?}` rows supplied
@@ -62,7 +71,7 @@ bkit_roadmap_source_status_fold() {
 # linear). Keys matching neither shape — e.g. migrated `completed-<slug>-<hash>`
 # rows — pass through unchanged, so they can never falsely collapse together.
 # shellcheck disable=SC2016
-BKIT_ROADMAP_FOLD='def tid: ((. // "") | ltrimstr("#") | ascii_downcase) as $tk | ($tk | split("-")) as $tp | if (($tp|length) >= 1) and ($tp[0] | test("^[0-9]+$")) then $tp[0] elif (($tp|length) >= 2) and ($tp[0] | test("^[a-z]+$")) and ($tp[1] | test("^[0-9]+$")) then ($tp[0] + "-" + $tp[1]) else $tk end; def latest_by_key: group_by(.key) | map(sort_by(.ts) | last); latest_by_key as $folded | ($folded | map(.key | tid)) as $known | ($tracker | map(select(.key and .status)) | map(select(.status as $s | (["DESIGNED","PLANNED","BUILT","DEBUGGED","SHIPPED"] | index($s)) != null)) | map(select((.key | tid) as $k | ($known | index($k)) == null)) | map(. + {category: (.category // "tracker"), summary: (.summary // .title // .key), ts: (.ts // 0), source: "tracker"})) as $extra | ($folded + $extra) as $rows | { designed: ($rows | map(select(.status=="DESIGNED"))), planned: ($rows | map(select(.status=="PLANNED"))), built: ($rows | map(select(.status=="BUILT"))), debugged: ($rows | map(select(.status=="DEBUGGED"))), shipped: ($rows | map(select(.status=="SHIPPED")) | sort_by(-.ts) | .[0:10]) }'
+BKIT_ROADMAP_FOLD='def tid: ((. // "") | ltrimstr("#") | ascii_downcase) as $tk | ($tk | split("-")) as $tp | if (($tp|length) >= 1) and ($tp[0] | test("^[0-9]+$")) then $tp[0] elif (($tp|length) >= 2) and ($tp[0] | test("^[a-z]+$")) and ($tp[1] | test("^[0-9]+$")) then ($tp[0] + "-" + $tp[1]) else $tk end; def latest_by_key: group_by(.key) | map(sort_by(.ts) | last); latest_by_key as $folded | ($folded | map(.key | tid)) as $known | ($tracker | map(select(.key and .status)) | map(select(.status as $s | (["DESIGNED","PLANNED","BUILT","DEBUGGED","SHIPPED"] | index($s)) != null)) | map(select((.key | tid) as $k | ($known | index($k)) == null)) | map(. + {category: (.category // "tracker"), summary: (.summary // .title // .key), ts: (.ts // 0), source: "tracker"})) as $extra | ($folded + $extra) as $rows | { designed: ($rows | map(select(.status=="DESIGNED"))), planned: ($rows | map(select(.status=="PLANNED"))), built: ($rows | map(select(.status=="BUILT"))), debugged: ($rows | map(select(.status=="DEBUGGED"))), shipped: ($rows | map(select(.status=="SHIPPED")) | sort_by(-(.shippedAt // .ts)) | .[0:10]) }'
 
 # Render one phase-section's rows (a jq-encoded JSON array, on stdin via $1)
 # as a markdown table, or an italic placeholder when empty. Columns match the
@@ -78,7 +87,7 @@ _bkit_roadmap_render_rows() {
   fi
   printf '%s\n' "| FID | Title | Milestone | Blocked-by | Last-transition (ts) |"
   printf '%s\n' "| --- | --- | --- | --- | --- |"
-  printf '%s' "$_rows_json" | jq -r '.[] | "| \(.key) | \(.summary // .key) | \(.milestone // "—") | \(.blockedBy // "—") | \(.ts) |"'
+  printf '%s' "$_rows_json" | jq -r '.[] | "| \(.key) | \(.summary // .key) | \(.milestone // "—") | \(.blockedBy // "—") | \(.shippedAt // .ts) |"'
 }
 
 # Rewrite ONLY the bytes strictly between `$2`/`$3` in file `$1` with `$4`.

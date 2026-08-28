@@ -145,6 +145,30 @@ EOF
   grep -A5 '### Build' "$TMPD/docs/roadmap.md" | grep -q 'still-building'
 }
 
+# Shipped ranks on `shippedAt` when present, `ts` otherwise, so a row appended
+# today for work that shipped long ago cannot evict genuinely recent ships.
+@test "Shipped ranks on shippedAt with a ts fallback; a backfill does not evict recent ships" {
+  {
+    # Ten historic features, backfilled NOW (high ts) but carrying their real
+    # ship dates (low shippedAt).
+    for i in $(seq 1 10); do
+      printf '{"ts":900%02d,"shippedAt":%d,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"migrate","step":"s","key":"old-%02d","category":"other","description":"d","status":"SHIPPED"}\n' "$i" "$i" "$i"
+    done
+    # A genuine recent ship: lower ts than the backfill, no shippedAt.
+    echo '{"ts":50000,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"ship","step":"s","key":"really-recent","category":"other","description":"d","status":"SHIPPED"}'
+  } > "$TMPD/docs/roadmap.jsonl"
+  bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+  SHIPPED="$(sed -n '/### Shipped/,$p' "$TMPD/docs/roadmap.md")"
+  # Survives the cap of 10 despite its ts being the lowest of the eleven.
+  echo "$SHIPPED" | grep -q 'really-recent'
+  # It outranks every backfilled row, so it is the first data line of the table.
+  [ "$(echo "$SHIPPED" | grep -o 'really-recent\|old-[0-9][0-9]' | head -1)" = "really-recent" ]
+  # The oldest backfilled row is the one the cap drops.
+  ! echo "$SHIPPED" | grep -q 'old-01'
+  # The rendered ts column shows the real ship date, not the append time.
+  echo "$SHIPPED" | grep -q '| 10 |'
+}
+
 # row 25 — self-heal repair of a missing/mangled marker pair re-emits the
 # markers WITHOUT swallowing adjacent consumer text.
 @test "row 25: self-heal a mangled marker pair without swallowing adjacent consumer text" {
