@@ -144,10 +144,31 @@ fi
 # --- Consumer extensions ---------------------------------------------------
 # Add per-repo install steps here. Examples:
 #
+# Docker daemon — PREREQUISITE for any containerised local stack below. Cloud
+# sessions ship the docker CLI but no init system, so nothing starts the daemon
+# for you, and image pulls go through the egress proxy: declare the registry
+# hosts in .agents/config.md § Cloud allowed domains or every pull 403s. Needs
+# root / a privileged container; on a plain host this self-skips.
+# if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
+#   log "starting dockerd"
+#   nohup dockerd >/tmp/dockerd.log 2>&1 &
+#   for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+#   docker info >/dev/null 2>&1 || log "dockerd did not come up (non-blocking) — see /tmp/dockerd.log"
+# fi
+#
 # Local backend stack (Supabase / Postgres / Redis / etc.):
+# Gate on the DAEMON, not just the CLI. `command -v supabase` starts passing the
+# moment a debug-fetch:provision recipe puts the CLI on PATH (.agents/config.md
+# § CLI provisioning) — the container runtime it needs is still absent, so
+# `supabase start` dies, the `|| log` swallows it into one stderr line, and the
+# session carries on with no database. Skip loudly instead.
 # if [ -f supabase/config.toml ] && command -v supabase >/dev/null 2>&1; then
-#   log "supabase start"
-#   supabase start || log "supabase start failed (non-blocking)"
+#   if docker info >/dev/null 2>&1; then
+#     log "supabase start"
+#     supabase start || log "supabase start failed (non-blocking)"
+#   else
+#     log "supabase start SKIPPED — no docker daemon (see prerequisite above)"
+#   fi
 # fi
 #
 # Turbo prebuild for monorepo packages:
