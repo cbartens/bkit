@@ -3,9 +3,7 @@
 # Config
 
 > [!CAUTION]
-> **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes — currently `debug-fetch` runtime-log contract (`/bkit-debug`), cloud CLI provisioning, and the `docs/roadmap.md` cadence thresholds. Distinct from `docs/observability.md` (logging _doctrine_, not parsed config).
->
-> **Roadmap cadence (#380):** `bkit.roadmap.buildCycles` (default 10) / `bkit.roadmap.stalenessDays` (default 90) in `package.json` — NOT here; the numbers live in the manifest (`.bkit/src/bkit-manifest.ts` `resolveRoadmapCadence`), this is a pointer only.
+> **Purpose:** Agent / tooling configuration bkit tooling PARSES and executes in `/bkit-debug` and when generating `cloud.md` files.
 >
 > **Rules:**
 >
@@ -127,18 +125,26 @@ printf '===== diff vs last-passing CI on %s (last-passing-sha: %s) =====\n\n%s\n
 
 ```bash
 # Playwright on GitHub Actions: inline text files from the failing run's report artifact.
-# Discovers its own run. E2E_ARTIFACT = YOUR `actions/upload-artifact` name. E2E_JOB_RE matches ONLY this lane. One block per lane; fetch from where that lane's evidence lives.
-# Customise: E2E_ARTIFACT; E2E_JOB_RE (this lane only); run selection; which report files to inline vs list as binary.
+# Discovers its own run. E2E_ARTIFACT = YOUR `actions/upload-artifact` name. One block per lane; fetch from where that lane's evidence lives.
+# E2E_JOB_RE ships as a placeholder that matches NO job — anchor it to this lane's exact job
+# name before enabling. A loose pattern also matches sibling e2e lanes, and this block then
+# downloads THIS lane's artifact and files it as that lane's evidence; wrong evidence sends
+# diagnosis after the wrong failure, which is worse than the `NOT CONFIGURED` you get from
+# leaving the placeholder in. Until it is edited every run self-skips, naming the placeholder.
+# Customise: E2E_ARTIFACT; E2E_JOB_RE (anchored, this lane only); run selection; which report files to inline vs list as binary.
 E2E_ARTIFACT="${E2E_ARTIFACT:-playwright-report}"
-E2E_JOB_RE="${E2E_JOB_RE:-e2e}"
+E2E_JOB_RE="${E2E_JOB_RE:-^your-e2e-job-name$}"
 command -v gh >/dev/null 2>&1 \
   || { echo "[debug-fetch:playwright] skipped — gh CLI not installed" >&2; exit 0; }
 RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 \
   --json databaseId,conclusion --jq 'if (.[0].conclusion // "") == "success" then "" else (.[0].databaseId // "" | tostring) end' 2>/dev/null)
 [ -n "$RUN_ID" ] \
   || { echo "[debug-fetch:playwright] skipped — no failing CI run found for this branch" >&2; exit 0; }
-E2E_FAILED=$(gh run view "$RUN_ID" --json jobs \
-  --jq --arg re "$E2E_JOB_RE" '[.jobs[] | select(.name | test($re; "i")) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
+# Pipe to REAL jq: `gh --jq` takes one expression and no `--arg`, so the `--jq --arg re "$X" '...'`
+# form fails with `accepts at most 1 arg(s), received 4` — and under 2>/dev/null the empty result
+# is indistinguishable from "this lane passed", so a failed lane self-skips in silence.
+E2E_FAILED=$(gh run view "$RUN_ID" --json jobs 2>/dev/null \
+  | jq --arg re "$E2E_JOB_RE" '[.jobs[] | select(.name | test($re; "i")) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
 [ "${E2E_FAILED:-0}" -gt 0 ] \
   || { echo "[debug-fetch:playwright] skipped — no failed job matching /$E2E_JOB_RE/i in run $RUN_ID" >&2; exit 0; }
 DEST=$(mktemp -d)
@@ -282,19 +288,14 @@ Cloud sessions (Claude Code on the web, Cursor background agents) run behind egr
 1. Renders copy-paste **Custom** allowlist into `.claude/cloud.md` / `.cursor/cloud.md` § Network access (set Custom, tick "Also include default list of common package managers", paste — EXTENDS defaults, never replaces).
 2. Merges those **consumer** domains with stack-agnostic tooling defaults into host local permissions on **`bkit install` and `bkit upgrade`**: OpenCode `curl`/`wget` allows (in `opencode.json`), Claude `WebFetch` (in `settings.json`), and — **Cursor only** — `.cursor/allowlist.json` for `guardrails.cjs`. Same policy; Cursor needs a runtime file because it has no settings-native curl host map (hook instead of baked config). Full matrix: `.bkit/providers.md` § Network allowlist. bkit never ships Vercel/Supabase/Sentry/etc. into every consumer — only what you list here.
 
-**Apex domains only**, one per line — bkit adds `*.` wildcard (whole domain; never list subdomains). Include every host debug-fetch blocks reach (incl. implicit CLI hosts `vercel` / `gcloud`) + app production + preview/dev domains. A `context=web` block's search host belongs here too (Tavily example: `tavily.com`). Cloud Custom allowlist renders from THIS block alone — undeclared host → `HTTP 000` self-skip. Declare none → `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
+**Apex domains only**, one bare domain per line — no `#` group headers, no trailing paths. bkit adds the `*.` wildcard for the whole domain, so declare `example.com`, never `logs.example.com`. Include every host debug-fetch blocks reach (incl. implicit CLI hosts `vercel` / `gcloud`) + app production + preview/dev domains. A `context=web` block's search host belongs here too (Tavily example: `tavily.com`). Cloud Custom allowlist renders from THIS block alone — undeclared host → `HTTP 000` self-skip. Declare none → `<!-- allowed-domains:none intentional -->` after `<!-- bkit:end -->`.
 
 **Example (reference only — copy below `<!-- bkit:end -->` and edit):**
 
 <!-- allowed-domains:start -->
 
-# observability / API hosts your debug-fetch blocks call
-
 github.com
 tavily.com
-
-# app production + preview/dev domains
-
 your-app.com
 
 <!-- allowed-domains:end -->
