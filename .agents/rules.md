@@ -66,7 +66,7 @@
 - **Tracker MCPs:** Issue update via configured MCP only; use CLI / HTTP shell-outs as backup / fallback only.
 - **Tracker text reads:** GitHub issue body + comment TEXT via raw `gh api` ONLY; NEVER `mcp__github__issue_read` — it sanitises bodies, deleting HTML comments (every `<!-- bkit:* -->` marker) and angle-bracket spans, silently. MCP reads stay valid for STRUCTURED fields (`state`, `labels`, `milestone`). Read-modify-write of a body MUST read raw or the write-back destroys what the read dropped.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
-- **Tracker context cut:** Use `<!-- bkit:ignore-earlier -->` in issue body or comments to drop all previous content from workflow inputs; ALWAYS requires human confirmation.
+- **Tracker context cut:** Use `<!-- bkit:ignore-earlier -->` in issue bodies or comments to drop ALL earlier content from workflow inputs; ALWAYS requires human confirmation; NEVER include unprompted in any output.
 
 #### Git, CI & Merges
 
@@ -138,6 +138,10 @@
 ## Project Rules
 
 ### Universal Rules
+
+#### Communication
+
+- **Plain English answers:** ALWAYS use plain English when replying to users; name terms and say what they mean on first use; identifiers stay verbatim; plainness lives in sentences, NOT nouns.
 
 #### Naming Conventions
 
