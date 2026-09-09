@@ -32,7 +32,7 @@
 | `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI execution. |
 | `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / environment config / CI/CD pipeline rules — secrets sync, branch protection, run-level tiers. |
 | `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
-| `docs/warnings.md` | — | — | ○ | ● | — | Registry of intentional log-level downgrades with rationale. |
+| `docs/noise.md` | — | — | ○ | ● | ○ | Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds. |
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
@@ -52,5 +52,4 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `docs/notes.md` | — | — | — | — | — | Human scratchpad — pre-formalized workflow/process gap observations. **Human-written only; agents do NOT append.** Promote entries to `docs/deferrals.jsonl` or a plan. |
 | `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Generated phase-sectioned board + best-next-step analysis, projected from `docs/roadmap.jsonl` (#380). Consumer-owned — `bkit install` never creates/overwrites it. Machine marker blocks only; the `## Backlog / Ideas` region is a free-form consumer scratchpad. |

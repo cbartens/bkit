@@ -19,6 +19,7 @@ import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
   migrateStrayGitattributes,
+  migrateWarningsToNoise,
   type UpgradeCandidate,
 } from "./bkit-upgrade";
 import { sha256, writeBkitVersion, readBkitVersion, type BkitVersion } from "./bkit-version";
@@ -309,6 +310,59 @@ describe("migrateStrayGitattributes", () => {
     seedVersion();
     expect(() => migrateStrayGitattributes(tmpDir, false)).not.toThrow();
     expect(fs.existsSync(path.join(tmpDir, ".gitattributes"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// migrateWarningsToNoise — docs/warnings.md → docs/noise.md rename
+// ---------------------------------------------------------------------------
+
+describe("migrateWarningsToNoise", () => {
+  const CONSUMER_DOC =
+    "<!-- bkit:start -->\n\n# Warnings\n\n<!-- bkit:end -->\n\n" +
+    "| `src/poll.ts:42` | error -> warn | upstream 429 on cold start |\n";
+
+  it("moves docs/warnings.md to docs/noise.md with consumer entries intact and drops the stale hash key", () => {
+    writeAbs("docs/warnings.md", CONSUMER_DOC);
+    seedVersion({ "docs/warnings.md": sha256(CONSUMER_DOC) });
+
+    migrateWarningsToNoise(tmpDir, false);
+
+    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, "docs", "noise.md"), "utf-8")).toBe(CONSUMER_DOC);
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
+    expect(v!.canonicalHashes["docs/warnings.md"]).toBeUndefined();
+  });
+
+  it("does NOT clobber an existing docs/noise.md (leaves the old file for a manual merge)", () => {
+    writeAbs("docs/warnings.md", CONSUMER_DOC);
+    writeAbs("docs/noise.md", "real consumer noise registry\n");
+    seedVersion();
+
+    migrateWarningsToNoise(tmpDir, false);
+
+    expect(fs.readFileSync(path.join(tmpDir, "docs", "noise.md"), "utf-8")).toBe(
+      "real consumer noise registry\n",
+    );
+    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(true);
+  });
+
+  it("dry-run does not move the file or touch the hash key", () => {
+    writeAbs("docs/warnings.md", CONSUMER_DOC);
+    seedVersion({ "docs/warnings.md": sha256(CONSUMER_DOC) });
+
+    migrateWarningsToNoise(tmpDir, true);
+
+    expect(fs.existsSync(path.join(tmpDir, "docs", "warnings.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "noise.md"))).toBe(false);
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
+    expect(v!.canonicalHashes["docs/warnings.md"]).toBe(sha256(CONSUMER_DOC));
+  });
+
+  it("is a no-op for a fresh install / already-migrated consumer", () => {
+    seedVersion();
+    expect(() => migrateWarningsToNoise(tmpDir, false)).not.toThrow();
+    expect(fs.existsSync(path.join(tmpDir, "docs", "noise.md"))).toBe(false);
   });
 });
 
