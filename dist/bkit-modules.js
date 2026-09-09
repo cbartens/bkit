@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
-import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
+import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAgent, parseFrontmatter, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
@@ -579,6 +579,8 @@ export function renderManagedOutputs(modules, ctx) {
         written.push(...renderCursorAgentsCommands(ctx));
     if (modules.has("opencode"))
         written.push(...renderOpencodeAgentsCommands(ctx));
+    if (modules.has("codex"))
+        written.push(...renderCodexAgentsSkills(ctx));
     return written;
 }
 function copyAdditive(src, dst, dryRun, log, relRoot) {
@@ -3058,6 +3060,181 @@ export function runCloudModule(ctx) {
         });
     }
 }
+/**
+ * Convert a workflow orchestrator (`.bkit/workflows/*.md`) into a Codex SKILL.md.
+ *
+ * Codex requires `name` and `description` in the skill frontmatter; the workflows already
+ * carry `description`, so `name` is added and the body is kept verbatim (it is the whole
+ * point — the workflow steps ARE the skill instructions). Tracker-conditional blocks are
+ * resolved first, exactly as for the other hosts' command mirrors.
+ */
+export function applyCodexSkill(content, skillName, issueTracker) {
+    const resolved = substituteWorkflow(content, issueTracker).output;
+    const fmMatch = resolved.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+    if (!fmMatch) {
+        return `---\nname: ${skillName}\ndescription: bkit ${skillName} workflow\n---\n\n${resolved}`;
+    }
+    const fmBlock = fmMatch[2];
+    const body = resolved.slice(fmMatch[0].length);
+    const parsed = parseFrontmatter(fmBlock);
+    const description = (parsed.get("description") ?? `bkit ${skillName} workflow`).replace(/^"|"$/g, "");
+    return `---\nname: ${skillName}\ndescription: "${description.replace(/"/g, '\\"')}"\n---\n${body}`;
+}
+// ---------------------------------------------------------------------------
+// runCodexModule — Codex CLI host (opt-in via --codex)
+//
+// Nullary flag, unlike --opencode: Codex has exactly one gateway (`openai`), because the
+// ChatGPT subscription is what makes it cheap to run. See PROGRAM_GATEWAYS in bkit-cli.ts.
+//
+// Renders THREE things, two of them unlike any other host:
+//   .codex/agents/<name>.toml          — TOML, not markdown-with-frontmatter
+//   .codex/hooks.json + hooks/         — GateGuard registration (PreToolUse / apply_patch)
+//   .agents/skills/bkit-<wf>/SKILL.md  — workflow entry points, as SKILLS not commands
+//
+// Why skills: Codex has NO project-scoped command surface. Custom prompts live only in
+// ~/.codex/prompts, are explicitly "not shared through your repository", and are deprecated
+// in favour of skills; openai/codex#4734 and #9848 both asked for `.codex/prompts` and were
+// closed NOT PLANNED. Codex's skill search path INCLUDES `$REPO_ROOT/.agents/skills`, which
+// is already bkit's canonical directory. Consequence: workflows are invoked `$bkit-design`
+// on Codex, not `/bkit-design`, and because `.agents/` is shared the skills are visible to
+// every host — accepted deliberately.
+//
+// NOTE there is no `.codex/config.toml`: `openai` is a RESERVED built-in provider id in
+// Codex, so bkit has nothing to declare and re-stating it would be rejected.
+// ---------------------------------------------------------------------------
+/** Directory holding bkit-generated workflow skills, shared across hosts. */
+const CODEX_SKILLS_DIR = ".agents/skills";
+/**
+ * Render `.codex/agents/*.toml` and the workflow skills. Extracted so `bkit upgrade`
+ * re-renders them identically (#251) — bkit-owned output, force-overwritten.
+ */
+export function renderCodexAgentsSkills(ctx) {
+    const { dryRun, effortMap, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
+    const written = [];
+    const codexModelLookup = ctx.codexModelLookup;
+    if (!codexModelLookup) {
+        throw new Error("renderCodexAgentsSkills: ctx.codexModelLookup is required");
+    }
+    // --- Agents: markdown+frontmatter -> TOML ---
+    {
+        const src = getPromptsRoot();
+        const dest = ".codex/agents";
+        if (!dryRun)
+            ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        // Destination basenames are .toml, so the orphan sweep has to compare on stem.
+        const sourceStems = new Set(files.map((f) => f.replace(/\.md$/, "")));
+        for (const f of files) {
+            const stem = f.replace(/\.md$/, "");
+            const transform = (c) => applyCodexAgent(c, codexModelLookup, effortMap);
+            if (installFile(path.join(src, f), path.join(dest, `${stem}.toml`), transform, dryRun)) {
+                const rel = path.join(dest, `${stem}.toml`);
+                console.log(`${logPrefix} ${tag}write: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
+            }
+        }
+        if (fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".toml"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceStems.has(f.replace(/\.toml$/, ""))) {
+                    const rel = path.join(dest, f);
+                    if (!dryRun)
+                        fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+                    trackMirrorWrite(ctx, rel, written);
+                }
+            }
+        }
+    }
+    // --- Workflow skills: one directory per workflow, each holding SKILL.md ---
+    {
+        const src = getWorkflowsRoot();
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceStems = new Set(files.map((f) => f.replace(/\.md$/, "")));
+        if (!dryRun && files.length > 0)
+            ensureDir(CODEX_SKILLS_DIR);
+        for (const f of files) {
+            const stem = f.replace(/\.md$/, "");
+            const dest = path.join(CODEX_SKILLS_DIR, stem, "SKILL.md");
+            if (!dryRun)
+                ensureDir(path.dirname(dest));
+            const transform = (c) => stampManagedVersion(applyCodexSkill(c, stem, issueTracker), version);
+            if (installFile(path.join(src, f), dest, transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${dest}`);
+                trackMirrorWrite(ctx, dest, written);
+            }
+        }
+        // Orphan sweep is bkit-prefix scoped: `.agents/skills/` is SHARED with third-party
+        // skills installed via skills.sh, so anything not named bkit-* is off limits here.
+        if (fs.existsSync(CODEX_SKILLS_DIR)) {
+            for (const d of fs.readdirSync(CODEX_SKILLS_DIR)) {
+                if (!d.startsWith(BKIT_PREFIX))
+                    continue;
+                if (sourceStems.has(d))
+                    continue;
+                const rel = path.join(CODEX_SKILLS_DIR, d);
+                if (!dryRun)
+                    fs.rmSync(rel, { recursive: true, force: true });
+                console.log(`${logPrefix} ${tag}delete orphan: ${rel}`);
+                trackMirrorWrite(ctx, rel, written);
+            }
+        }
+    }
+    return written;
+}
+export function runCodexModule(ctx) {
+    const { dryRun, advisories, ws, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    renderCodexAgentsSkills(ctx);
+    const codexTplDir = path.join(getTemplatesRoot(), ".codex");
+    // --- hooks.json — Tier-2 deep-contained (consumers may add their own event groups) ---
+    {
+        const jsonSrc = path.join(codexTplDir, "hooks.json");
+        const jsonDst = ".codex/hooks.json";
+        if (fs.existsSync(jsonSrc)) {
+            if (!dryRun)
+                ensureDir(path.dirname(jsonDst));
+            const prevLen = ws.writes.length;
+            writeTier2JsonContained(jsonSrc, jsonDst, dryRun, ws);
+            if (ws.writes.length > prevLen)
+                console.log(`${logPrefix} ${tag}codex: ${jsonDst}`);
+        }
+    }
+    // --- gateguard.cjs — Tier-2 markered-text, twin of the Claude hook ---
+    {
+        const hookSrc = path.join(codexTplDir, "hooks", "gateguard.cjs");
+        const hookDst = ".codex/hooks/gateguard.cjs";
+        if (fs.existsSync(hookSrc)) {
+            if (!dryRun)
+                ensureDir(path.dirname(hookDst));
+            const prevLen = ws.writes.length;
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(hookSrc, hookDst, ctx.tokens, "slash-comment", dryRun, ws, {
+                relPath: hookDst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
+            if (ws.writes.length > prevLen)
+                console.log(`${logPrefix} ${tag}codex: ${hookDst}`);
+        }
+    }
+    advisories.push({
+        id: "codex-setup",
+        severity: "advisory",
+        detect: "codex host installed (.codex/agents + .agents/skills/bkit-*).",
+        action: "Three things that differ from the other hosts:\n" +
+            "1. TRUST THE LAYER. Codex loads project-local hooks only once the `.codex/` layer is trusted. Until then GateGuard is installed and never fires.\n" +
+            "2. Workflows are SKILLS here, not slash commands: invoke `$bkit-design`, not `/bkit-design`.\n" +
+            "3. Per-agent `tools:` is NOT enforced. Codex has no tool allowlist, so every agent gets the full built-in tool set. See .bkit/providers.md.",
+    });
+}
 // ---------------------------------------------------------------------------
 // MODULE_REGISTRY — maps ModuleFlag → ModuleFn
 // ---------------------------------------------------------------------------
@@ -3066,6 +3243,7 @@ export const MODULE_REGISTRY = {
     claude: runClaudeModule,
     cursor: runCursorModule,
     opencode: runOpencodeModule,
+    codex: runCodexModule,
     ci: runCiModule,
     lint: runLintModule,
     "git-hooks": runGitHooksModule,
@@ -3080,6 +3258,7 @@ export const MODULE_DISPATCH_ORDER = [
     "claude",
     "cursor",
     "opencode",
+    "codex",
     "ci",
     "lint",
     "git-hooks",

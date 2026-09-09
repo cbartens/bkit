@@ -67,6 +67,7 @@ export type ModuleName =
   | "claude"
   | "cursor"
   | "opencode"
+  | "codex"
   | "ci"
   | "lint"
   | "git-hooks"
@@ -612,6 +613,25 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
   // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
 ];
 
+// --codex (#435): Codex CLI host. NOTE there is deliberately no `.codex/config.toml` here —
+// `openai` is a RESERVED built-in provider id in Codex (alongside `ollama` and `lmstudio`),
+// so bkit has nothing to declare; re-stating it under `[model_providers.openai]` is rejected.
+// Codex reads project config from `.codex/`, and hooks load only once that layer is TRUSTED.
+export const CODEX_MANIFEST: ManifestEntry[] = [
+  // hooks.json — Tier-2 json (deep-contained): bkit owns the PreToolUse GateGuard entry,
+  // consumers may add their own event groups alongside it.
+  { path: ".codex/hooks.json", format: "json", module: "codex" },
+  // gateguard.cjs — Tier-2 markered-text, twin of the Claude hook (same stdin/stdout
+  // contract); differs only in tool name (apply_patch) and V4A patch-envelope parsing.
+  {
+    path: ".codex/hooks/gateguard.cjs",
+    format: "markered-text",
+    module: "codex",
+  },
+  // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
+  // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
+];
+
 // --ci (#265): the stack-agnostic CI/quality foundation. NO package.json footprint —
 // a non-Node consumer can install this and stay green. ci.yml is seeded as the SKELETON
 // (Node/TS step bodies commented) when --typescript is absent, or WIRED when present
@@ -806,6 +826,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   claude: CLAUDE_MANIFEST,
   cursor: CURSOR_MANIFEST,
   opencode: OPENCODE_MANIFEST,
+  codex: CODEX_MANIFEST,
   ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
   "git-hooks": GIT_HOOKS_MANIFEST,

@@ -31,6 +31,7 @@ import {
   buildMcpJson,
   renderManagedOutputs,
   enrichClaudeSettingsWebFetch,
+  opencodeProviderId,
   type ModuleContext,
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
@@ -60,6 +61,7 @@ import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
   migrateStrayGitattributes,
+  migrateWarningsToNoise,
   planSelfBump,
   type UpgradeCandidate,
 } from "./bkit-upgrade.js";
@@ -197,7 +199,7 @@ const BKIT_PREFIX = "bkit-";
 // so log scanners can tell which verb actually ran.
 let LOG_PREFIX = "[bkit-install]";
 
-export type Host = "claude" | "cursor" | "opencode";
+export type Host = "claude" | "cursor" | "opencode" | "codex";
 
 /**
  * Parse .bkit/prompts.md § Models table → Map<name, columnValue>.
@@ -278,20 +280,44 @@ export function parseModelLookupForColumn(
  * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
  */
 export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
-  return parseModelLookupForColumn(subagentsMdPath, "Cursor");
+  return parseModelLookupForColumn(subagentsMdPath, GATEWAY_COLUMN.cursor);
 }
 
-// Map an opencode provider key → its human-friendly prompts.md § Models column header.
-// The table uses display headers ("OpenRouter", "Ollama"); the install flag uses
-// provider keys ("openrouter", "ollama"). Every allowlisted provider has a column.
-const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
+/**
+ * Gateway key → its prompts.md § Models column header.
+ *
+ * § Models is keyed on GATEWAY, never on program — a model id belongs to the gateway it
+ * is served from, so a gateway shared by two programs is one column, not two. That is what
+ * stops the table growing as programs x gateways. `anthropic` and `cursor` are the pinned
+ * gateways of the claude and cursor programs (see PROGRAM_GATEWAYS in bkit-cli.ts).
+ *
+ * Cells hold the BARE, gateway-scoped model id. Any prefix a program's config format needs
+ * is added at render time by formatModelPin — never stored in the table.
+ */
+const GATEWAY_COLUMN: Record<string, string> = {
+  anthropic: "Anthropic",
+  cursor: "Cursor",
   openrouter: "OpenRouter",
   ollama: "Ollama",
-  // opencode-native gateways: two columns. Cells use OpenCode built-in provider ids
-  // (opencode/<id> for Zen, opencode-go/<id> for Go). Go carries premium models Zen lacks.
   "opencode-zen": "OpenCode Zen",
   "opencode-go": "OpenCode Go",
+  openai: "OpenAI",
 };
+
+/**
+ * Spell a model pin the way a program's config file expects it.
+ *
+ * The § Models cell is the bare, gateway-scoped model id (`kimi-k2.7-code`). Claude and
+ * Cursor write it unchanged; opencode requires `<providerId>/<model>`, where providerId is
+ * the opencode-side id and is NOT always the bkit gateway key — the `opencode-zen` gateway
+ * is `opencode` on the opencode side. Route through opencodeProviderId, never the raw key.
+ */
+export function formatModelPin(program: string, gateway: string, bareModel: string): string {
+  if (program === "opencode") return `${opencodeProviderId(gateway)}/${bareModel}`;
+  // claude / cursor / codex all take the bare id: Claude and Cursor because their gateway is
+  // implicit, Codex because it names its gateway in `[model_providers.<id>]` instead.
+  return bareModel;
+}
 
 /**
  * The installed opencode provider, or exit(1) with the fix.
@@ -328,7 +354,7 @@ export function buildOpencodeModelLookup(
   subagentsMdPath: string,
   provider: string,
 ): Map<string, string> {
-  const header = OPENCODE_PROVIDER_COLUMN[provider];
+  const header = GATEWAY_COLUMN[provider];
   if (!header) {
     throw new Error(
       `buildOpencodeModelLookup: no prompts.md § Models column for provider ${JSON.stringify(provider)}`,
@@ -399,18 +425,21 @@ export function applyModelOverrides(
  */
 export type EffortMap = Map<string, Map<string, string>>; // column → (sourceEffort → target)
 
-/** Host/provider key → prompts.md effort-table column header. */
-const EFFORT_COLUMN_FOR_PROVIDER: Record<string, string> = {
+/**
+ * Program → prompts.md effort-table column header.
+ *
+ * The effort table is keyed on PROGRAM, never on gateway — how hard to think is a property
+ * of the program's config format (`effort:` on Claude and Cursor, `reasoningEffort:` on
+ * opencode, on a different ladder), not of the model. Every opencode gateway therefore
+ * shares one column. That is the opposite axis to GATEWAY_COLUMN, and keeping the two apart
+ * is what stops either table growing as programs x gateways.
+ */
+const EFFORT_COLUMN_FOR_PROGRAM: Record<string, string> = {
   claude: "Claude",
   cursor: "Cursor",
-  // Every opencode provider shares the generic ladder — no provider-specific column.
-  "opencode-zen": "OpenCode Go/Zen",
-  "opencode-go": "OpenCode Go/Zen",
-  openrouter: "OpenCode Go/Zen",
-  ollama: "OpenCode Go/Zen",
+  opencode: "OpenCode",
+  codex: "Codex",
 };
-
-const EFFORT_FALLBACK_COLUMN = "OpenCode Go/Zen";
 
 /**
  * Parse prompts.md effort→provider table (header starts with Default | Claude | …).
@@ -479,23 +508,28 @@ export function parseEffortMap(promptsMdPath: string): EffortMap {
   return out;
 }
 
-/** Resolve prompts.md column header for a host/provider key. */
-export function effortColumnForProvider(providerOrHost: string): string {
-  return EFFORT_COLUMN_FOR_PROVIDER[providerOrHost] ?? EFFORT_FALLBACK_COLUMN;
+/**
+ * Resolve the prompts.md effort-table column for a program.
+ * Throws on an unknown program: with the table keyed on program there is no gateway key
+ * left to substitute around, and silently falling back would emit a ladder the caller
+ * never chose. Callers pass a program ("claude" / "cursor" / "opencode"), not a gateway.
+ */
+export function effortColumnForProgram(program: string): string {
+  const col = EFFORT_COLUMN_FOR_PROGRAM[program];
+  if (!col) {
+    throw new Error(
+      `effortColumnForProgram: no prompts.md effort column for program ${JSON.stringify(program)}`,
+    );
+  }
+  return col;
 }
 
 /**
- * Look up emitted thinking value for a host/provider + source prompt effort.
- * Column resolution: provider map → named column → OpenCode Go/Zen fallback → identity.
+ * Look up the emitted thinking value for a program + source prompt effort.
+ * Column resolution: program → named column → identity when the row is absent.
  */
-export function lookupEffort(
-  effortMap: EffortMap,
-  providerOrHost: string,
-  sourceEffort: string,
-): string {
-  const colName = effortColumnForProvider(providerOrHost);
-  const col = effortMap.get(colName) ?? effortMap.get(EFFORT_FALLBACK_COLUMN);
-  return col?.get(sourceEffort) ?? sourceEffort;
+export function lookupEffort(effortMap: EffortMap, program: string, sourceEffort: string): string {
+  return effortMap.get(effortColumnForProgram(program))?.get(sourceEffort) ?? sourceEffort;
 }
 
 // Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
@@ -573,12 +607,12 @@ export function applyOpencodeAgent(
   } else {
     newFm += `description: ${description}\n`;
   }
-  newFm += `model: ${opencodeModel}\n`;
+  newFm += `model: ${formatModelPin("opencode", provider ?? "", opencodeModel)}\n`;
   newFm += opencodeToolsBlock(toolsBlock);
   if (effort && effortMap) {
-    // lookupEffort resolves an unnamed/unknown provider to the generic OpenCode Go/Zen
-    // ladder, which is the column every opencode provider uses — no default needed here.
-    newFm += `reasoningEffort: ${lookupEffort(effortMap, provider ?? "", effort)}\n`;
+    // Program-keyed: every opencode gateway shares the one "OpenCode" ladder, so the
+    // gateway is deliberately not consulted here.
+    newFm += `reasoningEffort: ${lookupEffort(effortMap, "opencode", effort)}\n`;
   }
   newFm += "---\n";
 
@@ -602,6 +636,82 @@ export function applyEffortRemap(content: string, effortMap: EffortMap, host: st
   if (mapped === effort) return content;
   const newFm = fmBlock.replace(/^effort:\s*\S+\s*$/m, `effort: ${mapped}`);
   return `---\n${newFm}\n---\n${afterFm}`;
+}
+
+/**
+ * Escape a body for a TOML basic multi-line string (`"""` … `"""`).
+ *
+ * TOML has no raw-string escape hatch that survives arbitrary content: literal strings
+ * cannot contain their own quote run, and basic strings interpret backslashes. So the body
+ * is emitted as a basic multi-line string with the sequences that would terminate or corrupt
+ * it neutralised — a stray triple-quote in a prompt would otherwise close the value early and
+ * yield a TOML file that parses as something else entirely.
+ */
+export function escapeTomlMultiline(body: string): string {
+  return body
+    .replace(/\\/g, "\\\\") // backslash first, or the escapes below get double-escaped
+    .replace(/"""/g, '\\"\\"\\"')
+    .replace(/\r\n/g, "\n");
+}
+
+/** Emit a TOML `key = "value"` line, escaping the basic-string metacharacters. */
+function tomlString(key: string, value: string): string {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  return `${key} = "${escaped}"\n`;
+}
+
+/**
+ * Convert a Claude-format prompt (`.bkit/prompts/*.md`) into a Codex agent definition
+ * (`.codex/agents/<name>.toml`).
+ *
+ * Field mapping — `name`, `description` and `developer_instructions` are REQUIRED by Codex:
+ *   name                    <- frontmatter `name`
+ *   description             <- frontmatter `description`
+ *   developer_instructions  <- the markdown body
+ *   model                   <- § Models `OpenAI` column (bare id; Codex names its gateway
+ *                              in `[model_providers.<id>]`, not in the pin)
+ *   model_reasoning_effort  <- § Effort `Codex` column
+ *
+ * NOT emitted — `tools:`. Codex has no per-agent tool allowlist (openai/codex#6049 is open),
+ * and `sandbox_mode` cannot stand in: every bkit agent is write-capable, so it would be
+ * `workspace-write` for all of them and discriminate nothing. The declared `tools:` block is
+ * therefore NOT enforced on this host; that limitation is documented in providers.md rather
+ * than hidden behind a field that only looks like it restricts something.
+ */
+export function applyCodexAgent(
+  content: string,
+  codexModelLookup: Map<string, string>,
+  effortMap?: EffortMap,
+): string {
+  const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+  if (!fmMatch) return content;
+
+  const fmBlock = fmMatch[2];
+  const body = content.slice(fmMatch[0].length).trim();
+  const parsed = parseFrontmatter(fmBlock);
+
+  const name = parsed.get("name") ?? "";
+  if (!name) {
+    console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
+    process.exit(1);
+  }
+
+  const model = codexModelLookup.get(name);
+  if (!model) {
+    console.error(`${LOG_PREFIX} Missing codex model lookup for ${name}`);
+    process.exit(1);
+  }
+
+  const effort = parsed.get("effort");
+  let out = "";
+  out += tomlString("name", name);
+  out += tomlString("description", parsed.get("description") ?? "");
+  out += tomlString("model", formatModelPin("codex", "openai", model));
+  if (effort && effortMap) {
+    out += tomlString("model_reasoning_effort", lookupEffort(effortMap, "codex", effort));
+  }
+  out += `developer_instructions = """\n${escapeTomlMultiline(body)}\n"""\n`;
+  return out;
 }
 
 /**
@@ -757,7 +867,7 @@ export function applyT3(
   } else {
     newFm += `description: ${description}\n`;
   }
-  newFm += `model: ${cursorModel}\n`;
+  newFm += `model: ${formatModelPin("cursor", "cursor", cursorModel)}\n`;
   if (effort && effortMap) {
     newFm += `effort: ${lookupEffort(effortMap, "cursor", effort)}\n`;
   }
@@ -1410,16 +1520,24 @@ export function runStatus(cwd: string, logPrefix: string): void {
     opencodeProviderDisplay = activeOpencodeProvider ?? allOpencodeProviders[0] ?? "unknown";
     providerLabel = "provider";
   }
+  // --- codex host ---
+  const codexDir = path.join(cwd, ".codex");
+  const codexPresent = fs.existsSync(codexDir);
+
   const opencodeStatus = opencodePresent
     ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
     : "absent (run: bkit install --opencode=<provider>)";
   console.log(`${logPrefix} opencode: ${opencodeStatus}`);
+  console.log(
+    `${logPrefix} codex:   ${codexPresent ? "INSTALLED  (provider: openai)" : "absent (run: bkit install --codex)"}`,
+  );
 
   // --- summary ---
   const installedHosts = [
     claudePresent ? "claude" : null,
     cursorPresent ? "cursor" : null,
     opencodePresent ? "opencode" : null,
+    codexPresent ? "codex" : null,
   ].filter(Boolean);
   console.log(
     `${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`,
@@ -1436,6 +1554,7 @@ export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
+  if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
   return mods;
 }
 
@@ -1461,6 +1580,7 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
+  if (fs.existsSync(path.join(cwd, ".codex", "agents"))) mods.add("codex");
   // ci (#265): the stack-agnostic foundation — ci.yml + vale config. Either is a sentinel.
   if (
     fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml")) ||
@@ -1500,6 +1620,7 @@ export function modulesToCliFlags(
   if (mods.has("claude")) out.push("--claude");
   if (mods.has("cursor")) out.push("--cursor");
   if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
+  if (mods.has("codex")) out.push("--codex");
   // #265: ci+lint+git-hooks → --tooling; TS toolchain (lint/git-hooks, ± ci) → --typescript
   // (re-adds ci on install); agnostic ci only → --ci.
   if (mods.has("ci") && mods.has("lint") && mods.has("git-hooks")) {
@@ -2260,6 +2381,11 @@ async function main() {
     // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
     migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
 
+    // docs/warnings.md → docs/noise.md rename: the doc widened from log-level
+    // downgrades to every deliberate signal downgrade. Move the consumer's file
+    // (their entries live below the managed block) before the walk reseeds it.
+    migrateWarningsToNoise(process.cwd(), upgradeFlags.dryRun);
+
     // D1 orphan-removal: consumers who upgraded from a version that shipped
     // `.agents/templates/` (pre-#160 layout) now carry an orphaned directory
     // that no longer exists in the tarball. Remove it on upgrade so the
@@ -2500,6 +2626,7 @@ async function main() {
     // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
     let renderModelLookup: Map<string, string> = new Map();
     let renderOpencodeModelLookup: Map<string, string> = new Map();
+    let renderCodexModelLookup: Map<string, string> = new Map();
     let renderEffortMap: EffortMap = new Map();
     const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
     const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -2519,6 +2646,14 @@ async function main() {
         }
         applyModelOverrides(renderOpencodeModelLookup, renderProvider, consumerPromptsMd);
       }
+      if (renderModules.has("codex")) {
+        try {
+          renderCodexModelLookup = buildOpencodeModelLookup(pkgPromptsMd, "openai");
+        } catch {
+          // Not fatal — the codex module fails per-file if a model is missing
+        }
+        applyModelOverrides(renderCodexModelLookup, "openai", consumerPromptsMd);
+      }
       renderEffortMap = parseEffortMap(pkgPromptsMd);
     }
     const renderWs: WriteSet = { writes: [] };
@@ -2527,6 +2662,7 @@ async function main() {
       tokens: tokens ?? { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
       modelLookup: renderModelLookup,
       opencodeModelLookup: renderOpencodeModelLookup,
+      codexModelLookup: renderCodexModelLookup,
       effortMap: renderEffortMap,
       opencodeProvider: renderProvider,
       advisories: [],
@@ -2762,6 +2898,7 @@ async function main() {
   // section (below `bkit:end`) — per-agent, per-provider, preserved across upgrades.
   let modelLookup: Map<string, string> = new Map();
   let opencodeModelLookup: Map<string, string> = new Map();
+  let codexModelLookup: Map<string, string> = new Map();
   let effortMap: EffortMap = new Map();
   const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
   const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
@@ -2785,6 +2922,15 @@ async function main() {
         // Not fatal — opencode module will fail per-file if a model is missing
       }
       applyModelOverrides(opencodeModelLookup, provider, consumerPromptsMdPath);
+    }
+    if (effectiveModules.has("codex")) {
+      // Codex is nullary — one gateway (`openai`), so there is nothing to detect.
+      try {
+        codexModelLookup = buildOpencodeModelLookup(promptsMdPath, "openai");
+      } catch {
+        // Not fatal — codex module will fail per-file if a model is missing
+      }
+      applyModelOverrides(codexModelLookup, "openai", consumerPromptsMdPath);
     }
     effortMap = parseEffortMap(promptsMdPath);
   }
@@ -2887,6 +3033,7 @@ async function main() {
     tokens,
     modelLookup,
     opencodeModelLookup,
+    codexModelLookup,
     effortMap,
     opencodeProvider: renderOpencodeProvider,
     advisories,

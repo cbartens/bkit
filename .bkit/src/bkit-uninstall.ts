@@ -263,6 +263,7 @@ export function buildDecisionTable(
             "lint",
             "git-hooks",
             "opencode",
+            "codex",
             "renovate",
             "dependabot",
             "cloud",
@@ -481,6 +482,7 @@ export async function runUninstall(
             "lint",
             "git-hooks",
             "opencode",
+            "codex",
             "renovate",
             "dependabot",
             "cloud",
@@ -726,13 +728,19 @@ export async function runUninstall(
       ...(moduleList.includes("cursor") ? [".cursor/commands", ".cursor/agents"] : []),
       // opencode mirrors (plural dir names per opencode.ai/docs)
       ...(moduleList.includes("opencode") ? [".opencode/agents", ".opencode/commands"] : []),
+      // codex agent mirrors. The workflow skills under `.agents/skills/bkit-*` are swept
+      // separately below: `.agents/skills/` is SHARED with third-party skills installed via
+      // skills.sh, so the directory itself must never be removed wholesale.
+      ...(moduleList.includes("codex") ? [".codex/agents"] : []),
     ];
     for (const dir of mirrorDirs) {
       const absDir = path.join(ctx.cwd, dir);
       if (!fs.existsSync(absDir)) continue;
       try {
         for (const f of fs.readdirSync(absDir)) {
-          if (!f.startsWith("bkit-") || !f.endsWith(".md")) continue;
+          // .toml as well as .md: codex agent mirrors are TOML, and an extension-only
+          // filter would leave every .codex/agents/bkit-*.toml behind on uninstall.
+          if (!f.startsWith("bkit-") || !(f.endsWith(".md") || f.endsWith(".toml"))) continue;
           const absFile = path.join(absDir, f);
           fs.rmSync(absFile, { force: true });
           result.deleted.push(path.join(dir, f));
@@ -740,6 +748,27 @@ export async function runUninstall(
         }
       } catch (err) {
         console.error(`${ctx.logPrefix} error cleaning up ${dir}: ${(err as Error).message}`);
+      }
+    }
+
+    // Workflow skills: `.agents/skills/` is SHARED with third-party skills installed via
+    // skills.sh, so only the bkit-prefixed DIRECTORIES are removed — never the parent.
+    if (moduleList.includes("codex")) {
+      const skillsDir = path.join(ctx.cwd, ".agents", "skills");
+      if (fs.existsSync(skillsDir)) {
+        try {
+          for (const d of fs.readdirSync(skillsDir)) {
+            if (!d.startsWith("bkit-")) continue;
+            const abs = path.join(skillsDir, d);
+            if (!fs.statSync(abs).isDirectory()) continue;
+            fs.rmSync(abs, { recursive: true, force: true });
+            result.deleted.push(path.join(".agents/skills", d));
+            console.log(`${ctx.logPrefix} delete mirror: ${path.join(".agents/skills", d)}`);
+          }
+        } catch (err) {
+          const msg = (err as Error).message;
+          console.error(`${ctx.logPrefix} error cleaning up .agents/skills: ${msg}`);
+        }
       }
     }
   }

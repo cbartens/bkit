@@ -9,7 +9,8 @@ import {
   applyOpencodeAgent,
   parseEffortMap,
   lookupEffort,
-  effortColumnForProvider,
+  effortColumnForProgram,
+  formatModelPin,
   applyOpencodeCommand,
   OPENCODE_SESSION_PROMPT_ANCHOR,
   parseModelLookup,
@@ -1121,9 +1122,11 @@ describe("applyOpencodeCommand", () => {
 // ---------------------------------------------------------------------------
 
 describe("applyOpencodeAgent", () => {
+  // Bare, gateway-scoped ids — the § Models cell shape. The `ollama/` prefix is added
+  // by the renderer via formatModelPin, so asserting it below proves that wiring.
   const opencodeModelLookup = new Map([
-    ["build-plan", "ollama/qwen2.5:7b"],
-    ["design-synthesize", "ollama/qwen2.5:14b"],
+    ["build-plan", "qwen2.5:7b"],
+    ["design-synthesize", "qwen2.5:14b"],
   ]);
   const promptsMd = path.join(import.meta.dirname ?? ".", "..", "prompts.md");
   const effortMap = parseEffortMap(promptsMd);
@@ -1154,7 +1157,7 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("Read: true");
   });
 
-  it("maps effort: medium → reasoningEffort: high (OpenCode Go/Zen column ceilings out)", () => {
+  it("maps effort: medium → reasoningEffort: high (OpenCode column ceilings out)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
     expect(result).toContain("reasoningEffort: high");
@@ -1282,32 +1285,41 @@ describe("applyOpencodeAgent", () => {
 describe("parseEffortMap", () => {
   const effortMap = parseEffortMap(".bkit/prompts.md");
 
-  it("parses Default | Claude | Cursor | OpenCode Go/Zen", () => {
-    for (const col of ["Default", "Claude", "Cursor", "OpenCode Go/Zen"]) {
+  it("parses Default | Claude | Cursor | OpenCode", () => {
+    for (const col of ["Default", "Claude", "Cursor", "OpenCode"]) {
       expect(effortMap.has(col)).toBe(true);
     }
     expect(effortMap.get("Default")?.size).toBe(5);
   });
 
-  it("every opencode provider inherits the OpenCode Go/Zen column", () => {
-    for (const p of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
-      expect(effortColumnForProvider(p)).toBe("OpenCode Go/Zen");
-      expect(lookupEffort(effortMap, p, "xhigh")).toBe("max");
+  // The effort table is keyed on PROGRAM, so "every opencode gateway shares one ladder"
+  // is now structural rather than four map entries that could drift apart.
+  it("effort columns are keyed on program, not gateway", () => {
+    expect(effortColumnForProgram("claude")).toBe("Claude");
+    expect(effortColumnForProgram("cursor")).toBe("Cursor");
+    expect(effortColumnForProgram("opencode")).toBe("OpenCode");
+    expect(lookupEffort(effortMap, "opencode", "xhigh")).toBe("max");
+    expect(lookupEffort(effortMap, "opencode", "medium")).toBe("high");
+  });
+
+  // A gateway key reaching this function means a caller confused the two axes. It must
+  // fail loudly: silently falling back would emit a thinking ladder nobody selected.
+  it("a gateway key is rejected — the axes must not be mixed", () => {
+    for (const gateway of ["openrouter", "ollama", "opencode-zen", "opencode-go"]) {
+      expect(() => effortColumnForProgram(gateway)).toThrow(/no prompts.md effort column/);
+      expect(() => lookupEffort(effortMap, gateway, "high")).toThrow();
     }
-    expect(lookupEffort(effortMap, "opencode-go", "medium")).toBe("high");
   });
 
   // #205 — below-target providers ceiling out rather than downshift: a provider that scores
   // under the Claude tier target must spend MORE thinking to close the gap, not less.
   it("opencode columns ceiling out above low (never below the Default rung)", () => {
     const RANK = { none: 0, low: 1, medium: 2, high: 3, xhigh: 4, max: 5 };
-    for (const provider of ["opencode-go", "opencode-zen", "openrouter", "ollama"]) {
-      expect(lookupEffort(effortMap, provider, "low")).toBe("none");
-      for (const e of ["medium", "high", "xhigh", "max"]) {
-        expect(RANK[lookupEffort(effortMap, provider, e)]).toBeGreaterThanOrEqual(RANK[e]);
-      }
-      expect(lookupEffort(effortMap, provider, "high")).toBe("max");
+    expect(lookupEffort(effortMap, "opencode", "low")).toBe("none");
+    for (const e of ["medium", "high", "xhigh", "max"]) {
+      expect(RANK[lookupEffort(effortMap, "opencode", e)]).toBeGreaterThanOrEqual(RANK[e]);
     }
+    expect(lookupEffort(effortMap, "opencode", "high")).toBe("max");
   });
 
   it("Claude / Cursor columns are identity with Default", () => {
@@ -1383,14 +1395,14 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // sits under the sonnet target, so opus+sonnet collapse there.
   it("openrouter: kimi-k3 opus, gemini-3.7-flash sonnet, v4-pro-0813 convergent, v4-flash haiku", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k3");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe(
-      "openrouter/google/gemini-3.7-flash",
-    );
-    expect(lookup.get("bkit-design-summary")).toBe("openrouter/deepseek/deepseek-v4-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v4-pro-0813");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe(
-      "openrouter/deepseek/deepseek-v4-pro-0813",
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("moonshotai/kimi-k3");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("google/gemini-3.7-flash");
+    expect(lookup.get("bkit-design-summary")).toBe("deepseek/deepseek-v4-flash");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek/deepseek-v4-pro-0813");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("deepseek/deepseek-v4-pro-0813");
+    // The gateway prefix belongs to the renderer, not the table.
+    expect(formatModelPin("opencode", "openrouter", lookup.get("bkit-design-summary")!)).toBe(
+      "openrouter/deepseek/deepseek-v4-flash",
     );
   });
 
@@ -1398,9 +1410,9 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // build is a separate slug. Guards against silently reverting to the stale pin.
   it("openrouter: convergent pin is the dated GA deepseek build, never the frozen slug", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    const pins = [...lookup.values()].filter((m) => m.startsWith("openrouter/"));
-    expect(pins).not.toContain("openrouter/deepseek/deepseek-v4-pro");
-    expect(pins.some((m) => m === "openrouter/deepseek/deepseek-v4-pro-0813")).toBe(true);
+    const pins = [...lookup.values()];
+    expect(pins).not.toContain("deepseek/deepseek-v4-pro");
+    expect(pins.some((m) => m === "deepseek/deepseek-v4-pro-0813")).toBe(true);
   });
 
   // This column exists to carry work when the Claude quota is spent — a Claude pin
@@ -1414,10 +1426,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 
   it("ollama (cloud): kimi-k2.7-code opus+sonnet, deepseek-v4-pro haiku+convergent", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.7-code");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/kimi-k2.7-code");
-    expect(lookup.get("bkit-design-summary")).toBe("ollama/deepseek-v4-pro");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code");
+    expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4-pro");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro");
+    expect(formatModelPin("opencode", "ollama", lookup.get("bkit-design-summary")!)).toBe(
+      "ollama/deepseek-v4-pro",
+    );
   });
 
   it("every allowlisted provider ships a curated column (all four)", () => {
@@ -1437,14 +1452,17 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     // CLI key is opencode-zen; agent pins use the OpenCode built-in provider id `opencode`.
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-zen");
     expect(lookup.size).toBeGreaterThan(0);
+    // Cells are bare; the pin is built by formatModelPin, which maps the bkit gateway key
+    // `opencode-zen` onto the OpenCode-side provider id `opencode` — NOT a pass-through.
     for (const [, model] of lookup) {
-      expect(model).toMatch(/^opencode\//);
-      expect(model).not.toMatch(/^opencode-zen\//);
+      expect(model).not.toMatch(/^opencode(-zen)?\//);
+      expect(formatModelPin("opencode", "opencode-zen", model)).toMatch(/^opencode\//);
+      expect(formatModelPin("opencode", "opencode-zen", model)).not.toMatch(/^opencode-zen\//);
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.7-code"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/kimi-k2.7-code"); // sonnet — qwen3.6-plus was strictly dominated (lower score, 4x cost)
-    expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("kimi-k2.7-code"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("kimi-k2.7-code"); // sonnet — qwen3.6-plus was strictly dominated (lower score, 4x cost)
+    expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4-flash"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
   });
 
   it("opencode-go: curated OpenCode Go column (deepseek-v4-pro / deepseek-v4-flash)", () => {
@@ -1454,12 +1472,13 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode-go");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
-      expect(model).toMatch(/^opencode-go\//);
+      expect(model).not.toMatch(/^opencode-go\//);
+      expect(formatModelPin("opencode", "opencode-go", model)).toMatch(/^opencode-go\//);
     }
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode-go/deepseek-v4-pro"); // opus
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode-go/deepseek-v4-pro"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("opencode-go/deepseek-v4-flash"); // haiku
-    expect(lookup.get("bkit-build-challenge-2")).toBe("opencode-go/deepseek-v4-pro"); // convergent
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek-v4-pro"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek-v4-pro"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("deepseek-v4-flash"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek-v4-pro"); // convergent
   });
 });
 
@@ -1867,6 +1886,9 @@ describe("runStatus — read-only host/provider status", () => {
     runStatus(cwd, "[bkit]");
     expect(out()).toContain("claude:  absent");
     expect(out()).toContain("cursor:  absent");
+    // Regression: codex presence was probed with process.cwd() instead of the cwd argument,
+    // so a bkit-repo `.codex/` leaked into the status of every OTHER directory.
+    expect(out()).toContain("codex:   absent");
     expect(out()).toMatch(/opencode: absent/);
     expect(out()).toContain("Installed hosts: none");
   });

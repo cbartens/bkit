@@ -122,7 +122,7 @@
     },
     {
       "files": [".bkit/templates/.cursor/hooks/gateguard.cjs", ".cursor/hooks/gateguard.cjs"],
-      "_reason": "The Cursor hook's managed block is DELIBERATELY byte-identical to the Claude twin's — one advisory engine, two host drivers — and bkit-gateguard-parity.integration.test.ts asserts that byte-identity. De-duplicating to satisfy this rule would mean extracting a shared module, which no host can require: both files are dropped standalone into a consumer repo with no bkit package on their resolution path. Same opt-out, same reason, as the Claude and opencode twins above. Scoped to this one file (template + mirror) + rule.",
+      "_reason": "The Cursor hook's managed block is DELIBERATELY byte-identical to the Claude twin's \u2014 one advisory engine, two host drivers \u2014 and bkit-gateguard-parity.integration.test.ts asserts that byte-identity. De-duplicating to satisfy this rule would mean extracting a shared module, which no host can require: both files are dropped standalone into a consumer repo with no bkit package on their resolution path. Same opt-out, same reason, as the Claude and opencode twins above. Scoped to this one file (template + mirror) + rule.",
       "rules": {
         "structure.duplicate-function-signatures": {
           "enabled": false
@@ -163,7 +163,7 @@
     },
     {
       "files": [".bkit/src/bkit-cloud-env.ts"],
-      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from bkit-modules.ts. Inlining at the call site would move these branches out of bkit-cloud-env.ts (the unit-lane's measured file) into bkit-modules.ts (covered by the integration lane only) and silently erode the unit coverage floor — verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
+      "_reason": "networkAllowlistBases() is a one-line apex-collapse over expandAllowedDomains output, called once from bkit-modules.ts. Inlining at the call site would move these branches out of bkit-cloud-env.ts (the unit-lane's measured file) into bkit-modules.ts (covered by the integration lane only) and silently erode the unit coverage floor \u2014 verified by CI red on the first inline attempt. Kept as a named export for coverage accounting; same shape as expandAllowedDomains above it.",
       "rules": {
         "structure.pass-through-wrappers": {
           "enabled": false
@@ -172,7 +172,7 @@
     },
     {
       "files": [".bkit/src/bkit-harvest.ts"],
-      "_reason": "canonicalRow() is a NAMED CONTRACT, not a pass-through: it is the single definition of the byte-for-byte serialisation the friction prune gate compares against, used by both the store writer and the gate. Inlining JSON.stringify at both call sites to satisfy the rule would be exactly the 'rewire callers to satisfy a lint' that rules.md forbids, and would let the two sides drift apart — the gate guards a DELETE, so drift is not free. Scoped to this one file + rule.",
+      "_reason": "canonicalRow() is a NAMED CONTRACT, not a pass-through: it is the single definition of the byte-for-byte serialisation the friction prune gate compares against, used by both the store writer and the gate. Inlining JSON.stringify at both call sites to satisfy the rule would be exactly the 'rewire callers to satisfy a lint' that rules.md forbids, and would let the two sides drift apart \u2014 the gate guards a DELETE, so drift is not free. Scoped to this one file + rule.",
       "rules": {
         "structure.pass-through-wrappers": {
           "enabled": false
@@ -190,7 +190,7 @@
     },
     {
       "files": [".bkit/src/bkit-modules.ts"],
-      "_reason": "Three fail-open catches on consumer-authored JSON (package.json parse in runLintModule already surfaced via the lint-package-json-malformed advisory above; chmod failure on the dependabot helper surfaced via advisory below; .claude/settings.json parse in enrichClaudeSettingsWebFetch — install must NOT crash on a consumer's corrupt file). slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here; the empty catch with a comment is the fail-open contract, and each is paired with an advisory emission path. Scoped per-rule to this file.",
+      "_reason": "Three fail-open catches on consumer-authored JSON (package.json parse in runLintModule already surfaced via the lint-package-json-malformed advisory above; chmod failure on the dependabot helper surfaced via advisory below; .claude/settings.json parse in enrichClaudeSettingsWebFetch \u2014 install must NOT crash on a consumer's corrupt file). slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here; the empty catch with a comment is the fail-open contract, and each is paired with an advisory emission path. Scoped per-rule to this file.",
       "rules": {
         "defensive.empty-catch": {
           "enabled": false
@@ -202,9 +202,26 @@
     },
     {
       "files": [".bkit/src/bkit-install.ts"],
-      "_reason": "detectOpencodeProvider's fail-open catches on consumer-authored JSON (package.json, .opencode/opencode.json): a corrupt consumer file must fall through to the default provider, not abort install/upgrade. Rethrowing would make bkit's install depend on the consumer's JSON validity — wrong direction. The empty catch with the 'fall back' comment is the contract. Scoped to this file + rule.",
+      "_reason": "detectOpencodeProvider's fail-open catches on consumer-authored JSON (package.json, .opencode/opencode.json): a corrupt consumer file must fall through to the default provider, not abort install/upgrade. Rethrowing would make bkit's install depend on the consumer's JSON validity \u2014 wrong direction. The empty catch with the 'fall back' comment is the contract. Scoped to this file + rule.",
       "rules": {
         "defensive.error-obscuring": {
+          "enabled": false
+        }
+      }
+    },
+    {
+      "files": [
+        ".bkit/templates/.claude/hooks/gateguard.cjs",
+        ".bkit/templates/.cursor/hooks/gateguard.cjs",
+        ".bkit/templates/.codex/hooks/gateguard.cjs",
+        ".bkit/templates/.opencode/plugin/gateguard.js",
+        "**/.claude/hooks/gateguard.cjs",
+        "**/.cursor/hooks/gateguard.cjs",
+        "**/.codex/hooks/gateguard.cjs",
+        "**/.opencode/plugin/gateguard.js"
+      ],
+      "rules": {
+        "structure.duplicate-function-signatures": {
           "enabled": false
         }
       }

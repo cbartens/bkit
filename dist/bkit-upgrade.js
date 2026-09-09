@@ -378,3 +378,50 @@ export function migrateStrayGitattributes(cwd, dryRun) {
         writeBkitVersion(versionFile, { ...bkitVersion, canonicalHashes });
     }
 }
+// ---------------------------------------------------------------------------
+// migrateWarningsToNoise — docs/warnings.md → docs/noise.md rename
+// ---------------------------------------------------------------------------
+/**
+ * `docs/warnings.md` (registry of intentional log-level downgrades) widened to
+ * cover every deliberate signal downgrade — log levels, error-tracker issue
+ * archives / mutes, alert thresholds — and was renamed `docs/noise.md`.
+ *
+ * Consumers keep their own entries BELOW the managed block, so the file has to
+ * MOVE, not reseed: renaming only the template would write a fresh empty
+ * `docs/noise.md` and strand every recorded downgrade in the orphaned old file.
+ *
+ * This migration:
+ *   1. Moves `docs/warnings.md` → `docs/noise.md` (only when no `docs/noise.md`
+ *      already exists — never clobbers one). The upgrade walk that follows
+ *      block-merges the new managed header into the moved file, so consumer
+ *      entries below `bkit:end` survive untouched.
+ *   2. Drops the stale `docs/warnings.md` key from canonicalHashes; the
+ *      `docs/noise.md` key is reseeded by that same walk.
+ *
+ * Idempotent: a no-op on fresh installs and already-migrated consumers.
+ */
+export function migrateWarningsToNoise(cwd, dryRun) {
+    const oldPath = path.join(cwd, "docs", "warnings.md");
+    const newPath = path.join(cwd, "docs", "noise.md");
+    if (fs.existsSync(oldPath) && fs.statSync(oldPath).isFile()) {
+        if (!fs.existsSync(newPath)) {
+            console.log(`${LOG_PREFIX}${dryRun ? " [dry-run]" : ""} migrate: rename 'docs/warnings.md' → 'docs/noise.md'`);
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(newPath), { recursive: true });
+                fs.renameSync(oldPath, newPath);
+            }
+        }
+        else {
+            console.warn(`${LOG_PREFIX} 'docs/warnings.md' found alongside 'docs/noise.md' — merge the entries by hand, then delete the old file`);
+        }
+    }
+    if (dryRun)
+        return;
+    const versionFile = path.join(cwd, ".bkit", "version");
+    const bkitVersion = readBkitVersion(versionFile);
+    if (bkitVersion?.canonicalHashes && "docs/warnings.md" in bkitVersion.canonicalHashes) {
+        const canonicalHashes = { ...bkitVersion.canonicalHashes };
+        delete canonicalHashes["docs/warnings.md"];
+        writeBkitVersion(versionFile, { ...bkitVersion, canonicalHashes });
+    }
+}

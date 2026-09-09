@@ -7,7 +7,7 @@ export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
  * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
  * ONLY these — anything else is rejected (no generic/arbitrary-endpoint fallback).
  * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (bkit-modules.ts) and
- * OPENCODE_PROVIDER_COLUMN (bkit-install.ts § Models lookup).
+ * GATEWAY_COLUMN (bkit-install.ts § Models lookup).
  */
 export const OPENCODE_PROVIDERS = [
     // OpenAI-compatible npm driver — endpoint + key per provider.
@@ -19,6 +19,30 @@ export const OPENCODE_PROVIDERS = [
     "opencode-zen",
     "opencode-go",
 ];
+/**
+ * Every program bkit installs for, and the gateways it may use.
+ *
+ * A "program" is the thing that reads the files bkit writes (`.claude/`, `.cursor/`,
+ * `.opencode/`); a "gateway" is the thing tokens are bought through. They are separate
+ * axes: model ids belong to a gateway, `effort:`/`reasoningEffort:` spelling belongs to
+ * a program. See providers.md § Supported hosts.
+ *
+ * One gateway = pinned, and the CLI flag takes no value (`--claude`). Several = the flag
+ * must name one (`--opencode=<gateway>`). Pinning is POLICY, not capability: Cursor can
+ * reach Claude models and anything behind OpenRouter can too. Each program is pinned to
+ * the gateway whose subscription is already paid for, and the escape when a subscription
+ * runs dry is to switch PROGRAM, not gateway — because the cheap gateway is attached to a
+ * different program. Per-model deviations go in the consumer-owned `## Model Overrides`
+ * table below the `bkit:end` marker; there is deliberately no gateway override.
+ */
+export const PROGRAM_GATEWAYS = {
+    claude: ["anthropic"],
+    cursor: ["cursor"],
+    opencode: OPENCODE_PROVIDERS,
+    // Codex CLI names its gateway in `[model_providers.<id>]`, not in the model pin.
+    // Pinned to openai: the ChatGPT subscription is what makes Codex cheap to run.
+    codex: ["openai"],
+};
 /**
  * Hidden backward-compat aliases for `--opencode=<provider>` values (not exposed in
  * help text). Normalises legacy provider keys stored in package.json or passed on the
@@ -72,6 +96,7 @@ const MODULE_FLAGS = new Set([
     "claude",
     "cursor",
     "opencode",
+    "codex",
     "tooling",
     "ci",
     "typescript",
@@ -86,7 +111,13 @@ const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
  * renovate+dependabot open competing PRs; cloud auto-dispatches agents and is inert
  * without secrets; opencode is a provider-pluggable additive host. See issue #119.
  */
-export const OPTIN_MODULES = new Set(["renovate", "dependabot", "cloud", "opencode"]);
+export const OPTIN_MODULES = new Set([
+    "renovate",
+    "dependabot",
+    "cloud",
+    "opencode",
+    "codex",
+]);
 /**
  * Resolve the explicit module-flag set into the concrete module set to dispatch.
  * `flags` holds the internal module names the user explicitly named — core is NOT
@@ -173,7 +204,7 @@ export function parseArgs(argv) {
         verb = "telemetry";
         args.shift();
     }
-    else if (firstArg === "cursor" || firstArg === "opencode") {
+    else if (firstArg === "cursor" || firstArg === "opencode" || firstArg === "codex") {
         verb = firstArg;
         args.shift();
         // Launcher verbs take no flags — reject any remaining args up-front.
@@ -300,6 +331,10 @@ export function parseArgs(argv) {
                 // uninstall --opencode: add the module flag without requiring a provider value.
                 moduleFlags.add("opencode");
                 continue;
+            }
+            if (flag.startsWith("codex=")) {
+                console.error(`[bkit] --codex takes no value (got ${JSON.stringify("--" + flag)}). Codex CLI runs on one gateway (openai), so the flag is bare: --codex. Only --opencode is provider-pluggable.`);
+                process.exit(1);
             }
             if (flag.startsWith("opencode=")) {
                 const rawValue = flag.slice("opencode=".length);

@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 const CLAUDE_HOOK = path.resolve(".bkit/templates/.claude/hooks/gateguard.cjs");
 const CURSOR_HOOK = path.resolve(".bkit/templates/.cursor/hooks/gateguard.cjs");
 const OPENCODE_PLUGIN = path.resolve(".bkit/templates/.opencode/plugin/gateguard.js");
+const CODEX_HOOK = path.resolve(".bkit/templates/.codex/hooks/gateguard.cjs");
 
 /** Normalised result — what the model ends up seeing, and whether it was stopped. */
 interface Outcome {
@@ -27,8 +28,8 @@ interface Outcome {
   blocked: boolean;
 }
 
-type Host = "claude" | "cursor" | "opencode";
-const HOSTS: Host[] = ["claude", "cursor", "opencode"];
+type Host = "claude" | "cursor" | "opencode" | "codex";
+const HOSTS: Host[] = ["claude", "cursor", "opencode", "codex"];
 
 let counter = 0;
 function newSession(): string {
@@ -130,9 +131,37 @@ async function runOpencode(c: Call): Promise<Outcome> {
   return { advisory: blocked ? thrownMessage : captured, blocked };
 }
 
+/**
+ * Codex sends NO file path. Every edit arrives as `apply_patch` with a V4A patch envelope in
+ * `tool_input.command`, so the adapter has to build a real envelope — the two places this host
+ * can silently no-op are the tool name and that envelope, and a hand-waved payload here would
+ * hide exactly the failure this suite exists to catch.
+ */
+function runCodex(c: Call): Outcome {
+  const op = c.kind === "create" ? "Add" : "Update";
+  const hunk = c.kind === "create" ? "+new contents" : "@@\n-before\n+after";
+  const res = spawnSync("node", [CODEX_HOOK], {
+    input: JSON.stringify({
+      tool_name: "apply_patch",
+      tool_input: { command: `*** Begin Patch\n*** ${op} File: ${c.file}\n${hunk}\n*** End Patch` },
+      session_id: c.session,
+      cwd: process.cwd(),
+    }),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_GATEGUARD: undefined, ...c.env },
+  });
+  const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
+  const hso = out.hookSpecificOutput ?? {};
+  return {
+    advisory: String(hso.additionalContext ?? hso.permissionDecisionReason ?? ""),
+    blocked: hso.permissionDecision === "deny",
+  };
+}
+
 async function run(host: Host, c: Call): Promise<Outcome> {
   if (host === "claude") return runClaude(c);
   if (host === "cursor") return runCursor(c);
+  if (host === "codex") return runCodex(c);
   return runOpencode(c);
 }
 
@@ -277,6 +306,7 @@ describe("gateguard structural parity", () => {
     claude: CLAUDE_HOOK,
     cursor: CURSOR_HOOK,
     opencode: OPENCODE_PLUGIN,
+    codex: CODEX_HOOK,
   };
 
   function block(file: string): string {
@@ -306,6 +336,28 @@ describe("gateguard structural parity", () => {
 
   it("claude and cursor blocks are byte-identical", () => {
     expect(block(CLAUDE_HOOK)).toBe(block(CURSOR_HOOK));
+  });
+
+  // Documented deviation, same class as opencode's. Codex shares Claude's stdin/stdout
+  // contract but NOT its payload: edits arrive as `apply_patch` with a V4A patch envelope
+  // in `tool_input.command` and no file path at all, so the block carries an extra parser
+  // and a different tool vocabulary. What must not differ is what the model is told.
+  it("the codex block carries the same advisory texts as the claude twin", () => {
+    const codex = block(CODEX_HOOK);
+    const claude = block(CLAUDE_HOOK);
+    for (const marker of ["[bkit GateGuard]", "First edit to", "New file", "quality-gate config"]) {
+      expect(claude).toContain(marker);
+      expect(codex).toContain(marker);
+    }
+  });
+
+  // The two ways this host silently no-ops: wrong tool name, or no envelope parser.
+  // Both would leave a hook that installs, exits 0 and never fires.
+  it("the codex block matches apply_patch and parses the V4A envelope", () => {
+    const b = block(CODEX_HOOK);
+    expect(b).toContain('"apply_patch"');
+    expect(b).toContain("parseApplyPatchTargets");
+    expect(b).toMatch(/Add\|Update\|Delete/);
   });
 
   it("the opencode block carries the same advisory texts as the CJS twins", () => {
