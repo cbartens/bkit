@@ -76,6 +76,7 @@ import {
   networkAllowlistBases,
   writeNetworkAllowlistArtifact,
 } from "./bkit-cloud-env.js";
+import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 
 // ---------------------------------------------------------------------------
@@ -1495,68 +1496,6 @@ export function runCursorModule(ctx: ModuleContext): void {
 // reconverges its keys on upgrade without clobbering consumer additions (KN-17).
 // ---------------------------------------------------------------------------
 
-// Per-provider provider key name + base URL + env var suggestions.
-// These are sane defaults; consumers tune after install.
-// npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
-const OPENCODE_PROVIDER_DEFAULTS: Record<
-  string,
-  {
-    envVar: string;
-    baseURL: string;
-    apiPlaceholder: string;
-    npmPackage?: string;
-    displayName?: string;
-    // builtin: opencode-native provider that opencode resolves from models.dev — no npm
-    // driver and no baseURL. Per-model routing (openai-compatible vs anthropic /messages)
-    // stays correct; a forced npm+baseURL causes wrong-URL errors on Qwen/MiniMax.
-    builtin?: boolean;
-    // providerId: the opencode-side provider id (defaults to the bkit key; model ids are providerId/<model>).
-    providerId?: string;
-  }
-> = {
-  // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
-  // provider (NOT the any-endpoint fallback #245 removed).
-  // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
-  // and makes opencode reject the whole config) and read keys via {env:VAR} — never
-  // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
-  openrouter: {
-    envVar: "OPENROUTER_API_KEY",
-    baseURL: "https://openrouter.ai/api/v1",
-    apiPlaceholder: "{env:OPENROUTER_API_KEY}",
-    npmPackage: "@ai-sdk/openai-compatible",
-    displayName: "OpenRouter",
-  },
-  // Cloud-hosted Ollama (ollama.com). Matches opencode's own naming where built-in
-  // `ollama` = the cloud service.
-  ollama: {
-    envVar: "OLLAMA_API_KEY",
-    baseURL: "https://ollama.com/v1",
-    apiPlaceholder: "{env:OLLAMA_API_KEY}",
-    npmPackage: "@ai-sdk/openai-compatible",
-    displayName: "Ollama",
-  },
-  // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
-  // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
-  // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
-  // `opencode` (agent pins opencode/<id>), Go's id is `opencode-go` (opencode-go/<id>).
-  "opencode-zen": {
-    envVar: "OPENCODE_API_KEY",
-    baseURL: "",
-    apiPlaceholder: "{env:OPENCODE_API_KEY}",
-    builtin: true,
-    providerId: "opencode",
-    displayName: "OpenCode Zen",
-  },
-  "opencode-go": {
-    envVar: "OPENCODE_API_KEY",
-    baseURL: "",
-    apiPlaceholder: "{env:OPENCODE_API_KEY}",
-    builtin: true,
-    providerId: "opencode-go",
-    displayName: "OpenCode Go",
-  },
-};
-
 /**
  * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
  * (opencode → opencode, openrouter → openrouter, etc.). Model ids are `<providerId>/<model>`. Unknown
@@ -1970,7 +1909,7 @@ export function reconcileOpencodeJson(
  * Used by the surgical uninstall path — this is NOT called during install (install is additive).
  * Compares on opencodeProviderId(providerKey) to resolve the opencode-side block key.
  * The caller is responsible for passing only bkit-seeded provider keys; this function does not
- * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
+ * validate providerKey against OPENCODE_PROVIDER_DEFAULTS (bkit-registry.ts).
  */
 export function removeOpencodeProviderBlock(
   dst: string,

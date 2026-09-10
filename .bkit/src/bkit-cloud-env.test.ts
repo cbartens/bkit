@@ -24,12 +24,23 @@ import {
   cloudAutoModeEnvironment,
   renderCloudUserSettings,
   BKIT_SHIPPED_NETWORK_DOMAINS,
+  BKIT_SHIPPED_NETWORK_HOSTS,
+  deriveEgressEntries,
+  proposeEgressBase,
+  isIpLiteral,
   writeClaudeCloudDoc,
   cursorCloudPolicy,
   renderCursorContextFetchProvision,
   renderCursorNetworkAllowlist,
   writeCursorCloudDoc,
 } from "./bkit-cloud-env";
+import {
+  OPENCODE_PROVIDER_DEFAULTS,
+  BKIT_EGRESS_SOURCES,
+  MULTI_LABEL_SUFFIXES,
+  MULTI_TENANT_APEXES,
+} from "./bkit-registry";
+import { ISSUE_TRACKERS, DEP_UPDATERS } from "./bkit-manifest";
 import type { TokenMap } from "./bkit-tokens";
 
 let tmpDir: string;
@@ -338,11 +349,15 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
     expect(out).toMatch(/# cache-bust \d{4}-\d{2}-\d{2}-2\n/);
   });
 
-  it("falls back to Trusted guidance when no allowed-domains are declared", () => {
+  it("renders the always-Custom block with shipped hosts when no allowed-domains are declared", () => {
     writeClaudeCloudDoc(tmpDir, TOKENS);
     const out = fs.readFileSync(path.join(tmpDir, ".claude", "cloud.md"), "utf-8");
-    expect(out).toContain("Set to **Trusted** (default)");
-    expect(out).not.toContain("Also include default list");
+    // The tick instruction now reaches the zero-declared path too. Asserting `toContain`
+    // here is the point: the old `not.toContain` froze the regression Task 10 removes —
+    // a zero-declaration consumer dropped to a bare Custom list and lost PyPI, crates.io,
+    // the Go proxy and the cloud SDK hosts the "also include defaults" tick preserves.
+    expect(out).toContain("Also include default list");
+    expect(out).toContain("githubcopilot.com");
   });
 
   it("renders the Custom allowlist when allowed-domains are declared", () => {
@@ -411,10 +426,12 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     expect(networkAllowlistBases([])).toEqual([]);
   });
 
-  it("renders the Trusted fallback (with pointer) when nothing is declared", () => {
+  it("renders the always-Custom block (with pointer) when nothing is declared", () => {
     const out = renderCloudNetworkAllowlist(tmpDir);
-    expect(out).toContain("Set to **Trusted** (default)");
-    expect(out).toContain("No `allowed-domains` block declared");
+    expect(out).toContain("Also include default list");
+    // the pointer prose survives, reworded: it no longer promises a section that now always renders
+    expect(out).toContain("No `allowed-domains` block is declared");
+    expect(out).toContain("```text");
   });
 
   it("resolveNetworkAllowlist stays stack-agnostic until consumer declares domains", () => {
@@ -562,11 +579,15 @@ describe("renderCursorContextFetchProvision", () => {
 });
 
 describe("renderCursorNetworkAllowlist", () => {
-  it("no allowed-domains → describes the dashboard egress modes, no code fence", () => {
+  it("no allowed-domains → still emits a fence carrying the shipped hosts (T13)", () => {
     const out = renderCursorNetworkAllowlist(tmpDir);
     expect(out).toContain("Security");
     expect(out).toMatch(/Allow all|Default \+ allowlist|Allowlist only/);
-    expect(out).not.toContain("```");
+    expect(out).toContain("```text");
+    // exact hosts, never the wildcard form — Cursor's no-wildcard policy
+    expect(out).toContain("api.githubcopilot.com");
+    expect(out).toContain("registry.npmjs.org");
+    expect(out).not.toContain("*.githubcopilot.com");
   });
 
   it("declared domains → lists them apex-only (no *. expansion) with the wildcard caution", () => {
@@ -696,5 +717,159 @@ describe("writeNetworkAllowlistArtifact — .cursor/allowlist.json writer", () =
     const res = writeNetworkAllowlistArtifact(tmpDir, false);
     expect(res.domains).toContain("example.invalid");
     expect(res.domains).toContain("*.example.invalid");
+  });
+});
+
+describe("egress registry — completeness, invariants and the anti-widening gate", () => {
+  const providerRows = BKIT_EGRESS_SOURCES.filter((r) => r.kind === "opencode-provider");
+
+  // T1 — every registry key has exactly one row, and every row is well-formed.
+  it("T1: one opencode-provider row per provider key, ids unique, rows well-formed", () => {
+    const providerKeys = Object.keys(OPENCODE_PROVIDER_DEFAULTS).sort();
+    expect(providerRows.map((r) => r.id).sort()).toEqual(providerKeys);
+
+    const ids = BKIT_EGRESS_SOURCES.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    for (const row of BKIT_EGRESS_SOURCES) {
+      // non-empty bases OR an explicit reason for having none
+      expect(row.bases.length > 0 || typeof row.reason === "string").toBe(true);
+      // a row that grants bases must name the hosts those bases exist for
+      if (row.bases.length > 0) expect(row.hosts.length).toBeGreaterThan(0);
+    }
+  });
+
+  // T1 (continued) — the tracker/updater sweep, asserting WHAT was skipped, not just the count.
+  it("T1: every issue tracker but the 'none' sentinel has an mcp row, and 'none' was the only skip", () => {
+    const skipped: string[] = [];
+    for (const tracker of ISSUE_TRACKERS) {
+      if (tracker === "none") {
+        skipped.push(tracker);
+        continue;
+      }
+      expect(BKIT_EGRESS_SOURCES.find((r) => r.id === `mcp-${tracker}`)?.kind).toBe("tracker-mcp");
+    }
+    // dep updaters are a RECORDED absence: their egress happens on CI runners, not in a session
+    for (const updater of DEP_UPDATERS) {
+      if (updater === "none") {
+        skipped.push(updater);
+        continue;
+      }
+      expect(BKIT_EGRESS_SOURCES.some((r) => r.id.includes(updater))).toBe(false);
+    }
+    expect(skipped).toEqual(["none", "none"]);
+  });
+
+  // T2 — the literals in the leaf are tied back to the provider baseURL they claim to derive from.
+  it("T2: provider rows match their baseURL host, and every host is covered by a base", () => {
+    for (const row of providerRows) {
+      const baseURL = OPENCODE_PROVIDER_DEFAULTS[row.id].baseURL;
+      if (baseURL !== "") {
+        // the derived literal must still equal what the provider's baseURL resolves to
+        expect(row.hosts).toContain(new URL(baseURL).hostname);
+        expect(row.bases).toContain(proposeEgressBase(baseURL));
+      } else {
+        // a builtin contributes no baseURL, so its row must say why it still carries hosts
+        expect(typeof row.reason).toBe("string");
+      }
+    }
+    for (const row of BKIT_EGRESS_SOURCES) {
+      const uncovered = row.hosts.filter(
+        (h) => !row.bases.some((b) => h === b || h.endsWith(`.${b}`)),
+      );
+      if (uncovered.length > 0) expect(typeof row.reason).toBe("string");
+    }
+  });
+
+  // T3 — the gate. Deny checks only: an unknown platform apex passes rather than being blocked.
+  it("T3: no base collapses into a public suffix, a shared-tenant apex, or a single label", () => {
+    for (const base of BKIT_SHIPPED_NETWORK_DOMAINS) {
+      expect(base.split(".").length).toBeGreaterThanOrEqual(2);
+      expect(MULTI_LABEL_SUFFIXES).not.toContain(base);
+      expect(MULTI_TENANT_APEXES).not.toContain(base);
+    }
+  });
+
+  it("T3: the gate rejects a fixture row whose base is a shared-tenant apex", () => {
+    const widened = deriveEgressEntries([
+      {
+        id: "fixture",
+        kind: "tooling-api",
+        hosts: ["x.googleapis.com"],
+        bases: ["googleapis.com"],
+      },
+    ]);
+    // the same predicate T3 applies above, run against the fixture: this one must trip
+    expect(widened.bases.some((b) => MULTI_TENANT_APEXES.includes(b))).toBe(true);
+  });
+
+  it("T3: every shipped base on a .dev / .app / .run TLD is on the accepted-warn list", () => {
+    // Soft warn, never a failure: these TLDs are where a two-label collapse can grab a
+    // platform namespace (workers.dev, vercel.app, run.app), so each base on one is
+    // reviewed once and listed here. A NEW base on these TLDs fails until it is reviewed.
+    //
+    // The plan's Task 6 names models.dev as the only accepted warn. linear.app is the
+    // second: it is a legitimate company apex, it predates this change as one of the ten
+    // hand-typed bases, and dropping it would revoke a working grant — so the accept list
+    // carries both rather than the assertion carrying only the newly derived one.
+    const ACCEPTED_SOFT_WARN = ["linear.app", "models.dev"];
+    const softWarn = BKIT_SHIPPED_NETWORK_DOMAINS.filter((b) =>
+      [".dev", ".app", ".run"].some((tld) => b.endsWith(tld)),
+    );
+    expect(softWarn).toEqual(ACCEPTED_SOFT_WARN);
+  });
+
+  // T5 — derivation is pure: a fixture set flows through without mocking the module.
+  it("T5: deriveEgressEntries is pure over injected rows, sorted and deduped", () => {
+    const out = deriveEgressEntries([
+      { id: "a", kind: "tooling-api", hosts: ["b.example.com"], bases: ["example.com"] },
+      {
+        id: "b",
+        kind: "skills",
+        hosts: ["a.example.net", "b.example.com"],
+        bases: ["example.net"],
+      },
+    ]);
+    expect(out.hosts).toEqual(["a.example.net", "b.example.com"]);
+    expect(out.bases).toEqual(["example.com", "example.net"]);
+  });
+
+  it("T5: the shipped exports are a strict superset of the ten hand-typed bases", () => {
+    const previous = [
+      "anthropic.com",
+      "claude.com",
+      "cursor.com",
+      "github.com",
+      "githubusercontent.com",
+      "linear.app",
+      "npmjs.com",
+      "ollama.com",
+      "opencode.ai",
+      "openrouter.ai",
+    ];
+    for (const base of previous) expect(BKIT_SHIPPED_NETWORK_DOMAINS).toContain(base);
+    expect(BKIT_SHIPPED_NETWORK_DOMAINS).toEqual([...BKIT_SHIPPED_NETWORK_DOMAINS].sort());
+    expect(BKIT_SHIPPED_NETWORK_HOSTS).toContain("api.tavily.com");
+    expect(BKIT_SHIPPED_NETWORK_HOSTS).toContain("api.githubcopilot.com");
+  });
+
+  // T7 — the rejection CHANNEL, not merely the outcome: nothing throws, everything returns "".
+  it("T7: unallowlistable URLs contribute nothing and none of them throws", () => {
+    for (const url of [
+      "http://localhost:11434/v1",
+      "http://sub.localhost/v1",
+      "https://1.2.3.4:8080/v1",
+      "https://[::1]/v1",
+      "",
+      "not-a-url",
+    ]) {
+      expect(() => proposeEgressBase(url)).not.toThrow();
+      expect(proposeEgressBase(url)).toBe("");
+    }
+    expect(proposeEgressBase("https://openrouter.ai/api/v1")).toBe("openrouter.ai");
+    expect(proposeEgressBase("https://integrate.api.example.co/v1")).toBe("example.co");
+    expect(isIpLiteral("1.2.3.4")).toBe(true);
+    expect(isIpLiteral("[::1]")).toBe(true);
+    expect(isIpLiteral("openrouter.ai")).toBe(false);
   });
 });

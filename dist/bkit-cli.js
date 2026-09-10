@@ -6,7 +6,7 @@ export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
 /**
  * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
  * ONLY these — anything else is rejected (no generic/arbitrary-endpoint fallback).
- * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (bkit-modules.ts) and
+ * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (bkit-registry.ts) and
  * GATEWAY_COLUMN (bkit-install.ts § Models lookup).
  */
 export const OPENCODE_PROVIDERS = [

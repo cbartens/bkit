@@ -17,6 +17,8 @@ import * as path from "node:path";
 import type { IssueTracker } from "./bkit-manifest.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
+import { BKIT_EGRESS_SOURCES, type EgressSource } from "./bkit-registry.js";
+import { sha256 } from "./bkit-version.js";
 
 // Consumer-relative paths of the generated docs. Shared so the upgrade template walk
 // (bkit-install.ts) can exclude them — they are generated OUTPUT files, never
@@ -462,24 +464,68 @@ export function expandAllowedDomains(declared: string[]): string[] {
   return bases.flatMap((b) => [b, `*.${b}`]);
 }
 
+/** True for a bracketed IPv6 literal or a dotted-quad IPv4 literal. */
+export function isIpLiteral(host: string): boolean {
+  return host.startsWith("[") || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+}
+
 /**
- * Stack-agnostic tooling hosts only (tracker, package registry, AI provider docs,
- * IDE/host docs). **Never** ship observability / app stacks here (Vercel, Supabase,
- * Sentry, …) — those come solely from the consumer's `.agents/context.md`
+ * Propose the registrable base for a provider `baseURL`, or `""` when the URL
+ * contributes no allowlistable host. `URL.canParse` gates the parse, so this never
+ * throws and carries no `try` / `catch` — an unparseable value contributes nothing
+ * rather than being swallowed by an error handler.
+ *
+ * Contributes nothing for an empty host, `localhost` and its subdomains, an IP
+ * literal, and any host of fewer than two labels: none of those is reachable through
+ * a cloud egress allowlist. Everything else collapses to its last two labels.
+ *
+ * The collapse is deliberately the naive last-two-labels rule. Multi-label public
+ * suffixes and shared-tenant apexes are handled as a DENY at authoring time by the
+ * registry gate test, never by rewriting a base here — a rewriter would silently
+ * widen or narrow a grant, where a deny fails loudly and leaves the fix to a human.
+ */
+export function proposeEgressBase(baseURL: string): string {
+  if (!URL.canParse(baseURL)) return "";
+  const host = new URL(baseURL).hostname;
+  if (host === "" || isIpLiteral(host)) return "";
+  if (host === "localhost" || host.endsWith(".localhost")) return "";
+  const labels = host.split(".");
+  if (labels.length < 2) return "";
+  return labels.slice(-2).join(".");
+}
+
+/**
+ * Sorted-unique `hosts` and `bases` across a set of egress sources. Pure: takes the
+ * rows rather than reading {@link BKIT_EGRESS_SOURCES}, so a test can inject a fixture
+ * set without mocking the module.
+ */
+export function deriveEgressEntries(rows: readonly EgressSource[]): {
+  hosts: string[];
+  bases: string[];
+} {
+  return {
+    hosts: [...new Set(rows.flatMap((r) => r.hosts))].sort(),
+    bases: [...new Set(rows.flatMap((r) => r.bases))].sort(),
+  };
+}
+
+/**
+ * Stack-agnostic tooling bases, derived from {@link BKIT_EGRESS_SOURCES} rather than
+ * hand-typed — adding a provider, tracker or shipped tooling host updates this export
+ * by editing one registry row. **Never** ship observability / app stacks here (Vercel,
+ * Supabase, Sentry, …) — those come solely from the consumer's `.agents/context.md`
  * `allowed-domains` block (after `<!-- bkit:end -->`) via {@link resolveNetworkAllowlist}.
  */
-export const BKIT_SHIPPED_NETWORK_DOMAINS: readonly string[] = [
-  "github.com",
-  "githubusercontent.com",
-  "anthropic.com",
-  "claude.com",
-  "cursor.com",
-  "linear.app",
-  "opencode.ai",
-  "ollama.com",
-  "openrouter.ai",
-  "npmjs.com",
-];
+export const BKIT_SHIPPED_NETWORK_DOMAINS: readonly string[] =
+  deriveEgressEntries(BKIT_EGRESS_SOURCES).bases;
+
+/**
+ * The exact hostnames behind {@link BKIT_SHIPPED_NETWORK_DOMAINS}. Consumers of the
+ * base list allowlist a whole domain; this is the narrower set, for surfaces that
+ * match a literal host.
+ */
+export const BKIT_SHIPPED_NETWORK_HOSTS: readonly string[] =
+  deriveEgressEntries(BKIT_EGRESS_SOURCES).hosts;
 
 /**
  * Apex-only unique bases from an expanded (apex + `*.`) domain list.
@@ -535,23 +581,35 @@ export function writeNetworkAllowlistArtifact(
 }
 
 /**
+ * 8-hex fingerprint of the DERIVED egress set only — bases and hosts, sorted, never
+ * the consumer union. Hosts are included because the Cursor paste is hosts-only: a
+ * bases-only hash would leave that fingerprint byte-identical across a changed paste.
+ * Editing `allowed-domains` therefore never moves it; editing a registry row does.
+ */
+export function egressFingerprint(): string {
+  const derived = [
+    ...new Set([...BKIT_SHIPPED_NETWORK_DOMAINS, ...BKIT_SHIPPED_NETWORK_HOSTS]),
+  ].sort();
+  return sha256(derived.join("\n")).slice(0, 8);
+}
+
+/**
  * Render the `@@CLOUD_NETWORK_ALLOWLIST@@` region — the whole `## Network access`
- * body. With declared `allowed-domains`, emits the **Custom** + "also include defaults"
- * (extends, never replaces) instruction plus the expanded paste block. With none,
- * falls back to the **Trusted** default guidance and points at the declaration.
+ * body. Always emits a **Custom** paste block: the list is the derived shipped bases
+ * union whatever the consumer declared, so it is never empty and there is no
+ * zero-declaration branch. Declaring nothing narrows the list, it does not change the
+ * instruction.
  */
 export function renderCloudNetworkAllowlist(cwd: string): string {
   const declared = extractAllowedDomains(cwd);
-  if (declared.length === 0) {
-    return (
-      "Set to **Trusted** (default) — covers package registries, GitHub, and common\n" +
-      "cloud SDK hosts. Only raise to **Full** if a task must reach the open internet.\n\n" +
-      "_No `allowed-domains` block declared in `.agents/context.md`. If you run cloud\n" +
-      "`/bkit-debug` or e2e against a deployment, declare your log-backend + app\n" +
-      "domains there (apex per line) and this section will list them for a **Custom** allowlist._"
-    );
-  }
-  const domains = expandAllowedDomains(declared);
+  const domains = resolveNetworkAllowlist(cwd);
+  const derivedCount = BKIT_SHIPPED_NETWORK_DOMAINS.length;
+  const declaredNote =
+    declared.length === 0
+      ? "\n\n_No `allowed-domains` block is declared in `.agents/context.md`. The list above is\n" +
+        "bkit's own shipped hosts. If you run cloud `/bkit-debug` or e2e against a deployment,\n" +
+        "declare your log-backend + app domains there (apex per line) and they join this list._"
+      : "";
   return (
     "Set to **Custom** and tick **Also include default list of common package\n" +
     "managers** — this EXTENDS the trusted defaults (package registries, GitHub,\n" +
@@ -560,9 +618,13 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
     "```text\n" +
     domains.join("\n") +
     "\n```\n\n" +
-    `_${domains.length} entries — ${domains.length / 2} domain(s) from \`allowed-domains\` ` +
-    "in `.agents/context.md`, each as apex + `*.` wildcard._\n\n" +
-    "Under **Trusted**, your app domains and most observability / API hosts are\n" +
+    `_${domains.length} entries — ${derivedCount} derived from bkit's shipped egress registry ` +
+    `and ${declared.length} declared in \`allowed-domains\` in \`.agents/context.md\`, ` +
+    "each as apex + `*.` wildcard. Derived set fingerprint `" +
+    egressFingerprint() +
+    "`._" +
+    declaredNote +
+    "\n\nUnder **Trusted**, your app domains and most observability / API hosts are\n" +
     "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
     "deployment. **Full** works too but opens all egress."
   );
@@ -761,24 +823,22 @@ export function renderCursorContextFetchProvision(cwd: string): string {
  */
 export function renderCursorNetworkAllowlist(cwd: string): string {
   const declared = extractAllowedDomains(cwd);
-  if (declared.length === 0) {
-    return (
-      "Cloud Agents get network access by default. Egress is configurable in the Cloud\n" +
-      "Agents dashboard → **Security** (Allow all / Default + allowlist / Allowlist only),\n" +
-      "per user, per environment, or team-locked. No `allowed-domains` block is declared in\n" +
-      "`.agents/context.md`, so nothing extra is required here — if your org enforces\n" +
-      "**Allowlist only**, declare your app + log-backend hosts there (apex per line) and this\n" +
-      "section will list them."
-    );
-  }
+  // Exact hosts, never apex + `*.`: Cursor's own docs warn a broad wildcard opens
+  // egress far wider than intended, so the shipped set contributes its HOSTS here
+  // while the Claude side takes the wildcard-expanded bases.
+  const entries = [...new Set([...BKIT_SHIPPED_NETWORK_HOSTS, ...declared])].sort();
   return (
     "If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
-    "(dashboard → **Security**), add the domains your `.agents/context.md` declares so cloud\n" +
-    "`/bkit-debug` + e2e can reach your app and log backends:\n\n" +
+    "(dashboard → **Security**), add these hosts so cloud `/bkit-debug` + e2e can reach\n" +
+    "bkit's own tooling and your app and log backends:\n\n" +
     "```text\n" +
-    declared.join("\n") +
+    entries.join("\n") +
     "\n```\n\n" +
-    `_${declared.length} domain(s) from \`allowed-domains\` in \`.agents/context.md\`._ Add only the\n` +
+    `_${entries.length} host(s) — ${BKIT_SHIPPED_NETWORK_HOSTS.length} derived from bkit's shipped ` +
+    `egress registry and ${declared.length} declared in \`allowed-domains\` in ` +
+    "`.agents/context.md`. Derived set fingerprint `" +
+    egressFingerprint() +
+    "`._ Add only the\n" +
     "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
     "wildcard opens egress far wider than intended. (The Claude side auto-expands to apex + `*.`;\n" +
     "Cursor's allowlist is deliberately narrower.)"

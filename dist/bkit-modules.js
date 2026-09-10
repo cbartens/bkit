@@ -15,6 +15,7 @@ import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkit
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
+import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1208,52 +1209,6 @@ export function runCursorModule(ctx) {
 // keys after install. opencode.json is Tier-2 deep-contained (ownership-mixed) so bkit
 // reconverges its keys on upgrade without clobbering consumer additions (KN-17).
 // ---------------------------------------------------------------------------
-// Per-provider provider key name + base URL + env var suggestions.
-// These are sane defaults; consumers tune after install.
-// npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
-const OPENCODE_PROVIDER_DEFAULTS = {
-    // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
-    // provider (NOT the any-endpoint fallback #245 removed).
-    // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
-    // and makes opencode reject the whole config) and read keys via {env:VAR} — never
-    // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
-    openrouter: {
-        envVar: "OPENROUTER_API_KEY",
-        baseURL: "https://openrouter.ai/api/v1",
-        apiPlaceholder: "{env:OPENROUTER_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "OpenRouter",
-    },
-    // Cloud-hosted Ollama (ollama.com). Matches opencode's own naming where built-in
-    // `ollama` = the cloud service.
-    ollama: {
-        envVar: "OLLAMA_API_KEY",
-        baseURL: "https://ollama.com/v1",
-        apiPlaceholder: "{env:OLLAMA_API_KEY}",
-        npmPackage: "@ai-sdk/openai-compatible",
-        displayName: "Ollama",
-    },
-    // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
-    // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
-    // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
-    // `opencode` (agent pins opencode/<id>), Go's id is `opencode-go` (opencode-go/<id>).
-    "opencode-zen": {
-        envVar: "OPENCODE_API_KEY",
-        baseURL: "",
-        apiPlaceholder: "{env:OPENCODE_API_KEY}",
-        builtin: true,
-        providerId: "opencode",
-        displayName: "OpenCode Zen",
-    },
-    "opencode-go": {
-        envVar: "OPENCODE_API_KEY",
-        baseURL: "",
-        apiPlaceholder: "{env:OPENCODE_API_KEY}",
-        builtin: true,
-        providerId: "opencode-go",
-        displayName: "OpenCode Go",
-    },
-};
 /**
  * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
  * (opencode → opencode, openrouter → openrouter, etc.). Model ids are `<providerId>/<model>`. Unknown
@@ -1633,7 +1588,7 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
  * Used by the surgical uninstall path — this is NOT called during install (install is additive).
  * Compares on opencodeProviderId(providerKey) to resolve the opencode-side block key.
  * The caller is responsible for passing only bkit-seeded provider keys; this function does not
- * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
+ * validate providerKey against OPENCODE_PROVIDER_DEFAULTS (bkit-registry.ts).
  */
 export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
     if (!fs.existsSync(dst))
