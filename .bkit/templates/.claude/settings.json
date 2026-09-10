@@ -86,6 +86,15 @@
             "command": "test -f .claude/hooks/gateguard.cjs && node .claude/hooks/gateguard.cjs || true"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/guardrails.cjs && node .claude/hooks/guardrails.cjs || true"
+          }
+        ]
       }
     ]
   }

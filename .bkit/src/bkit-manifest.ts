@@ -334,6 +334,32 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   sure your driver still emits exactly once per invocation.
 `;
 
+/**
+ * Claude twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}. Separate text: the Claude
+ * engine returns `{ context }` and emits `hookSpecificOutput.additionalContext`, and
+ * it must NEVER be wired to a `permissionDecision` — that would turn an advisory into
+ * the blanket prompt this host deliberately removed.
+ */
+export const CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
+  that returns \`{ context }\` or \`null\` — it never touches stdin or stdout.
+  Wire it into your existing driver:
+    1. Parse the PreToolUse payload your driver already reads from stdin.
+    2. Call \`const result = bkitGuardrails(payload);\`
+    3. If \`result\`, emit ONE JSON document to stdout:
+       \`{ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: result.context } }\`
+    4. A \`null\` result means bkit has nothing to say — emit nothing.
+  Do NOT map the result to \`permissionDecision\`. This hook is advisory by design:
+  \`deny\` already lives in .claude/settings.json and is evaluated before any hook, and
+  an \`ask\` here would force a permission prompt on every matching shell command — the
+  exact stall this host is configured to avoid.
+  Claude Code discards the entire hook's output if two emitters both write to stdout, so
+  make sure your driver still emits exactly once per invocation.
+`;
+
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
   // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
@@ -352,6 +378,17 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
     format: "markered-text",
     module: "claude",
     noMarkerMigration: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+  },
+  // guardrails.cjs — Tier-2 markered-text, third twin of the Cursor/Codex hooks.
+  // PreToolUse matcher `Bash`. ADVISORY ONLY: it covers the two things a permission
+  // table cannot express (URL hosts, shell-as-edit-channel) and never denies or asks,
+  // because `deny` already runs before any hook and `ask` is the prompt this host is
+  // configured to avoid.
+  {
+    path: ".claude/hooks/guardrails.cjs",
+    format: "markered-text",
+    module: "claude",
+    noMarkerMigration: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
   },
   // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
   // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).

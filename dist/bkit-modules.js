@@ -12,7 +12,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAgent, parseFrontmatter, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
@@ -888,6 +888,25 @@ export function runClaudeModule(ctx) {
                 canonicalHashes: priorVersion?.canonicalHashes ?? {},
                 advisories,
                 wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+            });
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
+            }
+        }
+    }
+    // markered-text (slash-comment) — shell advisories (PreToolUse matcher `Bash`).
+    // Covers what the permission table cannot express: URL hosts and shell-as-edit-channel.
+    {
+        const src = path.join(claudeTemplates, "hooks", "guardrails.cjs");
+        const dst = ".claude/hooks/guardrails.cjs";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+            writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+                relPath: dst,
+                canonicalHashes: priorVersion?.canonicalHashes ?? {},
+                advisories,
+                wiringMessage: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
             });
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);

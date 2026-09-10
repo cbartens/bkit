@@ -63,6 +63,7 @@ import {
   BKIT_OPTIONAL_GATES,
   GATEGUARD_CJS_WIRING_INSTRUCTIONS,
   CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
+  CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
   GATEGUARD_JS_WIRING_INSTRUCTIONS,
   GUARDRAILS_WIRING_INSTRUCTIONS,
 } from "./bkit-manifest.js";
@@ -1115,6 +1116,26 @@ export function runClaudeModule(ctx: ModuleContext): void {
         canonicalHashes: priorVersion?.canonicalHashes ?? {},
         advisories,
         wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+      });
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}claude: ${dst}`);
+      }
+    }
+  }
+
+  // markered-text (slash-comment) — shell advisories (PreToolUse matcher `Bash`).
+  // Covers what the permission table cannot express: URL hosts and shell-as-edit-channel.
+  {
+    const src = path.join(claudeTemplates, "hooks", "guardrails.cjs");
+    const dst = ".claude/hooks/guardrails.cjs";
+    if (fs.existsSync(src)) {
+      const prevLen = ws.writes.length;
+      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+      writeTier2(src, dst, tokens, "slash-comment", dryRun, ws, {
+        relPath: dst,
+        canonicalHashes: priorVersion?.canonicalHashes ?? {},
+        advisories,
+        wiringMessage: CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS,
       });
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}claude: ${dst}`);

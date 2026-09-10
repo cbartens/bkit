@@ -109,14 +109,110 @@ function decideShell(cmd) {
   // otherwise. Claude leaves shell fetches ungated entirely (its rules match a command
   // prefix, not a URL host, so per-domain allows are inexpressible); this host can parse
   // the host, so it does.
-  if (/\bcurl\b/.test(c) || /\bwget\b/.test(c)) {
+  if (usesFetch(c)) {
     if (curlWgetHostAllowed(c)) return allow();
     return ask(
       `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${c}`,
     );
   }
 
+  // Shell-as-edit-channel: advisory on every host. See the Cursor twin for why this
+  // is never a block — the rule has sanctioned exceptions and bkit's own plan
+  // workflow relies on one.
+  const edits = shellEditTargets(c);
+  if (edits.length > 0) return ask(shellEditAdvisory(edits));
+
   return allow();
+}
+
+/** Wrappers that precede the real command; skipped when finding a segment's head. */
+const CMD_WRAPPERS = new Set(["sudo", "env", "time", "nohup", "nice", "command", "exec", "xargs"]);
+
+/** Split a command line into pipeline / list segments. */
+function shellSegments(cmd) {
+  return String(cmd)
+    .split(/\|\||&&|[|;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The program a segment actually runs: leading `VAR=val` assignments and wrappers
+ * skipped, path stripped (`/usr/bin/curl` -> `curl`).
+ *
+ * Matching a bare word anywhere in the command instead is why this exists: `grep -n
+ * 'curl' file` and `sed -n '/sed -i/p' notes.md` both contain the token without running
+ * anything, and a gate that fires on those is noise a consumer switches off.
+ */
+function segmentHead(seg) {
+  const words = seg.split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (
+    i < words.length &&
+    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || CMD_WRAPPERS.has(words[i]))
+  )
+    i++;
+  return (words[i] || "").replace(/^.*\//, "");
+}
+
+/** True when some segment actually INVOKES curl or wget. */
+function usesFetch(cmd) {
+  return shellSegments(cmd).some((s) => {
+    const h = segmentHead(s);
+    return h === "curl" || h === "wget";
+  });
+}
+
+/** Source-ish extensions: a redirect into one of these is plausibly a file edit. */
+const SOURCE_EXT_RE =
+  /\.(ts|tsx|js|jsx|cjs|mjs|json|md|sh|bash|py|rb|go|rs|java|css|scss|html|ya?ml|toml|sql)$/i;
+
+/**
+ * Detect a shell command being used as an edit channel. Returns a list of human
+ * descriptions, empty when the command edits nothing.
+ *
+ * Deliberately quiet on the shapes that dominate legitimate use — `> /dev/null`,
+ * `>> "$GITHUB_ENV"`, `mktemp` handoff files, log capture — because a gate that
+ * fires constantly is one that gets disabled. Only a redirect whose target both
+ * looks like a repo path AND carries a source extension is reported.
+ *
+ * Byte-identical to the Cursor twin; behavioural parity is asserted in
+ * bkit-permissions-parity.integration.test.ts.
+ */
+function shellEditTargets(cmd) {
+  const hits = [];
+  for (const seg of shellSegments(cmd)) {
+    const head = segmentHead(seg);
+    if ((head === "sed" || head === "perl") && /\s-i(?:\.\S*)?(?:\s|$)/.test(seg)) {
+      hits.push("in-place sed/perl (-i)");
+    }
+    if (head === "awk" && /\s-i\s+inplace\b/.test(seg)) hits.push("awk -i inplace");
+  }
+
+  const redir = /(?:^|[^>&\d])>>?\s*("([^"]+)"|'([^']+)'|([^\s;|&<>]+))/g;
+  let m;
+  while ((m = redir.exec(cmd)) !== null) {
+    const target = (m[2] || m[3] || m[4] || "").trim();
+    if (!target) continue;
+    // Scratch and env sinks — never a source edit.
+    if (target.startsWith("$") || target.startsWith("&")) continue;
+    if (/^\/(dev|tmp|var\/folders|var\/tmp)\//.test(target)) continue;
+    if (/\.(log|bak|tmp|out|err|orig)$/i.test(target)) continue;
+    if (!SOURCE_EXT_RE.test(target)) continue;
+    hits.push(`redirect into ${target}`);
+  }
+  return [...new Set(hits)];
+}
+
+/** One shared advisory string so the hosts cannot word this differently. */
+function shellEditAdvisory(hits) {
+  return (
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
+    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of " +
+    "them. Use the edit/write tool instead unless this is one of the sanctioned exceptions " +
+    "in .agents/rules.md (generating files from a script, or a bulk mechanical rewrite). " +
+    "Not blocked — proceed if it is."
+  );
 }
 
 /** Tooling-only fallback — keep in sync with BKIT_SHIPPED_NETWORK_DOMAINS (no stack hosts). */
