@@ -464,7 +464,13 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
  */
 export function updateCanonicalHashesAfterUpgrade(
   result: UpgradeResult,
-  options: { dryRun: boolean; cwd?: string; pinnedVersion?: string },
+  options: {
+    dryRun: boolean;
+    cwd?: string;
+    pinnedVersion?: string;
+    /** What enrich recorded this run. `null`/absent = not determined; keep the prior record. */
+    webFetchDerived?: readonly string[] | null;
+  },
 ): void {
   if (options.dryRun) return;
 
@@ -489,13 +495,24 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const pinnedVersion = options.pinnedVersion ?? bkitVersion.pinnedVersion;
 
-  // Nothing to persist: no files processed AND the pin is already current.
-  if (seedablePaths.size === 0 && pinnedVersion === bkitVersion.pinnedVersion) return;
+  const webFetchUnchanged =
+    options.webFetchDerived == null ||
+    JSON.stringify([...options.webFetchDerived]) === JSON.stringify(bkitVersion.webFetchDerived);
+
+  // Nothing to persist: no files processed AND the pin is current AND the record is unchanged.
+  if (
+    seedablePaths.size === 0 &&
+    pinnedVersion === bkitVersion.pinnedVersion &&
+    webFetchUnchanged
+  ) {
+    return;
+  }
 
   const updated: BkitVersion = {
     ...bkitVersion,
     pinnedVersion,
     canonicalHashes: newCanonicalHashes,
+    ...(options.webFetchDerived == null ? {} : { webFetchDerived: [...options.webFetchDerived] }),
   };
   writeBkitVersion(versionFile, updated);
 }

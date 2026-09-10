@@ -745,7 +745,9 @@ export function runCoreModule(ctx) {
         // canonical entries.
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
         const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
-        const needsWrite = versionChanged || hasNewEntries;
+        const webFetchDerived = ctx.webFetchRecorded ?? existingVersion?.webFetchDerived ?? [];
+        const derivedChanged = JSON.stringify(webFetchDerived) !== JSON.stringify(existingVersion?.webFetchDerived ?? []);
+        const needsWrite = versionChanged || hasNewEntries || derivedChanged;
         if (needsWrite) {
             console.log(`${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
             ws.writes.push({ path: versionFile, action: "write" });
@@ -755,6 +757,7 @@ export function runCoreModule(ctx) {
                     pinnedVersion: pkgVersion,
                     tier3Hashes,
                     canonicalHashes,
+                    webFetchDerived: [...webFetchDerived],
                 });
             }
         }
@@ -849,7 +852,7 @@ export function runClaudeModule(ctx) {
         }
         const prevLen = ws.writes.length;
         writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
-        enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws);
+        ctx.webFetchRecorded = enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws, advisories);
         // AFTER the contained merge: the merge is additive and would otherwise re-seat a
         // row this prune had just removed if the ordering were reversed.
         const prunedAsk = pruneRetiredClaudeAskRules(settingsDst, dryRun, ws);
@@ -1418,38 +1421,55 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
  * Called from install (`runClaudeModule`) and upgrade (mirror — upgrade does not
  * dispatch modules).
  *
- * ADDITIVE ONLY — this never prunes. A domain dropped from a consumer's
- * `allowed-domains` keeps its `WebFetch` grant, so `.agents/context.md` is the
- * source of truth for ADDITIONS but not for removals. Pruning safely would need
- * a record of what bkit itself wrote: nothing in `permissions.allow`
- * distinguishes a bkit-derived entry from one the consumer added by hand, and
- * removing the wrong one silently narrows their agent's reach. Tracked as
- * follow-up on #394 rather than guessed at here.
+ * Adds AND prunes, but only ever removes a grant bkit itself recorded writing. The
+ * record is `webFetchDerived` in `.bkit/version`: a grant in that list and no longer
+ * in the derived set is bkit's to remove; a grant the consumer added by hand was
+ * never recorded, so it is never touched. An absent or empty record means bkit claims
+ * authorship of nothing and prunes nothing — old consumers converge by addition only.
+ *
+ * Returns the set to record for next time, or `null` when nothing was determined and
+ * the caller must leave the prior record alone: no settings file, unparseable JSON,
+ * a non-array `allow`, or a dry run. `null` is a statement about PROVENANCE, never
+ * about the write set — the `ws.writes` push below still fires under `dryRun`, because
+ * it is the entire `bkit check` drift signal for `.claude/settings.json`.
  */
-export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws) {
+export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws, advisories) {
     if (!fs.existsSync(settingsDst))
-        return;
+        return null;
     let doc;
     try {
         doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
     }
     catch {
-        return;
+        return null;
     }
     const allow = doc.permissions?.allow;
     if (!Array.isArray(allow))
-        return;
-    const needed = resolveNetworkAllowlist(cwd).flatMap((d) => [`WebFetch(domain:${d})`]);
-    const missing = needed.filter((r) => !allow.includes(r));
-    if (missing.length === 0)
-        return;
-    if (!dryRun) {
-        doc.permissions.allow = [...allow, ...missing];
-        fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+        return null;
+    const needed = resolveNetworkAllowlist(cwd).map((d) => `WebFetch(domain:${d})`);
+    const recorded = readBkitVersion(path.join(cwd, ".bkit", "version"))?.webFetchDerived ?? [];
+    const add = needed.filter((r) => !allow.includes(r));
+    // Only what bkit recorded writing AND the derived set no longer wants.
+    const remove = recorded.filter((r) => !needed.includes(r) && allow.includes(r));
+    if (add.length > 0 || remove.length > 0) {
+        if (!dryRun) {
+            doc.permissions.allow = [...allow.filter((r) => !remove.includes(r)), ...add];
+            fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+        }
+        // Outside the dryRun guard on purpose — see the provenance note above.
+        if (!ws.writes.some((w) => w.path === settingsDst)) {
+            ws.writes.push({ path: settingsDst, action: "write" });
+        }
+        if (remove.length > 0 && advisories) {
+            advisories.push({
+                id: "webfetch-grants-pruned",
+                severity: "advisory",
+                detect: `bkit removed ${remove.length} WebFetch grant(s) it had previously added and no longer derives: ${remove.join(", ")}.`,
+                action: "Nothing to do — a grant bkit added for a host it no longer ships was withdrawn. To keep one, add it back to permissions.allow in .claude/settings.json by hand and bkit will leave it alone from then on.",
+            });
+        }
     }
-    if (!ws.writes.some((w) => w.path === settingsDst)) {
-        ws.writes.push({ path: settingsDst, action: "write" });
-    }
+    return dryRun ? null : needed;
 }
 /**
  * `ask` rules bkit once shipped and has since retired. Matched by exact string.

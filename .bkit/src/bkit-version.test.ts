@@ -441,3 +441,40 @@ describe("stampManagedVersion", () => {
     expect(out).toContain("---\n" + managedVersionMarker("4.0.0") + "\n\n**Role:** hi");
   });
 });
+
+describe("webFetchDerived provenance field (T16)", () => {
+  it("defaults to [] at the JSON return when the key is absent", () => {
+    const v = parseBkitVersion(
+      JSON.stringify({ pinnedVersion: "4.12.0", tier3Hashes: {}, canonicalHashes: {} }),
+    );
+    expect(v?.webFetchDerived).toEqual([]);
+  });
+
+  it("defaults to [] at the plain-text fallback return, a separate code path", () => {
+    // v0.6.x payload: a bare semver string, never JSON — exercises the other return
+    const v = parseBkitVersion("4.12.0");
+    expect(v?.pinnedVersion).toBe("4.12.0");
+    expect(v?.webFetchDerived).toEqual([]);
+  });
+
+  it("defaults to [] when the key is present but not an array", () => {
+    const v = parseBkitVersion(
+      JSON.stringify({ pinnedVersion: "4.12.0", webFetchDerived: "WebFetch(domain:x.example)" }),
+    );
+    expect(v?.webFetchDerived).toEqual([]);
+  });
+
+  it("round-trips a populated record unchanged through parse and serialize", () => {
+    const rows = ["WebFetch(domain:models.dev)", "WebFetch(domain:*.models.dev)"];
+    const parsed = parseBkitVersion(
+      JSON.stringify({
+        pinnedVersion: "4.12.0",
+        tier3Hashes: {},
+        canonicalHashes: {},
+        webFetchDerived: rows,
+      }),
+    );
+    expect(parsed?.webFetchDerived).toEqual(rows);
+    expect(parseBkitVersion(serializeBkitVersion(parsed!))?.webFetchDerived).toEqual(rows);
+  });
+});

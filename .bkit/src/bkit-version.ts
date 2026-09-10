@@ -61,6 +61,16 @@ export interface BkitVersion {
    * overwrites (safe).
    */
   canonicalHashes: Record<string, string>;
+  /**
+   * The `WebFetch(domain:…)` rows bkit itself derived and wrote into
+   * `.claude/settings.json` at install time — the provenance record that lets a later
+   * run prune a row it added without touching one the consumer added by hand.
+   *
+   * Absent means "unknown" → defaults to `[]`, i.e. bkit claims authorship of nothing
+   * and prunes nothing. That is the conservative direction: the cost is a stale row
+   * surviving, never a consumer's own row being deleted.
+   */
+  webFetchDerived: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -100,7 +110,11 @@ export function parseBkitVersion(content: string): BkitVersion | null {
         !Array.isArray(parsed.canonicalHashes)
           ? (parsed.canonicalHashes as Record<string, string>)
           : {};
-      return { pinnedVersion, tier3Hashes, canonicalHashes };
+      // Additive, same shape of guard as canonicalHashes — absent on old payloads → []
+      const webFetchDerived = Array.isArray(parsed.webFetchDerived)
+        ? (parsed.webFetchDerived as string[])
+        : [];
+      return { pinnedVersion, tier3Hashes, canonicalHashes, webFetchDerived };
     } catch {
       // Fall through to plain-text parse
     }
@@ -109,7 +123,7 @@ export function parseBkitVersion(content: string): BkitVersion | null {
   // Plain-text fallback (v0.6.x format: just a semver string)
   // KN-5 guard: reject NaN-producing inputs
   if (!trimmed) return null;
-  return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {} };
+  return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, webFetchDerived: [] };
 }
 
 /**

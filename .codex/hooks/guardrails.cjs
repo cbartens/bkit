@@ -215,19 +215,13 @@ function shellEditAdvisory(hits) {
   );
 }
 
-/** Tooling-only fallback — keep in sync with BKIT_SHIPPED_NETWORK_DOMAINS (no stack hosts). */
-const SHIPPED_NETWORK_BASES = [
-  "github.com",
-  "githubusercontent.com",
-  "anthropic.com",
-  "claude.com",
-  "cursor.com",
-  "linear.app",
-  "opencode.ai",
-  "ollama.com",
-  "openrouter.ai",
-  "npmjs.com",
-];
+/**
+ * Hosts come from `.cursor/allowlist.json`, the single install-written artifact
+ * carrying the resolved network allowlist (shipped egress registry union the
+ * consumer's `allowed-domains`). There is deliberately NO hardcoded fallback list:
+ * a second copy drifts from the registry silently, and the failure it produces — a
+ * host allowed in one IDE and not another — stays invisible until someone hits it.
+ */
 
 /**
  * Reads `.cursor/allowlist.json` — the single install-written artifact carrying the
@@ -236,7 +230,7 @@ const SHIPPED_NETWORK_BASES = [
  * installed) → shipped tooling bases only.
  */
 function loadNetworkAllowlistBases() {
-  const bases = new Set(SHIPPED_NETWORK_BASES);
+  const bases = new Set();
   try {
     const p = path.join(process.cwd(), ".cursor", "allowlist.json");
     if (fs.existsSync(p)) {
@@ -249,7 +243,7 @@ function loadNetworkAllowlistBases() {
     }
   } catch {
     /* shipped fallback only — a corrupt/absent allowlist must not crash the
-       session; SHIPPED_NETWORK_BASES above is the correct fallback */
+       session; an empty set means every host reads as unknown */
   }
   return bases;
 }

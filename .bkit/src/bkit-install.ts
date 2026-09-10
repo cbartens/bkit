@@ -2692,6 +2692,9 @@ async function main() {
     // never force-creates it for a non-claude repo; non-dry-run so `bkit check` never
     // writes resolved secrets. Rotated secrets / version bumps reach the paste doc via
     // the same helper install uses (runClaudeModule). Untracked → not in canonicalHashes.
+    // What enrich recorded this upgrade, threaded into the one .bkit/version writer.
+    // null = not determined (dry run / no settings file) -> keep the prior record.
+    let upgradeWebFetchDerived: readonly string[] | null = null;
     if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
       if (writeClaudeCloudDoc(process.cwd(), tokens)) {
         console.log(
@@ -2728,7 +2731,12 @@ async function main() {
         fs.existsSync(path.join(cwd, ".claude", "settings.json"))
       ) {
         const enrichWs: WriteSet = { writes: [] };
-        enrichClaudeSettingsWebFetch(".claude/settings.json", cwd, upgradeFlags.dryRun, enrichWs);
+        upgradeWebFetchDerived = enrichClaudeSettingsWebFetch(
+          ".claude/settings.json",
+          cwd,
+          upgradeFlags.dryRun,
+          enrichWs,
+        );
         for (const w of enrichWs.writes) {
           console.log(
             `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`,
@@ -2786,6 +2794,7 @@ async function main() {
           dryRun: false,
           cwd: process.cwd(),
           pinnedVersion: pkgVersion,
+          webFetchDerived: upgradeWebFetchDerived,
         },
       );
     }

@@ -326,13 +326,19 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
         newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
     }
     const pinnedVersion = options.pinnedVersion ?? bkitVersion.pinnedVersion;
-    // Nothing to persist: no files processed AND the pin is already current.
-    if (seedablePaths.size === 0 && pinnedVersion === bkitVersion.pinnedVersion)
+    const webFetchUnchanged = options.webFetchDerived == null ||
+        JSON.stringify([...options.webFetchDerived]) === JSON.stringify(bkitVersion.webFetchDerived);
+    // Nothing to persist: no files processed AND the pin is current AND the record is unchanged.
+    if (seedablePaths.size === 0 &&
+        pinnedVersion === bkitVersion.pinnedVersion &&
+        webFetchUnchanged) {
         return;
+    }
     const updated = {
         ...bkitVersion,
         pinnedVersion,
         canonicalHashes: newCanonicalHashes,
+        ...(options.webFetchDerived == null ? {} : { webFetchDerived: [...options.webFetchDerived] }),
     };
     writeBkitVersion(versionFile, updated);
 }

@@ -181,7 +181,7 @@
     },
     {
       "files": [".bkit/templates/.cursor/hooks/guardrails.cjs", ".cursor/hooks/guardrails.cjs"],
-      "_reason": "loadNetworkAllowlistBases() runs inside Cursor's editor-session hook (PreToolUse), where fail-OPEN is the contract: a corrupt or hand-edited .cursor/allowlist.json must NOT crash the session, and the shipped fallback is correct behaviour, not a swallowed bug. slop-scan's acceptable shape (log + rethrow) would break the editor; the empty catch is the implementation of the fail-open contract. Scoped to this one hook file (template + mirror).",
+      "_reason": "loadNetworkAllowlistBases() runs inside Cursor's editor-session hook (PreToolUse), where fail-OPEN is the contract: a corrupt or hand-edited .cursor/allowlist.json must NOT crash the session, and returning the hosts resolved so far is correct behaviour, not a swallowed bug. There is no hardcoded fallback list any more — the artifact is the only source, so an unreadable one yields an empty set and every host reads as unknown. slop-scan's acceptable shape (log + rethrow) would break the editor; the empty catch is the implementation of the fail-open contract. Scoped to this one hook file (template + mirror).",
       "rules": {
         "defensive.empty-catch": {
           "enabled": false
