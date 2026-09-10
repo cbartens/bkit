@@ -148,7 +148,7 @@ Per `design-brainstorm-ideate-1.md` Decisions row 6.
 | 3 | `config` | compatibility | Build/runtime/deploy config vs actual code shape; manifest divergence; env assumptions in shared modules. Carries BAR-197 `next.config.*` catch-all probe. |
 | 4 | `reliability` | reliability | Silent swallows; broad catches; unhandled rejections; unclosed handles; unbounded queues/caches; races; missing transactional boundaries. (Merged: brief Lens 4 + Lens 6.) |
 | 5 | `observability` | operability | Failure surfaces with no logs/metrics; missing context tags; PII in logs; absent tracing on critical paths. |
-| 6 | `debt` | maintainability | `TODO | FIXME | HACK | XXX | workaround | band-aid | recovery` + ticket-ID grep; markers vs closed tickets; workarounds without exit conditions. |
+| 6 | `debt` | maintainability | `TODO \| FIXME \| HACK \| XXX \| workaround \| band-aid \| recovery` + ticket-ID grep; markers vs closed tickets; workarounds without exit conditions. |
 | 7 | `dead-code` | maintainability | Unreferenced exports; orphan files; dupe utilities; single-caller wrappers; speculative generality. |
 | 8 | `deps` | compatibility | `pnpm outdated/audit`; workspace cross-version drift; ESM/CJS interop traps; unmaintained packages; types out of sync. |
 | 9 | `security` | security | Auth holes; input validation; secrets handling; API exposure; data leakage; dep CVE surface; shell injection (`execSync.*${`). |
@@ -608,7 +608,7 @@ NONE in v1. Standalone `bkit-utility-audit-*` deletion deferred to follow-up iss
 | All-Opus lens-subagents (no Sonnet diversity in v1) | Mix Opus/Sonnet across 11 lenses (parallel to `bkit-design-brainstorm-ideate-2`) | Brief decision §4; revisit if cost binds. Lens-1's note to flag this for the synthesiser is layered onto Risks below. |
 | Lens output cap = 30 findings (top by severity) per lens | No cap; cap by class | Prevents synthesizer truncation at scale (11 × 30 = 330 ceiling). Per `design-brainstorm-ideate-3.md` Risk-mitigation row 2. |
 | No cross-workflow hooks in v1; `bkit-design-review-*` MAY cite lens-charter for deps/hotpath (non-coupling reference, not invocation) | Wire `bkit-debug-summary` audit-queue; wire `bkit-build-install-skills` audit-INDEX gate | Brief Open Q 1 resolved; surprises and side-effects compound risk in v1. Per `design-brainstorm-ideate-3.md` Decisions row 7. |
-| Portability gate: synthesizer greps lens-output text for `Next\.js | Vercel | pnpm | esbuild` stack-pinning words; CONCERNS + `## Portability Drift` if found | No mechanical enforcement (today's state) | Brief portability decision §6 lacks teeth; mechanical gate enforces. Per `design-brainstorm-ideate-3.md` Risk-mitigation row 6. |
+| Portability gate: synthesizer greps lens-output text for `Next\.js \| Vercel \| pnpm \| esbuild` stack-pinning words; CONCERNS + `## Portability Drift` if found | No mechanical enforcement (today's state) | Brief portability decision §6 lacks teeth; mechanical gate enforces. Per `design-brainstorm-ideate-3.md` Risk-mitigation row 6. |
 | `.agents/skills.md` NOT modified in v1 | Add workflow row to skills.md | User memory `project_skills_md_manual.md` — manual curation only; no skill registration needed. Brief's "registers the workflow" refers to `.agents/workflows.md` registry, not skills.md. |
 
 ## Approaches Considered

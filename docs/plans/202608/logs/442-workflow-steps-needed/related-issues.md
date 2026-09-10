@@ -14,15 +14,16 @@ This is the re-cut of the engine spec that previously lived in #80&#39;s body. #
 
 ## Sub-plans
 
-| Sub-plan | Deliverable                                                                                                                                                                                                                         | Design-doc origin                                                                                               | Requires          |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------------- |
-| **A1**   | Conditional-lens keystone — `## Applicability` block, `requires:` frontmatter contract, three-state `## Missing Lenses` (`ran` / `N/A — not applicable` / `crashed`), operator escapes (`[lenses=…]`, `[applicability-override=…]`) | WS-8 (#208, deleted)                                                                                            | —                 |
-| **A2**   | `bkit-audit-stack-detect` — `audit-stack.md` v2 schema + applicability flags + inverse-evidence guard                                                                                                                               | WS-1 (#187, deleted)                                                                                            | A1                |
-| **A3**   | `bkit-audit-install-skills` — skill install/uninstall reusing build/ship machinery, provenance log                                                                                                                                  | WS-2 (#188, deleted)                                                                                            | A2                |
-| **A4**   | `bkit-audit-synthesise` — dedup, coverage manifest, parse errors, **plus the dedup→correlate upgrade** (compose contract + reliability + tests findings into one &#34;silent-corruption candidate&#34;)                             | WS-4 (#190, deleted) + [2026-07-06 comment](https://github.com/cbartens/bkit/issues/80#issuecomment-5006018836) | A1                |
-| **A5**   | `bkit-audit-organise` + `bkit-audit-summary` — severity×class matrix, ranked list, workstream DAG, reference-signal down-rank grep-assert                                                                                           | WS-5 (#191, deleted)                                                                                            | A4                |
-| **A6**   | `bkit-audit.md` orchestrator — 10-step workflow, FID/lock/`status.jsonl`/gates/tracker comments/Failure Path, lens fan-out slots                                                                                                    | WS-6 (#192, deleted)                                                                                            | A1–A5, #403, #405 |
-| **A7**   | Registry &amp; metadata — `.bkit/prompts.md` (Models + Audit Phase + tool-set rows), `.bkit/workflows.md`, `.bkit/docs.md` Workflow Matrix, legacy `bkit-utility-audit-*` deprecation headers                                       | WS-7 (#193, deleted)                                                                                            | A1–A6             |
+<!-- prettier-ignore -->
+| Sub-plan | Deliverable | Design-doc origin | Requires |
+| --- | --- | --- | --- |
+| **A1** | Conditional-lens keystone — `## Applicability` block, `requires:` frontmatter contract, three-state `## Missing Lenses` (`ran` / `N/A — not applicable` / `crashed`), operator escapes (`[lenses=…]`, `[applicability-override=…]`) | WS-8 (#208, deleted) | — |
+| **A2** | `bkit-audit-stack-detect` — `audit-stack.md` v2 schema + applicability flags + inverse-evidence guard | WS-1 (#187, deleted) | A1 |
+| **A3** | `bkit-audit-install-skills` — skill install/uninstall reusing build/ship machinery, provenance log | WS-2 (#188, deleted) | A2 |
+| **A4** | `bkit-audit-synthesise` — dedup, coverage manifest, parse errors, **plus the dedup→correlate upgrade** (compose contract + reliability + tests findings into one &#34;silent-corruption candidate&#34;) | WS-4 (#190, deleted) + [2026-07-06 comment](https://github.com/cbartens/bkit/issues/80#issuecomment-5006018836) | A1 |
+| **A5** | `bkit-audit-organise` + `bkit-audit-summary` — severity×class matrix, ranked list, workstream DAG, reference-signal down-rank grep-assert | WS-5 (#191, deleted) | A4 |
+| **A6** | `bkit-audit.md` orchestrator — 10-step workflow, FID/lock/`status.jsonl`/gates/tracker comments/Failure Path, lens fan-out slots | WS-6 (#192, deleted) | A1–A5, #403, #405 |
+| **A7** | Registry &amp; metadata — `.bkit/prompts.md` (Models + Audit Phase + tool-set rows), `.bkit/workflows.md`, `.bkit/docs.md` Workflow Matrix, legacy `bkit-utility-audit-*` deprecation headers | WS-7 (#193, deleted) | A1–A6 |
 
 **The design doc&#39;s WS-3 (16 lens prompts) is deliberately NOT here** — it has been extracted into WS-B (#403) and WS-C (#405). Rationale in the [reorg record on #80](https://github.com/cbartens/bkit/issues/80#issuecomment-5113784208): a single &#34;16 lens prompts&#34; workstream is exactly the lump that could not absorb ten post-design charter amendments, which is why they accumulated as comments for two months instead of landing.
 
@@ -444,16 +445,17 @@ Step 9 was **skipped by design** — it gates on a `MILESTONE` label, and #402 c
 
 **design close** · cbartens/bkit
 
-| metric          | this run                       | med·5 |
-| --------------- | ------------------------------ | ----- |
-| durationSeconds | 40504 (11h15m)                 | —     |
-| linesChanged    | 697 (+499/-198)                | —     |
-| filesChanged    | 19                             | —     |
-| frictionAdded   | 0                              | —     |
-| deferralsAdded  | 3                              | —     |
-| failuresAdded   | 0                              | —     |
-| compliance      | 2 pass · 0 fail · 0 n/a (100%) | —     |
-| attempts        | DESIGN_ATTEMPT 1               | —     |
+<!-- prettier-ignore -->
+| metric | this run | med·5 |
+| --- | --- | --- |
+| durationSeconds | 40504 (11h15m) | — |
+| linesChanged | 697 (+499/-198) | — |
+| filesChanged | 19 | — |
+| frictionAdded | 0 | — |
+| deferralsAdded | 3 | — |
+| failuresAdded | 0 | — |
+| compliance | 2 pass · 0 fail · 0 n/a (100%) | — |
+| attempts | DESIGN_ATTEMPT 1 | — |
 
 `med·5` = median of the previous 5 design runs (— if &lt; 3) · ledger 43 rows, 0 malformed
 
@@ -480,15 +482,16 @@ Two record-keeping items this pass surfaced but did not have standing to fix:
 
 **Mechanism only, zero probe content.** WS-A authors no lens prompt and no probe clause; it authors the contracts every lens is written against, the five pipeline agents, the orchestrator and the registry/parity surface. Decomposed into seven sub-plans (full deliverable text: § WS-A (#402) — audit engine. Sub-plans A1–A7):
 
-| Sub-plan | Owns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Requires (internal)   |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| **A1**   | Conditional-lens keystone — the contract declaration. `## Applicability` block shape; `requires:` + `signals:` frontmatter keys; launch-and-self-no-op; sanity-probe-before-emit **extended to universal lenses** via `Reviewed: {N} files` + `always=true but no surface evidence`; the § Reason-string contract (five shapes, substituted placeholders, ` (operator override)` modifier); three-state `## Missing Lenses` row format; operator escapes `[lenses=…]`, `[applicability-override=flag=bool]`, `--with-websearch`; the finding-schema addendum (`subject:`, `signal:`, `evidence:`, `guard-ref:`) incl. the positive `confidence: medium` clause; the shared lens skeleton (25-cap, 5-slot reserve, `## Truncated` + per-eviction records, base tool set with two additive exceptions). | —                     |
-| **A2**   | `bkit-audit-stack-detect` — `audit-stack.md` schemaVersion 2, the five-flag inventory incl. the new `hasDerivedStore` heuristics and its inverse-evidence guard, the greppable `## Applicability Overrides` form, `## Applicability Disagreement`, `confidence: low → CONCERNS`. Plus its § Models row.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | A1                    |
-| **A3**   | `bkit-audit-install-skills` — skill machinery reuse incl. uninstall/prune, 10-skill cap, `[skills=false]`, non-gating, **plus the reusable prune entry point the Failure Path calls**. Plus its § Models row.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | A2                    |
-| **A4**   | `bkit-audit-synthesise` — parse, reference-signal post-process, dedup, **the correlation pass**, and the five manifest sections. Tool set `Read, Grep, Glob, Write, Edit, Bash` (**stated, not inherited**). Subject normalisation + alias resolution; the rule table; leg-state resolution incl. the two-tier truncation → `unobserved` rule; composed-finding authoring; `## Run Scope`; `## Correlation Coverage`. Plus its § Models row.                                                                                                                                                                                                                                                                                                                                                          | A1                    |
-| **A5**   | `bkit-audit-organise` + `bkit-audit-summary` — matrix/ranked list/appendix/DAG, **verbatim carry-through of the three scope-coverage sections above the matrix with a self-verify that refuses a verdict when any is missing or short-count**, the down-rank fence and its grep-assert, the 500-token summary + mandatory coverage digest. Plus both § Models rows.                                                                                                                                                                                                                                                                                                                                                                                                                                   | A4                    |
-| **A6**   | `.bkit/workflows/bkit-audit.md` — the 10-step orchestrator. Feat-located `status.jsonl` with **all seven live event types incl. the Close-gating `transport-fallback`**; Failure Path incl. the best-effort `audit-*` skill prune; Step-5 pre-launch cleanup + excluded-slot stubs + 18-slot fan-out; **Step-6 canonical enums inline** (18 slugs, signal tokens, rule ids) and their grep-asserts; the Step-7 manifest-propagation gate; `{WORKTREE_PATH}` on all 23 `Context:` lines (`REPO_ROOT` keeps the `--git-common-dir` idiom); close reorder + `mkdir -p docs/audits` + the Step-10 post-copy assert on the **published** file.                                                                                                                                                             | A1–A5, **#403, #405** |
-| **A7**   | Registry, metadata, gates, legacy deprecation — `.bkit/prompts.md` § Audit Phase / § Tool set patterns (four sub-rows) / § Frontmatter Conventions; **wholesale replacement** of `.bkit/workflows.md` § `/bkit-audit` plus the **additive** `audit` branch-placement row; `.agents/docs.md` Audit column + template + `.bkit/version` `canonicalHashes` regen; **the eight parity assertions, extending `.bkit/src/bkit-catalog-parity.test.ts` (not a new file)**; `bkit-utility-audit-*` deprecation headers; ledger appends.                                                                                                                                                                                                                                                                       | A1–A6                 |
+<!-- prettier-ignore -->
+| Sub-plan | Owns | Requires (internal) |
+| --- | --- | --- |
+| **A1** | Conditional-lens keystone — the contract declaration. `## Applicability` block shape; `requires:` + `signals:` frontmatter keys; launch-and-self-no-op; sanity-probe-before-emit **extended to universal lenses** via `Reviewed: {N} files` + `always=true but no surface evidence`; the § Reason-string contract (five shapes, substituted placeholders, ` (operator override)` modifier); three-state `## Missing Lenses` row format; operator escapes `[lenses=…]`, `[applicability-override=flag=bool]`, `--with-websearch`; the finding-schema addendum (`subject:`, `signal:`, `evidence:`, `guard-ref:`) incl. the positive `confidence: medium` clause; the shared lens skeleton (25-cap, 5-slot reserve, `## Truncated` + per-eviction records, base tool set with two additive exceptions). | — |
+| **A2** | `bkit-audit-stack-detect` — `audit-stack.md` schemaVersion 2, the five-flag inventory incl. the new `hasDerivedStore` heuristics and its inverse-evidence guard, the greppable `## Applicability Overrides` form, `## Applicability Disagreement`, `confidence: low → CONCERNS`. Plus its § Models row. | A1 |
+| **A3** | `bkit-audit-install-skills` — skill machinery reuse incl. uninstall/prune, 10-skill cap, `[skills=false]`, non-gating, **plus the reusable prune entry point the Failure Path calls**. Plus its § Models row. | A2 |
+| **A4** | `bkit-audit-synthesise` — parse, reference-signal post-process, dedup, **the correlation pass**, and the five manifest sections. Tool set `Read, Grep, Glob, Write, Edit, Bash` (**stated, not inherited**). Subject normalisation + alias resolution; the rule table; leg-state resolution incl. the two-tier truncation → `unobserved` rule; composed-finding authoring; `## Run Scope`; `## Correlation Coverage`. Plus its § Models row. | A1 |
+| **A5** | `bkit-audit-organise` + `bkit-audit-summary` — matrix/ranked list/appendix/DAG, **verbatim carry-through of the three scope-coverage sections above the matrix with a self-verify that refuses a verdict when any is missing or short-count**, the down-rank fence and its grep-assert, the 500-token summary + mandatory coverage digest. Plus both § Models rows. | A4 |
+| **A6** | `.bkit/workflows/bkit-audit.md` — the 10-step orchestrator. Feat-located `status.jsonl` with **all seven live event types incl. the Close-gating `transport-fallback`**; Failure Path incl. the best-effort `audit-*` skill prune; Step-5 pre-launch cleanup + excluded-slot stubs + 18-slot fan-out; **Step-6 canonical enums inline** (18 slugs, signal tokens, rule ids) and their grep-asserts; the Step-7 manifest-propagation gate; `{WORKTREE_PATH}` on all 23 `Context:` lines (`REPO_ROOT` keeps the `--git-common-dir` idiom); close reorder + `mkdir -p docs/audits` + the Step-10 post-copy assert on the **published** file. | A1–A5, **#403, #405** |
+| **A7** | Registry, metadata, gates, legacy deprecation — `.bkit/prompts.md` § Audit Phase / § Tool set patterns (four sub-rows) / § Frontmatter Conventions; **wholesale replacement** of `.bkit/workflows.md` § `/bkit-audit` plus the **additive** `audit` branch-placement row; `.agents/docs.md` Audit column + template + `.bkit/version` `canonicalHashes` regen; **the eight parity assertions, extending `.bkit/src/bkit-catalog-parity.test.ts` (not a new file)**; `bkit-utility-audit-*` deprecation headers; ledger appends. | A1–A6 |
 
 **Obligations WS-A owes the peers (X1):** A1 and A2 are the _only_ things #403 and #405 block on. Their output must be complete and stable enough that a lens author never has to guess a field name, a reason string or a flag name — the reason-string contract is pinned to the **substituted** rendering, and the flag inventory is the closed set every `requires:` value must come from.
 
@@ -522,13 +525,14 @@ Pass 2 deferred **six** named lens candidates with rationale. Pass 3 resolved so
 
 Added § _Task 3 (cont.) — lens candidates considered and deliberately NOT in the 18_ to the design, with the disposition of all six:
 
-| Pass-2 candidate | Disposition                                                                                                                                |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| a11y, i18n       | **absorbed** into `ui-ux` (C1)                                                                                                             |
-| migrations       | **absorbed** as a `contract-conformance` (C2) secondary probe                                                                              |
-| caching          | **PARTIAL** — `derived-data` (C3) covers consistency; TTL, invalidation, stampede and key-cardinality are **not covered by any of the 18** |
-| api-contracts    | **still deferred — no coverage anywhere**                                                                                                  |
-| rate-limiting    | **still deferred — no coverage anywhere**                                                                                                  |
+<!-- prettier-ignore -->
+| Pass-2 candidate | Disposition |
+| --- | --- |
+| a11y, i18n | **absorbed** into `ui-ux` (C1) |
+| migrations | **absorbed** as a `contract-conformance` (C2) secondary probe |
+| caching | **PARTIAL** — `derived-data` (C3) covers consistency; TTL, invalidation, stampede and key-cardinality are **not covered by any of the 18** |
+| api-contracts | **still deferred — no coverage anywhere** |
+| rate-limiting | **still deferred — no coverage anywhere** |
 
 Three `docs/deferrals.jsonl` rows so the `debt` lens (B6) surfaces them on any audit of this repo — the intended feedback path: `402-api-contract-lens-still-deferred`, `402-rate-limiting-lens-still-deferred`, `402-caching-correctness-half-uncovered`. Each carries the rationale and a &#34;do not add a lens without reading this first&#34; note, because two of them have now been deferred twice on the same signal-to-noise argument.
 
@@ -536,13 +540,14 @@ Also recorded: **one known future delta to the WS-B count.** The reorg record le
 
 ### Duplicate-closure re-check — all five covered
 
-| Closed                        | Content now lives in                                              | Verified                                                                                                |
-| ----------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| #404 `logic-dupe`             | **#403** § B13                                                    | full charter present                                                                                    |
-| #406 log-scan → `debug-fetch` | **#83** sub-plan E1                                               | absorption stated in body                                                                               |
-| #206 seeded-render UX         | **#83** sub-plan E3                                               | absorption stated in body                                                                               |
-| #331 silent-corruption        | **#324** sub-plan G2 (gate half) + **#402/#403/#405** (lens half) | G2 carries an explicit split note; every named lens piece is in the Pass-4 inventory                    |
-| #401 model-tier-scoped audit  | **#324** sub-plan G3                                              | scope, the &#34;trigger problem, not a lens problem&#34; reframe, and all four open questions preserved |
+<!-- prettier-ignore -->
+| Closed | Content now lives in | Verified |
+| --- | --- | --- |
+| #404 `logic-dupe` | **#403** § B13 | full charter present |
+| #406 log-scan → `debug-fetch` | **#83** sub-plan E1 | absorption stated in body |
+| #206 seeded-render UX | **#83** sub-plan E3 | absorption stated in body |
+| #331 silent-corruption | **#324** sub-plan G2 (gate half) + **#402/#403/#405** (lens half) | G2 carries an explicit split note; every named lens piece is in the Pass-4 inventory |
+| #401 model-tier-scoped audit | **#324** sub-plan G3 | scope, the &#34;trigger problem, not a lens problem&#34; reframe, and all four open questions preserved |
 
 Exactly five duplicate-closures exist in the milestone — no strays.
 
@@ -643,13 +648,14 @@ The web-product conditional family (SEO/AIO/IA, analytics, web-perf, DX) is larg
 
 ## Deliverable — 5 conditional lens prompts
 
-| Slug                   | Gate                            | Status                                   | Charter                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------- | ------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ui-ux`                | `hasWebSurface`                 | designed (Pass 3)                        | Responsive mechanisms (breakpoints vs fixed `px` / hardcoded heights / absolute positioning), units &amp; typography floors (`px` vs `rem`, sub-12px, tap targets), accessibility (missing `alt`, clickable non-interactive elements, unlabelled inputs, heading-order skips, focus states, `lang`), WCAG contrast **computed from design tokens**, design-system adherence (hardcoded colours/spacing off the scale), i18n (hardcoded strings, fixed widths vs longer translations), layout shift (images without dimensions). **Absorbs the a11y/i18n surface** v1 had listed out-of-scope. |
-| `contract-conformance` | `hasDb`                         | **sharpened — was `data-layer`**         | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `derived-data`         | `hasCache` / derived-store flag | **NEW — not in any design pass**         | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `ai-llm`               | `hasLLM`                        | designed, **needs framework enrichment** | See below                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `reference-signal`     | `--with-websearch` opt-in       | designed (Pass 3)                        | Stack → popular reference repos → divergence from shared conventions as a **soft, lower-confidence external signal**. Emits `source: reference-repo`; WS-A enforces strict down-rank (never matrix top row, never ranked-list top 3, never exec summary). Capture repo names + commit/tag + query in `## Reference Repos Used` — reproducibility is &#34;explainable&#34;, not &#34;identical&#34;. Bound to top 3, structure/config/README only. The only network lens.                                                                                                                      |
+<!-- prettier-ignore -->
+| Slug | Gate | Status | Charter |
+| --- | --- | --- | --- |
+| `ui-ux` | `hasWebSurface` | designed (Pass 3) | Responsive mechanisms (breakpoints vs fixed `px` / hardcoded heights / absolute positioning), units &amp; typography floors (`px` vs `rem`, sub-12px, tap targets), accessibility (missing `alt`, clickable non-interactive elements, unlabelled inputs, heading-order skips, focus states, `lang`), WCAG contrast **computed from design tokens**, design-system adherence (hardcoded colours/spacing off the scale), i18n (hardcoded strings, fixed widths vs longer translations), layout shift (images without dimensions). **Absorbs the a11y/i18n surface** v1 had listed out-of-scope. |
+| `contract-conformance` | `hasDb` | **sharpened — was `data-layer`** | See below |
+| `derived-data` | `hasCache` / derived-store flag | **NEW — not in any design pass** | See below |
+| `ai-llm` | `hasLLM` | designed, **needs framework enrichment** | See below |
+| `reference-signal` | `--with-websearch` opt-in | designed (Pass 3) | Stack → popular reference repos → divergence from shared conventions as a **soft, lower-confidence external signal**. Emits `source: reference-repo`; WS-A enforces strict down-rank (never matrix top row, never ranked-list top 3, never exec summary). Capture repo names + commit/tag + query in `## Reference Repos Used` — reproducibility is &#34;explainable&#34;, not &#34;identical&#34;. Bound to top 3, structure/config/README only. The only network lens. |
 
 ## `contract-conformance` — the sharpened data-layer lens
 
@@ -808,13 +814,14 @@ Build order relative to siblings: A1–A5 (engine contracts) → #403 and #405 i
 
 5 × `.bkit/prompts/bkit-audit-lens-{slug}.md` with correct `requires:` flags, wired into the Step-5 fan-out, same skeleton / model / effort / cap as WS-B. Slugs, gates and charters are rows **C1–C5** of § Task 3 — Lens inventory: the table of record:
 
-| Sub-row | Slug                   | `requires:`       | Status                                                                 |
-| ------- | ---------------------- | ----------------- | ---------------------------------------------------------------------- |
-| C1      | `ui-ux`                | `hasWebSurface`   | unchanged                                                              |
-| C2      | `contract-conformance` | `hasDb`           | **renamed + rewritten** (was `data-layer`)                             |
-| C3      | `derived-data`         | `hasDerivedStore` | **new**                                                                |
-| C4      | `ai-llm`               | `hasLLM`          | **amended** — the eighth amended lens, WS-C's                          |
-| C5      | `reference-signal`     | `hasNetwork`      | unchanged (the only network lens; `+WebSearch` is additive to `Write`) |
+<!-- prettier-ignore -->
+| Sub-row | Slug | `requires:` | Status |
+| --- | --- | --- | --- |
+| C1 | `ui-ux` | `hasWebSurface` | unchanged |
+| C2 | `contract-conformance` | `hasDb` | **renamed + rewritten** (was `data-layer`) |
+| C3 | `derived-data` | `hasDerivedStore` | **new** |
+| C4 | `ai-llm` | `hasLLM` | **amended** — the eighth amended lens, WS-C's |
+| C5 | `reference-signal` | `hasNetwork` | unchanged (the only network lens; `+WebSearch` is additive to `Write`) |
 
 **These 5 lenses ARE the empirical test of the keystone.** Every one of them must, on a repo lacking its surface, render `N/A — not applicable (…)` and **never** "ran, clean".
 
@@ -922,12 +929,13 @@ Justification in workflow comment: _&#34;CRITICAL finding, human review required
 
 But in practice (see [BAR-93](https://linear.app/bartens/issue/BAR-93/data-foundation-members-colours-tagging) build run), FAIL findings are often **mechanical**:
 
-| Finding                                                                  | Class             | Auto-fixable?              |
-| ------------------------------------------------------------------------ | ----------------- | -------------------------- |
-| RLS test omits `type` column → silent no-op                              | Test bug          | Yes — one-line insert fix  |
-| `items_select_policy` missing `deleted_at IS NULL`                       | Missing predicate | Yes — SQL clause           |
-| `item_family_members` ex-member tags not filtered                        | Missing join      | Yes — SQL clause           |
-| CDC scrub test queries `information_schema` via PostgREST → silent no-op | Test rewrite      | Yes — swap to admin client |
+<!-- prettier-ignore -->
+| Finding | Class | Auto-fixable? |
+| --- | --- | --- |
+| RLS test omits `type` column → silent no-op | Test bug | Yes — one-line insert fix |
+| `items_select_policy` missing `deleted_at IS NULL` | Missing predicate | Yes — SQL clause |
+| `item_family_members` ex-member tags not filtered | Missing join | Yes — SQL clause |
+| CDC scrub test queries `information_schema` via PostgREST → silent no-op | Test rewrite | Yes — swap to admin client |
 
 A challenge-remediate agent closes all four in minutes. Bouncing the user back to `/bkit-build bar-93` from Step 1 is friction without a safety benefit — the **re-Challenge is the safety net**, not the human-in-the-loop.
 
@@ -1031,14 +1039,15 @@ Classification examples per the issue body. Routing is data-driven on `class`, n
 
 Aligned all 5 attempt counters across `bkit-build.md`, `bkit-debug.md`, `bkit-ship.md` to a single convention:
 
-| Counter                       | Init            | Increment                           |
-| ----------------------------- | --------------- | ----------------------------------- |
-| `VERIFY_ATTEMPT`              | 0               | Step 6 entry                        |
-| `TEST_ATTEMPT` (build)        | 0               | Step 12 entry                       |
-| `CHALLENGE_REMEDIATE_ATTEMPT` | 0               | Step 10 entry                       |
-| `TEST_ATTEMPT` (debug)        | 0               | Step 5 entry                        |
-| `MERGE_ATTEMPT`               | 0               | Step 3 entry                        |
-| `DEBUG_ATTEMPT`               | 0 (status.json) | Step 6 entry _(already conformant)_ |
+<!-- prettier-ignore -->
+| Counter | Init | Increment |
+| --- | --- | --- |
+| `VERIFY_ATTEMPT` | 0 | Step 6 entry |
+| `TEST_ATTEMPT` (build) | 0 | Step 12 entry |
+| `CHALLENGE_REMEDIATE_ATTEMPT` | 0 | Step 10 entry |
+| `TEST_ATTEMPT` (debug) | 0 | Step 5 entry |
+| `MERGE_ATTEMPT` | 0 | Step 3 entry |
+| `DEBUG_ATTEMPT` | 0 (status.json) | Step 6 entry _(already conformant)_ |
 
 Pattern: `init = 0`, increment at start of _owning step_. Counter = "completed attempts". `counter = 0` correctly means "step never ran" on PASS paths. First attempt still labeled "Attempt: 1" in status/comments — semantics preserved, only init+timing changed. Bound conditions (`<= MAX_*`) kept the same.
 
@@ -1068,12 +1077,13 @@ Not committed yet — pending review.
 
 original workflow history lead to issue: a `/bkit-build bar-93` run transcript, ending in Step 9 Build Challenge returning `CHALLENGE_VERDICT = FAIL` with 4 CRITICAL/HIGH findings that routed straight to the Failure Path, even though all 4 were mechanical edits an agent could have closed:
 
-| **Severity** | **Finding**                                                                                     | **Fix needed**                                                                                                       |
-| ------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| CRITICAL     | RLS test `beforeAll` omits `type` column → silent no-op                                         | Add `type: 'grocery'` (or valid enum) to items insert in `family-rls-bar93.integration.test.ts`                      |
-| HIGH         | `items_select_policy` outer guard missing `deleted_at IS NULL` on carer family lookup           | Add `AND fm.deleted_at IS NULL` to `get_auth_user_family_ids()` or inline subquery                                   |
-| HIGH         | `item_family_members` select policy: ex-member tags not filtered                                | Add join to verify current active family membership when resolving carer visibility                                  |
-| HIGH         | CDC scrub test queries `information_schema.routines` via PostgREST (not exposed) → silent no-op | Replace with a direct assertion on the trigger payload, or use a Supabase admin client / raw SQL to verify scrubbing |
+<!-- prettier-ignore -->
+| **Severity** | **Finding** | **Fix needed** |
+| --- | --- | --- |
+| CRITICAL | RLS test `beforeAll` omits `type` column → silent no-op | Add `type: 'grocery'` (or valid enum) to items insert in `family-rls-bar93.integration.test.ts` |
+| HIGH | `items_select_policy` outer guard missing `deleted_at IS NULL` on carer family lookup | Add `AND fm.deleted_at IS NULL` to `get_auth_user_family_ids()` or inline subquery |
+| HIGH | `item_family_members` select policy: ex-member tags not filtered | Add join to verify current active family membership when resolving carer visibility |
+| HIGH | CDC scrub test queries `information_schema.routines` via PostgREST (not exposed) → silent no-op | Replace with a direct assertion on the trigger payload, or use a Supabase admin client / raw SQL to verify scrubbing |
 
 That Failure-Path bounce on all-mechanical findings is what motivated the remediate-loop change above.
 
@@ -1387,13 +1397,14 @@ Secondary issue: CI logs are inlined into `debug-input-{N}.md` (the session-prom
 
 **CI logs** (gh actions output) and **runtime logs** (application errors from deployed env) are orthogonal sources, not mode-keyed alternatives. A given debug session may need either, both, or neither.
 
-| Scenario                                | CI fetch runs?      | Runtime fetch runs? |
-| --------------------------------------- | ------------------- | ------------------- |
-| PR mode, GCP configured                 | yes                 | yes                 |
-| Local mode, push exists, GCP configured | yes                 | yes                 |
-| Local mode, no GCP                      | only if push exists | no                  |
-| PR mode, no GCP                         | yes                 | no                  |
-| Nothing available                       | no                  | no — both `N/A`     |
+<!-- prettier-ignore -->
+| Scenario | CI fetch runs? | Runtime fetch runs? |
+| --- | --- | --- |
+| PR mode, GCP configured | yes | yes |
+| Local mode, push exists, GCP configured | yes | yes |
+| Local mode, no GCP | only if push exists | no |
+| PR mode, no GCP | yes | no |
+| Nothing available | no | no — both `N/A` |
 
 ## Scope (bkit only)
 

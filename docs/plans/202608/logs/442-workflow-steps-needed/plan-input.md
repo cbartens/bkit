@@ -73,13 +73,14 @@ A `NARROW | STANDARD | WIDE` scalar collapses several independent facts into one
 
 The parallel siblings are **not** redundant copies. Each carries an explicit `Lens:` line:
 
-| Group     | Siblings              | Lenses                                                                  |
-| --------- | --------------------- | ----------------------------------------------------------------------- |
-| design S3 | `ideate-1/-2/-3`      | Pragmatic / Optimal-tradeoff ignoring legacy / Risk premortem           |
-| design S5 | `design-review-1/-2`  | Buildability / Operability                                              |
-| plan S5   | `plan-review-1/-2/-3` | Tightness + scope discipline / Dependency correctness / Regression risk |
-| plan S7   | `scope-check-1/-2`    | **identical** — the two files differ only in `name:` and `model:`       |
-| build S10 | `challenge-1/-2`      | Bugs / Security                                                         |
+<!-- prettier-ignore -->
+| Group | Siblings | Lenses |
+| --- | --- | --- |
+| design S3 | `ideate-1/-2/-3` | Pragmatic / Optimal-tradeoff ignoring legacy / Risk premortem |
+| design S5 | `design-review-1/-2` | Buildability / Operability |
+| plan S5 | `plan-review-1/-2/-3` | Tightness + scope discipline / Dependency correctness / Regression risk |
+| plan S7 | `scope-check-1/-2` | **identical** — the two files differ only in `name:` and `model:` |
+| build S10 | `challenge-1/-2` | Bugs / Security |
 
 `bkit-plan-scope-check-2` is the only genuine duplicate in the set — a second-opinion sampler on a cheaper model, not a lens. Everywhere else, cutting width by count silently deletes a dimension.
 
@@ -91,48 +92,51 @@ Only 🧠 steps (subagent-invoking) are candidates. 🤖 steps are orchestrator 
 
 ### `bkit-design` — 10 invocations at full width
 
-| Step | Subagent                       | Today             | Runs when                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ---- | ------------------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| S3   | `ideate-1` Pragmatic           | always            | always — the floor                                                                                                                                                                                                                                                                                                                                                                                                                |
-| S3   | `ideate-2` Optimal-tradeoff    | always            | **the issue has a legacy constraint worth challenging.** On a bug fix or narrow refactor the constraint _is_ the deliverable; there is no greenfield alternative to propose                                                                                                                                                                                                                                                       |
-| S3   | `ideate-3` Risk premortem      | always            | **there is a new runtime surface.** `:39` iterates 10x scale / 6 months later / on-call at 3am / author leaves — a tooling, test or docs change has none                                                                                                                                                                                                                                                                          |
-| S4   | `design-generate`              | always            | mandatory                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| S5   | `design-review-1` Buildability | always            | **the design adds a dependency or a new system.** `:5` is "per major capability the design requires" → ecosystem search; `:6-8` are stack feasibility, library eval, integration risk. Zero new capabilities → all four empty. **Sole emitter of `SPIKE`** (`bkit-design.md:453`, Failure Path at `:455` if invalid) → skipping must hard-set `SPIKE=FALSE`, which is self-consistent: no new capability is also nothing to spike |
-| S5   | `design-review-2` Operability  | always            | **there is a runtime behaviour change.** `:5` is "per major component / flow", `:7` "per anticipated alert"                                                                                                                                                                                                                                                                                                                       |
-| S6   | `design-spike`                 | ✅ `SPIKE` = TRUE | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| S7   | `design-update`                | always            | **at least one S5 finding exists.** Needs a `Failures:` count header first — see prerequisites                                                                                                                                                                                                                                                                                                                                    |
-| S8   | `design-organise`              | always            | **more than one workstream, or `MILESTONE` set.** S10 at `:714` already gates on `MILESTONE`                                                                                                                                                                                                                                                                                                                                      |
-| S9   | `design-summary`               | always            | mandatory — S10 and S11 gate on `SUMMARY_VERDICT`                                                                                                                                                                                                                                                                                                                                                                                 |
+<!-- prettier-ignore -->
+| Step | Subagent | Today | Runs when |
+| --- | --- | --- | --- |
+| S3 | `ideate-1` Pragmatic | always | always — the floor |
+| S3 | `ideate-2` Optimal-tradeoff | always | **the issue has a legacy constraint worth challenging.** On a bug fix or narrow refactor the constraint _is_ the deliverable; there is no greenfield alternative to propose |
+| S3 | `ideate-3` Risk premortem | always | **there is a new runtime surface.** `:39` iterates 10x scale / 6 months later / on-call at 3am / author leaves — a tooling, test or docs change has none |
+| S4 | `design-generate` | always | mandatory |
+| S5 | `design-review-1` Buildability | always | **the design adds a dependency or a new system.** `:5` is "per major capability the design requires" → ecosystem search; `:6-8` are stack feasibility, library eval, integration risk. Zero new capabilities → all four empty. **Sole emitter of `SPIKE`** (`bkit-design.md:453`, Failure Path at `:455` if invalid) → skipping must hard-set `SPIKE=FALSE`, which is self-consistent: no new capability is also nothing to spike |
+| S5 | `design-review-2` Operability | always | **there is a runtime behaviour change.** `:5` is "per major component / flow", `:7` "per anticipated alert" |
+| S6 | `design-spike` | ✅ `SPIKE` = TRUE | unchanged |
+| S7 | `design-update` | always | **at least one S5 finding exists.** Needs a `Failures:` count header first — see prerequisites |
+| S8 | `design-organise` | always | **more than one workstream, or `MILESTONE` set.** S10 at `:714` already gates on `MILESTONE` |
+| S9 | `design-summary` | always | mandatory — S10 and S11 gate on `SUMMARY_VERDICT` |
 
 ### `bkit-plan` — 11 invocations at full width
 
-| Step | Subagent                               | Today                           | Runs when                                                                                                                                                                                                                      |
-| ---- | -------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| S3   | `plan-generate`                        | always                          | mandatory                                                                                                                                                                                                                      |
-| S5   | `plan-review-1` Tightness              | always                          | always — its input is the plan                                                                                                                                                                                                 |
-| S5   | `plan-review-2` Dependency correctness | always                          | **the plan declares dependency edges.** `:5` builds the graph from `Requires:` / `Blocked by:` / `After:` fields and `:9` looks for cycles — a one-task plan declares none. Countable straight off the runbook                 |
-| S5   | `plan-review-3` Regression risk        | always                          | **the plan touches a consumed surface.** `:5` traces exported symbols with callers, schemas with downstream readers, endpoints and event names. Greppable — but force it on via the sensitive-path globs rather than inferring |
-| S6   | `plan-update`                          | always                          | **at least one S5 finding.** All three reviewers already emit `Failures: <integer >= 0>`                                                                                                                                       |
-| S7   | `scope-check-1`                        | always                          | always                                                                                                                                                                                                                         |
-| S7   | `scope-check-2`                        | always                          | **never** — byte-identical file to `-1` bar `name:` and `model:`                                                                                                                                                               |
-| S8   | `plan-update`                          | always                          | **at least one S7 finding**                                                                                                                                                                                                    |
-| S9   | `complexity-check`                     | always                          | **the plan is above the split threshold.** Below it, `SPLIT` is unreachable. Must hard-set `COMPLEXITY_VERDICT = NOSPLIT` so S10's existing gate reads a real value                                                            |
-| S10  | `complexity-split`                     | ✅ `COMPLEXITY_VERDICT` = SPLIT | unchanged                                                                                                                                                                                                                      |
-| S11  | `plan-summary`                         | always                          | mandatory — S12 gates on it                                                                                                                                                                                                    |
+<!-- prettier-ignore -->
+| Step | Subagent | Today | Runs when |
+| --- | --- | --- | --- |
+| S3 | `plan-generate` | always | mandatory |
+| S5 | `plan-review-1` Tightness | always | always — its input is the plan |
+| S5 | `plan-review-2` Dependency correctness | always | **the plan declares dependency edges.** `:5` builds the graph from `Requires:` / `Blocked by:` / `After:` fields and `:9` looks for cycles — a one-task plan declares none. Countable straight off the runbook |
+| S5 | `plan-review-3` Regression risk | always | **the plan touches a consumed surface.** `:5` traces exported symbols with callers, schemas with downstream readers, endpoints and event names. Greppable — but force it on via the sensitive-path globs rather than inferring |
+| S6 | `plan-update` | always | **at least one S5 finding.** All three reviewers already emit `Failures: <integer >= 0>` |
+| S7 | `scope-check-1` | always | always |
+| S7 | `scope-check-2` | always | **never** — byte-identical file to `-1` bar `name:` and `model:` |
+| S8 | `plan-update` | always | **at least one S7 finding** |
+| S9 | `complexity-check` | always | **the plan is above the split threshold.** Below it, `SPLIT` is unreachable. Must hard-set `COMPLEXITY_VERDICT = NOSPLIT` so S10's existing gate reads a real value |
+| S10 | `complexity-split` | ✅ `COMPLEXITY_VERDICT` = SPLIT | unchanged |
+| S11 | `plan-summary` | always | mandatory — S12 gates on it |
 
 A genuinely small, single-task plan then runs **four** invocations — generate, `plan-review-1`, `scope-check-1`, summary — instead of eleven, with no lens that had something to look at dropped.
 
 ### `bkit-build` — reviewed, no changes
 
-| Step                                            | Verdict                                                                                                                                                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| S4 `build-plan-current`                         | **keep unconditional.** The obvious skip is "plan commit is an ancestor of the base", but Step 2 branching off a stale `origin/dev` is exactly the case this step exists to catch. Dropped from the candidate list |
-| S5 `build-install-skills`                       | already flagged via `[skills=false]` (`:508`) — the existing precedent, unchanged                                                                                                                                  |
-| S6 `build-plan-execute`, S7 `build-plan-verify` | mandatory                                                                                                                                                                                                          |
-| S8, S9                                          | already conditional (`:698` on `VERIFY_VERDICT`, `:766` on `SUB_COUNT`)                                                                                                                                            |
-| S10 `challenge-1` bugs / `challenge-2` security | **both always run.** Different dimensions, not copies; dropping `-2` deletes security coverage entirely. Sensitive-path globs may only _force_ width, never reduce it                                              |
-| S11 `challenge-reconcile`                       | **stays unconditional** — a consequence of the row above. With both challengers always running there are always two reports to reconcile, so the "skip when only one ran" idea never fires                         |
-| S12, S13, S15, S16, S17                         | already conditional                                                                                                                                                                                                |
+<!-- prettier-ignore -->
+| Step | Verdict |
+| --- | --- |
+| S4 `build-plan-current` | **keep unconditional.** The obvious skip is "plan commit is an ancestor of the base", but Step 2 branching off a stale `origin/dev` is exactly the case this step exists to catch. Dropped from the candidate list |
+| S5 `build-install-skills` | already flagged via `[skills=false]` (`:508`) — the existing precedent, unchanged |
+| S6 `build-plan-execute`, S7 `build-plan-verify` | mandatory |
+| S8, S9 | already conditional (`:698` on `VERIFY_VERDICT`, `:766` on `SUB_COUNT`) |
+| S10 `challenge-1` bugs / `challenge-2` security | **both always run.** Different dimensions, not copies; dropping `-2` deletes security coverage entirely. Sensitive-path globs may only _force_ width, never reduce it |
+| S11 `challenge-reconcile` | **stays unconditional** — a consequence of the row above. With both challengers always running there are always two reports to reconcile, so the "skip when only one ran" idea never fires |
+| S12, S13, S15, S16, S17 | already conditional |
 
 Build is already half-conditional and the rest is load-bearing. Nothing to change here.
 
@@ -166,11 +170,12 @@ That is tolerable now because every current skip is derivable from a verdict alr
 
 Every skippable step that is the **sole emitter** of a variable a later step reads must hard-set a defined value when skipped:
 
-| Variable             | Sole emitter                             | Read by                                                   |
-| -------------------- | ---------------------------------------- | --------------------------------------------------------- |
-| `SPIKE`              | `design-review-1` (`bkit-design.md:453`) | S6 gate at `:501`; invalid value → Failure Path at `:455` |
-| `COMPLEXITY_VERDICT` | plan S9                                  | S10 gate at `bkit-plan.md:743`                            |
-| `CHALLENGE_VERDICT`  | build S11 reconcile                      | S12 `:952` and S13 `:1022`                                |
+<!-- prettier-ignore -->
+| Variable | Sole emitter | Read by |
+| --- | --- | --- |
+| `SPIKE` | `design-review-1` (`bkit-design.md:453`) | S6 gate at `:501`; invalid value → Failure Path at `:455` |
+| `COMPLEXITY_VERDICT` | plan S9 | S10 gate at `bkit-plan.md:743` |
+| `CHALLENGE_VERDICT` | build S11 reconcile | S12 `:952` and S13 `:1022` |
 
 ## 3. Input tolerance — the largest piece of actual work
 

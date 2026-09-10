@@ -169,7 +169,7 @@ The router is **not** Step 18 of `bkit-build`. Chaining ship/debug into the same
 | CLI flag | `--auto` | User-intent name (not mechanism `ci-router`). Mirrors `--ci`, `--claude`, `--cursor`. |
 | Linear label | `Auto` | **Existing label in bkit Linear workspace** — no creation step required. Per-issue opt-in; survives across debug iterations. |
 | Concurrency group | `bkit-ci-router-${{ github.event.workflow_run.head_branch }}` | Branch-scoped; `cancel-in-progress: true` (newer CI completion supersedes; ship squash-merge is GitHub-atomic so mid-cancel cannot corrupt). |
-| Linear comment header | `### bkit-ci-router → /bkit-{ship | debug} {FID}` | Mirrors existing `### Step N — Name` comment shape. |
+| Linear comment header | `### bkit-ci-router → /bkit-{ship \| debug} {FID}` | Mirrors existing `### Step N — Name` comment shape. |
 
 ### Breaking changes
 

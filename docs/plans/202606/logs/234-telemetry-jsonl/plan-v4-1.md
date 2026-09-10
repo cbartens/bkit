@@ -58,8 +58,8 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 | `merge=union` interleaves/duplicates appended lines; two branches write the same ms `ts` for the same logical key | Fold reducer dedupes by per-`kind` COMPOSITE identity (not bare `ts`), mirroring `bkit-status.ts`'s tuple dedupe; both git-level rows collapse to one |
 | Someone proposes `.bkit/*.jsonl merge=union` (blanket glob) | FORBIDDEN — each file gets one explicit scoped line; validated via `git check-attr merge` (real resolver), asserting blanket glob does NOT match |
 | Malformed / truncated trailing line during read or harvest | Tolerant `parse` wraps each line in try/catch, skips + counts it via `malformedLineCount`, NEVER throws (NEW behaviour — `parseStatus` throws); pinned by truncated-line fixture test |
-| Telemetry append fails (disk, jq error) at close step | Best-effort idiom `… >> "$FILE" \ | \ | echo "[bkit-telemetry] append failed: $FILE"` guarantees exit 0; workflow continues |
-| `date +%s%3N` on a BSD/macOS dev shell | NOT USED — ms `ts` emitted via portable `jq '… \ | .ts = (now*1000\ | floor)'`; pinned + parity-tested |
+| Telemetry append fails (disk, jq error) at close step | Best-effort idiom `… >> "$FILE" \ \| \ \| echo "[bkit-telemetry] append failed: $FILE"` guarantees exit 0; workflow continues |
+| `date +%s%3N` on a BSD/macOS dev shell | NOT USED — ms `ts` emitted via portable `jq '… \ \| .ts = (now*1000\ \| floor)'`; pinned + parity-tested |
 | Reader meets a row with unknown (greater) `schemaVersion` | Warn `[bkit-telemetry] unknown schemaVersion N, excluding row` and EXCLUDE from rate/aggregate calcs (warn-and-exclude, never silently mis-bucket); fold surfaces excluded count |
 | `stats.jsonl` grows past threshold (~5,000 rows) before P4 rollup ships | P1 ship-summary emits a grep-able `[bkit-telemetry]` `MAX_ROWS_BEFORE_ROLLUP` WARNING; `foldFrom` already reads the pinned archive shard path so the later P4 rollup cannot break readers |
 | LLM rewords a friction/deferral/failure description | Logical key = explicit written-once `key` slug, NOT a free-text hash; a reword does NOT fork the key; recurrence collapses to same identity |
@@ -73,8 +73,8 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 | `identity(event)` returns the correct composite tuple for each `kind` (compliance/counter/run-outcome/friction/deferral/failure) | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `validate(event)` rejects malformed rows AND unknown `kind` before write, AND rejects any row missing an A2-mandatory envelope field (`ts`/`kind`/`repo`/`bkitVersion`/`schemaVersion`/`step`) | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `run-outcome` row shape: a close-gate-shaped `run-outcome` event (lines_added/lines_deleted/lines_changed/files_changed/task_count/duration_seconds/ci_try_success/deferrals/failures) `validate`s, folds by `(repo, prNumber)`, and parses identically when written via the inline-jq close-step idiom (parity) | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
-| Two same-`ts` same-key inline-jq rows (identical `now*1000\ | floor` `ts`, identical key), concatenated as `merge=union` would produce, fold to ONE row via the per-`kind` COMPOSITE identity — and the composite tuple differs from bare `ts` so dedup is proven the composite path, not accidental `ts`-equality | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
-| Inline-jq parity: a `jq -nc '… \ | .ts=(now*1000\ | floor)'` row parses identically under `parse` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
+| Two same-`ts` same-key inline-jq rows (identical `now*1000\ \| floor` `ts`, identical key), concatenated as `merge=union` would produce, fold to ONE row via the per-`kind` COMPOSITE identity — and the composite tuple differs from bare `ts` so dedup is proven the composite path, not accidental `ts`-equality | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
+| Inline-jq parity: a `jq -nc '… \ \| .ts=(now*1000\ \| floor)'` row parses identically under `parse` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | Tolerant `parse` skips + counts a malformed line via `malformedLineCount`, never throws — for BOTH a truncated trailing line AND a malformed line in the MIDDLE of the file | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `foldFrom(paths[])` reads a synthetic archive shard at `.bkit/archive/{basename}.{YYYYMM}.jsonl` + hot file | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | Reader warn-and-EXCLUDES a row with unknown (greater) `schemaVersion`; surfaces excluded count | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
@@ -82,7 +82,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 | Each data file is absent from the install manifest (`format` entries) | Unit (Vitest) | `.bkit/src/bkit-manifest.test.ts` (extend) |
 | Per-workflow summary read surfaces all three signals: `malformedLineCount`, unknown-`schemaVersion` exclusion count, and a grep-able `[bkit-telemetry]` `MAX_ROWS_BEFORE_ROLLUP` WARNING line when `rowCount > MAX_ROWS_BEFORE_ROLLUP` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | Every workflow close-step append block sets ALL A2-mandatory envelope fields (`ts`/`kind`/`repo`/`bkitVersion`/`schemaVersion`/`step`) — grep over all 5 `bkit-*.md` workflow files finds NO append block omitting any A2 field | Integration (Vitest grep over workflow files) | `.bkit/src/bkit-telemetry-workflow-writers.test.ts` |
-| Best-effort append idiom guarantees exit 0: forcing the telemetry-append failure path (`\ | \ | echo "[bkit-telemetry] append failed"`) leaves shell exit 0 (locked SC #2) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
+| Best-effort append idiom guarantees exit 0: forcing the telemetry-append failure path (`\ \| \ \| echo "[bkit-telemetry] append failed"`) leaves shell exit 0 (locked SC #2) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
 
 ## Architecture & Component Changes (WS-1)
 

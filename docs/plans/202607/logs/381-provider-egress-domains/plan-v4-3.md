@@ -341,7 +341,7 @@ None.
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits (template hook, `slop-scan.config.json`, the parity test file, `.bkit/providers.md`), then `pnpm build` and commit the regenerated `dist/`, then one `pnpm bkit install` to restore the `.cursor/hooks/guardrails.cjs` mirror. Finish with `git config core.bare false` — `bkit install` flips it. | The mirror is force-overwritten and untracked-by-drift, so a revert of the template alone leaves the mirror stale until an install runs. |
 | **Consumer state** | A consumer already on the new hook who reverts gets the embedded fallback back on their next `bkit install`. Nothing is stranded: the artifact-reading path is unchanged and pre-dates this change. | The degraded state this change introduces (ask on every `curl`/`wget` with no artifact) disappears with the revert. |
-| **Risk window** | None. There is no deploy and no schema migration. | |
+| **Risk window** | None. There is no deploy and no schema migration. |  |
 
 ## Agent Execution Runbook
 

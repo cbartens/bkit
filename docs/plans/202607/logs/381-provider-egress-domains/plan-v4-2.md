@@ -349,7 +349,7 @@ None.
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits, then `pnpm build` and commit the regenerated `dist/`. The nine doc files revert with the same commit — they were changed in the same task as the code they describe, by design. | `pnpm bkit:check:dist` fails CI if `dist/` is not reverted alongside the source. |
 | **Consumer state — dashboard paste** | A reverted allowlist is a **narrower** set than the pasted one, so a stale paste after rollback over-permits rather than under-permits — no cloud session breaks. No re-paste is required to roll back. | The fingerprint changes, so the next `cloud.md` read shows the mismatch. |
-| **Consumer state — `.claude/cloud.md` / `.cursor/cloud.md`** | Both files are gitignored, untracked and fully regenerated on the next install. Nothing to clean up. | |
+| **Consumer state — `.claude/cloud.md` / `.cursor/cloud.md`** | Both files are gitignored, untracked and fully regenerated on the next install. Nothing to clean up. |  |
 | **Risk window** | None. There is no deploy and no schema migration. | Between merge and a consumer's next `bkit install` / `bkit upgrade`, consumers run entirely on the old behaviour. |
 
 ## Agent Execution Runbook

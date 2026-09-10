@@ -15,10 +15,11 @@ Lens: Dependency correctness, design-coverage.
 
 **Hazard 3 (three claimed test breakages) — all three source claims verified.**
 
-| Claim                                                                                | Verified                                                                                                                                                                                                                                                                                                                                             | Owner                              |
-| ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `bkit-permissions-parity.integration.test.ts:173-191` deleted by WS-4                | True — `describe("cross-host gate parity — network allowlist")` spans exactly `:173-191`, `expect(block).not.toBeNull()` at `:177`                                                                                                                                                                                                                   | Task 17 ✓                          |
-| `bkit-cloud-env.test.ts:478-483` flips                                               | True — `expect(out).not.toContain("\`\`\`")`at`:482` in the Cursor zero-declared case                                                                                                                                                                                                                                                                | Task 13 ✓                          |
+<!-- prettier-ignore -->
+| Claim | Verified | Owner |
+| --- | --- | --- |
+| `bkit-permissions-parity.integration.test.ts:173-191` deleted by WS-4 | True — `describe("cross-host gate parity — network allowlist")` spans exactly `:173-191`, `expect(block).not.toBeNull()` at `:177` | Task 17 ✓ |
+| `bkit-cloud-env.test.ts:478-483` flips | True — `expect(out).not.toContain("\`\`\`")`at`:482` in the Cursor zero-declared case | Task 13 ✓ |
 | `bkit-guardrails-cursor.integration.test.ts:44-92` survives but stops discriminating | True — `run()` calls `spawnSync` with **no** `cwd` option (`:15-18`), so cwd is the repo root, where `.cursor/allowlist.json` carries `github.com`, `githubusercontent.com`, `npmjs.com` (11 bases, incl. `tavily.com`). `:55`, `:83`, `:85` keep passing off the artifact. `.cursor/allowlist.json` is **not** gitignored, so this also holds in CI | Task 17 owns the replacement T11 ✓ |
 
 The two `bkit-cloud-env.test.ts` breakages at `:326-331` and `:399-403` are also real and owned (Task 13). The `:405-408` negative assertions do survive the switch to a computed constant.

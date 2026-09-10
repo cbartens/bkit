@@ -104,9 +104,9 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 | `merge=union` interleaves/duplicates appended lines; two branches write the same ms `ts` for the same logical key | Fold reducer dedupes by per-`kind` COMPOSITE identity (not bare `ts`), mirroring `bkit-status.ts`'s tuple dedupe; both git-level rows collapse to one |
 | Someone proposes `.bkit/*.jsonl merge=union` (blanket glob) | FORBIDDEN — each file gets one explicit scoped line; validated via `git check-attr merge` (real resolver), asserting blanket glob does NOT match |
 | Malformed / truncated trailing line during read or harvest | Tolerant `parse` wraps each line in try/catch, skips + counts it via `malformedLineCount`, NEVER throws (NEW behaviour — `parseStatus` throws); pinned by truncated-line fixture test |
-| Telemetry append fails (disk, jq error) at close step | Best-effort idiom `… >> "$FILE" \ | \ | echo "[bkit-telemetry] append failed: $FILE"` guarantees exit 0; workflow continues |
-| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
-| `date +%s%3N` on a BSD/macOS dev shell | NOT USED — ms `ts` emitted via portable `jq '… \ | .ts = (now*1000\ | floor)'`; pinned + parity-tested |
+| Telemetry append fails (disk, jq error) at close step | Best-effort idiom `… >> "$FILE" \ \| \ \| echo "[bkit-telemetry] append failed: $FILE"` guarantees exit 0; workflow continues |
+| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \ \| \ \| echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
+| `date +%s%3N` on a BSD/macOS dev shell | NOT USED — ms `ts` emitted via portable `jq '… \ \| .ts = (now*1000\ \| floor)'`; pinned + parity-tested |
 | Reader meets a row with unknown (greater) `schemaVersion` | Warn `[bkit-telemetry] unknown schemaVersion N, excluding row` and EXCLUDE from rate/aggregate calcs (warn-and-exclude, never silently mis-bucket); fold surfaces excluded count |
 | Pre-P3 counter rows present alongside post-P3 rows | `counterSource:"model-self-report"` vs `"shell-bus"` makes trust tier structurally distinguishable; analysis filters/labels without inferring P3 ship date |
 | `*_ATTEMPT`/`MAX_*` config exceeded after WS-3 | `decide_next`/`check_max` cannot silently continue past `MAX_*`; invariant check confirms counter rows == counted-step rows |
@@ -125,7 +125,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 | `fold` collapses same-`kind` composite-identity duplicates to current state, per `kind` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `identity(event)` returns the correct composite tuple for each `kind` (compliance/counter/run-outcome/friction/deferral/failure) | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `validate(event)` rejects malformed rows AND unknown `kind` before write | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
-| Inline-jq parity: a `jq -nc '… \ | .ts=(now*1000\ | floor)'` row parses identically under `parse` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
+| Inline-jq parity: a `jq -nc '… \ \| .ts=(now*1000\ \| floor)'` row parses identically under `parse` | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | Tolerant `parse` skips + counts a truncated/malformed trailing line via `malformedLineCount`, never throws | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | `foldFrom(paths[])` reads a synthetic archive shard at `.bkit/archive/{basename}.{YYYYMM}.jsonl` + hot file | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |
 | Reader warn-and-EXCLUDES a row with unknown (greater) `schemaVersion`; surfaces excluded count | Unit (Vitest) | `.bkit/src/bkit-telemetry.test.ts` |

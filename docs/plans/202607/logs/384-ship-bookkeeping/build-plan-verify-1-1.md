@@ -83,7 +83,7 @@ Done-when criteria, each verified:
 <!-- prettier-ignore -->
 | Criterion | Result |
 | --- | --- |
-| `.bkit/src/bkit-ship-invariants.test.ts` exists and FAILS on current `bkit-ship.md` | PASS — 320-line file; vitest output `11 failed | 3 passed (14)` — RED as expected |
+| `.bkit/src/bkit-ship-invariants.test.ts` exists and FAILS on current `bkit-ship.md` | PASS — 320-line file; vitest output `11 failed \| 3 passed (14)` — RED as expected |
 | Reuses `stripFencedBlocks` from `bkit-counter-prose-audit.test.ts:50-52` | PASS — verbatim copy at line 35, self-contained per the design's sub-plan rule |
 | Canonical 14 `ship-*` step-key set published in the test as a frozen list | PASS — `CANONICAL_SHIP_STEP_KEYS` (14 keys, `as const`) exported at lines 53-68 |
 | Frozen 8-path `BOOK_PATHS` allow-list published in the test as a frozen list | PASS — `BOOK_PATHS_ALLOW_LIST` (8 paths, `as const`) exported at lines 78-88 |
@@ -101,7 +101,7 @@ Done-when criteria, each verified:
 | Runs exist but none completed → exit 11 | PASS — branch at lines 251-254 |
 | Capstone resolution from `/actions/runs/{id}/jobs --paginate`, absent → exit 13 | PASS — line 283; capstone-name match via jq at lines 295-299 |
 | All 9 exit codes (0/10/11/12/13/14/15/16/20) implemented | PASS — verified by direct invocation: each SHA fixture → expected code (see Test Results below) |
-| `skipped` lane (code 16) distinguished from `cache_skip` sentinel green (code 0) | PASS — jq filter at lines 321-340 marks skipped lanes vacuous UNLESS `steps` carries a `cache | restore`marker;`--explain` notes cache_skip provenance |
+| `skipped` lane (code 16) distinguished from `cache_skip` sentinel green (code 0) | PASS — jq filter at lines 321-340 marks skipped lanes vacuous UNLESS `steps` carries a `cache \| restore`marker;`--explain` notes cache_skip provenance |
 | `BKIT_SHIP_GATE_OVERRIDE=<sha>` honoured only when equals refused head + appends status.jsonl audit row | PASS — `maybe_override()` at lines 140-160 enforces exact equality; writes `{"type":"ship-gate-override",...}` via jq (best-effort) |
 | Every diagnostic on stderr behind `[bkit-ship-gate]`; refusals print required head + head actually tested + run URL | PASS — `err()` always writes stderr with `PREFIX="[bkit-ship-gate]"`; `print_refusal_context()` at lines 127-136 |
 | Samples `gh api rate_limit` for code-20 message shaping | PASS — lines 178-191 (run-list failure) and 285-291 (jobs failure) sample rate_limit then shape the code-20 message ("rate limit exhausted" vs "API error") |

@@ -18,10 +18,11 @@ Sync a single network-domain allowlist from consumer `.agents/config.md` into Cl
 
 ## Source of truth
 
-| Layer                                 | What                                                                                      | Where                                                                                |
-| ------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **Tooling defaults (stack-agnostic)** | GitHub, npm, provider/IDE docs hosts (`github.com`, `npmjs.com`, `nvidia.com`, `z.ai`, …) | `BKIT_SHIPPED_NETWORK_DOMAINS` in `.bkit/src/bkit-cloud-env.ts`                      |
-| **Consumer stack domains**            | Apex domains for debug-fetch / app / observability                                        | `.agents/config.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` |
+<!-- prettier-ignore -->
+| Layer | What | Where |
+| --- | --- | --- |
+| **Tooling defaults (stack-agnostic)** | GitHub, npm, provider/IDE docs hosts (`github.com`, `npmjs.com`, `nvidia.com`, `z.ai`, …) | `BKIT_SHIPPED_NETWORK_DOMAINS` in `.bkit/src/bkit-cloud-env.ts` |
+| **Consumer stack domains** | Apex domains for debug-fetch / app / observability | `.agents/config.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` |
 
 `bkit install` / `bkit upgrade` merge tooling ∪ consumer, expand each apex to `domain` + `*.domain`, then encode per host.
 
@@ -39,11 +40,12 @@ your-app.com
 
 ## Per-host encoding (same policy, native mechanics)
 
-| Host         | Artifact                  | Mechanism                                                                                                                                                                                                    |
-| ------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Claude**   | `.claude/settings.json`   | `WebFetch(domain:…)` allow rules enriched at install/upgrade                                                                                                                                                 |
-| **OpenCode** | `.opencode/opencode.json` | `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins). `webfetch` stays Action-only (`ask`) — OpenCode schema has no URL map                |
-| **Cursor**   | `.cursor/allowlist.json`  | Runtime file read by `.cursor/hooks/guardrails.cjs` (`beforeShellExecution`): ask on `curl`/`wget` unless command contains an allowlisted host. **Cursor-only by design** (no settings-native curl host map) |
+<!-- prettier-ignore -->
+| Host | Artifact | Mechanism |
+| --- | --- | --- |
+| **Claude** | `.claude/settings.json` | `WebFetch(domain:…)` allow rules enriched at install/upgrade |
+| **OpenCode** | `.opencode/opencode.json` | `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins). `webfetch` stays Action-only (`ask`) — OpenCode schema has no URL map |
+| **Cursor** | `.cursor/allowlist.json` | Runtime file read by `.cursor/hooks/guardrails.cjs` (`beforeShellExecution`): ask on `curl`/`wget` unless command contains an allowlisted host. **Cursor-only by design** (no settings-native curl host map) |
 
 **Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`.
 
@@ -220,15 +222,16 @@ The **provider expansion** (this issue's long tail) is now complete on `dev` (`8
 
 **Seven providers, all with curated per-agent model columns:**
 
-| provider                 | auth                                | pins                                               |
-| ------------------------ | ----------------------------------- | -------------------------------------------------- |
-| `ollama-local`           | local server                        | uniform `qwen3-coder:30b`                          |
-| `nvidia`                 | `NVIDIA_API_KEY`                    | full tier, tool-call-smoked                        |
-| `groq`                   | `GROQ_API_KEY`                      | tool-call-smoked (catalog-collapsed)               |
-| `cerebras`               | `CEREBRAS_API_KEY`                  | tool-call-smoked (2-model catalog)                 |
-| `openrouter`             | `OPENROUTER_API_KEY`                | tool-call-smoked                                   |
-| `ollama` (cloud)         | `OLLAMA_API_KEY`                    | tool-call-smoked (free); opus/convergent paid-plan |
-| `zen` (opencode gateway) | **managed** (`opencode auth login`) | existence-validated vs live `/zen/v1/models`       |
+<!-- prettier-ignore -->
+| provider | auth | pins |
+| --- | --- | --- |
+| `ollama-local` | local server | uniform `qwen3-coder:30b` |
+| `nvidia` | `NVIDIA_API_KEY` | full tier, tool-call-smoked |
+| `groq` | `GROQ_API_KEY` | tool-call-smoked (catalog-collapsed) |
+| `cerebras` | `CEREBRAS_API_KEY` | tool-call-smoked (2-model catalog) |
+| `openrouter` | `OPENROUTER_API_KEY` | tool-call-smoked |
+| `ollama` (cloud) | `OLLAMA_API_KEY` | tool-call-smoked (free); opus/convergent paid-plan |
+| `zen` (opencode gateway) | **managed** (`opencode auth login`) | existence-validated vs live `/zen/v1/models` |
 
 **zen** required a distinct render path (managed auth → no `opencode.json` provider block; manifest-persisted detection; opencode-side `opencode/<id>` prefix; doctor auth-state check). Pins use cross-platform identity reuse (opus=`kimi-k2.6`, sonnet=`qwen3.6-plus`, haiku=`gemini-3-flash`, convergent=`deepseek-v4-pro`); probing the live endpoint corrected the docs-only `qwen3.7-plus` → `qwen3.6-plus` (KN-40).
 
@@ -265,17 +268,18 @@ Pre-design recon against the gate this issue sets (&#34;prove the chosen harness
 
 ### Primitive → opencode mapping
 
-| bkit primitive                                                           | opencode mechanism                                                                                                      | Status                                                                                                             |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Subagents (`.claude/agents/*.md` + frontmatter)                          | `.opencode/agents/*.md` — `mode: subagent`, `model`, `permission`, `temperature`, `hidden`, `description`               | ✅ near-isomorphic; new render target                                                                              |
-| Per-agent `model:` + `effort:`                                           | per-agent `model:` + provider pass-through (`reasoningEffort: high`)                                                    | ✅ effort → provider param (transform)                                                                             |
-| Slash-commands / workflows                                               | `.opencode/commands/*.md` — `agent`, `model`, `subtask`; `$ARGUMENTS`/`$1`; `` !`shell` `` injection                    | ✅ tool-name transform needed                                                                                      |
-| **GateGuard** (pre-edit deny + model-visible checklist)                  | plugin hook `tool.execute.before` — **can `throw` to block**; thrown error text returns to the model as the tool result | ✅ **MORE faithful than Cursor** (Cursor has no pre-edit context-injection event → GateGuard is Claude-only today) |
-| MCP (GitHub / Linear)                                                    | native `mcp` config, local + remote servers                                                                             | ✅                                                                                                                 |
-| Permissions (per-tool / bash globs)                                      | `permission: { edit, bash, read, grep, task }` = allow/ask/deny + bash glob patterns (`&#34;git *&#34;: &#34;ask&#34;`) | ✅ arguably cleaner than `settings.json`                                                                           |
-| Rules                                                                    | native `AGENTS.md`                                                                                                      | ✅ bkit already ships it                                                                                           |
-| Hooks plumbing                                                           | plugins are JS/TS in `.opencode/plugins/`, `(input, output)` async                                                      | ⚠️ port `gateguard.cjs` → opencode plugin (it&#39;s already CommonJS — low risk)                                   |
-| **Parallel subagent fan-out** (3 ideators / 3 reviewers / challenge-1+2) | subagents invoked via the **Task tool** (`permission.task`); concurrency **not documented**                             | 🔴 **THE blocking unknown**                                                                                        |
+<!-- prettier-ignore -->
+| bkit primitive | opencode mechanism | Status |
+| --- | --- | --- |
+| Subagents (`.claude/agents/*.md` + frontmatter) | `.opencode/agents/*.md` — `mode: subagent`, `model`, `permission`, `temperature`, `hidden`, `description` | ✅ near-isomorphic; new render target |
+| Per-agent `model:` + `effort:` | per-agent `model:` + provider pass-through (`reasoningEffort: high`) | ✅ effort → provider param (transform) |
+| Slash-commands / workflows | `.opencode/commands/*.md` — `agent`, `model`, `subtask`; `$ARGUMENTS`/`$1`; `` !`shell` `` injection | ✅ tool-name transform needed |
+| **GateGuard** (pre-edit deny + model-visible checklist) | plugin hook `tool.execute.before` — **can `throw` to block**; thrown error text returns to the model as the tool result | ✅ **MORE faithful than Cursor** (Cursor has no pre-edit context-injection event → GateGuard is Claude-only today) |
+| MCP (GitHub / Linear) | native `mcp` config, local + remote servers | ✅ |
+| Permissions (per-tool / bash globs) | `permission: { edit, bash, read, grep, task }` = allow/ask/deny + bash glob patterns (`&#34;git *&#34;: &#34;ask&#34;`) | ✅ arguably cleaner than `settings.json` |
+| Rules | native `AGENTS.md` | ✅ bkit already ships it |
+| Hooks plumbing | plugins are JS/TS in `.opencode/plugins/`, `(input, output)` async | ⚠️ port `gateguard.cjs` → opencode plugin (it&#39;s already CommonJS — low risk) |
+| **Parallel subagent fan-out** (3 ideators / 3 reviewers / challenge-1+2) | subagents invoked via the **Task tool** (`permission.task`); concurrency **not documented** | 🔴 **THE blocking unknown** |
 
 ### The one blocking unknown — and the spike that settles it
 
@@ -511,13 +515,14 @@ The original &#34;no opencode cloud lane&#34; Non-Goal is **superseded**: openco
 
 ### Sub-plan map
 
-| #   | Sub-plan                                                                           | Owns                    |
-| --- | ---------------------------------------------------------------------------------- | ----------------------- |
-| 1   | spike                                                                              | the gate                |
-| 2   | transform + render module/manifest/CLI                                             | `.opencode/` render     |
-| 3   | GateGuard plugin + additive install-flag host config + `bkit doctor`/`bkit status` | local host config       |
-| 4   | tests + docs + Approach-A removal + **`bkit mode` removal**                        | removal, sequenced last |
-| 5   | **unified `bkit-cloud.yml` (claude + opencode jobs)**                              | cloud lane              |
+<!-- prettier-ignore -->
+| # | Sub-plan | Owns |
+| --- | --- | --- |
+| 1 | spike | the gate |
+| 2 | transform + render module/manifest/CLI | `.opencode/` render |
+| 3 | GateGuard plugin + additive install-flag host config + `bkit doctor`/`bkit status` | local host config |
+| 4 | tests + docs + Approach-A removal + **`bkit mode` removal** | removal, sequenced last |
+| 5 | **unified `bkit-cloud.yml` (claude + opencode jobs)** | cloud lane |
 
 #### Comment 4659428536 — 2026-06-09T11:51:26Z
 
@@ -534,12 +539,13 @@ A gap-hunt against the codebase surfaced advisory/reference work the plan didn&#
 
 ### Dangling references / staleness (would break at runtime or mislead)
 
-| Severity   | Gap                                                                                                                                                                                                                          | Fixed in                                                                                  |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Major**  | `bkit-mode.sh` installs a sourced `bkit()` shell shim — the deletion advisory must tell consumers to remove the `source .../bkit-mode.sh` line from `~/.zshrc`, not just delete the file (else broken rc on every new shell) | plan-4 Task 6.3                                                                           |
-| **Major**  | `renovate.json5` names `bkit-auto.yml` in **two** rules (tag-pin fence + `matchFileNames`) — rename both or the file loses its SHA-pin fence (#124)                                                                          | plan-5 Task 7.1 (+ grep-guard)                                                            |
-| **Medium** | `.bkit/advisories.md` carries live `bkit mode --cloud=nvidia`/`--local=ollama` grammar; `.bkit/.env.example` `NVIDIA_API_KEY` comment references removed `bkit mode --cloud=nvidia`                                          | plan-4 Task 6.2 (+ `grep &#39;bkit mode&#39;`-empty done-when, + openrouter/gemini stubs) |
-| **Minor**  | `.gitignore` for `.opencode/` local state (auth/session/logs, à la `.claude/scheduled_tasks.lock`)                                                                                                                           | plan-2 Task 2.1 confirm-item (spike-driven)                                               |
+<!-- prettier-ignore -->
+| Severity | Gap | Fixed in |
+| --- | --- | --- |
+| **Major** | `bkit-mode.sh` installs a sourced `bkit()` shell shim — the deletion advisory must tell consumers to remove the `source .../bkit-mode.sh` line from `~/.zshrc`, not just delete the file (else broken rc on every new shell) | plan-4 Task 6.3 |
+| **Major** | `renovate.json5` names `bkit-auto.yml` in **two** rules (tag-pin fence + `matchFileNames`) — rename both or the file loses its SHA-pin fence (#124) | plan-5 Task 7.1 (+ grep-guard) |
+| **Medium** | `.bkit/advisories.md` carries live `bkit mode --cloud=nvidia`/`--local=ollama` grammar; `.bkit/.env.example` `NVIDIA_API_KEY` comment references removed `bkit mode --cloud=nvidia` | plan-4 Task 6.2 (+ `grep &#39;bkit mode&#39;`-empty done-when, + openrouter/gemini stubs) |
+| **Minor** | `.gitignore` for `.opencode/` local state (auth/session/logs, à la `.claude/scheduled_tasks.lock`) | plan-2 Task 2.1 confirm-item (spike-driven) |
 
 ### Checked, no gap
 
@@ -833,13 +839,14 @@ P2 items (LOW) deferred: gateguard corrupt-state fail-open; unpinned curl|bash i
 
 **Step 12 — Build Summary: SHIP**
 
-| Dimension            | Result                                                 |
-| -------------------- | ------------------------------------------------------ |
-| Sub-plan executions  | PASS (SP1–SP5)                                         |
-| Plan verify holistic | PASS                                                   |
-| Build challenge      | PASS (post-remediation) — all P1 fixed                 |
-| Tests                | PASS — 1383 passed · 2 skipped · 1 todo                |
-| Deferred             | Documented — manual live-run requires runner + secrets |
+<!-- prettier-ignore -->
+| Dimension | Result |
+| --- | --- |
+| Sub-plan executions | PASS (SP1–SP5) |
+| Plan verify holistic | PASS |
+| Build challenge | PASS (post-remediation) — all P1 fixed |
+| Tests | PASS — 1383 passed · 2 skipped · 1 todo |
+| Deferred | Documented — manual live-run requires runner + secrets |
 
 [build-summary.md](https://github.com/cbartens/bkit/blob/feat/245-opencode-provider-host/docs/plans/202606/logs/245-opencode-provider-host/build-summary.md)
 
@@ -867,13 +874,14 @@ After the initial PR was raised, two post-review rounds of changes were applied 
 
 Five security/correctness fixes from the challenge review:
 
-| #    | Fix                                                                                                 | File              |
-| ---- | --------------------------------------------------------------------------------------------------- | ----------------- |
-| P1-1 | GHA script injection guard — `BKIT_PHASE`/`BKIT_ARG` via `env:`, no `${{ }}` in `run:`              | `bkit-cloud.yml`  |
-| P1-2 | Provider name charset validation (`/^[a-z][a-z0-9-]{0,30}$/`) on `--opencode=`                      | `bkit-cli.ts`     |
-| P1-3 | Orphan-cleanup gate — `bkit-auto.yml` only removed when `bkit-cloud.yml` present/in-candidates      | `bkit-install.ts` |
+<!-- prettier-ignore -->
+| # | Fix | File |
+| --- | --- | --- |
+| P1-1 | GHA script injection guard — `BKIT_PHASE`/`BKIT_ARG` via `env:`, no `${{ }}` in `run:` | `bkit-cloud.yml` |
+| P1-2 | Provider name charset validation (`/^[a-z][a-z0-9-]{0,30}$/`) on `--opencode=` | `bkit-cli.ts` |
+| P1-3 | Orphan-cleanup gate — `bkit-auto.yml` only removed when `bkit-cloud.yml` present/in-candidates | `bkit-install.ts` |
 | P1-4 | `ollama-local` cloud warning (non-fatal) when `--cloud=opencode` runs against a local-only provider | `bkit-install.ts` |
-| P1-5 | `OPENAI_API_KEY` added to cloud workflow fan-out                                                    | `bkit-cloud.yml`  |
+| P1-5 | `OPENAI_API_KEY` added to cloud workflow fan-out | `bkit-cloud.yml` |
 
 ---
 
@@ -957,12 +965,13 @@ All opencode agents seed to **one** model (`ollama-local/qwen2.5-coder:7b`) — 
 
 opencode (CLI or desktop app) is only an HTTP client to Ollama at `localhost:11434` — it never launches or configures the server. These govern the `ollama serve` daemon / Ollama.app and are **independent of which opencode surface you use**. They are **ollama-local only** — remote providers (nvidia, openrouter, gemini) ignore them.
 
-| Setting                    | Value   | Effect                                                                                                                                  |
-| -------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `OLLAMA_MAX_LOADED_MODELS` | `1`     | Never hold 2+ models resident → avoids swap thrash on model switch. Highest impact.                                                     |
-| `OLLAMA_NUM_PARALLEL`      | `1`     | Serialize bkit&#39;s concurrent subagent fan-out. One local model gives no parallel speedup; `&gt;1` splits the KV cache → more memory. |
-| `OLLAMA_KEEP_ALIVE`        | `2m`    | Evict idle model sooner (default 5m), freeing RAM.                                                                                      |
-| `OLLAMA_CONTEXT_LENGTH`    | `16384` | Caps `num_ctx`; KV cache scales linearly with it. (Or `num_ctx` in a Modelfile.)                                                        |
+<!-- prettier-ignore -->
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `OLLAMA_MAX_LOADED_MODELS` | `1` | Never hold 2+ models resident → avoids swap thrash on model switch. Highest impact. |
+| `OLLAMA_NUM_PARALLEL` | `1` | Serialize bkit&#39;s concurrent subagent fan-out. One local model gives no parallel speedup; `&gt;1` splits the KV cache → more memory. |
+| `OLLAMA_KEEP_ALIVE` | `2m` | Evict idle model sooner (default 5m), freeing RAM. |
+| `OLLAMA_CONTEXT_LENGTH` | `16384` | Caps `num_ctx`; KV cache scales linearly with it. (Or `num_ctx` in a Modelfile.) |
 
 ### 4. Where to set them (depends on how Ollama runs, not opencode)
 
@@ -1059,12 +1068,13 @@ _Applied to the `dev` working tree; not yet committed._
 
 Investigated the &#34;opencode.json invalid&#34; report. It is **not one field** — bkit&#39;s rendered config has **four** distinct violations against the authoritative schema (`https://opencode.ai/config.json`, validated with `jsonschema`). opencode&#39;s config differs structurally from Claude/Cursor&#39;s MCP/permission formats, and the #245 template carried Claude-style shapes into it.
 
-| #     | Field        | bkit emits                                                   | opencode schema requires                                                                                                      | Severity      |
-| ----- | ------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| **A** | `mcp..type`  | `&#34;http&#34;`                                             | enum is **`[&#34;local&#34;,&#34;remote&#34;]`** — `&#34;http&#34;` not present anywhere → whole config rejected              | invalid       |
-| **B** | `provider.`  | `&#34;api&#34;:&#34;openai&#34;` + `apiKey:&#34;${VAR}&#34;` | `npm` driver + `apiKey:&#34;{env:VAR}&#34;` (`${}` never interpolates)                                                        | wrong/runtime |
-| **C** | top-level    | `&#34;plugins&#34;` (array)                                  | key is **`&#34;plugin&#34;`** (singular); root `additionalProperties:false` rejects `plugins`                                 | invalid       |
-| **D** | `permission` | `{ &#34;rules&#34;:[{description,tools,mode}] }`             | a **tool-keyed map** (`bash`/`edit`/`task`/… → `&#34;allow&#34;`/`&#34;ask&#34;`/`&#34;deny&#34;` or a pattern→action object) | invalid       |
+<!-- prettier-ignore -->
+| # | Field | bkit emits | opencode schema requires | Severity |
+| --- | --- | --- | --- | --- |
+| **A** | `mcp..type` | `&#34;http&#34;` | enum is **`[&#34;local&#34;,&#34;remote&#34;]`** — `&#34;http&#34;` not present anywhere → whole config rejected | invalid |
+| **B** | `provider.` | `&#34;api&#34;:&#34;openai&#34;` + `apiKey:&#34;${VAR}&#34;` | `npm` driver + `apiKey:&#34;{env:VAR}&#34;` (`${}` never interpolates) | wrong/runtime |
+| **C** | top-level | `&#34;plugins&#34;` (array) | key is **`&#34;plugin&#34;`** (singular); root `additionalProperties:false` rejects `plugins` | invalid |
+| **D** | `permission` | `{ &#34;rules&#34;:[{description,tools,mode}] }` | a **tool-keyed map** (`bash`/`edit`/`task`/… → `&#34;allow&#34;`/`&#34;ask&#34;`/`&#34;deny&#34;` or a pattern→action object) | invalid |
 
 Notes: `&#34;api&#34;` _is_ a valid provider field in the schema, so B is about using the user-confirmed _working_ custom-provider format (the `npm` driver, as ollama-local already uses) + fixing the `${}`→`{env:}` interpolation — not strict validity. A, C, D are hard schema-invalid; since the reporter is on the GitHub tracker, **A and D each independently make opencode reject the file.**
 
@@ -1163,13 +1173,14 @@ The strict allowlist shipped as `{ollama-local, nvidia}` (the descope that cut O
 
 ### New provider keys
 
-| bkit key         | opencode provider | Driver                        | baseURL                          | Auth env             | Why                                                                                                                                                                     |
-| ---------------- | ----------------- | ----------------------------- | -------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `groq`           | groq              | `@ai-sdk/openai-compatible`   | `https://api.groq.com/openai/v1` | `GROQ_API_KEY`       | free tier, fastest free cloud, same open models as nvidia                                                                                                               |
-| `cerebras`       | cerebras          | `@ai-sdk/openai-compatible`   | `https://api.cerebras.ai/v1`     | `CEREBRAS_API_KEY`   | free tier, Qwen3-Coder-480B at top speed                                                                                                                                |
-| `openrouter`     | openrouter        | `@ai-sdk/openai-compatible`   | `https://openrouter.ai/api/v1`   | `OPENROUTER_API_KEY` | one key → every model incl `:free`. **Re-adds in named-and-pinned form — NOT the any-endpoint fallback this issue cut.**                                                |
-| `ollama`         | ollama (cloud)    | `@ai-sdk/openai-compatible`   | `https://ollama.com/v1`          | `OLLAMA_API_KEY`     | hosted sibling of `ollama-local` — same models, no local hardware. **Distinct key from `ollama-local`** (matches opencode&#39;s own naming: built-in `ollama` = cloud). |
-| `native` (= Zen) | `opencode`        | first-class (no custom block) | n/a                              | opencode-managed key | opencode&#39;s own curated, tool-calling-tested gateway; models are `opencode/`                                                                                         |
+<!-- prettier-ignore -->
+| bkit key | opencode provider | Driver | baseURL | Auth env | Why |
+| --- | --- | --- | --- | --- | --- |
+| `groq` | groq | `@ai-sdk/openai-compatible` | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` | free tier, fastest free cloud, same open models as nvidia |
+| `cerebras` | cerebras | `@ai-sdk/openai-compatible` | `https://api.cerebras.ai/v1` | `CEREBRAS_API_KEY` | free tier, Qwen3-Coder-480B at top speed |
+| `openrouter` | openrouter | `@ai-sdk/openai-compatible` | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` | one key → every model incl `:free`. **Re-adds in named-and-pinned form — NOT the any-endpoint fallback this issue cut.** |
+| `ollama` | ollama (cloud) | `@ai-sdk/openai-compatible` | `https://ollama.com/v1` | `OLLAMA_API_KEY` | hosted sibling of `ollama-local` — same models, no local hardware. **Distinct key from `ollama-local`** (matches opencode&#39;s own naming: built-in `ollama` = cloud). |
+| `native` (= Zen) | `opencode` | first-class (no custom block) | n/a | opencode-managed key | opencode&#39;s own curated, tool-calling-tested gateway; models are `opencode/` |
 
 **Re &#34;native = zen/go, one key for both?&#34; — yes, one key.** There is a single provider entry: opencode&#39;s `opencode`/Zen gateway (model IDs `opencode/`, e.g. `opencode/gpt-5.5`). &#34;Go&#34; is a subscription/usage path to the _same_ `opencode/*` models, not a separate provider config — so one bkit key covers both. Naming flagged as open below.
 
@@ -1476,12 +1487,13 @@ Follow-up to `a348faa` (zen render path). The deferred `Zen` column is now fille
 
 **Tier map (cross-platform identity reuse):**
 
-| tier       | zen pin                    | note                                            |
-| ---------- | -------------------------- | ----------------------------------------------- |
-| opus       | `opencode/kimi-k2.6`       | same identity as nvidia/openrouter/ollama-cloud |
-| sonnet     | `opencode/qwen3.6-plus`    | gateway has no Qwen3-Coder → top Qwen           |
-| haiku      | `opencode/gemini-3-flash`  | no gpt-oss → fast economy model                 |
-| convergent | `opencode/deepseek-v4-pro` | same reasoner identity (5 agents)               |
+<!-- prettier-ignore -->
+| tier | zen pin | note |
+| --- | --- | --- |
+| opus | `opencode/kimi-k2.6` | same identity as nvidia/openrouter/ollama-cloud |
+| sonnet | `opencode/qwen3.6-plus` | gateway has no Qwen3-Coder → top Qwen |
+| haiku | `opencode/gemini-3-flash` | no gpt-oss → fast economy model |
+| convergent | `opencode/deepseek-v4-pro` | same reasoner identity (5 agents) |
 
 **Honest scope:** the pins are **existence-validated** against the live catalog. The per-model agent-loop tool-call smoke is still deferred to a consumer `opencode auth login` — zen is managed-auth, so bkit holds no key to run the smoke. All four are well-known tool-callers (Kimi/Qwen/Gemini/DeepSeek).
 

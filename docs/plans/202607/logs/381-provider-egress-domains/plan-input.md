@@ -277,16 +277,17 @@ Brief: Auto-derive provider egress allowlist from registries into a single sourc
 
 **design close** · cbartens/bkit
 
-| metric          | this run                       | med·5          |
-| --------------- | ------------------------------ | -------------- |
-| durationSeconds | 39447 (10h57m)                 | 39184 (10h53m) |
-| linesChanged    | 12259 (+12259/-0)              | 8428           |
-| filesChanged    | 29                             | 19             |
-| frictionAdded   | 0                              | 0              |
-| deferralsAdded  | 11                             | 6              |
-| failuresAdded   | 0                              | 0              |
-| compliance      | 2 pass · 0 fail · 0 n/a (100%) | —              |
-| attempts        | DESIGN_ATTEMPT 1               | —              |
+<!-- prettier-ignore -->
+| metric | this run | med·5 |
+| --- | --- | --- |
+| durationSeconds | 39447 (10h57m) | 39184 (10h53m) |
+| linesChanged | 12259 (+12259/-0) | 8428 |
+| filesChanged | 29 | 19 |
+| frictionAdded | 0 | 0 |
+| deferralsAdded | 11 | 6 |
+| failuresAdded | 0 | 0 |
+| compliance | 2 pass · 0 fail · 0 n/a (100%) | — |
+| attempts | DESIGN_ATTEMPT 1 | — |
 
 `med·5` = median of the previous 5 design runs (— if < 3) · ledger 51 rows, 0 malformed
 
@@ -348,12 +349,13 @@ I claimed WS-5's prune would remove the `tavily.com` grants. **That is wrong** �
 
 The real failure mode is different, and splits by host rather than being uniform:
 
-| Surface                               | Write semantics                                                                   | Result with no `tooling-tavily` row                         |
-| ------------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `.claude/settings.json` WebFetch      | additive; prune only touches recorded strings                                     | grant **survives** as an unrecorded orphan, forever         |
-| `.opencode/opencode.json` bash allows | additive (`injectOpencodeNetworkCurlAllows` only sets keys)                       | **survives** as an orphan                                   |
-| `.cursor/allowlist.json`              | **full rewrite** from `resolveNetworkAllowlist` (`writeNetworkAllowlistArtifact`) | **silently dropped**                                        |
-| cloud paste block                     | derived set                                                                       | **absent** — cloud `/bkit-debug` keeps returning `HTTP 000` |
+<!-- prettier-ignore -->
+| Surface | Write semantics | Result with no `tooling-tavily` row |
+| --- | --- | --- |
+| `.claude/settings.json` WebFetch | additive; prune only touches recorded strings | grant **survives** as an unrecorded orphan, forever |
+| `.opencode/opencode.json` bash allows | additive (`injectOpencodeNetworkCurlAllows` only sets keys) | **survives** as an orphan |
+| `.cursor/allowlist.json` | **full rewrite** from `resolveNetworkAllowlist` (`writeNetworkAllowlistArtifact`) | **silently dropped** |
+| cloud paste block | derived set | **absent** — cloud `/bkit-debug` keeps returning `HTTP 000` |
 
 So it does not fail cleanly. Claude and OpenCode keep working locally off stale orphans while Cursor stops, which presents as a host-specific bug rather than a missing registry row. That is a worse diagnostic than the clean prune I incorrectly described, and it is the actual argument for the row.
 

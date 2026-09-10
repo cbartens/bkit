@@ -135,7 +135,7 @@ Markered text files (`AGENTS.md`, `CLAUDE.md`, `.vale.ini` partial, `.github/wor
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
-| `.agents/scripts/bkit-manifest.ts` `tier: 1 | 2 | 3` integer field | `format: "json" | "markered-text" | "byte-equal-text"` field | DELETE | Phase 2 collapses Tier numbering into format-aware dispatch. |
+| `.agents/scripts/bkit-manifest.ts` `tier: 1 \| 2 \| 3` integer field | `format: "json" \| "markered-text" \| "byte-equal-text"` field | DELETE | Phase 2 collapses Tier numbering into format-aware dispatch. |
 | `.agents/scripts/bkit-uninstall.ts` `case 1`/`case 2`/`case 3` switch | Single dispatch on `entry.format` | DELETE | Phase 2 unifies uninstall semantics with install/check semantics. |
 | `.agents/templates/.husky/pre-push` marker block (already exists today) | Same markers; verified scope | RETAIN-WITH-REASON | File already conforms; Phase 2 only verifies block scope. |
 

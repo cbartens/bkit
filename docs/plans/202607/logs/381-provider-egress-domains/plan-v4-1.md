@@ -431,7 +431,7 @@ _No other doc row belongs to this sub-plan: WS-1 and WS-2 add no consumer-visibl
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits, then `pnpm build` and commit the regenerated `dist/` **including deleting `dist/bkit-registry.js`**. No mirror regeneration is needed — this sub-plan runs no `bkit install`. | `pnpm bkit:check:dist` fails CI if `dist/` is not reverted alongside the source. |
 | **Consumer state** | None reached. Nothing in Tasks 2–9 changes an installed artifact; Task 1's probe touches only a throwaway scratch consumer under `tmp/`. | Task 1's STOP path reverts its own probe edit by `Edit`, never by `git checkout` / `git restore` / `git reset`. |
-| **Risk window** | None. No deploy, no schema migration reaching a real consumer. | |
+| **Risk window** | None. No deploy, no schema migration reaching a real consumer. |  |
 
 ## Agent Execution Runbook
 
