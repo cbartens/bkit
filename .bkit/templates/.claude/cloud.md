@@ -73,6 +73,10 @@ if ! command -v jq >/dev/null 2>&1; then
   chmod +x /usr/local/bin/jq
 fi
 
+@@CLOUD_WORKSPACE_TRUST@@
+
+@@CLOUD_USER_SETTINGS@@
+
 @@CLOUD_COREPACK@@
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
@@ -89,6 +93,19 @@ and `vale sync` are **not** here — they belong in `.claude/hooks/cloud-bootstr
 ```bash
 vale --version && gh --version && jq --version && pnpm -v
 ```
+
+Then confirm workspace trust. Unset, Claude Code ignores every `permissions.allow`
+row in `.claude/settings.json` and reports it on stderr only, where no cloud
+session shows it:
+
+```bash
+jq -r --arg p "$(git rev-parse --show-toplevel)" \
+  '.projects[$p].hasTrustDialogAccepted // "MISSING"' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+```
+
+`true` = allow rows apply. `MISSING` = this container clones to a different path
+than the setup script baked in; `.claude/hooks/cloud-bootstrap.sh` warns each
+session — re-paste the setup script to fix the snapshot.
 
 Your `/bkit-*` skills and bkit subagents load automatically from the committed
 `.claude/` mirror — nothing to configure for those.

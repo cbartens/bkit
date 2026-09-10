@@ -159,9 +159,14 @@ describe("cross-host gate parity — KNOWN DIVERGENCE: curl / wget in a shell", 
   //   Cursor   asks UNLESS every URL host is on the network allowlist (guardrails.cjs
   //            parses the command and matches host labels)
   //   opencode asks on EVERY curl / wget — `"curl *": "ask"`
-  //   Claude   does not gate shell curl / wget at all. Its WebFetch domain allowlist
-  //            governs the WebFetch TOOL, not `curl` typed into Bash, so
-  //            `curl https://anywhere` runs unprompted.
+  //   Claude   asks on EVERY curl / wget — `Bash(curl:*)` / `Bash(wget:*)` in `ask`.
+  //            Its WebFetch domain allowlist governs the WebFetch TOOL, not `curl`
+  //            typed into Bash, and an ask row cannot be excepted per-domain, so
+  //            there is no allowlisted-host escape on this host.
+  //
+  // Claude is currently the STRICTEST of the three: a content-scoped `ask` rule is
+  // evaluated before the auto-mode classifier and always forces a prompt, beating even
+  // a matching `allow`. So a `context=web` context-fetch block prompts once per run.
   //
   // Choosing "ask unless allowlisted" (Cursor's, the strongest) cannot be expressed
   // in settings.json or opencode.json — neither can match a URL host — so it needs a

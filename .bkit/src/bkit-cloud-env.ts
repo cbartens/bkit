@@ -569,6 +569,123 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
 }
 
 /**
+ * Parent directory Claude Code on the web clones a repo into.
+ *
+ * Observed on the current image (`/home/user/<repo-name>`, agent running as uid=0
+ * with `HOME=/root`) and NOT a documented contract: no environment variable in the
+ * container names the repo root. So the setup script bakes the resolved path and
+ * `cloud-bootstrap.sh` writes the DISCOVERED one, warning loudly on mismatch.
+ * Between them a relocated clone costs one degraded session rather than a
+ * permanent silent no-op.
+ */
+const CLOUD_REPO_PARENT = "/home/user";
+
+/** The path {@link renderCloudWorkspaceTrust} bakes into the setup script. */
+export function cloudRepoPath(cwd: string): string {
+  return `${CLOUD_REPO_PARENT}/${path.basename(path.resolve(cwd))}`;
+}
+
+/**
+ * Render the `@@CLOUD_WORKSPACE_TRUST@@` setup-script region — the workspace-trust flip.
+ *
+ * `permissions.allow` and `permissions.additionalDirectories` in a project's
+ * `.claude/settings.json` GRANT capability, so Claude Code applies them only once the
+ * workspace trust dialog has been accepted — and it never shows that dialog in a
+ * `claude -p` or SDK session. (`deny` and `ask` are unaffected; they only restrict.)
+ * A cloud session therefore starts with every allow row ignored, announced on stderr
+ * alone, where no cloud user ever sees it: the config reads as configured and does
+ * nothing.
+ *
+ * The setup script is the only reliable place to fix this. It runs as root, before the
+ * clone, before Claude Code starts, and its filesystem is snapshotted.
+ * `cloud-bootstrap.sh` is too late (settings resolve before SessionStart), and an
+ * in-session write cannot work either: `.claude/` is a protected path, which allow
+ * rules never pre-approve.
+ *
+ * Merges rather than clobbers — the file may or may not exist at snapshot time, and
+ * Claude Code stores its own state alongside the key on first run.
+ */
+export function renderCloudWorkspaceTrust(cwd: string): string {
+  const repoPath = cloudRepoPath(cwd);
+  return (
+    "# Workspace trust. Without this Claude Code IGNORES every permissions.allow row in\n" +
+    "# .claude/settings.json — it only applies them once the trust dialog is accepted, and\n" +
+    "# cloud sessions never show that dialog. deny/ask are unaffected. Nothing inside the\n" +
+    "# session can set this: settings resolve before SessionStart, and .claude/ is a\n" +
+    "# protected path that allow rules never pre-approve.\n" +
+    'CLAUDE_JSON="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"\n' +
+    'mkdir -p "$(dirname "$CLAUDE_JSON")"\n' +
+    '[ -f "$CLAUDE_JSON" ] || printf \'{}\' > "$CLAUDE_JSON"\n' +
+    `jq --arg p '${repoPath}' '.projects[$p].hasTrustDialogAccepted = true' \\\n` +
+    '  "$CLAUDE_JSON" > "$CLAUDE_JSON.tmp" && mv "$CLAUDE_JSON.tmp" "$CLAUDE_JSON"'
+  );
+}
+
+/**
+ * Environment entries seeded into `~/.claude/settings.json` by {@link renderCloudUserSettings}.
+ *
+ * `"$defaults"` is NOT optional: omitting it replaces the entire built-in list for that
+ * section, which for `environment` discards every built-in trust slot (including
+ * "Trusted repo"). It is always emitted first, and asserted in the tests.
+ *
+ * The classifier otherwise trusts only the working repo and its configured remotes —
+ * every context-fetch host is "external" to it, so each is a candidate block with
+ * nothing configured. `Host containment` defaults to "an ordinary developer machine or
+ * CI runner with open internet", which is exactly wrong for a sandbox behind an egress
+ * allowlist, and until it names the session's identity the classifier blocks requests
+ * for the host's own credentials.
+ */
+export function cloudAutoModeEnvironment(cwd: string): string[] {
+  const entries = [
+    "$defaults",
+    "Host containment: Claude Code runs inside the Claude Code on the web sandbox — a " +
+      "single-tenant container with no neighbouring workloads to reach, and egress " +
+      "restricted to the allowed-domains list configured on that environment. The cloud " +
+      "metadata endpoint is not used and should stay unreachable. The only credentials " +
+      "in the session are the environment variables set in the Claude app, so nothing " +
+      "should ever request credentials belonging to the host itself.",
+  ];
+  const bases = networkAllowlistBases(resolveNetworkAllowlist(cwd));
+  if (bases.length > 0) {
+    entries.push(
+      `Trusted internal domains: ${bases.join(", ")} — all on the egress allowlist for ` +
+        "this environment, rendered from declarations in this repository, and the hosts " +
+        "context-fetch blocks read logs and diagnostics from during /bkit-debug.",
+    );
+  }
+  // Apostrophes would terminate the single-quoted `--argjson` literal in the generated
+  // setup script; keep the seeded prose free of them (asserted in the tests).
+  return entries;
+}
+
+/**
+ * Render the `@@CLOUD_USER_SETTINGS@@` setup-script region — the auto-mode classifier config.
+ *
+ * This has to be written host-side. The classifier deliberately does NOT read `autoMode`
+ * from `.claude/settings.json` or `.claude/settings.local.json`, so that a checked-in repo
+ * or a build step cannot inject its own classifier allow rules — meaning bkit cannot ship
+ * it in-repo at all, and committing the file could never substitute for this.
+ *
+ * Seeds with `//=` rather than `=`: a consumer's own `autoMode.environment` is never
+ * stomped by a re-pasted setup script. The trade is that later bkit changes to the seeded
+ * entries do not reach a container that already has them, which is the safer direction.
+ */
+export function renderCloudUserSettings(cwd: string): string {
+  const env = JSON.stringify(cloudAutoModeEnvironment(cwd));
+  return (
+    "# Auto-mode classifier config. The classifier does NOT read `autoMode` from\n" +
+    "# .claude/settings.json or .claude/settings.local.json — deliberately, so a checked-in\n" +
+    "# repo cannot inject its own classifier rules — so this cannot be shipped in the repo.\n" +
+    "# Seeded with //= so a consumer's existing entries are never overwritten.\n" +
+    'CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"\n' +
+    'mkdir -p "$(dirname "$CLAUDE_SETTINGS")"\n' +
+    '[ -f "$CLAUDE_SETTINGS" ] || printf \'{}\' > "$CLAUDE_SETTINGS"\n' +
+    `jq --argjson e '${env}' '.autoMode.environment //= $e' \\\n` +
+    '  "$CLAUDE_SETTINGS" > "$CLAUDE_SETTINGS.tmp" && mv "$CLAUDE_SETTINGS.tmp" "$CLAUDE_SETTINGS"'
+  );
+}
+
+/**
  * Generate `.claude/cloud.md` — a copy-paste-ready Claude Code on the web setup doc
  * with the env-var block resolved to REAL VALUES from the consumer's `.envrc`.
  *
@@ -593,6 +710,8 @@ export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
   const content = applyTokens(fs.readFileSync(src, "utf-8"), tokens)
     .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
     .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
+    .replace(/@@CLOUD_WORKSPACE_TRUST@@/g, () => renderCloudWorkspaceTrust(cwd))
+    .replace(/@@CLOUD_USER_SETTINGS@@/g, () => renderCloudUserSettings(cwd))
     .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
     .replace(/@@CLOUD_CONTEXT_FETCH_PROVISION@@/g, () => renderCloudContextFetchProvision(cwd))
     .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))

@@ -181,6 +181,26 @@ What it does and why split from in-repo hook:
 
 Keep total runtime under ~5 minutes or snapshot won't build.
 
+#### Workspace trust + auto-mode config
+
+`permissions.allow` / `permissions.additionalDirectories` in `.claude/settings.json` **grant** capability — applied only after the workspace trust dialog, never shown in a cloud (`-p` / SDK) session. `deny` / `ask` unaffected (restrict-only). Untrusted → every `allow` row ignored; sole notice one stderr line no cloud session surfaces.
+
+Setup script writes both host-side, after the `jq` install:
+
+<!-- prettier-ignore -->
+| Written | Where | Why setup script |
+| --- | --- | --- |
+| `projects[<repo path>].hasTrustDialogAccepted = true` | `~/.claude.json` | Settings resolve **before** `SessionStart` (hook too late); `.claude/` is a protected path (in-session write refused). Setup script = root, pre-clone, pre-Claude, snapshotted. |
+| `autoMode.environment` — `"$defaults"` first, `Host containment` entry, network-allowlist hosts | `~/.claude/settings.json` | Classifier reads `autoMode` from user / managed settings **only** — never `.claude/settings.json` / `.claude/settings.local.json`. Not shippable in-repo. |
+
+Both `jq`-merge, never clobber; `autoMode.environment` seeded `//=` (consumer list never overwritten). Omit `"$defaults"` → **whole built-in list discarded** for that section (incl. `Trusted repo`); renderer always emits it.
+
+Neither file is committable: `~/.claude/settings.json` resolves outside the repo tree; a git-**tracked** `.claude/settings.local.json` counts as repository-supplied, same trust gate.
+
+Baked path `/home/user/<repo-name>` = observation of the current image, **not** a contract (no env var names the repo root). `.claude/hooks/cloud-bootstrap.sh` re-checks the discovered git root each session and warns on mismatch — diagnosis only, no repair. Fix: re-paste setup script.
+
+Auto mode drops blanket `Bash(*)` on entry (narrow rows survive) → cloud auto-mode sessions run on classifier verdicts + `autoMode.environment`, not the allow list. Default classifier trust = working repo + remotes; every context-fetch host external until named. `Host containment` default assumes an open-internet dev machine.
+
 ## Environment variables
 
 Token management by session type:
@@ -237,8 +257,15 @@ bkit wires two MCP servers into `.mcp.json` at repo root (project-shared, read b
 1. Trigger session: `claude --remote "echo ready"` from repo, or tap env in iOS app.
 2. First session slow (setup script + snapshot). Subsequent sessions start from snapshot.
 3. Verify in-session: `vale --version && gh --version && pnpm -v && which corepack`.
-4. Snapshot rebuilds when setup-script body changes, allowed-hosts list changes, or ~7-day TTL expires. Editing env vars or in-repo hook scripts does **not** invalidate snapshot.
-5. **Force rebuild without semantic changes**: add `# cache-bust YYYY-MM-DD-N` comment at top of setup script.
+4. Verify workspace trust on the discovered root — `true` = `allow` rows apply; `MISSING` = clone path differs from the baked one (§ Workspace trust + auto-mode config):
+
+   ```bash
+   jq -r --arg p "$(git rev-parse --show-toplevel)" \
+     '.projects[$p].hasTrustDialogAccepted // "MISSING"' "${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+   ```
+
+5. Snapshot rebuilds when setup-script body changes, allowed-hosts list changes, or ~7-day TTL expires. Editing env vars or in-repo hook scripts does **not** invalidate snapshot.
+6. **Force rebuild without semantic changes**: add `# cache-bust YYYY-MM-DD-N` comment at top of setup script.
 
 # Cursor Cloud Agents
 

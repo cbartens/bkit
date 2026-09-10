@@ -35,6 +35,29 @@ cd "$REPO_ROOT"
 # <!-- bkit:start -->
 # --- bkit baseline install (managed; do not edit) --------------------------
 
+# Workspace-trust check + drift alarm.
+#
+# permissions.allow rows in .claude/settings.json GRANT capability, so Claude Code
+# applies them only once the workspace trust dialog has been accepted -- and it never
+# shows that dialog in a cloud session. Unset, every allow row is ignored and the only
+# notice is a stderr line no cloud session surfaces. deny/ask are unaffected.
+#
+# The setup script (cloud.md section 4) records it at snapshot time, keyed on the repo
+# path it baked in. That path is an OBSERVATION of the current image, not a contract,
+# so re-check the DISCOVERED root here. Trust is keyed on the git repository root,
+# which is what Claude Code itself keys on.
+#
+# This cannot change the CURRENT session -- settings resolve before SessionStart -- so
+# its job is to make a silent no-op loud and tell the operator how to fix the snapshot.
+if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
+  TRUST_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO_ROOT")
+  TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  TRUSTED=$(jq -r --arg p "$TRUST_ROOT" '.projects[$p].hasTrustDialogAccepted // false' "$TRUST_FILE" 2>/dev/null || printf 'false')
+  if [ "$TRUSTED" != "true" ]; then
+    log "WORKSPACE NOT TRUSTED at $TRUST_ROOT -- Claude Code is ignoring EVERY permissions.allow row in .claude/settings.json for this session (deny/ask still apply, so destructive-op gating is unaffected). This container clones to a different path than the setup script baked in. Fix: re-paste the setup script from .claude/cloud.md section 4, which re-stamps the cache-bust line and rebuilds the snapshot."
+  fi
+fi
+
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
   # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
   # config before install (supplements the project .npmrc auth token line).

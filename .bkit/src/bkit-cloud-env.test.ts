@@ -19,6 +19,10 @@ import {
   writeNetworkAllowlistArtifact,
   renderCloudNetworkAllowlist,
   resolveNetworkAllowlist,
+  cloudRepoPath,
+  renderCloudWorkspaceTrust,
+  cloudAutoModeEnvironment,
+  renderCloudUserSettings,
   BKIT_SHIPPED_NETWORK_DOMAINS,
   writeClaudeCloudDoc,
   cursorCloudPolicy,
@@ -210,7 +214,16 @@ describe("template generation sentinels", () => {
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
     expect(template).toContain("@@CLOUD_CONTEXT_FETCH_PROVISION@@");
+    expect(template).toContain("@@CLOUD_WORKSPACE_TRUST@@");
+    expect(template).toContain("@@CLOUD_USER_SETTINGS@@");
     expect(template).toContain("{{PROJECT_NAME}}");
+  });
+
+  it("trust + user-settings sentinels sit AFTER the jq install (both regions need jq)", () => {
+    const jqIdx = template.indexOf("chmod +x /usr/local/bin/jq");
+    expect(jqIdx).toBeGreaterThan(-1);
+    expect(template.indexOf("@@CLOUD_WORKSPACE_TRUST@@")).toBeGreaterThan(jqIdx);
+    expect(template.indexOf("@@CLOUD_USER_SETTINGS@@")).toBeGreaterThan(jqIdx);
   });
 
   it("cache-bust sentinel sits at the top of the setup script (after the shebang)", () => {
@@ -422,6 +435,78 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
 // resolver, a Cursor-specific env-var policy, and a doc that carries no setup-script
 // mechanics (the toolchain lives in `.cursor/Dockerfile` + `environment.json`).
 // ---------------------------------------------------------------------------
+
+describe("cloudRepoPath / renderCloudWorkspaceTrust", () => {
+  it("bakes the container clone path from the repo directory name", () => {
+    expect(cloudRepoPath("/Users/someone/code/my-repo")).toBe("/home/user/my-repo");
+    expect(cloudRepoPath("/Users/someone/code/my-repo/")).toBe("/home/user/my-repo");
+  });
+
+  it("merges the trust key rather than clobbering an existing .claude.json", () => {
+    const out = renderCloudWorkspaceTrust("/x/demo-repo");
+    // Seeds only when absent, then edits through jq — never `printf > file` over a
+    // populated config (Claude Code stores its own state alongside the key).
+    expect(out).toContain('[ -f "$CLAUDE_JSON" ] || printf \'{}\' > "$CLAUDE_JSON"');
+    expect(out).toContain(".projects[$p].hasTrustDialogAccepted = true");
+    expect(out).toContain("--arg p '/home/user/demo-repo'");
+    expect(out).toContain('mv "$CLAUDE_JSON.tmp" "$CLAUDE_JSON"');
+  });
+
+  it("honours CLAUDE_CONFIG_DIR, falling back to $HOME", () => {
+    expect(renderCloudWorkspaceTrust("/x/r")).toContain(
+      'CLAUDE_JSON="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"',
+    );
+  });
+});
+
+describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
+  it("ALWAYS emits $defaults first — omitting it discards every built-in trust slot", () => {
+    const bare = cloudAutoModeEnvironment(tmpDir);
+    expect(bare[0]).toBe("$defaults");
+    write(".agents/context.md", "<!-- bkit:end -->\n");
+    expect(cloudAutoModeEnvironment(tmpDir)[0]).toBe("$defaults");
+  });
+
+  it("names the sandbox in a Host containment entry (default assumes an open-internet dev box)", () => {
+    const entries = cloudAutoModeEnvironment(tmpDir);
+    expect(entries.some((e) => e.startsWith("Host containment:"))).toBe(true);
+  });
+
+  it("lists every allowlist host exactly once, from the same resolver the other consumers use", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n" +
+        "<!-- allowed-domains:start -->\nexample.com\nlogs.example.net\n<!-- allowed-domains:end -->\n",
+    );
+    const domains = cloudAutoModeEnvironment(tmpDir).find((e) =>
+      e.startsWith("Trusted internal domains:"),
+    );
+    expect(domains).toBeDefined();
+    for (const host of networkAllowlistBases(resolveNetworkAllowlist(tmpDir))) {
+      expect(domains!.split(host).length - 1).toBe(1);
+    }
+    // Apex-only: the `*.` wildcard forms are an egress-allowlist concern, not prose
+    // the classifier reads.
+    expect(domains).not.toContain("*.");
+  });
+
+  it("seeds with //= so a consumer's own autoMode.environment is never overwritten", () => {
+    const out = renderCloudUserSettings(tmpDir);
+    expect(out).toContain(".autoMode.environment //= $e");
+    expect(out).not.toContain(".autoMode.environment = $e");
+    expect(out).toContain('CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"');
+  });
+
+  it("embeds the environment list as valid JSON inside single quotes", () => {
+    const out = renderCloudUserSettings(tmpDir);
+    const m = out.match(/--argjson e '(.*?)' /);
+    expect(m).not.toBeNull();
+    const parsed = JSON.parse(m![1]) as string[];
+    expect(parsed).toEqual(cloudAutoModeEnvironment(tmpDir));
+    // A `'` in an entry would terminate the shell quoting and corrupt the script.
+    expect(m![1]).not.toContain("'");
+  });
+});
 
 describe("cursorCloudPolicy", () => {
   it("linear tracker: prepends LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
