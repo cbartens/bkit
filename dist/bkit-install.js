@@ -6,7 +6,7 @@ import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpen
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, opencodeProviderId, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, pruneRetiredClaudeAskRules, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens, resolveRunnerLabel } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
@@ -2393,6 +2393,15 @@ async function main() {
                 enrichClaudeSettingsWebFetch(".claude/settings.json", cwd, upgradeFlags.dryRun, enrichWs);
                 for (const w of enrichWs.writes) {
                     console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`);
+                }
+                // Retired-rule prune. Upgrade does not dispatch modules, so without this the
+                // install-side call never runs for `bkit upgrade --latest` — the path the
+                // README points consumers at — and the row survives every upgrade.
+                const prunedAsk = pruneRetiredClaudeAskRules(".claude/settings.json", upgradeFlags.dryRun, {
+                    writes: [],
+                });
+                if (prunedAsk) {
+                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${prunedAsk}`);
                 }
             }
         }

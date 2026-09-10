@@ -38,8 +38,6 @@
       "Read(./**/id_rsa)"
     ],
     "ask": [
-      "Bash(curl:*)",
-      "Bash(wget:*)",
       "Bash(sudo:*)",
       "Bash(brew install:*)",
       "Bash(pnpm publish:*)",

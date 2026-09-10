@@ -849,6 +849,11 @@ export function runClaudeModule(ctx) {
         const prevLen = ws.writes.length;
         writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
         enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws);
+        // AFTER the contained merge: the merge is additive and would otherwise re-seat a
+        // row this prune had just removed if the ordering were reversed.
+        const prunedAsk = pruneRetiredClaudeAskRules(settingsDst, dryRun, ws);
+        if (prunedAsk)
+            console.log(`${logPrefix} ${tag}${prunedAsk}`);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
         }
@@ -1433,8 +1438,9 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
 }
 /**
  * Ensure Claude `WebFetch(domain:…)` allows cover {@link resolveNetworkAllowlist}.
- * Claude deny→ask→allow cannot except curl-by-domain once `Bash(curl:*)` is ask —
- * network allowlisting for Claude is WebFetch-only; shell curl stays under Bash(*).
+ * Claude rules match a command prefix, not a URL host, so curl cannot be excepted
+ * by domain — network allowlisting for Claude is WebFetch-only; shell curl runs under
+ * Bash(*), gated by `deny` and the auto-mode classifier rather than an ask row.
  * Called from install (`runClaudeModule`) and upgrade (mirror — upgrade does not
  * dispatch modules).
  *
@@ -1470,6 +1476,59 @@ export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws) {
     if (!ws.writes.some((w) => w.path === settingsDst)) {
         ws.writes.push({ path: settingsDst, action: "write" });
     }
+}
+/**
+ * `ask` rules bkit once shipped and has since retired. Matched by exact string.
+ *
+ * `Bash(curl:*)` / `Bash(wget:*)` were added to gate shell network egress on Claude,
+ * but a content-scoped `ask` rule is evaluated BEFORE the auto-mode classifier and
+ * always forces a prompt — beating even a matching `allow`, in every permission mode.
+ * A cloud session cannot answer one, so every `context=web` context-fetch block
+ * stalled on it. Claude's rules match a command prefix, not a URL host, so there is
+ * no per-domain exception to carve out the way `guardrails.cjs` does on Cursor and
+ * `curl *{domain}*` allows do on opencode. Shell curl now runs under `Bash(*)`;
+ * `deny` still blocks and the auto-mode classifier still sees the command.
+ */
+const RETIRED_CLAUDE_ASK_RULES = ["Bash(curl:*)", "Bash(wget:*)"];
+/**
+ * Remove {@link RETIRED_CLAUDE_ASK_RULES} from a consumer's `.claude/settings.json`.
+ *
+ * A template edit alone does NOT reach existing consumers: `.claude/settings.json` is
+ * Tier 2 JSON deep-containment and the merge is ADDITIVE — it never prunes, so a row
+ * bkit stops shipping stays in every installed repo forever. This is the one-shot
+ * prune, and it is deliberately narrow: exact string match on the two rows bkit
+ * itself shipped, nothing pattern-based. A consumer's own `ask` rows — including a
+ * hand-written curl rule in any other form — are untouched.
+ *
+ * Idempotent (no-op once absent), dry-run aware, and called from BOTH engines:
+ * install dispatches modules, upgrade does not, and `bkit upgrade --latest` is the
+ * path the README points consumers at. Mirrors {@link enrichClaudeSettingsWebFetch}.
+ */
+export function pruneRetiredClaudeAskRules(settingsDst, dryRun, ws) {
+    if (!fs.existsSync(settingsDst))
+        return null;
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(settingsDst, "utf-8"));
+    }
+    catch {
+        // Malformed consumer JSON: leave it alone rather than rewrite what we can't read.
+        return null;
+    }
+    const ask = doc.permissions?.ask;
+    if (!Array.isArray(ask))
+        return null;
+    const removed = ask.filter((r) => RETIRED_CLAUDE_ASK_RULES.includes(r));
+    if (removed.length === 0)
+        return null;
+    if (!dryRun) {
+        doc.permissions.ask = ask.filter((r) => !RETIRED_CLAUDE_ASK_RULES.includes(r));
+        fs.writeFileSync(settingsDst, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+    }
+    if (!ws.writes.some((w) => w.path === settingsDst)) {
+        ws.writes.push({ path: settingsDst, action: "write" });
+    }
+    return `removed retired ask rule(s) from ${settingsDst}: ${removed.join(", ")} — shell curl/wget prompted in every mode, including cloud sessions that cannot answer`;
 }
 /**
  * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template.

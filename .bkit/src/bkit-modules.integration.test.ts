@@ -2976,10 +2976,20 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
   });
 
   // The assertion above only checks the opencode direction ("must not be weaker than the
-  // Claude peer"), so a gap on the CLAUDE side survived it: `.claude/settings.json` shipped
-  // `Bash(*)` in `allow` with no curl/wget entry anywhere, while cursor's guardrails.cjs and
-  // opencode's permission map both asked. Assert the other direction too — the parity claim
-  // is symmetric, and network egress is the class that matters most.
+  // Claude peer"), so a gap on the CLAUDE side survived it. Assert the other direction too.
+  //
+  // curl / wget are a DELIBERATE, documented exemption, not an oversight — see the
+  // KNOWN DIVERGENCE block in bkit-permissions-parity.integration.test.ts. opencode gates
+  // them as `curl *: ask` and then layers `curl *{domain}*: allow` per allowlisted host
+  // (last-match-wins); Cursor does the same thing properly, parsing the URL host in
+  // guardrails.cjs. Claude has no equivalent: its rules match a command PREFIX, not a URL
+  // host, so the only two expressible options are blanket-ask or blanket-allow. Blanket-ask
+  // forces a prompt on every shell fetch in every mode — including cloud sessions, which
+  // have nobody to answer it — so bkit ships blanket-allow under `Bash(*)`, leaving `deny`
+  // and the auto-mode classifier as the backstops.
+  //
+  // Net effect: all three hosts run an allowlisted-host fetch unprompted. They differ only
+  // on an UNDECLARED host, where Cursor and opencode ask and Claude does not.
   it("claude settings gate every bash class opencode gates (reverse-direction parity)", () => {
     const claudeSettings = JSON.parse(fs.readFileSync(CLAUDE_SETTINGS_TEMPLATE, "utf-8"));
     const gated = new Set<string>([
@@ -2987,9 +2997,29 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       ...claudeSettings.permissions.deny,
     ]);
     // opencode `"<cmd> *": "ask"|"deny"` ↔ claude `Bash(<cmd>:*)` / `Bash(<cmd> *)`.
-    for (const cmd of ["curl", "wget", "sudo"]) {
+    for (const cmd of [
+      "sudo",
+      "git reset --hard",
+      "git clean -fd",
+      "git filter-branch",
+      "git checkout -- .",
+      "git restore .",
+      "git stash drop",
+      "git rebase -i",
+      "gh repo delete",
+      "gh pr close",
+      "gh release delete",
+    ]) {
       const gatedHere = [...gated].some((p) => p.startsWith(`Bash(${cmd}`));
       expect(gatedHere, `Bash(${cmd}...) must be gated on the Claude host too`).toBe(true);
+    }
+    // The exemption is exactly two rules wide. Anything else Claude stops gating must
+    // either be justified here or is a regression.
+    for (const cmd of ["curl", "wget"]) {
+      const gatedHere = [...gated].some((p) => p.startsWith(`Bash(${cmd}`));
+      expect(gatedHere, `Bash(${cmd}...) is the documented exemption — should NOT be gated`).toBe(
+        false,
+      );
     }
   });
 

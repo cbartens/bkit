@@ -31,6 +31,7 @@ import {
   buildMcpJson,
   renderManagedOutputs,
   enrichClaudeSettingsWebFetch,
+  pruneRetiredClaudeAskRules,
   opencodeProviderId,
   type ModuleContext,
 } from "./bkit-modules.js";
@@ -2731,6 +2732,17 @@ async function main() {
         for (const w of enrichWs.writes) {
           console.log(
             `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`,
+          );
+        }
+        // Retired-rule prune. Upgrade does not dispatch modules, so without this the
+        // install-side call never runs for `bkit upgrade --latest` — the path the
+        // README points consumers at — and the row survives every upgrade.
+        const prunedAsk = pruneRetiredClaudeAskRules(".claude/settings.json", upgradeFlags.dryRun, {
+          writes: [],
+        });
+        if (prunedAsk) {
+          console.log(
+            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${prunedAsk}`,
           );
         }
       }

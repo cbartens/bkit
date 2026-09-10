@@ -152,27 +152,31 @@ describe("cross-host gate parity — file reads", () => {
 });
 
 describe("cross-host gate parity — KNOWN DIVERGENCE: curl / wget in a shell", () => {
-  // The three hosts do NOT agree here, and no row is added to SHELL_GATES until
-  // the canonical behaviour is chosen — asserting today's behaviour would freeze
-  // the divergence into a passing test.
+  // The three hosts agree on the case that matters and diverge on one edge, so no row
+  // goes into SHELL_GATES (which asserts a single verdict across all three).
   //
   //   Cursor   asks UNLESS every URL host is on the network allowlist (guardrails.cjs
-  //            parses the command and matches host labels)
-  //   opencode asks on EVERY curl / wget — `"curl *": "ask"`
-  //   Claude   asks on EVERY curl / wget — `Bash(curl:*)` / `Bash(wget:*)` in `ask`.
-  //            Its WebFetch domain allowlist governs the WebFetch TOOL, not `curl`
-  //            typed into Bash, and an ask row cannot be excepted per-domain, so
-  //            there is no allowlisted-host escape on this host.
+  //            parses the command and matches host labels — the only correct one)
+  //   opencode `curl *: ask`, then `curl *{domain}*: allow` per allowlisted host,
+  //            last-match-wins. Substring, not host-parsed, so it is cruder than
+  //            Cursor's: `curl https://evil.example/?x=github.com` matches the allow.
+  //   Claude   ungated in a shell — runs under `Bash(*)`. Its WebFetch domain
+  //            allowlist governs the WebFetch TOOL, never `curl` typed into Bash.
   //
-  // Claude is currently the STRICTEST of the three: a content-scoped `ask` rule is
-  // evaluated before the auto-mode classifier and always forces a prompt, beating even
-  // a matching `allow`. So a `context=web` context-fetch block prompts once per run.
+  //   ALLOWLISTED host   → all three run it unprompted. This is the common path and
+  //                        the one context-fetch blocks take.
+  //   UNDECLARED host    → Cursor and opencode ask; Claude runs it.
   //
-  // Choosing "ask unless allowlisted" (Cursor's, the strongest) cannot be expressed
-  // in settings.json or opencode.json — neither can match a URL host — so it needs a
-  // guardrails script on those hosts. Choosing "ask on everything" is expressible
-  // everywhere but regresses Cursor and prompts on ordinary allowlisted fetches.
-  it.todo("curl/wget: pick the canonical behaviour, then add rows to SHELL_GATES");
+  // Claude carries no ask row by design. Its rules match a command PREFIX, not a URL
+  // host, so per-domain allows are inexpressible and the only options are blanket-ask
+  // or blanket-allow. Blanket-ask was shipped once and removed: a content-scoped `ask`
+  // is evaluated before the auto-mode classifier and always forces a prompt, beating
+  // even a matching `allow`, so every `context=web` block stalled — and a cloud session
+  // has nobody to answer it. `deny` and the auto-mode classifier remain the backstops.
+  //
+  // Closing the edge case needs Cursor's host-parsing engine on the other two hosts (a
+  // PreToolUse hook on Claude, a plugin on opencode), not a permission-table row.
+  it.todo("curl/wget: port the host-parsing guardrail to Claude + opencode, then add rows");
 });
 
 describe("cross-host gate parity — network allowlist", () => {
