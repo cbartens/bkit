@@ -16,6 +16,38 @@ designBaseSha:
 > 2. NEVER trust session memory or previous conversation history.
 > 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
+> [!CAUTION]
+> **Coordinate staleness -- `dev` has moved since this plan's `baseSha`.**
+>
+> Baseline is `607d7507` (2026-08-26). Landed since, and **already applied throughout this
+> document**: `.agents/config.md` -> `.agents/context.md` (and its `.bkit/templates/` twin),
+> and the `debug-fetch:*` marker/block vocabulary -> `context-fetch:*`. Both from commit
+> `88638a42` (#454). The renamed cloud-env helpers are `extractContextFetchProvisionRecipes`,
+> `renderCloudContextFetchProvision` and `renderCursorContextFetchProvision`. The
+> `docs/observability.md` heading is still `## Debug Fetch` -- that reference is NOT stale.
+>
+> **Line numbers were deliberately NOT renumbered.** Sub-plans 2-5 carry coordinates written
+> against their predecessors' post-landing state (see the existing `PRE-Task-3` banners), so a
+> blanket rewrite to current `HEAD` would be wrong, not merely stale. Every cited file below
+> has changed since `607d7507`; resolve its anchors **by symbol, marker or heading -- never by
+> line number**:
+>
+> `.agents/context.md`, `.bkit/templates/.agents/context.md`, `.bkit/src/bkit-cloud-env.ts`,
+> `.bkit/src/bkit-cloud-env.test.ts`, `.bkit/src/bkit-modules.ts`, `.bkit/src/bkit-install.ts`,
+> `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-uninstall.ts`, `.bkit/src/bkit-uninstall.test.ts`,
+> `.bkit/src/bkit-upgrade.ts`, `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-preflight.ts`,
+> `.bkit/src/bkit-postinstall.ts`, `.bkit/cloud.md`, `.bkit/README.md`, `.bkit/prompts.md`,
+> `.bkit/providers.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-debug.md`,
+> `.bkit/templates/.claude/cloud.md`, `.bkit/templates/.cursor/cloud.md`,
+> `docs/observability.md`, `docs/testing.md`, `package.json`, `slop-scan.config.json`.
+>
+> Four anchors are confirmed **dead** (the cited content no longer exists at or near that line):
+> `.bkit/workflows/bkit-debug.md:691`, `docs/observability.md:149`, `.bkit/providers.md:256`
+> and `.bkit/cloud.md:111`. Re-locate each by its quoted prose before editing.
+>
+> Anchors into files absent from the list above still hold. `baseSha` is left at `607d7507`
+> on purpose -- it records what this plan was written against, and must not be forged forward.
+
 ## Scope & Dependency Position
 
 **This sub-plan covers Tasks 19–25:** Phase 3c / WS-5 — the `.bkit/version` `webFetchDerived` field, both write paths (install and upgrade), the emptied `.claude/settings.json` template seed, the prune with its seven-row recording contract and its advisory, the provenance-survives-a-real-install test, and two doc edits. Matrix rows owned: **T8, T10, T15, T16, T17**.
@@ -86,7 +118,7 @@ This sub-plan adds a `webFetchDerived` provenance record to `.bkit/version` — 
 
 ### Narrative _(inherited from design — do not rewrite)_
 
-As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/config.md` stay the only thing I declare, and when I remove one it actually loses its grant.
+As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/context.md` stay the only thing I declare, and when I remove one it actually loses its grant.
 
 ### Success Criteria _(inherited from design — do not rewrite)_
 
@@ -119,7 +151,7 @@ As a consumer, I install bkit with whatever providers I want (`--opencode=openro
 
 ### Concrete Example _(plan expands from design)_
 
-**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/config.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted**. Cloud `/bkit-debug` runs return no external evidence.
+**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/context.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted**. Cloud `/bkit-debug` runs return no external evidence.
 
 **Steps:**
 
@@ -197,7 +229,7 @@ _(**Step 5 is this sub-plan's deliverable, end to end.** It is also the step the
 | `bkit uninstall claude` strip scope | Widens by 10 entries — the 5 added bases, each apex + `*.` | `bkit-uninstall.ts:589` deletes by **recomputation** of the current derived set, so a grant the consumer hand-added for one of the five new bases (`githubcopilot.com`, `models.dev`, `npmjs.org`, `skills.sh`, `tavily.com`) is now removed by `bkit uninstall`. Consumer-visible only on the uninstall verb; disclosed in `Edge Cases`, deferred with a corrected premise. |
 | `.bkit/version` | Gains `webFetchDerived: string[]` | Old payloads without the field parse to `[]` = "no record" = prune nothing. Excluded from the published package (`package.json:22`). |
 
-**Not breaking, stated to pre-empt the question:** no CLI flag, no config key and no `.agents/config.md` syntax is renamed or removed. `resolveNetworkAllowlist` keeps its exact signature, so its four callers are untouched by this sub-plan's changes.
+**Not breaking, stated to pre-empt the question:** no CLI flag, no config key and no `.agents/context.md` syntax is renamed or removed. `resolveNetworkAllowlist` keeps its exact signature, so its four callers are untouched by this sub-plan's changes.
 
 ### 👤 ✅ Human Confirmation
 
@@ -337,7 +369,7 @@ The two write **paths** disagree today — install builds a fresh literal and dr
 
 ### Data Schema Usage (Inputs & Outputs)
 
-- **Input (Read):** `.bkit/version` → `pinnedVersion`, `tier3Hashes`, `canonicalHashes` (existing, unchanged reads); `.bkit/version` → `webFetchDerived` (new read, both paths, defaulting to `[]`). `.agents/config.md` `allowed-domains` block via `extractAllowedDomains`. `.claude/settings.json` → `permissions.allow`.
+- **Input (Read):** `.bkit/version` → `pinnedVersion`, `tier3Hashes`, `canonicalHashes` (existing, unchanged reads); `.bkit/version` → `webFetchDerived` (new read, both paths, defaulting to `[]`). `.agents/context.md` `allowed-domains` block via `extractAllowedDomains`. `.claude/settings.json` → `permissions.allow`.
 - **Output (Write):** `.bkit/version` → `webFetchDerived` (new); `.claude/settings.json` → `permissions.allow` (now **add and remove**, previously add-only).
 
 ### Data Schema Changes
@@ -418,7 +450,7 @@ None.
 | Doc | Change required |
 | --- | --- |
 | `.bkit/workflows.md` | `:1277` permission-table row for `WebFetch(domain:…)` — worded generically ("per host in the network allowlist"), so **verify** it still holds after the template seed is emptied rather than assuming. `:1281` likewise. **Decision: KEEP, unedited** — see Task 25. |
-| `.bkit/README.md` | `:270` `.cursor/allowlist.json` row — "generated from tooling defaults + `.agents/config.md` allowed-domains" becomes derived-registry ∪ consumer. `:370` providers.md pointer — after Task 22 empties the template seed nothing is **baked**; restate to name the enriched settings surface. **Decision: EDIT both.** |
+| `.bkit/README.md` | `:270` `.cursor/allowlist.json` row — "generated from tooling defaults + `.agents/context.md` allowed-domains" becomes derived-registry ∪ consumer. `:370` providers.md pointer — after Task 22 empties the template seed nothing is **baked**; restate to name the enriched settings surface. **Decision: EDIT both.** |
 
 _No `docs/observability.md` row: the prune reuses the existing `LOG_PREFIX` and introduces no new log name. No `.bkit/providers.md` row: its four sections belong to sub-plans 2, 3 and 5._
 
@@ -430,7 +462,7 @@ _No `docs/observability.md` row: the prune reuses the existing `LOG_PREFIX` and 
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits, then `pnpm build` and commit the regenerated `dist/`. | `pnpm bkit:check:dist` fails CI if `dist/` is not reverted alongside the source. |
 | **Consumer state** | `.bkit/version` retains `webFetchDerived` after a revert. Harmless: the reverted `parseBkitVersion` ignores unknown keys, and the reverted install writer builds a fresh literal that drops it on the next install. **No cleanup step is required and none should be added** — a migration-down would be new code on the rollback path. | Verified against the current parse/write shapes (`bkit-version.ts:81-112`, `bkit-modules.ts:955-959`). |
-| **Consumer state — grants already pruned** | A revert does not restore a removed `WebFetch(domain:…)` grant, because the reverted enrich is additive-only and the domain is no longer in the derived set. Recovery is the same path the advisory names: declare the apex in `.agents/config.md` `allowed-domains` and re-run `bkit install`. Every removal is also a deleted line in `git diff .claude/settings.json`, so the exact strings are recoverable from history. | **This is the only irreversible consumer-visible effect in the entire change**, and it is bounded to grants bkit itself recorded writing. |
+| **Consumer state — grants already pruned** | A revert does not restore a removed `WebFetch(domain:…)` grant, because the reverted enrich is additive-only and the domain is no longer in the derived set. Recovery is the same path the advisory names: declare the apex in `.agents/context.md` `allowed-domains` and re-run `bkit install`. Every removal is also a deleted line in `git diff .claude/settings.json`, so the exact strings are recoverable from history. | **This is the only irreversible consumer-visible effect in the entire change**, and it is bounded to grants bkit itself recorded writing. |
 | **Risk window** | None. There is no deploy and no schema migration; the change is atomic in one commit and its `dist/` output. | Between merge and a consumer's next `bkit install`/`bkit upgrade`, consumers run entirely on the old behaviour. |
 
 ## Agent Execution Runbook
@@ -471,7 +503,7 @@ Task order is the design's dependency graph: **WS-1 → WS-2 → {WS-3, WS-4, WS
   - **Done when:** T10 passes in `.bkit/src/bkit-install.integration.test.ts` — seed, real install, read back, `webFetchDerived` present, non-empty and equal to the resolved set; a second install with a shrunk `allowed-domains` updates it; reverting Task 20's `postDispatch` change makes T10 fail (verify once, then restore).
 - [ ] **Task 25 — WS-5 docs, same commit.** Two files, and the decision on each is **named here rather than left to a reading**, because "reads correctly" is a human judgment with no mechanical check and `pnpm lint:prose` is already green on the untouched tree — a criterion built on those two alone is green before the task starts.
   - **`.bkit/workflows.md:1277` / `:1281` — KEEP, unedited.** Verified against source 2026-08-26: `:1277`'s `allow` row says "`WebFetch(domain:…)` per host in the network allowlist (apex + `*.` wildcard)" and `:1281` says network allowlisting for Claude is `WebFetch(domain:…)`-only while Cursor gates `curl`/`wget` in `guardrails.cjs` "(host-parsed, not substring-matched)". Both are worded against the **allowlist**, never against the template seed or a hook-embedded list, so emptying the seed and deleting `SHIPPED_NETWORK_BASES` leaves both true.
-  - **`.bkit/README.md:270` — EDIT.** The `.cursor/allowlist.json` row reads "generated from tooling defaults + `.agents/config.md` allowed-domains", which names the hand-maintained model this change replaces. Restate as derived-registry ∪ consumer `allowed-domains`.
+  - **`.bkit/README.md:270` — EDIT.** The `.cursor/allowlist.json` row reads "generated from tooling defaults + `.agents/context.md` allowed-domains", which names the hand-maintained model this change replaces. Restate as derived-registry ∪ consumer `allowed-domains`.
   - **`.bkit/README.md:370` — EDIT.** The `.bkit/providers.md` pointer reads "network allowlist encodings (`.cursor/allowlist.json` vs baked settings)". After Task 22 empties the template seed nothing is **baked** — `.claude/settings.json` grants are written by `enrichClaudeSettingsWebFetch` at install time. Restate to name the enriched settings surface.
   - **Done when:** `rg -n 'per host in the network allowlist' .bkit/workflows.md` still matches at the `allow` row and `rg -n 'template seed|baked settings|embedded in the hook' .bkit/workflows.md` returns nothing (the KEEP decision, asserted rather than assumed); `rg -n 'tooling defaults' .bkit/README.md` returns nothing and the `.cursor/allowlist.json` row names the derived registry; `rg -n 'baked settings' .bkit/README.md` returns nothing; `git diff --stat -- .bkit/README.md` is non-empty and `git diff --stat -- .bkit/workflows.md` is empty (the two decisions above, made visible in the diff); `pnpm lint:prose` and `pnpm format:check` pass.
 

@@ -16,6 +16,38 @@ designBaseSha:
 > 2. NEVER trust session memory or previous conversation history.
 > 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
+> [!CAUTION]
+> **Coordinate staleness -- `dev` has moved since this plan's `baseSha`.**
+>
+> Baseline is `607d7507` (2026-08-26). Landed since, and **already applied throughout this
+> document**: `.agents/config.md` -> `.agents/context.md` (and its `.bkit/templates/` twin),
+> and the `debug-fetch:*` marker/block vocabulary -> `context-fetch:*`. Both from commit
+> `88638a42` (#454). The renamed cloud-env helpers are `extractContextFetchProvisionRecipes`,
+> `renderCloudContextFetchProvision` and `renderCursorContextFetchProvision`. The
+> `docs/observability.md` heading is still `## Debug Fetch` -- that reference is NOT stale.
+>
+> **Line numbers were deliberately NOT renumbered.** Sub-plans 2-5 carry coordinates written
+> against their predecessors' post-landing state (see the existing `PRE-Task-3` banners), so a
+> blanket rewrite to current `HEAD` would be wrong, not merely stale. Every cited file below
+> has changed since `607d7507`; resolve its anchors **by symbol, marker or heading -- never by
+> line number**:
+>
+> `.agents/context.md`, `.bkit/templates/.agents/context.md`, `.bkit/src/bkit-cloud-env.ts`,
+> `.bkit/src/bkit-cloud-env.test.ts`, `.bkit/src/bkit-modules.ts`, `.bkit/src/bkit-install.ts`,
+> `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-uninstall.ts`, `.bkit/src/bkit-uninstall.test.ts`,
+> `.bkit/src/bkit-upgrade.ts`, `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-preflight.ts`,
+> `.bkit/src/bkit-postinstall.ts`, `.bkit/cloud.md`, `.bkit/README.md`, `.bkit/prompts.md`,
+> `.bkit/providers.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-debug.md`,
+> `.bkit/templates/.claude/cloud.md`, `.bkit/templates/.cursor/cloud.md`,
+> `docs/observability.md`, `docs/testing.md`, `package.json`, `slop-scan.config.json`.
+>
+> Four anchors are confirmed **dead** (the cited content no longer exists at or near that line):
+> `.bkit/workflows/bkit-debug.md:691`, `docs/observability.md:149`, `.bkit/providers.md:256`
+> and `.bkit/cloud.md:111`. Re-locate each by its quoted prose before editing.
+>
+> Anchors into files absent from the list above still hold. `baseSha` is left at `607d7507`
+> on purpose -- it records what this plan was written against, and must not be forged forward.
+
 ## Scope & Dependency Position
 
 **This sub-plan covers Tasks 15–18:** Phase 3b / WS-4 — deleting the hand-maintained `SHIPPED_NETWORK_BASES` array from the Cursor guardrails hook template, rewriting the now-false slop-scan exemption reason, deleting the cross-host parity assertion whose two halves this change removes, adding the hook's no-artifact negative case, and correcting `.bkit/providers.md:277`. Matrix row owned: **T11**.
@@ -72,7 +104,7 @@ The hook already reads `.cursor/allowlist.json` at runtime and only falls back t
 
 ### Narrative _(inherited from design — do not rewrite)_
 
-As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/config.md` stay the only thing I declare, and when I remove one it actually loses its grant.
+As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/context.md` stay the only thing I declare, and when I remove one it actually loses its grant.
 
 ### Success Criteria _(inherited from design — do not rewrite)_
 
@@ -103,7 +135,7 @@ As a consumer, I install bkit with whatever providers I want (`--opencode=openro
 
 ### Concrete Example _(plan expands from design)_
 
-**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/config.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted** (the current default guidance). Cloud `/bkit-debug` runs return no external evidence: the shipped `context=web` block prints `HTTP 000` and the GitHub MCP tracker cannot reach `api.githubcopilot.com`.
+**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/context.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted** (the current default guidance). Cloud `/bkit-debug` runs return no external evidence: the shipped `context=web` block prints `HTTP 000` and the GitHub MCP tracker cannot reach `api.githubcopilot.com`.
 
 **Steps:**
 
@@ -341,7 +373,7 @@ None.
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits (template hook, `slop-scan.config.json`, the parity test file, `.bkit/providers.md`), then `pnpm build` and commit the regenerated `dist/`, then one `pnpm bkit install` to restore the `.cursor/hooks/guardrails.cjs` mirror. Finish with `git config core.bare false` — `bkit install` flips it. | The mirror is force-overwritten and untracked-by-drift, so a revert of the template alone leaves the mirror stale until an install runs. |
 | **Consumer state** | A consumer already on the new hook who reverts gets the embedded fallback back on their next `bkit install`. Nothing is stranded: the artifact-reading path is unchanged and pre-dates this change. | The degraded state this change introduces (ask on every `curl`/`wget` with no artifact) disappears with the revert. |
-| **Risk window** | None. There is no deploy and no schema migration. | |
+| **Risk window** | None. There is no deploy and no schema migration. |  |
 
 ## Agent Execution Runbook
 

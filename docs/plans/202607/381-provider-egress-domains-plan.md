@@ -18,11 +18,43 @@ Verdict: PASS
 
 **Split from:** `plan-v3-checked.md` (34 tasks, 17 matrix rows, 8 phases, PASS at scope check, SPLIT at complexity check).
 
+> [!CAUTION]
+> **Coordinate staleness -- `dev` has moved since this plan's `baseSha`.**
+>
+> Baseline is `607d7507` (2026-08-26). Landed since, and **already applied throughout this
+> document**: `.agents/config.md` -> `.agents/context.md` (and its `.bkit/templates/` twin),
+> and the `debug-fetch:*` marker/block vocabulary -> `context-fetch:*`. Both from commit
+> `88638a42` (#454). The renamed cloud-env helpers are `extractContextFetchProvisionRecipes`,
+> `renderCloudContextFetchProvision` and `renderCursorContextFetchProvision`. The
+> `docs/observability.md` heading is still `## Debug Fetch` -- that reference is NOT stale.
+>
+> **Line numbers were deliberately NOT renumbered.** Sub-plans 2-5 carry coordinates written
+> against their predecessors' post-landing state (see the existing `PRE-Task-3` banners), so a
+> blanket rewrite to current `HEAD` would be wrong, not merely stale. Every cited file below
+> has changed since `607d7507`; resolve its anchors **by symbol, marker or heading -- never by
+> line number**:
+>
+> `.agents/context.md`, `.bkit/templates/.agents/context.md`, `.bkit/src/bkit-cloud-env.ts`,
+> `.bkit/src/bkit-cloud-env.test.ts`, `.bkit/src/bkit-modules.ts`, `.bkit/src/bkit-install.ts`,
+> `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-uninstall.ts`, `.bkit/src/bkit-uninstall.test.ts`,
+> `.bkit/src/bkit-upgrade.ts`, `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-preflight.ts`,
+> `.bkit/src/bkit-postinstall.ts`, `.bkit/cloud.md`, `.bkit/README.md`, `.bkit/prompts.md`,
+> `.bkit/providers.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-debug.md`,
+> `.bkit/templates/.claude/cloud.md`, `.bkit/templates/.cursor/cloud.md`,
+> `docs/observability.md`, `docs/testing.md`, `package.json`, `slop-scan.config.json`.
+>
+> Four anchors are confirmed **dead** (the cited content no longer exists at or near that line):
+> `.bkit/workflows/bkit-debug.md:691`, `docs/observability.md:149`, `.bkit/providers.md:256`
+> and `.bkit/cloud.md:111`. Re-locate each by its quoted prose before editing.
+>
+> Anchors into files absent from the list above still hold. `baseSha` is left at `607d7507`
+> on purpose -- it records what this plan was written against, and must not be forged forward.
+
 ## Context & Goals
 
 bkit's network allowlist is fragmented across five encoding surfaces and maintained by hand in two places that only a comment holds together. `BKIT_SHIPPED_NETWORK_DOMAINS` (`.bkit/src/bkit-cloud-env.ts:471-482`, 10 bases) is hand-typed and duplicated verbatim into `SHIPPED_NETWORK_BASES` (`.bkit/templates/.cursor/hooks/guardrails.cjs:115-126` + its `.cursor/` mirror), with a third partial copy in `.bkit/templates/.claude/settings.json:10-22`. Separately, the two cloud paste renderers read the **consumer's** `allowed-domains` alone (`renderCloudNetworkAllowlist` at `:543-544`, `renderCursorNetworkAllowlist` at `:643-644`) while local host permissions merge the shipped defaults (`resolveNetworkAllowlist` at `:502-503`) — so a host bkit ships configuration for is reachable locally and unreachable from a cloud agent session.
 
-Both defects are already live. `api.githubcopilot.com` (the GitHub tracker MCP endpoint bkit writes into `.mcp.json`), `models.dev` (how OpenCode resolves the two gateway catalogs), `skills.sh` (the skills registry `.agents/skills.md` names) and `tavily.com` (called at runtime by the shipped `context=web` debug-fetch block) are in **no** shipped list. `tavily.com` reaches bkit's own surfaces only because bkit dogfoods the declaration in its own `.agents/config.md` `allowed-domains` (`:292`, `:310`); every consumer who does not hand-declare it gets no grant on any surface, and the shipped `context=web` block self-skips with `HTTP 000` everywhere. And even a host that **is** on the shipped list never reaches the cloud dashboard paste, so `--opencode=openrouter` in a cloud session is broken today despite `openrouter.ai` sitting in the constant.
+Both defects are already live. `api.githubcopilot.com` (the GitHub tracker MCP endpoint bkit writes into `.mcp.json`), `models.dev` (how OpenCode resolves the two gateway catalogs), `skills.sh` (the skills registry `.agents/skills.md` names) and `tavily.com` (called at runtime by the shipped `context=web` context-fetch block) are in **no** shipped list. `tavily.com` reaches bkit's own surfaces only because bkit dogfoods the declaration in its own `.agents/context.md` `allowed-domains` (`:292`, `:310`); every consumer who does not hand-declare it gets no grant on any surface, and the shipped `context=web` block self-skips with `HTTP 000` everywhere. And even a host that **is** on the shipped list never reaches the cloud dashboard paste, so `--opencode=openrouter` in a cloud session is broken today despite `openrouter.ai` sitting in the constant.
 
 This change derives one table of egress sources from bkit's own registries (`.bkit/src/bkit-registry.ts`, new leaf), computes the shipped base and host sets from it, fans them out to all five surfaces in the same install pass, deletes both hand-maintained copies, and adds a `webFetchDerived` provenance record to `.bkit/version` so a host that leaves the derived set can lose its `WebFetch` grant instead of accumulating forever.
 
@@ -43,13 +75,13 @@ Full scope: all seven workstreams (WS-1 … WS-7) from the parent design, in the
 - #381 — Auto-derive provider cloud-egress domains from the provider registry (open) — this plan's parent.
 - #394 — Domain allowlist sync base config.md Claude Cursor OpenCode (closed) — landed the tooling ∪ consumer union, apex + `*.` expansion, the host-parsed hook check, and the three per-host encodings. Its two carried-forward items (`enrichClaudeSettingsWebFetch` additive-only; `SHIPPED_NETWORK_BASES` hand-sync) are in this plan's scope.
 - #376 — Add Z.AI (GLM) Moonshot (Kimi) OpenCode providers (closed, completed) — source of the "registrable base, not raw subdomain" direction and of the rejection of consumer content driving hash-gated shipped artifacts. Its `z.ai` / `moonshot.ai` / `kimi.com` grants were since removed by #435.
-- #419 — the `context=web` debug-fetch block (implemented on `dev`) — wrote the local-vs-cloud split guidance into `.agents/config.md`, `.bkit/providers.md` and `docs/observability.md` that WS-3 makes false.
+- #419 — the `context=web` context-fetch block (implemented on `dev`) — wrote the local-vs-cloud split guidance into `.agents/context.md`, `.bkit/providers.md` and `docs/observability.md` that WS-3 makes false.
 - #422 (`564dfb53`) — flipped `.cursor/hooks/guardrails.cjs` to `format: "markered-text"` and added the `SHIPPED_NETWORK_BASES` ↔ `settings.json` WebFetch parity assertion that WS-4 deletes.
 - #435 — IDE-vs-model-provider restructure, Phase 1 landed — cut the opencode provider allowlist from ten to four and re-pointed the shipped egress list. Sequencing risk recorded in Open Question 5.
 
 ### Narrative _(inherited from design — do not rewrite)_
 
-As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/config.md` stay the only thing I declare, and when I remove one it actually loses its grant.
+As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/context.md` stay the only thing I declare, and when I remove one it actually loses its grant.
 
 ### Success Criteria _(inherited from design — do not rewrite)_
 
@@ -258,7 +290,7 @@ Everything the master carried that is not a task, matrix row or gate was placed 
 | Give `json.schemastore.org` a `docs`-kind registry row | Review lens: tightness; interacts with Open Question 1 = A | WS-1's `EgressSource["kind"]` union | **Keep deferred.** The plan's reasoning holds (editor JSON language server, never an agent tool call). Noted only because deleting the variant makes a later reversal a type change rather than a row addition. |
 | Feed the upgrade-path enrich/prune writes into `canonicalHashes` | Review lens: regression risk (`bkit-install.ts:2615-2624` vs the `enrichWs` writes at `:2587-2593`) | Nothing in this plan — pre-existing, harmless for `format: "json"` files decided by `deepContains` | **Keep deferred.** Same install-vs-upgrade finalisation asymmetry as `381-upgrade-does-not-write-advisories-artifact`; it belongs in that issue. |
 | A plan-time repo test over `Done when` greps in template-shaped runbooks | Scope-check lens: three unreachable-criterion defects of the same shape in this plan alone | Nothing in this plan's build tasks — bkit **workflow tooling** | **Worth doing, but not here, and not as a `381-*` deferral.** Belongs in a bkit tooling/friction issue with its own scope. |
-| Deduplicate the `debug-fetch:tavily` skip breadcrumb, carried twice in `.agents/config.md` (`:260` in-block, `:391` dogfood) | Scope-check lens: found while giving `:391` an owner | Task 14 now edits **both** copies, so this plan leaves them correct-but-still-duplicated | **Keep deferred.** Repo hygiene on bkit's own dogfood config, not an egress change. |
+| Deduplicate the `context-fetch:tavily` skip breadcrumb, carried twice in `.agents/context.md` (`:260` in-block, `:391` dogfood) | Scope-check lens: found while giving `:391` an owner | Task 14 now edits **both** copies, so this plan leaves them correct-but-still-duplicated | **Keep deferred.** Repo hygiene on bkit's own dogfood config, not an egress change. |
 
 > [!CAUTION]
 > **Candidates, not scope.** Entries are surfaced for human review; they do NOT become sub-plan tasks and MUST NOT expand scope.

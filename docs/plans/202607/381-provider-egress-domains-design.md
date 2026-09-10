@@ -3,6 +3,38 @@ Verdict: PASS
 
 # Design: Auto-derive provider cloud-egress domains from the provider registries
 
+> [!CAUTION]
+> **Coordinate staleness -- `dev` has moved since this plan's `baseSha`.**
+>
+> Baseline is `607d7507` (2026-08-26). Landed since, and **already applied throughout this
+> document**: `.agents/config.md` -> `.agents/context.md` (and its `.bkit/templates/` twin),
+> and the `debug-fetch:*` marker/block vocabulary -> `context-fetch:*`. Both from commit
+> `88638a42` (#454). The renamed cloud-env helpers are `extractContextFetchProvisionRecipes`,
+> `renderCloudContextFetchProvision` and `renderCursorContextFetchProvision`. The
+> `docs/observability.md` heading is still `## Debug Fetch` -- that reference is NOT stale.
+>
+> **Line numbers were deliberately NOT renumbered.** Sub-plans 2-5 carry coordinates written
+> against their predecessors' post-landing state (see the existing `PRE-Task-3` banners), so a
+> blanket rewrite to current `HEAD` would be wrong, not merely stale. Every cited file below
+> has changed since `607d7507`; resolve its anchors **by symbol, marker or heading -- never by
+> line number**:
+>
+> `.agents/context.md`, `.bkit/templates/.agents/context.md`, `.bkit/src/bkit-cloud-env.ts`,
+> `.bkit/src/bkit-cloud-env.test.ts`, `.bkit/src/bkit-modules.ts`, `.bkit/src/bkit-install.ts`,
+> `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-uninstall.ts`, `.bkit/src/bkit-uninstall.test.ts`,
+> `.bkit/src/bkit-upgrade.ts`, `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-preflight.ts`,
+> `.bkit/src/bkit-postinstall.ts`, `.bkit/cloud.md`, `.bkit/README.md`, `.bkit/prompts.md`,
+> `.bkit/providers.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-debug.md`,
+> `.bkit/templates/.claude/cloud.md`, `.bkit/templates/.cursor/cloud.md`,
+> `docs/observability.md`, `docs/testing.md`, `package.json`, `slop-scan.config.json`.
+>
+> Four anchors are confirmed **dead** (the cited content no longer exists at or near that line):
+> `.bkit/workflows/bkit-debug.md:691`, `docs/observability.md:149`, `.bkit/providers.md:256`
+> and `.bkit/cloud.md:111`. Re-locate each by its quoted prose before editing.
+>
+> Anchors into files absent from the list above still hold. `baseSha` is left at `607d7507`
+> on purpose -- it records what this plan was written against, and must not be forged forward.
+
 ## Related Issues
 
 - #394 — Domain allowlist sync base config.md Claude Cursor OpenCode (closed) — landed the tooling ∪ consumer union, apex + `*.` expansion, and the three per-host encodings this issue derives into. Its carried-forward items (`enrichClaudeSettingsWebFetch` additive-only; `SHIPPED_NETWORK_BASES` hand-sync) are in this issue's scope.
@@ -12,7 +44,7 @@ Verdict: PASS
 
 ### Narrative
 
-As a consumer, I install bkit with whatever providers I want (`--opencode=zai`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/config.md` stay the only thing I declare, and when I remove one it actually loses its grant.
+As a consumer, I install bkit with whatever providers I want (`--opencode=zai`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/context.md` stay the only thing I declare, and when I remove one it actually loses its grant.
 
 ### Success Criteria
 
@@ -244,12 +276,12 @@ One row per atomic `id`. 20 rows; 10 of them are exactly the 10 `OPENCODE_PROVID
 | `package-registry` | `pkg-npm` | `registry.npmjs.org` | `npmjs.com` | declared |
 | `package-registry` | `pkg-github` | `npm.pkg.github.com`, `raw.githubusercontent.com` | `github.com`, `githubusercontent.com` | declared |
 | `skills` | `skills-sh` | `skills.sh` | `skills.sh` | declared — **gap today** |
-| `tooling-api` | `tooling-tavily` | `api.tavily.com` | `tavily.com` | declared — called at RUNTIME by the `role=web-search` debug-fetch block |
+| `tooling-api` | `tooling-tavily` | `api.tavily.com` | `tavily.com` | declared — called at RUNTIME by the `role=web-search` context-fetch block |
 | `docs` | `kimi-docs` | `kimi.com` | `kimi.com` | `reason`: docs host, not derivable from `api.moonshot.ai` (#376) |
 
 `kimi-docs` carries `hosts: ["kimi.com"]`, **not** `[]`. Both reviews flagged the v1 `hosts: []` independently: `BKIT_SHIPPED_NETWORK_HOSTS` is the exact-host list `renderCursorNetworkAllowlist` unions in verbatim, so an empty `hosts` would have silently dropped `kimi.com` from the Cursor cloud surface — regressing on Cursor precisely the #376 grant this design elsewhere insists on preserving. The host is knowable, so the row states it. The general invariant this makes explicit: **a row with a non-empty `bases` and an empty `hosts` narrows the Cursor surface**; the completeness test (§ 6.1) asserts `hosts` is non-empty whenever `bases` is non-empty, so the shape cannot recur silently.
 
-`tooling-api` is a **distinct kind from `docs`, and the distinction is the whole point of this issue.** A `docs` row is a host an interactive agent may `WebFetch` for documentation — the surface #381's scope boundary explicitly carves OUT of cloud runtime egress. `tooling-api` is the inverse: a bkit-shipped host called **at runtime, headless, mid-workflow**, where an unreachable host is a silent workflow degradation rather than a failed doc lookup. `tooling-tavily` is the first such row — `api.tavily.com` is called by the `role=web-search` debug-fetch block during a cloud `/bkit-debug` run (#419). Filing it under `docs` would invert its meaning and, worse, invite a future reader to conclude it is docs-only and therefore safe to drop from the egress set. The kind carries no behaviour: only `opencode-provider` is derived, so every other kind — this one included — is a declared row and needs no new branch anywhere.
+`tooling-api` is a **distinct kind from `docs`, and the distinction is the whole point of this issue.** A `docs` row is a host an interactive agent may `WebFetch` for documentation — the surface #381's scope boundary explicitly carves OUT of cloud runtime egress. `tooling-api` is the inverse: a bkit-shipped host called **at runtime, headless, mid-workflow**, where an unreachable host is a silent workflow degradation rather than a failed doc lookup. `tooling-tavily` is the first such row — `api.tavily.com` is called by the `role=web-search` context-fetch block during a cloud `/bkit-debug` run (#419). Filing it under `docs` would invert its meaning and, worse, invite a future reader to conclude it is docs-only and therefore safe to drop from the egress set. The kind carries no behaviour: only `opencode-provider` is derived, so every other kind — this one included — is a declared row and needs no new branch anywhere.
 
 Deliberately **absent**, each with the reason recorded here so the next maintainer does not "fix" it:
 
@@ -370,7 +402,7 @@ Note the fifth row is why the existing `if (missing.length === 0) return;` early
 **Where a removal is recorded (the v1 draft said "log every removed entry" and named no destination).** Three real, already-existing destinations, in ascending durability:
 
 1. **Console, both paths.** One line per removed grant behind `LOG_PREFIX`, matching the existing per-write upgrade logging at `bkit-install.ts:2612-2616`. Immediate, transient.
-2. **`.bkit/advisories.md`** — the codebase's existing durable consumer-facing notice artifact (`writeAdvisoriesArtifact`, `bkit-postinstall.ts:2215-2243`). Enrich takes an `advisories: PreflightFinding[]` parameter and pushes one finding when `remove` is non-empty: `{ id: "webfetch-grants-pruned", severity: "advisory", detect: "<N> WebFetch grant(s) bkit previously wrote were removed because their host left the derived set or your allowed-domains: <exact strings>", action: "If you still need one, declare its apex in .agents/config.md allowed-domains and re-run bkit install; the removal is also visible in git diff .claude/settings.json." }`. On install/check this is `ctx.advisories`, the same shared array every other module uses, and it flows through `runPostInstallCheck` -> `formatChecklist` banner **and** the artifact write at `bkit-install.ts:2990`. It survives the terminal scrolling.
+2. **`.bkit/advisories.md`** — the codebase's existing durable consumer-facing notice artifact (`writeAdvisoriesArtifact`, `bkit-postinstall.ts:2215-2243`). Enrich takes an `advisories: PreflightFinding[]` parameter and pushes one finding when `remove` is non-empty: `{ id: "webfetch-grants-pruned", severity: "advisory", detect: "<N> WebFetch grant(s) bkit previously wrote were removed because their host left the derived set or your allowed-domains: <exact strings>", action: "If you still need one, declare its apex in .agents/context.md allowed-domains and re-run bkit install; the removal is also visible in git diff .claude/settings.json." }`. On install/check this is `ctx.advisories`, the same shared array every other module uses, and it flows through `runPostInstallCheck` -> `formatChecklist` banner **and** the artifact write at `bkit-install.ts:2990`. It survives the terminal scrolling.
 3. **`git diff .claude/settings.json`** — the after-the-fact audit path. `.claude/settings.json` is git-tracked (`git ls-files` confirms; no `.gitignore` rule covers it), so every removal is a reviewable deleted line with full history. The advisory's `action` text names this explicitly so a consumer who finds the advisory days later knows where to look.
 
 **Stated limitation, not papered over:** `bkit upgrade` does **not** write `.bkit/advisories.md` today — `writeAdvisoriesArtifact` is called only from the doctor branch (`bkit-install.ts:2124`) and the install/check path (`:2990`), and the upgrade branch returns at `:2669` without it. On upgrade, destinations (1) and (3) apply and (2) does not. Wiring upgrade into the advisories artifact is a general install/upgrade-parity gap that pre-dates this issue and is recorded as a deferral rather than solved here; the prune does not depend on it, because (3) is durable and version-controlled.
@@ -384,8 +416,8 @@ Unchanged code paths — both already call `resolveNetworkAllowlist` and pick up
 <!-- prettier-ignore -->
 | File | Change |
 | --- | --- |
-| `.agents/config.md:111-118` § Cloud allowed domains | State that provider/tooling hosts are derived from bkit's registries and must **not** be re-declared here; `allowed-domains` is consumer stack domains only. |
-| `.bkit/templates/.agents/config.md:113-118` | Same edit — the template twin is what ships into consumers. |
+| `.agents/context.md:111-118` § Cloud allowed domains | State that provider/tooling hosts are derived from bkit's registries and must **not** be re-declared here; `allowed-domains` is consumer stack domains only. |
+| `.bkit/templates/.agents/context.md:113-118` | Same edit — the template twin is what ships into consumers. |
 | `.bkit/providers.md:260-275` § Network allowlist | Line 273 ("Missing file ⇒ guardrails falls back to tooling defaults embedded in the hook") becomes false — rewrite to "missing file ⇒ ask on every `curl`/`wget`; re-run `bkit install`". Add the OpenCode substring-glob weakness note. Add the support-facing note that the cloud paste blocks now carry an allowlist fingerprint and that triage should ask a "cloud agent can't reach host X" reporter for it. |
 | `.bkit/cloud.md:109-111` | The "no `allowed-domains` block -> Trusted is enough" guidance is no longer true once provider hosts are in play. |
 | **`.bkit/templates/.claude/cloud.md`** § 2 Network access + § 5 Verify | **NEW — closes the fingerprint's missing runbook half.** Add the troubleshooting sentence described below. Verified today: `grep -i "troubleshoot\|timeout"` returns nothing in this file. |
@@ -613,8 +645,8 @@ One place where all branching lives, and it is inside the coverage-measured file
 - Retire the Claude `declared.length === 0` "Trusted default" branch: Trusted covers package registries and GitHub, not `api.z.ai`, so a zero-declaration consumer still needs Custom. Replace with a Custom block carrying the bkit set plus the existing pointer prose.
 - Retire the **Cursor** zero-declared branch in the same change (`bkit-cloud-env.ts:648-656`, "nothing extra is required here" becomes flatly false). `renderCursorNetworkAllowlist` unions `BKIT_SHIPPED_NETWORK_HOSTS` — exact hosts, **no `*.` expansion** — with the consumer's declared entries verbatim, preserving Cursor's deliberate no-wildcard policy. Both renderers end up single-branch.
 - Fingerprint: 8-hex, computed with the `sha256` already exported from `bkit-version.ts:190` (cycle-free; no second hasher, no `node:crypto` import), hashed over the **derived set only, never the consumer union** — so it changes at bkit-release cadence rather than on every `allowed-domains` edit. Rendered as prose appended to the italic line that **follows the closing fence** in both renderers; nothing inside the ` ```text ` fence changes, because the fence content is pasted verbatim into a vendor "Allowed domains" field.
-- Docs in the same commit: `.bkit/templates/.claude/cloud.md` § 2 + § 5 and `.bkit/templates/.cursor/cloud.md` § 4 + § 5 gain the **symptom-first** runbook sentence ("if a cloud session's model calls hang or time out with no network error … compare the fingerprint … re-paste"). `.bkit/cloud.md:109-111` loses the "no `allowed-domains` -> Trusted is enough" guidance. `.agents/config.md` **and** `.bkit/templates/.agents/config.md` state that provider/tooling hosts are derived and must not be re-declared. `.bkit/providers.md` gains the triage-side note (ask a "cloud agent can't reach host X" reporter for the fingerprint). ASCII operators only in `.bkit/*.md`.
-- **Guidance added by #419 that this workstream makes false — delete, do not adapt.** #419 shipped the `role=web-search` block against the pre-WS-3 behaviour and documented the local-vs-cloud split in four more places, each of which becomes wrong the moment `renderCloudNetworkAllowlist` switches to `resolveNetworkAllowlist`: (a) `.agents/config.md` § Cloud allowed domains — the "`role=web-search` hosts must be declared here too" paragraph, plus the now-redundant `tavily.com` line in the `allowed-domains` **example** block; (b) `.bkit/providers.md` § Network allowlist — the "Tooling defaults reach LOCAL host permissions only" paragraph, which states the exact invariant WS-3 removes; (c) `docs/observability.md` § Debug Fetch and its template mirror — the `role=web-search` paragraph's clause requiring `tavily.com` in `allowed-domains` for cloud runs. Line numbers are deliberately omitted: they have already shifted once. Grep for `tavily` and for `LOCAL host permissions` instead.
+- Docs in the same commit: `.bkit/templates/.claude/cloud.md` § 2 + § 5 and `.bkit/templates/.cursor/cloud.md` § 4 + § 5 gain the **symptom-first** runbook sentence ("if a cloud session's model calls hang or time out with no network error … compare the fingerprint … re-paste"). `.bkit/cloud.md:109-111` loses the "no `allowed-domains` -> Trusted is enough" guidance. `.agents/context.md` **and** `.bkit/templates/.agents/context.md` state that provider/tooling hosts are derived and must not be re-declared. `.bkit/providers.md` gains the triage-side note (ask a "cloud agent can't reach host X" reporter for the fingerprint). ASCII operators only in `.bkit/*.md`.
+- **Guidance added by #419 that this workstream makes false — delete, do not adapt.** #419 shipped the `role=web-search` block against the pre-WS-3 behaviour and documented the local-vs-cloud split in four more places, each of which becomes wrong the moment `renderCloudNetworkAllowlist` switches to `resolveNetworkAllowlist`: (a) `.agents/context.md` § Cloud allowed domains — the "`role=web-search` hosts must be declared here too" paragraph, plus the now-redundant `tavily.com` line in the `allowed-domains` **example** block; (b) `.bkit/providers.md` § Network allowlist — the "Tooling defaults reach LOCAL host permissions only" paragraph, which states the exact invariant WS-3 removes; (c) `docs/observability.md` § Debug Fetch and its template mirror — the `role=web-search` paragraph's clause requiring `tavily.com` in `allowed-domains` for cloud runs. Line numbers are deliberately omitted: they have already shifted once. Grep for `tavily` and for `LOCAL host permissions` instead.
 - Tests owned here: **9 Fingerprint placement** (token appears after the closing fence in both `.claude/cloud.md` and `.cursor/cloud.md`, never between the fences; editing `allowed-domains` does not change it, changing the registry does). Plus the § 5b existing-test repairs: `bkit-cloud-env.test.ts:326-330` and `:399-403` re-anchored off `"Set to **Trusted** (default)"` onto the always-Custom block (keep the pointer-prose assertion), and a plan-time sweep for any Cursor "nothing extra is required here" assertion.
 
 #### Requires

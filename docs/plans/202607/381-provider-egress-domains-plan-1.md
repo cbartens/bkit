@@ -16,6 +16,38 @@ designBaseSha:
 > 2. NEVER trust session memory or previous conversation history.
 > 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
+> [!CAUTION]
+> **Coordinate staleness -- `dev` has moved since this plan's `baseSha`.**
+>
+> Baseline is `607d7507` (2026-08-26). Landed since, and **already applied throughout this
+> document**: `.agents/config.md` -> `.agents/context.md` (and its `.bkit/templates/` twin),
+> and the `debug-fetch:*` marker/block vocabulary -> `context-fetch:*`. Both from commit
+> `88638a42` (#454). The renamed cloud-env helpers are `extractContextFetchProvisionRecipes`,
+> `renderCloudContextFetchProvision` and `renderCursorContextFetchProvision`. The
+> `docs/observability.md` heading is still `## Debug Fetch` -- that reference is NOT stale.
+>
+> **Line numbers were deliberately NOT renumbered.** Sub-plans 2-5 carry coordinates written
+> against their predecessors' post-landing state (see the existing `PRE-Task-3` banners), so a
+> blanket rewrite to current `HEAD` would be wrong, not merely stale. Every cited file below
+> has changed since `607d7507`; resolve its anchors **by symbol, marker or heading -- never by
+> line number**:
+>
+> `.agents/context.md`, `.bkit/templates/.agents/context.md`, `.bkit/src/bkit-cloud-env.ts`,
+> `.bkit/src/bkit-cloud-env.test.ts`, `.bkit/src/bkit-modules.ts`, `.bkit/src/bkit-install.ts`,
+> `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-uninstall.ts`, `.bkit/src/bkit-uninstall.test.ts`,
+> `.bkit/src/bkit-upgrade.ts`, `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-preflight.ts`,
+> `.bkit/src/bkit-postinstall.ts`, `.bkit/cloud.md`, `.bkit/README.md`, `.bkit/prompts.md`,
+> `.bkit/providers.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-debug.md`,
+> `.bkit/templates/.claude/cloud.md`, `.bkit/templates/.cursor/cloud.md`,
+> `docs/observability.md`, `docs/testing.md`, `package.json`, `slop-scan.config.json`.
+>
+> Four anchors are confirmed **dead** (the cited content no longer exists at or near that line):
+> `.bkit/workflows/bkit-debug.md:691`, `docs/observability.md:149`, `.bkit/providers.md:256`
+> and `.bkit/cloud.md:111`. Re-locate each by its quoted prose before editing.
+>
+> Anchors into files absent from the list above still hold. `baseSha` is left at `607d7507`
+> on purpose -- it records what this plan was written against, and must not be forged forward.
+
 ## Scope & Dependency Position
 
 **This sub-plan covers Tasks 1–9:** Phase 0 (blocking proof obligation), Phase 1 / WS-1 (egress registry leaf), Phase 2 / WS-2 (derivation, gate, derived exports). Matrix rows owned: **T1, T2, T3, T5, T7**.
@@ -52,7 +84,7 @@ Both defects are already live. `api.githubcopilot.com`, `models.dev`, `skills.sh
 >
 > **15 is the derived-union count everywhere in this plan.** It is today's 10 plus `githubcopilot.com`, `models.dev`, `npmjs.org`, `skills.sh`, `tavily.com`. `npmjs.org` is the fifteenth and exists only because Open Question 2 resolves to option A; a builder who anchors on 14 drops it and Open Question 2's `reason` invariant becomes unmotivated. Any "14" surviving anywhere in this document is a defect, not an alternative reading.
 
-**Related Issues:** #381 (parent), #394 (landed the tooling ∪ consumer union and the three per-host encodings; its two carried-forward items are in scope), #376 (source of the "registrable base, not raw subdomain" direction), #419 (`context=web` debug-fetch block), #422 (`564dfb53`, flipped the hook to `markered-text`), #435 (Phase 1 landed; Open Question 5 records the sequencing risk).
+**Related Issues:** #381 (parent), #394 (landed the tooling ∪ consumer union and the three per-host encodings; its two carried-forward items are in scope), #376 (source of the "registrable base, not raw subdomain" direction), #419 (`context=web` context-fetch block), #422 (`564dfb53`, flipped the hook to `markered-text`), #435 (Phase 1 landed; Open Question 5 records the sequencing risk).
 
 ---
 
@@ -81,7 +113,7 @@ Both defects are already live. `api.githubcopilot.com`, `models.dev`, `skills.sh
 
 ### Narrative _(inherited from design — do not rewrite)_
 
-As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/config.md` stay the only thing I declare, and when I remove one it actually loses its grant.
+As a consumer, I install bkit with whatever providers I want (`--opencode=openrouter`, a GitHub tracker, the skills registry), paste the network allowlist that `.claude/cloud.md` / `.cursor/cloud.md` generates into my Claude/Cursor dashboard once, and my cloud agent reaches every host bkit configured it to call — without me hand-declaring a single provider API host. Switching or adding a provider later needs no re-paste and no edit anywhere. My own stack domains in `.agents/context.md` stay the only thing I declare, and when I remove one it actually loses its grant.
 
 ### Success Criteria _(inherited from design — do not rewrite)_
 
@@ -112,7 +144,7 @@ As a consumer, I install bkit with whatever providers I want (`--opencode=openro
 
 ### Concrete Example _(plan expands from design)_
 
-**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/config.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted** (the current default guidance). Cloud `/bkit-debug` runs return no external evidence: the shipped `context=web` block prints `HTTP 000` and the GitHub MCP tracker cannot reach `api.githubcopilot.com`.
+**Setup:** A consumer repo with the GitHub tracker and the OpenRouter opencode provider installed, an `.agents/context.md` `allowed-domains` block declaring exactly `sentry.io`, and a Claude Code on the web environment whose network mode is **Trusted** (the current default guidance). Cloud `/bkit-debug` runs return no external evidence: the shipped `context=web` block prints `HTTP 000` and the GitHub MCP tracker cannot reach `api.githubcopilot.com`.
 
 **Steps:**
 
@@ -179,7 +211,7 @@ As a consumer, I install bkit with whatever providers I want (`--opencode=openro
 | `BKIT_SHIPPED_NETWORK_DOMAINS` | CHANGED | `bkit-cloud-env.ts:471-482` | **Same name, same `readonly string[]` type** — hand-listed literal becomes a module-init computed constant. No signature change, so `resolveNetworkAllowlist` and its four downstreams are untouched. |
 | `OPENCODE_PROVIDER_DEFAULTS` | MOVED | `bkit-modules.ts:1461-1518` → `bkit-registry.ts` | Module-private `const`, 4 in-file call sites (`:1526`, `:1536`, `:1659`, `:1995`). Relocation plus one import line; **no external call site, no test import, no public API change.** |
 
-**Not breaking, stated to pre-empt the question:** no CLI flag, no config key, no `.agents/config.md` syntax and no public export is renamed or removed by this sub-plan.
+**Not breaking, stated to pre-empt the question:** no CLI flag, no config key, no `.agents/context.md` syntax and no public export is renamed or removed by this sub-plan.
 
 ### 👤 ✅ Human Confirmation
 
@@ -373,7 +405,7 @@ None. bkit ships no database and no migration lane.
 | `package-registry` | `pkg-npm` | `registry.npmjs.org` | `npmjs.com`, `npmjs.org` | declared; `reason`: the registry API host is on a sibling TLD its `.com` base cannot cover on a label boundary (Open Question 2) |
 | `package-registry` | `pkg-github` | `npm.pkg.github.com`, `raw.githubusercontent.com` | `github.com`, `githubusercontent.com` | declared |
 | `skills` | `skills-sh` | `skills.sh` | `skills.sh` | declared — **gap today**; the registry `.agents/skills.md:17` names and `npx skills` calls |
-| `tooling-api` | `tooling-tavily` | `api.tavily.com` | `tavily.com` | declared — **gap today for every consumer.** Called at RUNTIME, headless, by the shipped `context=web` debug-fetch block (`.agents/config.md:237-260`). It reaches bkit's own surfaces only because bkit dogfoods the declaration in its own `.agents/config.md` `allowed-domains` (`:292`, `:310`); it was **never** in `BKIT_SHIPPED_NETWORK_DOMAINS` |
+| `tooling-api` | `tooling-tavily` | `api.tavily.com` | `tavily.com` | declared — **gap today for every consumer.** Called at RUNTIME, headless, by the shipped `context=web` context-fetch block (`.agents/context.md:237-260`). It reaches bkit's own surfaces only because bkit dogfoods the declaration in its own `.agents/context.md` `allowed-domains` (`:292`, `:310`); it was **never** in `BKIT_SHIPPED_NETWORK_DOMAINS` |
 
 - **`tooling-api` is a distinct kind from `docs`, and the distinction is the point.** A `docs` row is a host an interactive agent may `WebFetch` for documentation — the surface #381's scope boundary explicitly carves OUT of cloud runtime egress. `tooling-api` is the inverse: a bkit-shipped host called at runtime, mid-workflow, where an unreachable host is a silent workflow degradation rather than a failed doc lookup. Filing Tavily under `docs` would invert its meaning and invite a future reader to drop it as docs-only.
 - **Derived union — 15 bases, sorted unique:** `anthropic.com`, `claude.com`, `cursor.com`, `github.com`, `githubcopilot.com`, `githubusercontent.com`, `linear.app`, `models.dev`, `npmjs.com`, `npmjs.org`, `ollama.com`, `opencode.ai`, `openrouter.ai`, `skills.sh`, `tavily.com`. **Strict superset of today's 10** — five added, none removed.
@@ -431,7 +463,7 @@ _No other doc row belongs to this sub-plan: WS-1 and WS-2 add no consumer-visibl
 | **DB** | None — bkit ships no database and no migration lane. | n/a |
 | **Code** | `git revert` this sub-plan's commits, then `pnpm build` and commit the regenerated `dist/` **including deleting `dist/bkit-registry.js`**. No mirror regeneration is needed — this sub-plan runs no `bkit install`. | `pnpm bkit:check:dist` fails CI if `dist/` is not reverted alongside the source. |
 | **Consumer state** | None reached. Nothing in Tasks 2–9 changes an installed artifact; Task 1's probe touches only a throwaway scratch consumer under `tmp/`. | Task 1's STOP path reverts its own probe edit by `Edit`, never by `git checkout` / `git restore` / `git reset`. |
-| **Risk window** | None. No deploy, no schema migration reaching a real consumer. | |
+| **Risk window** | None. No deploy, no schema migration reaching a real consumer. |  |
 
 ## Agent Execution Runbook
 
