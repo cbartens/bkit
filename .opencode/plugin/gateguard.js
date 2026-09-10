@@ -86,9 +86,10 @@ function investigationChecklist(filePath) {
     `[bkit GateGuard] First edit to \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE editing:\n` +
     `- Confirm you read this file and exact symbols / lines you are about to change.\n` +
     `- Confirm precise field names, types, and signatures being changed.\n` +
-    `- Confirm callers / importers changes affect (grep / read source, do NOT assume).\n` +
-    `- Confirm symbols / flags / configs changes require exist (grep / read source, do NOT assume).\n` +
+    `- Confirm callers / importers changes affect (search code / read source, do NOT assume).\n` +
+    `- Confirm symbols / flags / configs changes require exist (search code / read source, do NOT assume).\n` +
     `- Confirm external data contracts (DB schemas, APIs / SDKs) changes affect (verify actual shape, do NOT assume).\n` +
+    `- Confirm changes follow patterns / conventions already in this file / its neighbours where feasible (read source, do NOT assume).\n` +
     `- Confirm user instructions or plan tasks changes serve (quote them, do NOT trust memory).\n` +
     `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
   );
@@ -98,10 +99,11 @@ function reuseChecklist(filePath) {
   const base = path.basename(filePath);
   return (
     `[bkit GateGuard] New file \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE adding:\n` +
-    `- Confirm existing code does NOT already provide capability (grep / read source, do NOT assume).\n` +
-    `- Confirm existing code CANNOT be reused / extended to provide capability (grep / read source, do NOT assume).\n` +
+    `- Confirm existing code does NOT already provide capability (search code / read source, do NOT assume).\n` +
+    `- Confirm existing code CANNOT be reused / extended to provide capability (search code / read source, do NOT assume).\n` +
     `- Confirm anything code supersedes is deleted, NOT left as duplicate work (verify removal, do NOT assume).\n` +
-    `- Confirm location / naming fits project architecture / topology / standards (grep / read source, do NOT assume).\n` +
+    `- Confirm location / naming fits project architecture / topology / standards (search code / read source, do NOT assume).\n` +
+    `- Confirm structures / patterns / conventions follow closest equivalent files where feasible (read source, do NOT assume).\n` +
     `Bolt-on drift starts here; evolve existing code first. Advisory — proceed once satisfied.`
   );
 }
