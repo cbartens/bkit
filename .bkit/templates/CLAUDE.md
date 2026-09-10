@@ -4,6 +4,6 @@
 
 - **Rules:** Read `.agents/rules.md` → FOLLOW ALL rules.
 
-**Memory hygiene:** Claude Code auto-memories (`MEMORY.md` + `memory/*.md`) point to `docs/*.md`, NEVER duplicate. Any facts in docs, save pointers (path + section + one-line hook), do NOT copy.
+**Memory hygiene:** Claude Code auto-memories (`MEMORY.md` + `memory/*.md`) are POINTERS, never copies. Facts in `docs/*.md`, `.agents/rules.md`, or `CLAUDE.md` → ONLY save path, section, and one-line hook. Issue states → query tracker or `docs/roadmap.md`; NEVER snapshot into memory.
 
 <!-- bkit:end -->
