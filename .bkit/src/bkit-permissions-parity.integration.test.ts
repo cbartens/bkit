@@ -169,11 +169,10 @@ describe("cross-host gate parity — shell", () => {
   }
 });
 
-// Codex is absent here on purpose. Its guardrail is registered on the shell tool
-// (`Bash`) only: the read tier would need Codex's file-read tool name, which is not
-// something this repo has verified against the Codex docs, and registering a guessed
-// matcher installs a hook that silently never fires — a gate proving only that it was
-// asked for. Shell-level reads (`cat .env`) are covered by neither host's read tier.
+// Three hosts, not four: the Codex guardrail is registered on the shell tool only.
+// Tracked in docs/deferrals.jsonl →
+// `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`.
+// Shell-level reads (`cat .env`) are covered by no host's read tier.
 describe("cross-host gate parity — file reads", () => {
   for (const g of READ_GATES) {
     it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — claude/opencode/cursor`, () => {
@@ -202,8 +201,8 @@ describe("cross-host gate parity — file reads", () => {
 // -E` bulk rewrite of cross-references across generated plan files. A gate that
 // blocks a documented exception is a gate that gets switched off.
 //
-// opencode is absent: its permission table cannot parse a redirect target, and a
-// blanket `sed -i*` ask would both prompt constantly and break that same workflow.
+// opencode is absent — a glob-keyed table cannot parse a redirect target. Tracked in
+// docs/deferrals.jsonl → `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`.
 const CLAUDE_GUARDRAILS = path.resolve(".bkit/templates/.claude/hooks/guardrails.cjs");
 
 function advisoryText(host: "claude" | "codex" | "cursor", cmd: string): string {
@@ -345,8 +344,8 @@ describe("cross-host gate parity — curl / wget in a shell", () => {
 
   it("the allowlist is host-matched, not substring-matched, on every host that parses it", () => {
     // `github.com` in a query param or as a subdomain suffix of an attacker domain must
-    // NOT read as allowlisted. opencode is excluded: its table is substring-keyed and
-    // cannot express this — recorded here rather than asserted as if it could.
+    // NOT read as allowlisted. opencode is excluded — substring-keyed table; same deferral
+    // as the shell-edit block above.
     const SNEAKY = [
       "curl https://evil.example/x?src=github.com",
       "curl https://github.com.attacker.io/x",
