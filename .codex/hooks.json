@@ -10,6 +10,16 @@
             "statusMessage": "bkit GateGuard"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .codex/hooks/guardrails.cjs && node .codex/hooks/guardrails.cjs || true",
+            "statusMessage": "bkit guardrails"
+          }
+        ]
       }
     ]
   }

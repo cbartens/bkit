@@ -1,14 +1,20 @@
 // bkit-permissions-parity.integration.test.ts — one canonical gate set, asserted against every host.
 //
 // bkit's promise is that an agent is held to the same rules whichever IDE runs it.
-// The three hosts express gates in three different languages:
+// The four hosts express gates in four different languages:
 //
-//   Claude   .claude/settings.json     permissions.deny / .ask  — prefix patterns
-//   opencode .opencode/opencode.json   permission.bash / .read  — globs, last-match-wins
-//   Cursor   .cursor/hooks/guardrails.cjs                       — regexes in a script
+//   Claude   .claude/settings.json          permissions.deny / .ask  — prefix patterns
+//   opencode .opencode/opencode.json        permission.bash / .read  — globs, last-match-wins
+//   Cursor   .cursor/hooks/guardrails.cjs                            — regexes in a script
+//   Codex    .codex/hooks/guardrails.cjs                             — same engine, Claude-family envelope
 //
-// Three dialects drift silently. This file is the single table they must all
+// Four dialects drift silently. This file is the single table they must all
 // satisfy: add a gate here and every host that lacks it fails until it has it.
+//
+// Codex carries ONE structural exception, asserted rather than hidden: it parses
+// `permissionDecision: "ask"` but does not implement it, so its ask tier is advisory
+// `additionalContext` — the gate fires and informs, it cannot stop the command. Deny
+// blocks for real on all four.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -17,6 +23,7 @@ import { describe, expect, it } from "vitest";
 const CLAUDE_SETTINGS = ".bkit/templates/.claude/settings.json";
 const OPENCODE_JSON = ".bkit/templates/.opencode/opencode.json";
 const GUARDRAILS = path.resolve(".bkit/templates/.cursor/hooks/guardrails.cjs");
+const CODEX_GUARDRAILS = path.resolve(".bkit/templates/.codex/hooks/guardrails.cjs");
 
 type Verdict = "deny" | "ask" | "allow";
 
@@ -113,13 +120,35 @@ function cursorVerdict(payload: unknown): Verdict {
   return (JSON.parse(res.stdout.trim()) as { permission: Verdict }).permission;
 }
 
+/**
+ * Codex speaks the Claude-family hook contract, and it cannot prompt: it parses
+ * `permissionDecision: "ask"` but does not implement it, so an ask would be recorded
+ * as an error and the call would run anyway. bkit therefore emits the ask tier as
+ * advisory `additionalContext`, which is mapped back to "ask" here — the gate fired
+ * and told the model; it simply could not stop the command on this host.
+ *
+ * Silence (no stdout) is allow: the engine returns null when it has no opinion.
+ */
+function codexVerdict(cmd: string): Verdict {
+  const res = spawnSync("node", [CODEX_GUARDRAILS], {
+    input: JSON.stringify({ tool_name: "Bash", tool_input: { command: cmd } }),
+    encoding: "utf-8",
+  });
+  const out = res.stdout.trim();
+  if (!out) return "allow";
+  const hso = (JSON.parse(out) as { hookSpecificOutput: Record<string, string> })
+    .hookSpecificOutput;
+  if (hso.permissionDecision === "deny") return "deny";
+  return hso.additionalContext ? "ask" : "allow";
+}
+
 // ---------------------------------------------------------------------------
 // The assertions
 // ---------------------------------------------------------------------------
 
 describe("cross-host gate parity — shell", () => {
   for (const g of SHELL_GATES) {
-    it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — all three hosts`, () => {
+    it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — all four hosts`, () => {
       expect({ host: "claude", v: claudeShellVerdict(g.cmd) }).toEqual({
         host: "claude",
         v: g.expect,
@@ -132,13 +161,22 @@ describe("cross-host gate parity — shell", () => {
         host: "cursor",
         v: g.expect,
       });
+      expect({ host: "codex", v: codexVerdict(g.cmd) }).toEqual({
+        host: "codex",
+        v: g.expect,
+      });
     });
   }
 });
 
+// Codex is absent here on purpose. Its guardrail is registered on the shell tool
+// (`Bash`) only: the read tier would need Codex's file-read tool name, which is not
+// something this repo has verified against the Codex docs, and registering a guessed
+// matcher installs a hook that silently never fires — a gate proving only that it was
+// asked for. Shell-level reads (`cat .env`) are covered by neither host's read tier.
 describe("cross-host gate parity — file reads", () => {
   for (const g of READ_GATES) {
-    it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — all three hosts`, () => {
+    it(`${g.expect.toUpperCase()} on reading \`${g.file}\` (${g.why}) — claude/opencode/cursor`, () => {
       expect({ host: "opencode", v: opencodeVerdict("read", g.file) }).toEqual({
         host: "opencode",
         v: g.expect,

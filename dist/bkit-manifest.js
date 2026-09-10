@@ -207,6 +207,34 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Cursor discards the entire hook's output if two emitters both write to stdout,
   so make sure your driver still emits exactly once per invocation.
 `;
+/**
+ * Codex twin of {@link GUARDRAILS_WIRING_INSTRUCTIONS}. Separate text, not a reuse:
+ * the Codex engine returns `{ verdict, reason }` and emits the Claude-family
+ * `hookSpecificOutput` envelope, so the Cursor wording would name the wrong function
+ * result and the wrong stdout shape — and a consumer following it would wire a hook
+ * that parses as nothing and silently never gates.
+ */
+export const CODEX_GUARDRAILS_WIRING_INSTRUCTIONS = `[bkit] {{PATH}} exists with your own content and no bkit markers — the bkit-managed guardrails block was appended at the end of the file (between \`// bkit:start\` and \`// bkit:end\`), but nothing calls into it yet.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open {{PATH}}. The appended block exports a pure function \`bkitGuardrails(payload)\`
+  that returns \`{ verdict, reason }\` or \`null\` — it never touches stdin or stdout.
+  \`verdict\` is "deny" or "ask". Wire it into your existing driver:
+    1. Parse the PreToolUse payload your driver already reads from stdin.
+    2. Call \`const decision = bkitGuardrails(payload);\`
+    3. If \`decision\`, emit ONE JSON document to stdout:
+       \`{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny",
+       permissionDecisionReason: decision.reason } }\` when \`verdict === "deny"\`,
+       otherwise \`{ hookSpecificOutput: { hookEventName: "PreToolUse",
+       additionalContext: decision.reason } }\`.
+    4. A \`null\` result means bkit has no opinion — fall through to your own decision.
+  Do NOT map an "ask" verdict to \`permissionDecision: "ask"\`. Codex parses that value
+  but does not implement it: it records an error and runs the command anyway. Advisory
+  context is the strongest thing that actually reaches the model on this host.
+  Codex discards the entire hook's output if two emitters both write to stdout, so make
+  sure your driver still emits exactly once per invocation.
+`;
 const CLAUDE_MANIFEST = [
     // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
     // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
@@ -508,6 +536,17 @@ export const CODEX_MANIFEST = [
         path: ".codex/hooks/gateguard.cjs",
         format: "markered-text",
         module: "codex",
+    },
+    // guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook (same decision
+    // engine). Registered on matcher `Bash`, Codex's shell tool name. Codex parses but
+    // does not implement `permissionDecision: "ask"`, so the deny tier blocks for real
+    // and the ask tier is emitted as advisory `additionalContext` — the documented
+    // divergence asserted in bkit-permissions-parity.integration.test.ts.
+    {
+        path: ".codex/hooks/guardrails.cjs",
+        format: "markered-text",
+        module: "codex",
+        noMarkerMigration: CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
     },
     // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
     // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.

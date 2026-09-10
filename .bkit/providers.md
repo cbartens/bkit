@@ -21,7 +21,7 @@
 | Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | `bkit install --claude` |
 | Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
-| Codex CLI | additive (opt-in) | `.codex/agents/` (TOML) | none — skills (below) | none (`openai` = reserved built-in id) | `.codex/hooks/gateguard.cjs` (PreToolUse, via `.codex/hooks.json`) | `bkit install --codex` |
+| Codex CLI | additive (opt-in) | `.codex/agents/` (TOML) | none — skills (below) | none (`openai` = reserved built-in id) | `.codex/hooks/gateguard.cjs` + `.codex/hooks/guardrails.cjs` (PreToolUse `apply_patch` / `Bash`, via `.codex/hooks.json`) | `bkit install --codex` |
 
 **Two axes — host != provider.** **Host** = program reading what bkit writes, identified by its dir (`.claude/`, `.cursor/`, `.opencode/`, `.codex/`). **Provider** = gateway tokens are bought through. Model IDs are per-provider → `prompts.md` § Models = one column per PROVIDER (shared provider = one column, never two). Thinking depth is per-host (field name + ladder set by host config format: `effort:` claude/cursor, `reasoningEffort:` opencode, `model_reasoning_effort` codex) → § Effort = one column per HOST. Neither table grows as hosts x providers.
 
@@ -46,7 +46,9 @@ Subscription-bearing host → pinned, nullary flag (`--claude`, `--codex`). BYO-
 | Workflows = SKILLS, invoked `$bkit-design` | NO project-scoped command surface — custom prompts are `~/.codex/prompts` only, not repo-shared, deprecated for skills (upstream declined repo-scoped prompts). bkit renders `.agents/skills/bkit-<workflow>/SKILL.md`, on Codex's skill path (`$REPO_ROOT/.agents/skills`). `.agents/` is shared → visible to every host. |
 | `tools:` NOT enforced | No per-agent tool allowlist upstream; `sandbox_mode` cannot substitute — every bkit agent is write-capable, so all would be `workspace-write`. Each agent gets the full built-in tool set regardless of declared `tools:`. GateGuard still gates, as everywhere. |
 
-> **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing.
+> **GateGuard needs the `.codex/` layer TRUSTED.** Codex loads project-local hooks only once trusted. Until then the hook is installed and never fires — present, proving nothing. Same for `guardrails.cjs`.
+>
+> **Codex cannot prompt.** It parses `permissionDecision: "ask"` but does not implement it — an ask is recorded as an error and the call proceeds. `guardrails.cjs` therefore blocks the `deny` tier for real and emits the `ask` tier as advisory `additionalContext`: the gate fires and informs, it cannot stop the command. Every ask-tier command is already PROHIBITED in all five workflow headers, so no bkit workflow reaches one. Asserted in `bkit-permissions-parity.integration.test.ts`.
 
 **Explicit host axis (no implicit full):** `bkit install` requires ≥1 module flag — bare `bkit install` errors. Every host explicit; hosts compose: `bkit install --claude --cursor --opencode=opencode-zen` installs all three (+ implicit core). `--opencode` cannot render without `=<provider>` (strict allowlist). Switch providers: re-run install. All hosts render from `.bkit/`; run state in `status.jsonl` + plan docs + tracker (never host session) — phase/resumed run moves across hosts/providers mid-feature with identical gates + per-agent pins: hit limit on one, continue on another. `bkit status` → installed hosts + active providers; `bkit doctor` → credentials + tool reachability.
 

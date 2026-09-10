@@ -62,6 +62,7 @@ import {
   BKIT_GATE_SCRIPTS,
   BKIT_OPTIONAL_GATES,
   GATEGUARD_CJS_WIRING_INSTRUCTIONS,
+  CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
   GATEGUARD_JS_WIRING_INSTRUCTIONS,
   GUARDRAILS_WIRING_INSTRUCTIONS,
 } from "./bkit-manifest.js";
@@ -3831,6 +3832,27 @@ export function runCodexModule(ctx: ModuleContext): void {
         wiringMessage: GATEGUARD_CJS_WIRING_INSTRUCTIONS,
       });
       if (ws.writes.length > prevLen) console.log(`${logPrefix} ${tag}codex: ${hookDst}`);
+    }
+  }
+
+  // --- guardrails.cjs — Tier-2 markered-text, twin of the Cursor hook ---
+  // Registered on matcher `Bash` in hooks.json above. Same decision engine as Cursor;
+  // the deny tier blocks, the ask tier is advisory because Codex parses but does not
+  // implement `permissionDecision: "ask"`.
+  {
+    const railSrc = path.join(codexTplDir, "hooks", "guardrails.cjs");
+    const railDst = ".codex/hooks/guardrails.cjs";
+    if (fs.existsSync(railSrc)) {
+      if (!dryRun) ensureDir(path.dirname(railDst));
+      const prevLen = ws.writes.length;
+      const priorVersion = readBkitVersion(path.join(process.cwd(), ".bkit", "version"));
+      writeTier2(railSrc, railDst, ctx.tokens, "slash-comment", dryRun, ws, {
+        relPath: railDst,
+        canonicalHashes: priorVersion?.canonicalHashes ?? {},
+        advisories,
+        wiringMessage: CODEX_GUARDRAILS_WIRING_INSTRUCTIONS,
+      });
+      if (ws.writes.length > prevLen) console.log(`${logPrefix} ${tag}codex: ${railDst}`);
     }
   }
 
