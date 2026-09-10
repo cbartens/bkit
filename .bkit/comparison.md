@@ -86,7 +86,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   2. fetch context       (only if tests FAIL; CI: failed jobs/steps + error
                          annotations + failed-step logs; e2e test reports; local
                          test output; diff vs last-passing CI; runtime logs via
-                         debug-fetch blocks; tracker: related issues by error
+                         context-fetch blocks; tracker: related issues by error
                          signature → feeds diagnose below)
   Normal mode (localisable failure):
   3. diagnose           (reads docs/knowledge.jsonl for prior failures;

@@ -10,8 +10,8 @@ import {
   resolveCloudEnvVars,
   renderCloudEnvBlock,
   renderCloudEnvNotes,
-  extractDebugFetchProvisionRecipes,
-  renderCloudDebugFetchProvision,
+  extractContextFetchProvisionRecipes,
+  renderCloudContextFetchProvision,
   renderCloudCacheBust,
   extractAllowedDomains,
   expandAllowedDomains,
@@ -22,7 +22,7 @@ import {
   BKIT_SHIPPED_NETWORK_DOMAINS,
   writeClaudeCloudDoc,
   cursorCloudPolicy,
-  renderCursorDebugFetchProvision,
+  renderCursorContextFetchProvision,
   renderCursorNetworkAllowlist,
   writeCursorCloudDoc,
 } from "./bkit-cloud-env";
@@ -209,7 +209,7 @@ describe("template generation sentinels", () => {
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CLOUD_COREPACK@@");
-    expect(template).toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
+    expect(template).toContain("@@CLOUD_CONTEXT_FETCH_PROVISION@@");
     expect(template).toContain("{{PROJECT_NAME}}");
   });
 
@@ -218,41 +218,41 @@ describe("template generation sentinels", () => {
   });
 });
 
-describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", () => {
+describe("extractContextFetchProvisionRecipes / renderCloudContextFetchProvision", () => {
   const MANAGED =
     "<!-- bkit:start -->\n# Config\n\n" +
     // A provision example INSIDE the managed block must be ignored (reference-only).
-    "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n\n" +
+    "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n\n" +
     "<!-- bkit:end -->\n";
 
-  it("returns [] when .agents/config.md is absent", () => {
-    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
-    expect(renderCloudDebugFetchProvision(tmpDir)).toBe("");
+  it("returns [] when .agents/context.md is absent", () => {
+    expect(extractContextFetchProvisionRecipes(tmpDir)).toEqual([]);
+    expect(renderCloudContextFetchProvision(tmpDir)).toBe("");
   });
 
   it("ignores provision blocks inside the managed block (only consumer-section counts)", () => {
-    write(".agents/config.md", MANAGED);
-    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
-    expect(renderCloudDebugFetchProvision(tmpDir)).toBe("");
+    write(".agents/context.md", MANAGED);
+    expect(extractContextFetchProvisionRecipes(tmpDir)).toEqual([]);
+    expect(renderCloudContextFetchProvision(tmpDir)).toBe("");
   });
 
   it("extracts the bash body of each consumer-section provision block", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       MANAGED +
         "## Enabled\n\n" +
-        "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel >/dev/null 2>&1 || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n\n" +
-        "<!-- debug-fetch:provision supabase -->\n```bash\ncommand -v supabase >/dev/null 2>&1 || pnpm add -g supabase\n```\n<!-- debug-fetch:end -->\n",
+        "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel >/dev/null 2>&1 || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n\n" +
+        "<!-- context-fetch:provision supabase -->\n```bash\ncommand -v supabase >/dev/null 2>&1 || pnpm add -g supabase\n```\n<!-- context-fetch:end -->\n",
     );
-    const recipes = extractDebugFetchProvisionRecipes(tmpDir);
+    const recipes = extractContextFetchProvisionRecipes(tmpDir);
     expect(recipes).toEqual([
       "command -v vercel >/dev/null 2>&1 || pnpm add -g vercel",
       "command -v supabase >/dev/null 2>&1 || pnpm add -g supabase",
     ]);
-    const rendered = renderCloudDebugFetchProvision(tmpDir);
+    const rendered = renderCloudContextFetchProvision(tmpDir);
     expect(rendered).toContain("pnpm add -g vercel");
     expect(rendered).toContain("pnpm add -g supabase");
-    expect(rendered).toContain(".agents/config.md provision blocks");
+    expect(rendered).toContain(".agents/context.md provision blocks");
     // pnpm's global-bin dir must be on PATH before any `pnpm add -g` recipe, else it
     // aborts the setup script ("global bin directory … is not in PATH").
     expect(rendered).toContain('export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"');
@@ -262,19 +262,21 @@ describe("extractDebugFetchProvisionRecipes / renderCloudDebugFetchProvision", (
     // Recipes run best-effort so one failing recipe can't abort the `set -e` snapshot
     // build: a `set +e` subshell wraps them and its non-zero exit is swallowed.
     expect(rendered).toContain("(\n  set +e\n");
-    expect(rendered).toMatch(/\) \|\| echo "\[cloud-setup\] a debug-fetch provision recipe failed/);
+    expect(rendered).toMatch(
+      /\) \|\| echo "\[cloud-setup\] a context-fetch provision recipe failed/,
+    );
     // Both the PATH export and set +e must precede the recipes.
     expect(rendered.indexOf("set +e")).toBeLessThan(rendered.indexOf("pnpm add -g"));
   });
 
-  it("does not treat a fetch (debug-fetch:start) block as a provision recipe", () => {
+  it("does not treat a fetch (context-fetch:start) block as a provision recipe", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       MANAGED +
         "## Enabled\n\n" +
-        "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
+        "<!-- context-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- context-fetch:end -->\n",
     );
-    expect(extractDebugFetchProvisionRecipes(tmpDir)).toEqual([]);
+    expect(extractContextFetchProvisionRecipes(tmpDir)).toEqual([]);
   });
 });
 
@@ -332,7 +334,7 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
 
   it("renders the Custom allowlist when allowed-domains are declared", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n## Cloud\n\n" +
         "<!-- allowed-domains:start -->\nsentry.io\n*.vercel.com\n<!-- allowed-domains:end -->\n",
     );
@@ -348,13 +350,13 @@ describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
 describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllowlist", () => {
   it("returns [] when config.md is absent or has no allowed-domains block", () => {
     expect(extractAllowedDomains(tmpDir)).toEqual([]);
-    write(".agents/config.md", "<!-- bkit:end -->\nno domains here\n");
+    write(".agents/context.md", "<!-- bkit:end -->\nno domains here\n");
     expect(extractAllowedDomains(tmpDir)).toEqual([]);
   });
 
   it("extracts declared domains, ignoring comments/blank/marker lines", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n" +
         "<!-- allowed-domains:start -->\n# a comment\nsentry.io\n\n  supabase.com  \n<!-- allowed-domains:end -->\n",
     );
@@ -363,7 +365,7 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
 
   it("only reads blocks BELOW bkit:end (managed-section examples ignored)", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n" +
         "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nreal.com\n<!-- allowed-domains:end -->\n",
     );
@@ -407,7 +409,7 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     expect(BKIT_SHIPPED_NETWORK_DOMAINS).not.toContain("supabase.com");
     expect(resolveNetworkAllowlist(tmpDir)).not.toContain("vercel.com");
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\n<!-- allowed-domains:end -->\n",
     );
     expect(resolveNetworkAllowlist(tmpDir)).toContain("vercel.com");
@@ -455,20 +457,20 @@ describe("cursorCloudPolicy", () => {
   });
 });
 
-describe("renderCursorDebugFetchProvision", () => {
+describe("renderCursorContextFetchProvision", () => {
   it("returns '' when no consumer provision blocks are declared", () => {
-    expect(renderCursorDebugFetchProvision(tmpDir)).toBe("");
-    write(".agents/config.md", "<!-- bkit:end -->\nno blocks\n");
-    expect(renderCursorDebugFetchProvision(tmpDir)).toBe("");
+    expect(renderCursorContextFetchProvision(tmpDir)).toBe("");
+    write(".agents/context.md", "<!-- bkit:end -->\nno blocks\n");
+    expect(renderCursorContextFetchProvision(tmpDir)).toBe("");
   });
 
   it("surfaces the same recipes as the Claude path, pointed at environment.json install", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n## Enabled\n\n" +
-        "<!-- debug-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- debug-fetch:end -->\n",
+        "<!-- context-fetch:provision vercel -->\n```bash\ncommand -v vercel || pnpm add -g vercel\n```\n<!-- context-fetch:end -->\n",
     );
-    const out = renderCursorDebugFetchProvision(tmpDir);
+    const out = renderCursorContextFetchProvision(tmpDir);
     expect(out).toContain("command -v vercel || pnpm add -g vercel");
     expect(out).toContain(".cursor/environment.json");
   });
@@ -484,7 +486,7 @@ describe("renderCursorNetworkAllowlist", () => {
 
   it("declared domains → lists them apex-only (no *. expansion) with the wildcard caution", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n## Cloud\n\n" +
         "<!-- allowed-domains:start -->\nsentry.io\nexample.com\n<!-- allowed-domains:end -->\n",
     );
@@ -508,13 +510,13 @@ describe("cursor template generation sentinels", () => {
     expect(template).toContain("@@CLOUD_ENV_VARS@@");
     expect(template).toContain("@@CLOUD_ENV_NOTES@@");
     expect(template).toContain("@@CURSOR_NETWORK@@");
-    expect(template).toContain("@@CURSOR_DEBUG_FETCH@@");
+    expect(template).toContain("@@CURSOR_CONTEXT_FETCH@@");
     expect(template).toContain("{{PROJECT_NAME}}");
     // Cursor uses its own network sentinel + no pasted setup script — Claude-only ones absent.
     expect(template).not.toContain("@@CLOUD_CACHE_BUST@@");
     expect(template).not.toContain("@@CLOUD_NETWORK_ALLOWLIST@@");
     expect(template).not.toContain("@@CLOUD_COREPACK@@");
-    expect(template).not.toContain("@@CLOUD_DEBUG_FETCH_PROVISION@@");
+    expect(template).not.toContain("@@CLOUD_CONTEXT_FETCH_PROVISION@@");
   });
 
   it("directs secrets to the Runtime Secret / Secrets-tab path, not the old Settings pane", () => {
@@ -601,9 +603,9 @@ describe("writeNetworkAllowlistArtifact — .cursor/allowlist.json writer", () =
     expect(res.wrote).toBe(false);
   });
 
-  it("picks up consumer allowed-domains from .agents/config.md", () => {
+  it("picks up consumer allowed-domains from .agents/context.md", () => {
     write(
-      ".agents/config.md",
+      ".agents/context.md",
       "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nexample.invalid\n<!-- allowed-domains:end -->\n",
     );
     const res = writeNetworkAllowlistArtifact(tmpDir, false);

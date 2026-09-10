@@ -22,7 +22,7 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `.agents/config.md` | — | — | — | ● | — | Agent / tooling config bkit parses, debug-fetch runtime-log contract, cloud CLI provisioning. |
+| `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
 | `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
@@ -36,7 +36,8 @@
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
-| `docs/roadmap.jsonl` | ● | ● | ● | ● | ● | Canonical feature-state ledger (`kind:"feature"`) — appended at every phase close (`docs/roadmap.md`'s sole source of truth). Append-only. |
+| `docs/roadmap.jsonl` | ● | ● | ● | ● | ● | Issue-state ledger — appended at every phase close. Append-only. |
+| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Generated board with best-next-step analysis, projected from two inputs: `docs/roadmap.jsonl` (bkit phase per FID) and the tracker snapshot (every open issue). |
 | `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |

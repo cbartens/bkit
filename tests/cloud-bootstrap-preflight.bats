@@ -56,8 +56,8 @@ teardown() {
 }
 
 run_bootstrap() {
-  # WORKDIR has no pnpm-lock.yaml / .vale.ini / .agents/config.md, so the
-  # baseline-install / vale-sync / debug-fetch-provision blocks self-skip —
+  # WORKDIR has no pnpm-lock.yaml / .vale.ini / .agents/context.md, so the
+  # baseline-install / vale-sync / context-fetch-provision blocks self-skip —
   # isolating the gh-preflight block under test.
   printf '' | env -i PATH="$FAKE_BIN:/usr/bin:/bin" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$WORKDIR" "$@" bash "$BOOTSTRAP_SH"
 }

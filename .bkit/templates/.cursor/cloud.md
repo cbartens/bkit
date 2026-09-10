@@ -67,7 +67,7 @@ rebuilds the image; later sessions reuse cached layers.
 ## 4 · Network access
 
 @@CURSOR_NETWORK@@
-@@CURSOR_DEBUG_FETCH@@
+@@CURSOR_CONTEXT_FETCH@@
 ## 5 · Verify (first session)
 
 ```bash

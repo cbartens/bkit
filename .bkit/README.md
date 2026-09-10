@@ -227,7 +227,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
 | `AGENTS.md`, `CLAUDE.md` | core | `.bkit/templates/` | Tier 2 html-comment |
 | `docs/**` | core | `.bkit/templates/docs/` | Tier 2 html-comment |
-| `.agents/config.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment. Consumer `allowed-domains` block lives after `bkit:end`. |
+| `.agents/context.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment. Consumer `allowed-domains` block lives after `bkit:end`. |
 | `.gitattributes` | core | `.bkit/templates/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.envrc` | core | `.bkit/templates/.envrc` | Tier 2 hash-comment |
 | `.mcp.json` | core | `.bkit/templates/.mcp.json` | Tier 2 JSON deep-containment (consumer servers preserved) |
@@ -267,7 +267,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.cursor/hooks/preflight.sh` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 hash-comment |
 | `.cursor/hooks/guardrails.cjs` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 slash-comment (migration policy). Destructive-op + curl/wget host gates. |
 | `.cursor/hooks/gateguard.cjs` | cursor | `.bkit/templates/.cursor/hooks/` | Tier 2 slash-comment (migration policy) |
-| `.cursor/allowlist.json` | cursor | generated from tooling defaults + `.agents/config.md` allowed-domains | Tier 1 (canonical-overwrite). Curl/wget host allowlist `guardrails.cjs` reads at runtime. |
+| `.cursor/allowlist.json` | cursor | generated from tooling defaults + `.agents/context.md` allowed-domains | Tier 1 (canonical-overwrite). Curl/wget host allowlist `guardrails.cjs` reads at runtime. |
 | `.opencode/opencode.json` | opencode | `.bkit/templates/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. **Opt-in via `bkit install --opencode=<provider>`**. |
 | `.opencode/commands/bkit-*.md` | opencode | `.bkit/workflows/` | Host pass — always overwrite |
 | `.opencode/agents/bkit-*.md` | opencode | `.bkit/prompts/` | Host pass — always overwrite |
@@ -372,8 +372,8 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts unaffected. |
 | `docs/audits/` | Audit reports from `bkit-utility-audit-*` agents. Created on the first audit run. |
-| `docs/roadmap.jsonl` | Canonical feature-state ledger (`kind:"feature"`) — shipped features index (`status:"SHIPPED"`) + in-flight phase state, appended at every workflow close |
-| `docs/roadmap.md` | Generated phase-sectioned board + best-next-step analysis, projected from `docs/roadmap.jsonl`. Consumer-owned — never seeded/overwritten by `bkit install` |
+| `docs/roadmap.jsonl` | Issue-state ledger — appended at every phase close. Append-only. |
+| `docs/roadmap.md` | Issue-state ledger and phase-sectioned board with best-next-step analysis, projected from `docs/roadmap.jsonl`. Consumer-owned — never seeded/overwritten by `bkit install` |
 | `docs/deferrals.jsonl` | Deferred items |
 
 ### In the installed package, not your repo

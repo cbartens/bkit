@@ -160,6 +160,11 @@ function _stripScope(consumer, template) {
 // preserves any consumer content added below `bkit:end`, exactly like the root AGENTS.md.
 // Removed only on a full/core uninstall (gated on core in moduleList below).
 const CORE_TEMPLATE_DOCTRINE = [
+    { path: ".agents/context.md", format: "markered-text", module: "core" },
+    // Retired in #454 (renamed to context.md above). Kept here so a consumer who
+    // uninstalls BEFORE ever upgrading is not left holding an orphaned managed block —
+    // the migration only runs on install/upgrade, and uninstall may come first. A no-op
+    // for everyone already migrated, since the file is gone by then.
     { path: ".agents/config.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },

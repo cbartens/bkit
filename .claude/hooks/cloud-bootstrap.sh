@@ -116,28 +116,28 @@ if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${GH_BKIT_TOKEN:-}" ] && [ -z "${
   log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
 fi
 
-# Provision debug-fetch CLIs the consumer declared in .agents/config.md. Stack-agnostic:
-# bkit runs whatever `debug-fetch:provision` recipe each block carries (self-guarded with
+# Provision context-fetch CLIs the consumer declared in .agents/context.md. Stack-agnostic:
+# bkit runs whatever `context-fetch:provision` recipe each block carries (self-guarded with
 # `command -v <cli> || <install>`), so no stack name is baked into bkit. Runs every session
 # (a no-op once the CLI is present); the web setup script bakes the same recipes into its
-# snapshot, so this is the gh-runner + resumed-session path. See .agents/config.md.
-if [ -f .agents/config.md ]; then
+# snapshot, so this is the gh-runner + resumed-session path. See .agents/context.md.
+if [ -f .agents/context.md ]; then
   PROVISION=$(awk '
     /^<!-- bkit:end -->$/ { consumer=1; next }
     !consumer { next }
-    /^<!-- debug-fetch:provision/ { inprov=1; next }
-    /^<!-- debug-fetch:(start|end|none)/ { inprov=0; infence=0; next }
+    /^<!-- context-fetch:provision/ { inprov=1; next }
+    /^<!-- context-fetch:(start|end|none)/ { inprov=0; infence=0; next }
     inprov && /^```/ { infence=!infence; next }
     inprov && infence { print }
-  ' .agents/config.md)
+  ' .agents/context.md)
   if [ -n "$PROVISION" ]; then
-    log "provisioning debug-fetch CLIs from .agents/config.md"
+    log "provisioning context-fetch CLIs from .agents/context.md"
     # pnpm refuses `add -g` unless its global-bin dir is on PATH (corepack pnpm skips
     # `pnpm setup`); export it so `pnpm add -g` provision recipes don't self-skip. Mirrors
     # the web setup script's provision region (bkit-cloud-env.ts).
     export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
     export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"
-    printf '%s\n' "$PROVISION" | bash || log "debug-fetch CLI provisioning failed (non-blocking)"
+    printf '%s\n' "$PROVISION" | bash || log "context-fetch CLI provisioning failed (non-blocking)"
   fi
 fi
 
@@ -149,7 +149,7 @@ fi
 # Docker daemon — PREREQUISITE for any containerised local stack below. Cloud
 # sessions ship the docker CLI but no init system, so nothing starts the daemon
 # for you, and image pulls go through the egress proxy: declare the registry
-# hosts in .agents/config.md § Cloud allowed domains or every pull 403s. Needs
+# hosts in .agents/context.md § Cloud allowed domains or every pull 403s. Needs
 # root / a privileged container; on a plain host this self-skips.
 # if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
 #   log "starting dockerd"
@@ -160,7 +160,7 @@ fi
 #
 # Local backend stack (Supabase / Postgres / Redis / etc.):
 # Gate on the DAEMON, not just the CLI. `command -v supabase` starts passing the
-# moment a debug-fetch:provision recipe puts the CLI on PATH (.agents/config.md
+# moment a context-fetch:provision recipe puts the CLI on PATH (.agents/context.md
 # § CLI provisioning) — the container runtime it needs is still absent, so
 # `supabase start` dies, the `|| log` swallows it into one stderr line, and the
 # session carries on with no database. Skip loudly instead.

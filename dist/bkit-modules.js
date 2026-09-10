@@ -15,7 +15,7 @@ import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkit
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
-import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
+import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -268,7 +268,7 @@ const COPY_EXCLUDE = new Set([
     "friction.md",
     "docs.md",
     "skills.md",
-    "config.md",
+    "context.md",
     // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
     // template at .bkit/templates/.bkit/.env.example). Including it in the
     // payload copy would double-handle the same destination — Tier 3 sees the
@@ -667,12 +667,18 @@ export function runCoreModule(ctx) {
     // they are readable in-repo. Force-overwrite (Tier 1); no-op in dogfood.
     console.log(`${logPrefix} ${tag}Running bkit docs pass`);
     runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
-    // 3c. Auto-migrate consumer debug-fetch blocks docs/observability.md → .agents/config.md (#334).
-    // Runs AFTER the templates pass has (re)written config.md's managed block, so moved blocks land
-    // below a header that already exists. Content-preserving, idempotent no-op once nothing remains.
-    // Consumers do nothing — the upgrade moves their copied-down blocks for them.
+    // 3c. Auto-migrate consumer context-fetch config onto .agents/context.md. Runs AFTER the
+    // templates pass has (re)written context.md's managed block, so carried blocks land below a
+    // header that already exists. Idempotent no-op once nothing remains. Consumers do nothing —
+    // the install moves their copied-down blocks for them.
+    //
+    // #454 (retire .agents/config.md, rename the markers) runs BEFORE #334 (move the blocks out
+    // of docs/observability.md) so both hops converge on one context.md in a single pass.
     {
-        const moved = migrateDebugFetchToConfig(cwd, dryRun);
+        const movedConfigMd = migrateConfigMdToContext(cwd, dryRun);
+        if (movedConfigMd)
+            console.log(`${logPrefix} ${tag}${movedConfigMd}`);
+        const moved = migrateContextFetchToContext(cwd, dryRun);
         if (moved)
             console.log(`${logPrefix} ${tag}${moved}`);
     }
@@ -1342,7 +1348,7 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  *
  * Also injects `curl *{domain}*` / `wget *{domain}*` **allow** rules (after the
  * template's `curl *` / `wget *` ask) for {@link resolveNetworkAllowlist} so
- * debug-fetch / provider hosts do not prompt. OpenCode bash is last-match-wins.
+ * context-fetch / provider hosts do not prompt. OpenCode bash is last-match-wins.
  */
 export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
@@ -1433,7 +1439,7 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
  * dispatch modules).
  *
  * ADDITIVE ONLY — this never prunes. A domain dropped from a consumer's
- * `allowed-domains` keeps its `WebFetch` grant, so `.agents/config.md` is the
+ * `allowed-domains` keeps its `WebFetch` grant, so `.agents/context.md` is the
  * source of truth for ADDITIONS but not for removals. Pruning safely would need
  * a record of what bkit itself wrote: nothing in `permissions.allow`
  * distinguishes a bkit-derived entry from one the consumer added by hand, and

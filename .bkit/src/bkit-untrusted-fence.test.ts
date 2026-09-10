@@ -41,13 +41,13 @@ const FENCE_CLOSE = "===== END UNTRUSTED =====";
 
 /**
  * Workflows that write fetched external evidence to disk and must carry the fence.
- * Tracker dumps (`related-issues.md`, `debug-context-related-*.md`) are NOT fenced:
+ * Tracker dumps (`related-issues.md`, `context-related-*.md`) are NOT fenced:
  * issue / PR / comment bodies are the task specification, not payload to quarantine.
  */
 const FENCED_WORKFLOWS = [".bkit/workflows/bkit-debug.md"] as const;
 
 /** Artifacts holding fetched external evidence — tracker dumps excluded. */
-const UNTRUSTED_ARTIFACTS = /debug-context-(?!related)/;
+const UNTRUSTED_ARTIFACTS = /context-(?!related)/;
 
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
 
@@ -83,7 +83,7 @@ describe("the payload is wrapped once, never twice", () => {
   // that prints its own banner nests a second fence inside the first, and the
   // shipped example is what consumers copy. Prose about untrusted output is fine;
   // a marker line emitted into the payload is not.
-  for (const rel of [".agents/config.md", ".bkit/templates/.agents/config.md"]) {
+  for (const rel of [".agents/context.md", ".bkit/templates/.agents/context.md"]) {
     it(`${rel} fetch blocks emit no fence of their own`, () => {
       const emitted = read(rel).match(/^.*={3,}[^\n]*UNTRUSTED.*$/gm) ?? [];
       expect(emitted, `${rel} emits its own fence marker`).toEqual([]);

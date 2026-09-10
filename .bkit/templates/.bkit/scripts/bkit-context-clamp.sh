@@ -53,7 +53,7 @@
 # omission markers are additive on the same terms.
 #
 # Loudness: a truncated artifact must NEVER read as a complete one. Same
-# doctrine `.agents/config.md` applies to `debug-fetch` self-skips — dropped
+# doctrine `.agents/context.md` applies to `context-fetch` self-skips — dropped
 # content was not read, and its absence is not evidence. A shortened line says
 # so inline; a dropped run of lines says how many; the footer says the totals.
 #

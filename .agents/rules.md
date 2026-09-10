@@ -96,6 +96,7 @@
 - **No downgrades:** NEVER fix by downgrade; STOP if stuck.
 - **Fix code not gates:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Record the block per your own blocker contract, and continue; NEVER self-authorize the opt-out.
 - **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
+- **External context first:** ALWAYS read `.agents/context.md` BEFORE concluding anything about runtime behaviours, CI, or external / upstream causes.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro BEFORE remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts BEFORE requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
 - **Local pre-push:** lint, typecheck, format:check, `pnpm test` (unit and in-process integration), prose, slop:delta, `bkit check`. NO tests requiring deployed boundary / backing service.

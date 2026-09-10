@@ -44,7 +44,7 @@ const EXEMPT_COMPUTED = new Set([
   "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on docs/roadmap.jsonl
   "MERGE_VERDICT", // ship derives it from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
-  "FETCH_VERDICT", // debug derives it from debug-fetch block outcomes
+  "FETCH_VERDICT", // debug derives it from context-fetch block outcomes
   "DEBUG_MODE", // routing mode, not an artifact verdict
   "DIAGNOSE_MODE",
   "PUSH_MODE",
@@ -147,9 +147,33 @@ export function variableSources(): Map<string, string> {
   const out = new Map<string, string>();
   for (const rel of listMd(WORKFLOW_DIR)) {
     for (const m of read(rel).matchAll(
-      /`([a-zA-Z0-9{}_-]+)\.md`[^\n]{0,400}?extract `Verdict`[^\n]{0,220}?(?:as|compute) `([A-Z][A-Z0-9_]*)`/g,
+      // `[^`\n]*?` admits a directory prefix inside the backticks
+      // (`.bkit/.roadmap-refresh-on-demand.md`) while still capturing the bare
+      // stem, matching how artifactProducers' lazy prefix already behaves —
+      // otherwise a path-qualified artifact silently produces no linkage.
+      /`[^`\n]*?([a-zA-Z0-9{}_-]+)\.md`[^\n]{0,400}?extract `Verdict`[^\n]{0,220}?(?:as|compute) `([A-Z][A-Z0-9_]*)`/g,
     )) {
       out.set(m[2], normaliseArtifact(m[1]));
+    }
+  }
+  return out;
+}
+
+/**
+ * Variables read straight off a subagent's RETURNED MESSAGE rather than an
+ * artifact file. Maps variable -> agent directly, skipping the artifact hop,
+ * so the prompt-side vocabulary is still checked. Used where the subagent
+ * writes no report of its own (`/bkit-roadmap`, whose only durable outputs are
+ * docs/roadmap.md, docs/roadmap.jsonl and docs/tracker.jsonl).
+ */
+function messageVariableAgents(): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const rel of listMd(WORKFLOW_DIR)) {
+    const text = read(rel);
+    for (const m of text.matchAll(
+      /Invoke `@([a-z0-9-]+)`[\s\S]{0,2000}?Extract `Verdict` from the subagent's returned message as `([A-Z][A-Z0-9_]*)`/g,
+    )) {
+      out.set(m[2], m[1]);
     }
   }
   return out;
@@ -172,6 +196,7 @@ describe("verdict vocabulary: workflow gate agrees with the producing agent", ()
   const prompts = promptDeclarations();
   const producers = artifactProducers();
   const sources = variableSources();
+  const messageAgents = messageVariableAgents();
 
   for (const gate of gateDeclarations()) {
     const label = `${gate.workflow} — \`${gate.variable}\` in \`${gate.union}\``;
@@ -179,15 +204,21 @@ describe("verdict vocabulary: workflow gate agrees with the producing agent", ()
       if (EXEMPT_COMPUTED.has(gate.variable)) return;
 
       const artifact = sources.get(gate.variable);
+      const messageAgent = messageAgents.get(gate.variable);
       expect(
-        artifact,
-        `${gate.variable} is gated but never extracted from an artifact. ` +
-          `Either add the "extract \`Verdict\` ... as \`${gate.variable}\`" line, ` +
-          `or add it to EXEMPT_COMPUTED if the workflow computes it.`,
+        artifact ?? messageAgent,
+        `${gate.variable} is gated but never extracted from an artifact or a ` +
+          `subagent's returned message. Either add the "extract \`Verdict\` ... as ` +
+          `\`${gate.variable}\`" line, or add it to EXEMPT_COMPUTED if the workflow computes it.`,
       ).toBeTruthy();
 
-      const agent = producers.get(artifact!);
-      expect(agent, `no agent Creates ${artifact}.md — cannot check its vocabulary`).toBeTruthy();
+      const agent = artifact ? producers.get(artifact) : messageAgent;
+      expect(
+        agent,
+        artifact
+          ? `no agent Creates ${artifact}.md — cannot check its vocabulary`
+          : `no agent resolved for ${gate.variable} — cannot check its vocabulary`,
+      ).toBeTruthy();
 
       const declared = prompts.get(agent!);
       expect(

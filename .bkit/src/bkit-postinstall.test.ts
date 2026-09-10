@@ -1791,7 +1791,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("ANTHROPIC_API_KEY");
   });
 
-  it("lists cloud debug-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
+  it("lists cloud context-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();

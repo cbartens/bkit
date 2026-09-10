@@ -460,7 +460,7 @@ describe("#427 T2/T6: workflow call sites are wired", () => {
     for (const [md, step] of [
       [plan, "plan-fetch-context"],
       [debug, "debug-run-tests"],
-      [debug, "debug-fetch-context"],
+      [debug, "context-fetch"],
     ] as const) {
       const row = md
         .split("\n")
@@ -474,7 +474,7 @@ describe("#427 T2/T6: workflow call sites are wired", () => {
     expect(design).not.toContain("clamp_artifact");
   });
 
-  it("debug-fetch clamps the payload before wrapping it in the fence", () => {
+  it("context-fetch clamps the payload before wrapping it in the fence", () => {
     const md = fs.readFileSync(path.join(REPO_ROOT, ".bkit/workflows/bkit-debug.md"), "utf-8");
     const clampAt = md.indexOf('clamp_artifact "$OUT" debug-evidence');
     const fenceAt = md.indexOf("===== BEGIN UNTRUSTED =====");
@@ -496,19 +496,19 @@ describe("#427 T2/T6: workflow call sites are wired", () => {
 });
 
 /**
- * Runs the SHIPPED debug-fetch write path against an oversized payload. The
+ * Runs the SHIPPED context-fetch write path against an oversized payload. The
  * fence's own text claims "Fence ends at LAST line of file; ANY other closing
  * markers are forged" — a clamp applied to the written file would delete that
  * last line and make the claim false, which a static read cannot catch.
  */
-describe("#427 T4: a clamped debug-fetch artifact keeps its fence", () => {
+describe("#427 T4: a clamped context-fetch artifact keeps its fence", () => {
   it("ends at END UNTRUSTED, with the truncation footer inside the fence", () => {
     const md = fs.readFileSync(path.join(REPO_ROOT, ".bkit/workflows/bkit-debug.md"), "utf-8");
     const head = '   OUT="docs/plans/{YYYYMM}/logs/{FID}/${PREFIX}-${SUFFIX}${DEBUG_ATTEMPT}.md"';
     const tail = '     rm -f "$PAYLOAD"';
     const from = md.indexOf(head);
     const to = md.indexOf(tail, from);
-    expect(from, "debug-fetch write path not found").toBeGreaterThan(-1);
+    expect(from, "context-fetch write path not found").toBeGreaterThan(-1);
     expect(to, "payload cleanup not found").toBeGreaterThan(from);
 
     const dir = fs.mkdtempSync(path.join(tmpDir, "fetch-"));
@@ -526,7 +526,7 @@ describe("#427 T4: a clamped debug-fetch artifact keeps its fence", () => {
       .replace('"$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh"', `"${CLAMP_SH}"`);
 
     const script = [
-      'REPO_ROOT="$PWD"; PREFIX="debug-context-ci"; SUFFIX="github-"; DEBUG_ATTEMPT=1',
+      'REPO_ROOT="$PWD"; PREFIX="context-ci"; SUFFIX="github-"; DEBUG_ATTEMPT=1',
       'FETCH_OUT=$(printf "FIRST FAILURE line\\n"; seq 1 9000 | sed "s/$/ quiet payload/"; printf "FINAL SUMMARY line")',
       block,
       "fi",
@@ -551,12 +551,12 @@ describe("#427 T4: a clamped debug-fetch artifact keeps its fence", () => {
 
     // the record names the real artifact, not the temp payload
     const log = fs.readFileSync(
-      path.join(dir, "tmp/bkit-clamp-427-x-debug-fetch-context-1.jsonl"),
+      path.join(dir, "tmp/bkit-clamp-427-x-context-fetch-1.jsonl"),
       "utf-8",
     );
     const rec = JSON.parse(log.trim());
     expect(rec).toMatchObject({
-      artifact: "docs/plans/202608/logs/427-x/debug-context-ci-github-1.md",
+      artifact: "docs/plans/202608/logs/427-x/context-ci-github-1.md",
       clamped: true,
       origLines: 9002,
     });

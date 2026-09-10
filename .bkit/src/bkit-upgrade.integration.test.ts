@@ -695,15 +695,15 @@ describe("#281 AC — bkit check exits 0 with multiple providers installed", () 
 });
 
 // ---------------------------------------------------------------------------
-// #334 — `bkit upgrade` auto-migrates debug-fetch blocks observability.md → config.md
+// #334 — `bkit upgrade` auto-migrates context-fetch blocks observability.md → config.md
 //
 // install and upgrade are SEPARATE engines. The migration is wired into runCoreModule
 // (install) AND the upgrade dispatch; without the upgrade wiring an upgrading consumer's
-// debug-fetch blocks stay stranded in docs/observability.md while /bkit-debug reads only
-// .agents/config.md. End-to-end via a real `bkit upgrade --auto-apply`, not a unit stub.
+// context-fetch blocks stay stranded in docs/observability.md while /bkit-debug reads only
+// .agents/context.md. End-to-end via a real `bkit upgrade --auto-apply`, not a unit stub.
 // ---------------------------------------------------------------------------
 
-describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md → .agents/config.md", () => {
+describe("#334 — bkit upgrade migrates context-fetch blocks observability.md → .agents/context.md", () => {
   const bkitInstallPath = path.resolve(
     path.dirname(new URL(import.meta.url).pathname),
     "bkit-install.ts",
@@ -722,7 +722,7 @@ describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md →
     });
   }
 
-  it("moves a consumer debug-fetch block out of observability.md into .agents/config.md", () => {
+  it("moves a consumer context-fetch block out of observability.md into .agents/context.md", () => {
     if (!fs.existsSync(tsxBin)) return; // CI without devDeps
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -731,12 +731,12 @@ describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md →
     );
     writeVersionFile();
 
-    // Old layout: consumer copied a debug-fetch block into observability.md's consumer
+    // Old layout: consumer copied a context-fetch block into observability.md's consumer
     // section (after bkit:end), alongside unrelated project prose.
     const obs =
       "<!-- bkit:start -->\n# Observability\n\n<!-- bkit:end -->\n\n" +
       "## Our runtime notes — MUST SURVIVE\n\n" +
-      "<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n";
+      "<!-- context-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- context-fetch:end -->\n";
     fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, "docs", "observability.md"), obs, "utf-8");
 
@@ -745,17 +745,17 @@ describe("#334 — bkit upgrade migrates debug-fetch blocks observability.md →
 
     // Block moved OUT of observability.md; unrelated consumer prose kept.
     const obsAfter = fs.readFileSync(path.join(tmpDir, "docs", "observability.md"), "utf-8");
-    expect(obsAfter).not.toContain("debug-fetch:start vercel");
+    expect(obsAfter).not.toContain("context-fetch:start vercel");
     expect(obsAfter).toContain("## Our runtime notes — MUST SURVIVE");
 
-    // Block moved INTO .agents/config.md (created by the upgrade render, then appended to).
-    const configAfter = fs.readFileSync(path.join(tmpDir, ".agents", "config.md"), "utf-8");
-    expect(configAfter).toContain("debug-fetch:start vercel");
-    expect(configAfter).toContain("vercel logs --json");
+    // Block moved INTO .agents/context.md (created by the upgrade render, then appended to).
+    const contextAfter = fs.readFileSync(path.join(tmpDir, ".agents", "context.md"), "utf-8");
+    expect(contextAfter).toContain("context-fetch:start vercel");
+    expect(contextAfter).toContain("vercel logs --json");
 
     // The migration surfaced its log line.
     expect(result.stdout + result.stderr).toContain(
-      "migrated 1 debug-fetch block(s) docs/observability.md → .agents/config.md",
+      "migrated 1 context-fetch block(s) docs/observability.md → .agents/context.md",
     );
   });
 });

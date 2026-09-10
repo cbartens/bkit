@@ -46,7 +46,7 @@ reasoningEffort: max
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Decide single next step from accumulated context: **If** cause unknown → instrument suspected surface (add `[DEBUG-OBSERVE]` logging; NO behaviour change). **Else** → apply smallest remediation evidence implies (edit / create source) → strip ALL `[DEBUG-OBSERVE]` logging from ALL prior iterations.
-5. External signal: **If** failures look like external issues (third-party, dep-version regressions, vendor API / toolchain quirks) → read `debug-context-web-*.md` first. **If** absent, skipped, or stale against symptoms this pass surfaced → use native web search tools as fallback (max 3 searches; external terms only; every claim state URL and verbatim quote). ONLY run web searches AFTER instrument-and-observe passes, NEVER before.
+5. External signal: **If** failures look like external issues (third-party, dep-version regressions, vendor API / toolchain quirks) → read `context-web-*.md` first. **If** absent, skipped, or stale against symptoms this pass surfaced → use native web search tools as fallback (max 3 searches; external terms only; every claim state URL and verbatim quote). ONLY run web searches AFTER instrument-and-observe passes, NEVER before.
 6. Verify `git grep '[DEBUG-OBSERVE]'` over source returns nothing.
 7. Append step to log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:

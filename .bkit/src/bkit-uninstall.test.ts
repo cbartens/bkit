@@ -164,7 +164,7 @@ describe("buildDecisionTable — markered-text format", () => {
     // bkit's own doctrine. They carry a managed block, so strip-block (preserve consumer content
     // below bkit:end) is the treatment, matching AGENTS.md.
     for (const rel of [
-      ".agents/config.md",
+      ".agents/context.md",
       ".agents/docs.md",
       ".agents/rules.md",
       ".agents/skills.md",
@@ -173,7 +173,7 @@ describe("buildDecisionTable — markered-text format", () => {
     }
     const table = buildDecisionTable(["core"], makeCtx());
     for (const rel of [
-      ".agents/config.md",
+      ".agents/context.md",
       ".agents/docs.md",
       ".agents/rules.md",
       ".agents/skills.md",

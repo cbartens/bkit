@@ -43,7 +43,7 @@ import {
   writeCursorCloudDoc,
   writeNetworkAllowlistArtifact,
 } from "./bkit-cloud-env.js";
-import { migrateDebugFetchToConfig } from "./bkit-config-migrate.js";
+import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { repointLegacyLintProse } from "./bkit-package-json.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
@@ -2590,15 +2590,21 @@ async function main() {
       }
     }
 
-    // Auto-migrate consumer debug-fetch blocks docs/observability.md → .agents/config.md (#334).
-    // Install runs this in runCoreModule (after ITS templates pass); upgrade is a separate render
-    // engine, so mirror it here — AFTER runUpgrade (re)wrote config.md's managed block, and BEFORE
+    // Auto-migrate consumer context-fetch config onto .agents/context.md. Install runs both of
+    // these in runCoreModule (after ITS templates pass); upgrade is a separate render engine, so
+    // mirror them here — AFTER runUpgrade (re)wrote context.md's managed block, and BEFORE
     // writeClaudeCloudDoc (so the cloud.md provision injection sees the moved blocks) and the
-    // canonicalHashes refresh (so the moved config.md/observability.md are re-hashed → drift-clean).
-    const migratedDebugFetch = migrateDebugFetchToConfig(process.cwd(), upgradeFlags.dryRun);
-    if (migratedDebugFetch) console.log(`${LOG_PREFIX} ${migratedDebugFetch}`);
+    // canonicalHashes refresh (so the moved files are re-hashed → drift-clean).
+    //
+    // #454 first: it retires .agents/config.md and renames the markers, so the #334 move below
+    // appends into the file that survives, whichever hop the consumer is coming from.
+    const migratedConfigMd = migrateConfigMdToContext(process.cwd(), upgradeFlags.dryRun);
+    if (migratedConfigMd) console.log(`${LOG_PREFIX} ${migratedConfigMd}`);
 
-    // Same both-engines requirement as the debug-fetch migration above: install
+    const migratedContextFetch = migrateContextFetchToContext(process.cwd(), upgradeFlags.dryRun);
+    if (migratedContextFetch) console.log(`${LOG_PREFIX} ${migratedContextFetch}`);
+
+    // Same both-engines requirement as the context-fetch migration above: install
     // re-points a superseded lint:prose via runLintModule, but upgrade never
     // touches package.json scripts — and `bkit upgrade --latest` is the path the
     // README tells consumers to use. Replace-only, so a consumer without the lint
@@ -2751,14 +2757,15 @@ async function main() {
       updateCanonicalHashesAfterUpgrade(
         {
           // Include the migrated docs so their post-migration on-disk hashes are
-          // recorded (the debug-fetch move mutates config.md/observability.md AFTER
-          // runUpgrade hashed them) — otherwise the next `bkit check` sees drift.
+          // recorded (both migrations mutate context.md, and the #334 move also mutates
+          // observability.md, AFTER runUpgrade hashed them) — else `bkit check` sees drift.
           updated: [
             ...result.updated,
             ...renderedDocPaths,
-            ...(migratedDebugFetch
-              ? [path.join(".agents", "config.md"), path.join("docs", "observability.md")]
+            ...(migratedConfigMd || migratedContextFetch
+              ? [path.join(".agents", "context.md")]
               : []),
+            ...(migratedContextFetch ? [path.join("docs", "observability.md")] : []),
           ],
           skipped: result.skipped,
           conflicts: result.conflicts,

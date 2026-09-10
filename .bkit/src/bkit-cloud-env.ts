@@ -310,15 +310,15 @@ export function renderCorepackLine(cwd: string): string {
 }
 
 /**
- * Extract the bash body of every `debug-fetch:provision <name>` block the consumer
- * enabled below `<!-- bkit:end -->` in `.agents/config.md`. Stack-agnostic: bkit
+ * Extract the bash body of every `context-fetch:provision <name>` block the consumer
+ * enabled below `<!-- bkit:end -->` in `.agents/context.md`. Stack-agnostic: bkit
  * hardcodes no CLI names — the install recipe lives in the consumer's config.md,
  * co-located with the fetch block that needs the CLI. Mirrors the awk parser in
  * `.claude/hooks/cloud-bootstrap.sh` so the web setup-script snapshot and the
  * per-session hook provision the same CLIs. Returns one string per block (bash body).
  */
-export function extractDebugFetchProvisionRecipes(cwd: string): string[] {
-  const filePath = path.join(cwd, ".agents", "config.md");
+export function extractContextFetchProvisionRecipes(cwd: string): string[] {
+  const filePath = path.join(cwd, ".agents", "context.md");
   if (!fs.existsSync(filePath)) return [];
   const content = fs.readFileSync(filePath, "utf-8");
   const endIdx = content.search(/^<!-- bkit:end -->$/m);
@@ -329,13 +329,13 @@ export function extractDebugFetchProvisionRecipes(cwd: string): string[] {
   let inProv = false;
   let inFence = false;
   for (const line of consumer.split("\n")) {
-    if (/^<!-- debug-fetch:provision/.test(line)) {
+    if (/^<!-- context-fetch:provision/.test(line)) {
       inProv = true;
       inFence = false;
       cur = [];
       continue;
     }
-    if (/^<!-- debug-fetch:(start|end|none)/.test(line)) {
+    if (/^<!-- context-fetch:(start|end|none)/.test(line)) {
       if (inProv && cur && cur.length > 0) recipes.push(cur.join("\n"));
       inProv = false;
       inFence = false;
@@ -388,8 +388,8 @@ const CLOUD_PNPM_GLOBAL_PATH_SETUP =
   'export PATH="$PNPM_HOME:$PNPM_HOME/bin:$PATH"';
 
 /**
- * Render the `@@CLOUD_DEBUG_FETCH_PROVISION@@` setup-script region: the consumer's
- * `debug-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
+ * Render the `@@CLOUD_CONTEXT_FETCH_PROVISION@@` setup-script region: the consumer's
+ * `context-fetch:provision` recipes, or "" when none are enabled. Placed AFTER the
  * corepack line in the template so `pnpm add -g …` recipes have pnpm available.
  *
  * Recipes run in a best-effort `( set +e … ) || …` subshell: the setup script is
@@ -399,31 +399,31 @@ const CLOUD_PNPM_GLOBAL_PATH_SETUP =
  * later recipe run after an earlier one fails. Mirrors the non-blocking per-session
  * hook (`… | bash || log`), keeping the two cloud provision paths behaviourally equal.
  */
-export function renderCloudDebugFetchProvision(cwd: string): string {
-  const recipes = extractDebugFetchProvisionRecipes(cwd);
+export function renderCloudContextFetchProvision(cwd: string): string {
+  const recipes = extractContextFetchProvisionRecipes(cwd);
   if (recipes.length === 0) return "";
   return (
-    "# debug-fetch CLIs (from .agents/config.md provision blocks) — self-guarded, best-effort.\n" +
+    "# context-fetch CLIs (from .agents/context.md provision blocks) — self-guarded, best-effort.\n" +
     CLOUD_PNPM_GLOBAL_PATH_SETUP +
     "\n" +
     "(\n" +
     "  set +e\n" +
     recipes.join("\n") +
     "\n" +
-    ') || echo "[cloud-setup] a debug-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2'
+    ') || echo "[cloud-setup] a context-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2'
   );
 }
 
 /**
  * Extract the cloud network-allowlist domains the consumer declared in
  * `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` blocks BELOW
- * `<!-- bkit:end -->` in `.agents/config.md` (one registrable domain per line;
+ * `<!-- bkit:end -->` in `.agents/context.md` (one registrable domain per line;
  * blank / `#` comment / marker lines ignored). Stack-agnostic: bkit hardcodes no
  * domains — the consumer declares which log-backend / API / app hosts their cloud
  * sessions must reach. Returns declared entries verbatim (pre-expansion), in order.
  */
 export function extractAllowedDomains(cwd: string): string[] {
-  const filePath = path.join(cwd, ".agents", "config.md");
+  const filePath = path.join(cwd, ".agents", "context.md");
   if (!fs.existsSync(filePath)) return [];
   const content = fs.readFileSync(filePath, "utf-8");
   const endIdx = content.search(/^<!-- bkit:end -->$/m);
@@ -465,7 +465,7 @@ export function expandAllowedDomains(declared: string[]): string[] {
 /**
  * Stack-agnostic tooling hosts only (tracker, package registry, AI provider docs,
  * IDE/host docs). **Never** ship observability / app stacks here (Vercel, Supabase,
- * Sentry, …) — those come solely from the consumer's `.agents/config.md`
+ * Sentry, …) — those come solely from the consumer's `.agents/context.md`
  * `allowed-domains` block (after `<!-- bkit:end -->`) via {@link resolveNetworkAllowlist}.
  */
 export const BKIT_SHIPPED_NETWORK_DOMAINS: readonly string[] = [
@@ -496,7 +496,7 @@ export function networkAllowlistBases(expanded: string[]): string[] {
 
 /**
  * Local + cloud network allowlist: stack-agnostic tooling defaults ∪ consumer
- * `allowed-domains` from `.agents/config.md` (after `<!-- bkit:end -->`), each as
+ * `allowed-domains` from `.agents/context.md` (after `<!-- bkit:end -->`), each as
  * apex + `*.` wildcard. Empty consumer block ⇒ tooling hosts only — no Vercel/etc.
  */
 export function resolveNetworkAllowlist(cwd: string): string[] {
@@ -546,7 +546,7 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
     return (
       "Set to **Trusted** (default) — covers package registries, GitHub, and common\n" +
       "cloud SDK hosts. Only raise to **Full** if a task must reach the open internet.\n\n" +
-      "_No `allowed-domains` block declared in `.agents/config.md`. If you run cloud\n" +
+      "_No `allowed-domains` block declared in `.agents/context.md`. If you run cloud\n" +
       "`/bkit-debug` or e2e against a deployment, declare your log-backend + app\n" +
       "domains there (apex per line) and this section will list them for a **Custom** allowlist._"
     );
@@ -561,7 +561,7 @@ export function renderCloudNetworkAllowlist(cwd: string): string {
     domains.join("\n") +
     "\n```\n\n" +
     `_${domains.length} entries — ${domains.length / 2} domain(s) from \`allowed-domains\` ` +
-    "in `.agents/config.md`, each as apex + `*.` wildcard._\n\n" +
+    "in `.agents/context.md`, each as apex + `*.` wildcard._\n\n" +
     "Under **Trusted**, your app domains and most observability / API hosts are\n" +
     "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
     "deployment. **Full** works too but opens all egress."
@@ -594,7 +594,7 @@ export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
     .replace(/@@CLOUD_CACHE_BUST@@/g, () => renderCloudCacheBust(cwd, today))
     .replace(/@@CLOUD_NETWORK_ALLOWLIST@@/g, () => renderCloudNetworkAllowlist(cwd))
     .replace(/@@CLOUD_COREPACK@@/g, () => renderCorepackLine(cwd))
-    .replace(/@@CLOUD_DEBUG_FETCH_PROVISION@@/g, () => renderCloudDebugFetchProvision(cwd))
+    .replace(/@@CLOUD_CONTEXT_FETCH_PROVISION@@/g, () => renderCloudContextFetchProvision(cwd))
     .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res))
     .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res));
   const dst = path.join(cwd, CLAUDE_CLOUD_RELPATH);
@@ -605,24 +605,24 @@ export function writeClaudeCloudDoc(cwd: string, tokens: TokenMap): boolean {
 }
 
 /**
- * Render the `@@CURSOR_DEBUG_FETCH@@` region of `.cursor/cloud.md`: the consumer's
- * `debug-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
+ * Render the `@@CURSOR_CONTEXT_FETCH@@` region of `.cursor/cloud.md`: the consumer's
+ * `context-fetch:provision` recipes formatted for the Cursor mechanic, or "" when none
  * are enabled. On Claude these CLIs are baked into the pasted setup script (see
- * renderCloudDebugFetchProvision); Cursor has no setup script, so — to keep the two
+ * renderCloudContextFetchProvision); Cursor has no setup script, so — to keep the two
  * cloud environments aligned — the same recipes are surfaced as a copy-paste block for
  * the per-snapshot `install` command in `.cursor/environment.json`. The recipes are
  * already idempotent (`command -v X || pnpm add -g X`), so they are safe to re-run on
  * every snapshot build. Reuses the SAME extractor as the Claude path so the two clouds
  * never diverge on which CLIs they provision.
  */
-export function renderCursorDebugFetchProvision(cwd: string): string {
-  const recipes = extractDebugFetchProvisionRecipes(cwd);
+export function renderCursorContextFetchProvision(cwd: string): string {
+  const recipes = extractContextFetchProvisionRecipes(cwd);
   // Empty → "" and the template's sentinel line collapses to a single blank between
   // sections; non-empty → a self-contained section with its own leading/trailing blank.
   if (recipes.length === 0) return "";
   return (
     "\n## Debug-fetch CLIs (parity with the Claude setup script)\n\n" +
-    "Your `.agents/config.md` declares these debug-fetch CLIs. The Claude setup script\n" +
+    "Your `.agents/context.md` declares these context-fetch CLIs. The Claude setup script\n" +
     "bakes them into its snapshot; for the SAME tools on Cursor, chain them into the\n" +
     "`install` command in `.cursor/environment.json` (idempotent — safe every rebuild):\n\n" +
     "```bash\n" +
@@ -647,19 +647,19 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
       "Cloud Agents get network access by default. Egress is configurable in the Cloud\n" +
       "Agents dashboard → **Security** (Allow all / Default + allowlist / Allowlist only),\n" +
       "per user, per environment, or team-locked. No `allowed-domains` block is declared in\n" +
-      "`.agents/config.md`, so nothing extra is required here — if your org enforces\n" +
+      "`.agents/context.md`, so nothing extra is required here — if your org enforces\n" +
       "**Allowlist only**, declare your app + log-backend hosts there (apex per line) and this\n" +
       "section will list them."
     );
   }
   return (
     "If your org runs Cloud Agents in **Allowlist only** / **Default + allowlist** mode\n" +
-    "(dashboard → **Security**), add the domains your `.agents/config.md` declares so cloud\n" +
+    "(dashboard → **Security**), add the domains your `.agents/context.md` declares so cloud\n" +
     "`/bkit-debug` + e2e can reach your app and log backends:\n\n" +
     "```text\n" +
     declared.join("\n") +
     "\n```\n\n" +
-    `_${declared.length} domain(s) from \`allowed-domains\` in \`.agents/config.md\`._ Add only the\n` +
+    `_${declared.length} domain(s) from \`allowed-domains\` in \`.agents/context.md\`._ Add only the\n` +
     "specific subdomains you need (e.g. `api.example.com`) — Cursor warns that a broad `*.`\n" +
     "wildcard opens egress far wider than intended. (The Claude side auto-expands to apex + `*.`;\n" +
     "Cursor's allowlist is deliberately narrower.)"
@@ -674,7 +674,7 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
  * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
  * is narrower: it resolves the **dashboard environment variables** to real values from
  * the consumer's `.envrc` (Cursor policy — Linear tracker adds `LINEAR_API_KEY`, no
- * autocompact knob) and surfaces any debug-fetch CLIs for parity.
+ * autocompact knob) and surfaces any context-fetch CLIs for parity.
  *
  * Like `.claude/cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to
  * any WriteSet / manifest / canonicalHashes) — its values are machine-local and
@@ -695,7 +695,7 @@ export function writeCursorCloudDoc(cwd: string, tokens: TokenMap, tracker: Issu
     .replace(/@@CLOUD_ENV_VARS@@/g, () => renderCloudEnvBlock(res, policy))
     .replace(/@@CLOUD_ENV_NOTES@@/g, () => renderCloudEnvNotes(res))
     .replace(/@@CURSOR_NETWORK@@/g, () => renderCursorNetworkAllowlist(cwd))
-    .replace(/@@CURSOR_DEBUG_FETCH@@/g, () => renderCursorDebugFetchProvision(cwd));
+    .replace(/@@CURSOR_CONTEXT_FETCH@@/g, () => renderCursorContextFetchProvision(cwd));
   const dst = path.join(cwd, CURSOR_CLOUD_RELPATH);
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   fs.writeFileSync(dst, content, "utf-8");

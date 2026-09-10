@@ -353,58 +353,58 @@ export function detectPlaywrightReporterHostile(cwd) {
     };
 }
 /**
- * Line-anchored consumer opt-out marker for the debug-fetch advisories. A repo
+ * Line-anchored consumer opt-out marker for the context-fetch advisories. A repo
  * that legitimately enables no runtime-log source places this below
- * `<!-- bkit:end -->` to dismiss both `observability-debug-fetch-missing` and
- * `observability-debug-fetch-source-not-enabled`.
+ * `<!-- bkit:end -->` to dismiss both `context-fetch-missing` and
+ * `context-fetch-source-not-enabled`.
  */
-const DEBUG_FETCH_NONE_RE = /^<!-- debug-fetch:none(?: [^>]*)? -->$/m;
+const CONTEXT_FETCH_NONE_RE = /^<!-- context-fetch:none(?: [^>]*)? -->$/m;
 /**
- * Every `context=` a `debug-fetch` block may declare. `runtime` is the default when
+ * Every `context=` a `context-fetch` block may declare. `runtime` is the default when
  * the attribute is absent, which is what keeps pre-context consumer blocks working
  * untouched. Mirrors the `case "$CONTEXT"` arms in `.bkit/workflows/bkit-debug.md`
- * Step 4; `bkit-debug-fetch-contexts.test.ts` fails when the two drift.
+ * Step 4; `bkit-context-fetchs.test.ts` fails when the two drift.
  */
-export const DEBUG_FETCH_CONTEXTS = ["runtime", "ci", "diff", "e2e", "web"];
+export const CONTEXT_FETCH_CONTEXTS = ["runtime", "ci", "diff", "e2e", "web"];
 /**
  * Contexts whose absence means an entire class of failure evidence is never fetched,
  * each with the evidence it carries.
  *
- * Deliberately a subset of {@link DEBUG_FETCH_CONTEXTS}: `web` is enrichment, not
+ * Deliberately a subset of {@link CONTEXT_FETCH_CONTEXTS}: `web` is enrichment, not
  * a class of evidence about THIS repo, and its self-skip names a fallback the agent
  * already has (the host's built-in web tools). Nagging every consumer to provision a
  * third-party search key would be noise, so it is valid-but-not-required. `runtime`
- * is covered by `observability-debug-fetch-missing` instead.
+ * is covered by `context-fetch-missing` instead.
  */
-const DEBUG_FETCH_EVIDENCE_CONTEXTS = {
+const CONTEXT_FETCH_EVIDENCE_CONTEXTS = {
     ci: "CI job/step failures and logs",
     diff: "diff vs the last commit that passed CI",
     e2e: "e2e reports / traces / device evidence",
 };
 /**
- * Contexts named on a `<!-- debug-fetch:none ... -->` marker, which dismisses the
+ * Contexts named on a `<!-- context-fetch:none ... -->` marker, which dismisses the
  * context-coverage advisory for those contexts ONLY — a repo with no e2e lane says
  * so without also silencing the advisories that catch a genuinely unwired repo.
  * A bare marker names none and keeps its whole-file meaning.
  */
-function debugFetchNoneContexts(consumer) {
-    const m = /^<!-- debug-fetch:none((?: [\w.-]+)*) -->$/m.exec(consumer);
+function contextFetchNoneContexts(consumer) {
+    const m = /^<!-- context-fetch:none((?: [\w.-]+)*) -->$/m.exec(consumer);
     if (!m)
         return new Set();
-    return new Set(m[1].split(/\s+/).filter((t) => DEBUG_FETCH_CONTEXTS.includes(t)));
+    return new Set(m[1].split(/\s+/).filter((t) => CONTEXT_FETCH_CONTEXTS.includes(t)));
 }
 /**
- * True ONLY for the blanket opt-out: a `debug-fetch:none` marker naming no known
- * context. A context-scoped marker (`debug-fetch:none e2e`) dismisses that context's
+ * True ONLY for the blanket opt-out: a `context-fetch:none` marker naming no known
+ * context. A context-scoped marker (`context-fetch:none e2e`) dismisses that context's
  * coverage advisory and nothing else — it must never silence the advisories that
  * catch a repo with no blocks or an unenabled source.
  */
-function debugFetchDismissesAll(consumer) {
-    return DEBUG_FETCH_NONE_RE.test(consumer) && debugFetchNoneContexts(consumer).size === 0;
+function contextFetchDismissesAll(consumer) {
+    return CONTEXT_FETCH_NONE_RE.test(consumer) && contextFetchNoneContexts(consumer).size === 0;
 }
 /**
- * Parse a `<!-- debug-fetch:start [name] [context=<context>] -->` line. Attribute order
- * is free and both parts are optional: a bare `debug-fetch:start` is an unnamed
+ * Parse a `<!-- context-fetch:start [name] [context=<context>] -->` line. Attribute order
+ * is free and both parts are optional: a bare `context-fetch:start` is an unnamed
  * `runtime` block (the pre-context form). Returns `null` for non-matching lines.
  *
  * Kept deliberately in step with the awk parser in `.bkit/workflows/bkit-debug.md`
@@ -414,8 +414,8 @@ function debugFetchDismissesAll(consumer) {
  * spaces and tabs too: a marker this rejects but awk accepts is a block that runs
  * while every advisory reports it absent.
  */
-export function parseDebugFetchStart(line) {
-    const m = /^<!-- debug-fetch:start((?:[ \t]+[\w.=-]+)*)[ \t]*-->$/.exec(line);
+export function parseContextFetchStart(line) {
+    const m = /^<!-- context-fetch:start((?:[ \t]+[\w.=-]+)*)[ \t]*-->$/.exec(line);
     if (!m)
         return null;
     let name = "";
@@ -428,24 +428,24 @@ export function parseDebugFetchStart(line) {
     }
     return { name, context };
 }
-/** Every `debug-fetch:start` block declared in a section, in document order. */
-function parseDebugFetchStarts(section) {
+/** Every `context-fetch:start` block declared in a section, in document order. */
+function parseContextFetchStarts(section) {
     const out = [];
     for (const line of section.split("\n")) {
-        const parsed = parseDebugFetchStart(line);
+        const parsed = parseContextFetchStart(line);
         if (parsed)
             out.push(parsed);
     }
     return out;
 }
 /**
- * Map of debug-fetch source name -> predicate proving THIS repo actually runs
- * that backend. Evidence-gates `observability-debug-fetch-source-not-enabled`
+ * Map of context-fetch source name -> predicate proving THIS repo actually runs
+ * that backend. Evidence-gates `context-fetch-source-not-enabled`
  * so a single-backend consumer (e.g. Vercel-only) is never nagged about a
  * backend it does not use (e.g. Supabase). A shipped example whose name has no
  * entry here is never flagged (cannot prove use => stay quiet).
  */
-const DEBUG_FETCH_BACKEND_EVIDENCE = {
+const CONTEXT_FETCH_BACKEND_EVIDENCE = {
     supabase: (cwd) => fs.existsSync(path.join(cwd, "supabase", "config.toml")) ||
         readDependencyNames(cwd).some((d) => d.startsWith("@supabase/")),
     vercel: (cwd) => fs.existsSync(path.join(cwd, "vercel.json")) ||
@@ -476,23 +476,23 @@ function readDependencyNames(cwd) {
     return names;
 }
 /**
- * Advisory: consumer's `.agents/config.md` has the bkit-managed block (which
- * ships inert `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->`
- * examples inside it) but no `debug-fetch` block AFTER `<!-- bkit:end -->`.
+ * Advisory: consumer's `.agents/context.md` has the bkit-managed block (which
+ * ships inert `<!-- context-fetch:start <name> --> ... <!-- context-fetch:end -->`
+ * examples inside it) but no `context-fetch` block AFTER `<!-- bkit:end -->`.
  *
- * `/bkit-debug`'s runtime sub-fetch runs every `debug-fetch` block occurring
+ * `/bkit-debug`'s runtime sub-fetch runs every `context-fetch` block occurring
  * after `<!-- bkit:end -->` (consumer section) — the examples shipped inside the
  * managed block are intentionally skipped. With no consumer-section block, no
- * runtime-log artifact (`debug-context-runtime-<name>-{ATTEMPT}.md`) is produced
+ * runtime-log artifact (`context-runtime-<name>-{ATTEMPT}.md`) is produced
  * on any debug run.
  *
- * Markers may be named (`debug-fetch:start vercel`) or unnamed (legacy). Only
+ * Markers may be named (`context-fetch:start vercel`) or unnamed (legacy). Only
  * fires when the consumer has the bkit-managed block at all; consumers who fully
- * own `.agents/config.md` (no markers) are not nagged. Dismissable with a
- * `<!-- debug-fetch:none ... -->` marker below `<!-- bkit:end -->`.
+ * own `.agents/context.md` (no markers) are not nagged. Dismissable with a
+ * `<!-- context-fetch:none ... -->` marker below `<!-- bkit:end -->`.
  */
-export function detectObservabilityDebugFetchMissing(cwd) {
-    const filePath = path.join(cwd, ".agents", "config.md");
+export function detectContextFetchMissing(cwd) {
+    const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -501,26 +501,26 @@ export function detectObservabilityDebugFetchMissing(cwd) {
     if (endIdx === -1)
         return null;
     const afterBkitEnd = content.slice(endIdx);
-    // Consumer opt-out: dismiss when a `<!-- debug-fetch:none ... -->` marker is
+    // Consumer opt-out: dismiss when a `<!-- context-fetch:none ... -->` marker is
     // present below `<!-- bkit:end -->` (repo legitimately enables no source).
-    if (debugFetchDismissesAll(afterBkitEnd))
+    if (contextFetchDismissesAll(afterBkitEnd))
         return null;
     // Consumer-section markers must be line-anchored to mirror the workflow's
     // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md` Step 5). The start
-    // marker carries an optional block name (`debug-fetch:start vercel`).
-    const hasStart = parseDebugFetchStarts(afterBkitEnd).length > 0;
-    const hasEnd = /^<!-- debug-fetch:end -->$/m.test(afterBkitEnd);
+    // marker carries an optional block name (`context-fetch:start vercel`).
+    const hasStart = parseContextFetchStarts(afterBkitEnd).length > 0;
+    const hasEnd = /^<!-- context-fetch:end -->$/m.test(afterBkitEnd);
     if (hasStart && hasEnd)
         return null;
     return {
-        id: "observability-debug-fetch-missing",
+        id: "context-fetch-missing",
         severity: "advisory",
-        detect: "`.agents/config.md` has the bkit-managed block but no `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
-        action: "Copy one of the named `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. REQUIRED: set the block's non-secret selector (e.g. `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) by uncommenting the assignment line at the top of the copied block — committing it there is what makes the block run in headless cloud agents, which never read `.bkit/.env`. For cloud `/bkit-debug`, also set the secret tokens (`VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN`) in your Claude/Cursor dashboard (or GitHub Actions secrets) and authenticate non-interactively (env tokens, never `vercel login`). Each block self-gates (missing CLI / token => a `[debug-fetch:<name>] skipped — …` stderr breadcrumb, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit / target environment (e.g. Vercel preview vs production) at run-time.",
+        detect: "`.agents/context.md` has the bkit-managed block but no `<!-- context-fetch:start [name] --> ... <!-- context-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
+        action: "Copy one of the named `<!-- context-fetch:start <name> --> ... <!-- context-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. REQUIRED: set the block's non-secret selector (e.g. `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) by uncommenting the assignment line at the top of the copied block — committing it there is what makes the block run in headless cloud agents, which never read `.bkit/.env`. For cloud `/bkit-debug`, also set the secret tokens (`VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN`) in your Claude/Cursor dashboard (or GitHub Actions secrets) and authenticate non-interactively (env tokens, never `vercel login`). Each block self-gates (missing CLI / token => a `[context-fetch:<name>] skipped — …` stderr breadcrumb, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit / target environment (e.g. Vercel preview vs production) at run-time.",
     };
 }
 /**
- * Advisory: the consumer section enables debug-fetch blocks, but not for every
+ * Advisory: the consumer section enables context-fetch blocks, but not for every
  * evidence context — so `/bkit-debug` fetches an entire class of failure evidence
  * for no run, ever.
  *
@@ -530,14 +530,14 @@ export function detectObservabilityDebugFetchMissing(cwd) {
  * so a repo whose consumer section holds only `runtime` blocks (the pre-context
  * shape, and the shape every upgrade inherits) gets no CI evidence at all.
  *
- * Distinct from `observability-debug-fetch-missing`, which owns the no-blocks-at-
+ * Distinct from `context-fetch-missing`, which owns the no-blocks-at-
  * all case; this one only fires once at least one block exists. Dismissable per
- * context — `<!-- debug-fetch:none e2e -->` below `<!-- bkit:end -->` — so a repo
+ * context — `<!-- context-fetch:none e2e -->` below `<!-- bkit:end -->` — so a repo
  * with no e2e lane silences that one context without also silencing the advisories
  * that catch a repo which wired nothing at all. A bare marker still dismisses all.
  */
-export function detectObservabilityDebugFetchContextMissing(cwd) {
-    const filePath = path.join(cwd, ".agents", "config.md");
+export function detectContextFetchContextMissing(cwd) {
+    const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -545,51 +545,51 @@ export function detectObservabilityDebugFetchContextMissing(cwd) {
     if (endIdx === -1)
         return null;
     const consumer = content.slice(endIdx);
-    const enabled = parseDebugFetchStarts(consumer);
-    // No blocks at all => `observability-debug-fetch-missing` owns it (no double-fire).
+    const enabled = parseContextFetchStarts(consumer);
+    // No blocks at all => `context-fetch-missing` owns it (no double-fire).
     if (enabled.length === 0)
         return null;
-    const dismissed = debugFetchNoneContexts(consumer);
-    // A bare `debug-fetch:none` names no context and dismisses every advisory.
-    if (debugFetchDismissesAll(consumer))
+    const dismissed = contextFetchNoneContexts(consumer);
+    // A bare `context-fetch:none` names no context and dismisses every advisory.
+    if (contextFetchDismissesAll(consumer))
         return null;
     const contexts = new Set(enabled.map((b) => b.context));
-    const missing = Object.keys(DEBUG_FETCH_EVIDENCE_CONTEXTS).filter((r) => !contexts.has(r) && !dismissed.has(r));
+    const missing = Object.keys(CONTEXT_FETCH_EVIDENCE_CONTEXTS).filter((r) => !contexts.has(r) && !dismissed.has(r));
     if (missing.length === 0)
         return null;
     const list = missing
-        .map((r) => `\`context=${r}\` (${DEBUG_FETCH_EVIDENCE_CONTEXTS[r]})`)
+        .map((r) => `\`context=${r}\` (${CONTEXT_FETCH_EVIDENCE_CONTEXTS[r]})`)
         .join(", ");
     const plural = missing.length > 1;
     return {
-        id: "observability-debug-fetch-context-missing",
+        id: "context-fetch-context-missing",
         severity: "advisory",
-        detect: `\`.agents/config.md\` enables debug-fetch blocks below \`<!-- bkit:end -->\` but none for ${list}. \`/bkit-debug\` fetches ALL failure evidence from these blocks — it hardcodes no CI host, workflow filename, branch name or e2e framework — so ${plural ? "those classes" : "that class"} of evidence ${plural ? "are" : "is"} never fetched on any debug run. Every attempt reports \`context=<context> NOT CONFIGURED\`, and diagnosis must treat the gap as unchecked rather than clean.`,
-        action: `Copy the matching \`<!-- debug-fetch:start <name> context=<context> --> ... <!-- debug-fetch:end -->\` example block(s) out of the bkit-managed section to below \`<!-- bkit:end -->\`, one per missing context: ${list}. The shipped examples assume GitHub Actions and Playwright because that is the common case — they are examples, NOT the contract. Edit them to your setup: \`BASELINE_BRANCH\` / \`BASELINE_WORKFLOW\` must name YOUR trunk branch and workflow file, and \`E2E_ARTIFACT\` / \`E2E_JOB_RE\` must name YOUR upload-artifact and match ONLY the lane that block covers. On another CI host (GitLab, Bitbucket, Buildkite) replace the \`gh\` calls with that host's API — the context contract is just "write the evidence to stdout". A test lane whose evidence never reaches your CI host (a native lane whose reports stay on Expo EAS, Bitrise or Firebase Test Lab) needs its OWN \`context=e2e\` block fetching from that service: widening another block's job regex to cover it makes that block download the WRONG lane's report and file it under the failing lane's name, which is worse than fetching nothing. Blocks are self-contained — each discovers the run it needs itself, so there is no ordering between them and none share variables. Give each block a name unique within its context; a repeated \`context\` + name pair writes both blocks to one artifact path. No such lane in this repo → name the context on the opt-out marker below \`<!-- bkit:end -->\`, space-separated for several: \`<!-- debug-fetch:none ${missing.join(" ")} -->\`. That dismisses those contexts ONLY; a bare \`<!-- debug-fetch:none intentional -->\` dismisses every debug-fetch advisory.`,
+        detect: `\`.agents/context.md\` enables context-fetch blocks below \`<!-- bkit:end -->\` but none for ${list}. \`/bkit-debug\` fetches ALL failure evidence from these blocks — it hardcodes no CI host, workflow filename, branch name or e2e framework — so ${plural ? "those classes" : "that class"} of evidence ${plural ? "are" : "is"} never fetched on any debug run. Every attempt reports \`context=<context> NOT CONFIGURED\`, and diagnosis must treat the gap as unchecked rather than clean.`,
+        action: `Copy the matching \`<!-- context-fetch:start <name> context=<context> --> ... <!-- context-fetch:end -->\` example block(s) out of the bkit-managed section to below \`<!-- bkit:end -->\`, one per missing context: ${list}. The shipped examples assume GitHub Actions and Playwright because that is the common case — they are examples, NOT the contract. Edit them to your setup: \`BASELINE_BRANCH\` / \`BASELINE_WORKFLOW\` must name YOUR trunk branch and workflow file, and \`E2E_ARTIFACT\` / \`E2E_JOB_RE\` must name YOUR upload-artifact and match ONLY the lane that block covers. On another CI host (GitLab, Bitbucket, Buildkite) replace the \`gh\` calls with that host's API — the context contract is just "write the evidence to stdout". A test lane whose evidence never reaches your CI host (a native lane whose reports stay on Expo EAS, Bitrise or Firebase Test Lab) needs its OWN \`context=e2e\` block fetching from that service: widening another block's job regex to cover it makes that block download the WRONG lane's report and file it under the failing lane's name, which is worse than fetching nothing. Blocks are self-contained — each discovers the run it needs itself, so there is no ordering between them and none share variables. Give each block a name unique within its context; a repeated \`context\` + name pair writes both blocks to one artifact path. No such lane in this repo → name the context on the opt-out marker below \`<!-- bkit:end -->\`, space-separated for several: \`<!-- context-fetch:none ${missing.join(" ")} -->\`. That dismisses those contexts ONLY; a bare \`<!-- context-fetch:none intentional -->\` dismisses every context-fetch advisory.`,
     };
 }
 /**
- * Advisory: `.agents/config.md` ships a NAMED debug-fetch example (e.g.
+ * Advisory: `.agents/context.md` ships a NAMED context-fetch example (e.g.
  * `supabase`) in the bkit-managed region, this repo demonstrably runs that
  * backend, yet the consumer section after `<!-- bkit:end -->` enables no block
  * for it — so `/bkit-debug` fetches no runtime logs for a source the repo uses.
  *
- * Distinct from `observability-debug-fetch-missing` (consumer section has NO
+ * Distinct from `context-fetch-missing` (consumer section has NO
  * block at all): this targets PARTIAL enablement — the post-upgrade footgun
  * where an upgrade ships a fresh `supabase` example while the consumer section
  * still holds only a legacy `vercel` block. The two are mutually exclusive: this
  * one only runs once the consumer section already has at least one block.
  *
  * Evidence-gated to avoid nagging single-backend consumers: a source is flagged
- * only when `DEBUG_FETCH_BACKEND_EVIDENCE[name]` proves the repo runs it. A
+ * only when `CONTEXT_FETCH_BACKEND_EVIDENCE[name]` proves the repo runs it. A
  * source counts as enabled when its name appears anywhere in the consumer
- * section — a named marker (`debug-fetch:start supabase`) OR an unnamed block
+ * section — a named marker (`context-fetch:start supabase`) OR an unnamed block
  * body (`vercel logs`, `api.supabase.com`) — so a legacy unnamed block is not a
- * false positive. Dismissable via `<!-- debug-fetch:none ... -->` below
+ * false positive. Dismissable via `<!-- context-fetch:none ... -->` below
  * `<!-- bkit:end -->`.
  */
-export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
-    const filePath = path.join(cwd, ".agents", "config.md");
+export function detectContextFetchSourceNotEnabled(cwd) {
+    const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -599,17 +599,17 @@ export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
     const managed = content.slice(0, endIdx);
     const consumer = content.slice(endIdx);
     // Consumer opt-out marker dismisses the advisory.
-    if (debugFetchDismissesAll(consumer))
+    if (contextFetchDismissesAll(consumer))
         return null;
     // Only PARTIAL enablement: when the consumer section has no block at all,
-    // `observability-debug-fetch-missing` owns that case (avoid double-firing).
-    const hasStart = parseDebugFetchStarts(consumer).length > 0;
-    const hasEnd = /^<!-- debug-fetch:end -->$/m.test(consumer);
+    // `context-fetch-missing` owns that case (avoid double-firing).
+    const hasStart = parseContextFetchStarts(consumer).length > 0;
+    const hasEnd = /^<!-- context-fetch:end -->$/m.test(consumer);
     if (!(hasStart && hasEnd))
         return null;
     // Named example sources shipped in the bkit-managed region.
     const shipped = new Set();
-    for (const { name } of parseDebugFetchStarts(managed)) {
+    for (const { name } of parseContextFetchStarts(managed)) {
         if (name)
             shipped.add(name);
     }
@@ -617,7 +617,7 @@ export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
         return null;
     const consumerLower = consumer.toLowerCase();
     const missing = [...shipped].filter((name) => {
-        const evidence = DEBUG_FETCH_BACKEND_EVIDENCE[name];
+        const evidence = CONTEXT_FETCH_BACKEND_EVIDENCE[name];
         if (!evidence || !evidence(cwd))
             return false; // no proof the repo runs it
         return !consumerLower.includes(name.toLowerCase()); // name absent below bkit:end
@@ -628,22 +628,22 @@ export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
     const slash = missing.join("/");
     const plural = missing.length > 1;
     return {
-        id: "observability-debug-fetch-source-not-enabled",
+        id: "context-fetch-source-not-enabled",
         severity: "advisory",
-        detect: `\`.agents/config.md\` ships ${plural ? "" : "a "}debug-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
-        action: `Copy the \`<!-- debug-fetch:start ${missing[0]} --> ... <!-- debug-fetch:end -->\` block${plural ? "s" : ""} (${names}) out of the bkit-managed section to after \`<!-- bkit:end -->\`, then set each block's env vars — including committing each block's non-secret selector (e.g. \`VERCEL_SCOPE\` / \`SUPABASE_PROJECT_ID\`) by uncommenting the assignment line at the top of the block, so it runs in headless cloud agents too (they never read \`.bkit/.env\`). Each block self-gates (missing CLI / token => a \`[debug-fetch:<name>] skipped — …\` stderr breadcrumb, not an error). If you do not use ${slash} for runtime logs, add \`<!-- debug-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (drift-gated).`,
+        detect: `\`.agents/context.md\` ships ${plural ? "" : "a "}context-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
+        action: `Copy the \`<!-- context-fetch:start ${missing[0]} --> ... <!-- context-fetch:end -->\` block${plural ? "s" : ""} (${names}) out of the bkit-managed section to after \`<!-- bkit:end -->\`, then set each block's env vars — including committing each block's non-secret selector (e.g. \`VERCEL_SCOPE\` / \`SUPABASE_PROJECT_ID\`) by uncommenting the assignment line at the top of the block, so it runs in headless cloud agents too (they never read \`.bkit/.env\`). Each block self-gates (missing CLI / token => a \`[context-fetch:<name>] skipped — …\` stderr breadcrumb, not an error). If you do not use ${slash} for runtime logs, add \`<!-- context-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (drift-gated).`,
     };
 }
 /**
  * Non-stack base tools assumed present in every cloud/CI environment: POSIX
  * utilities plus the binaries bkit's own cloud setup installs (vale, gh, jq,
- * pnpm/corepack, node, git, python3). A debug-fetch block that self-guards on one
- * of these needs NO `debug-fetch:provision` block — only a STACK CLI (vercel,
+ * pnpm/corepack, node, git, python3). A context-fetch block that self-guards on one
+ * of these needs NO `context-fetch:provision` block — only a STACK CLI (vercel,
  * supabase, gcloud, aws, wrangler, …) does, because bkit installs no stack CLIs
  * itself (that would name a stack). Keep `jq` here: it is provisioned as a base
  * tool by the cloud setup script, not per-block.
  */
-const DEBUG_FETCH_BASE_TOOLS = new Set([
+const CONTEXT_FETCH_BASE_TOOLS = new Set([
     "curl",
     "jq",
     "date",
@@ -677,23 +677,23 @@ const DEBUG_FETCH_BASE_TOOLS = new Set([
     "vale",
 ]);
 /**
- * Advisory: an enabled `<!-- debug-fetch:start <name> -->` block self-guards on a
- * stack CLI (`command -v <cli>`) but ships no matching `<!-- debug-fetch:provision
+ * Advisory: an enabled `<!-- context-fetch:start <name> -->` block self-guards on a
+ * stack CLI (`command -v <cli>`) but ships no matching `<!-- context-fetch:provision
  * <name> -->` block below `<!-- bkit:end -->`. bkit installs no stack CLIs itself,
  * so in cloud that CLI is absent, the block's own guard trips, and it self-skips
  * with a silent `exit 0` — `/bkit-debug` fetches NO runtime logs for that source
  * (which reads as "clean", not "not wired up"). Both the `.claude/cloud.md` web
  * setup-script snapshot and `.claude/hooks/cloud-bootstrap.sh` provision from the
- * SAME `debug-fetch:provision` recipes, so a missing recipe breaks both cloud paths.
+ * SAME `context-fetch:provision` recipes, so a missing recipe breaks both cloud paths.
  *
  * Precise-signal: keyed on the block's OWN `command -v <cli>` self-guard, so a
  * curl/jq/API block (no stack-CLI guard) never false-positives; base tools
- * (`DEBUG_FETCH_BASE_TOOLS`) are ignored. Only NAMED start blocks are checked (a
- * provision block is matched by name). Dismissable via `<!-- debug-fetch:none ...
+ * (`CONTEXT_FETCH_BASE_TOOLS`) are ignored. Only NAMED start blocks are checked (a
+ * provision block is matched by name). Dismissable via `<!-- context-fetch:none ...
  * -->` below `<!-- bkit:end -->`.
  */
-export function detectObservabilityDebugFetchProvisionMissing(cwd) {
-    const filePath = path.join(cwd, ".agents", "config.md");
+export function detectContextFetchProvisionMissing(cwd) {
+    const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
@@ -701,14 +701,14 @@ export function detectObservabilityDebugFetchProvisionMissing(cwd) {
     if (endIdx === -1)
         return null;
     const consumer = content.slice(endIdx);
-    if (debugFetchDismissesAll(consumer))
+    if (contextFetchDismissesAll(consumer))
         return null;
     const blocks = [];
     let cur = null;
     let inFence = false;
     for (const line of consumer.split("\n")) {
-        const startM = parseDebugFetchStart(line);
-        const provM = /^<!-- debug-fetch:provision ([\w.-]+) -->$/.exec(line);
+        const startM = parseContextFetchStart(line);
+        const provM = /^<!-- context-fetch:provision ([\w.-]+) -->$/.exec(line);
         if (startM) {
             // Unnamed blocks cannot be matched to a provision sibling (which is keyed
             // by name), so they are parked under "" and filtered out downstream.
@@ -723,7 +723,7 @@ export function detectObservabilityDebugFetchProvisionMissing(cwd) {
             blocks.push(cur);
             continue;
         }
-        if (/^<!-- debug-fetch:(end|none|start|provision)/.test(line)) {
+        if (/^<!-- context-fetch:(end|none|start|provision)/.test(line)) {
             cur = null;
             inFence = false;
             continue;
@@ -755,7 +755,7 @@ export function detectObservabilityDebugFetchProvisionMissing(cwd) {
         const body = b.body.join("\n");
         for (const m of body.matchAll(/command -v ([\w.-]+)/g)) {
             const cli = m[1];
-            if (DEBUG_FETCH_BASE_TOOLS.has(cli))
+            if (CONTEXT_FETCH_BASE_TOOLS.has(cli))
                 continue;
             if (provisionNames.has(b.name) || provisionBody.includes(cli))
                 continue;
@@ -773,10 +773,10 @@ export function detectObservabilityDebugFetchProvisionMissing(cwd) {
     const list = items.join(", ");
     const plural = items.length > 1;
     return {
-        id: "observability-debug-fetch-provision-missing",
+        id: "context-fetch-provision-missing",
         severity: "advisory",
-        detect: `\`.agents/config.md\` enable${plural ? "" : "s"} debug-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- debug-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
-        action: `For each flagged block, add a sibling \`<!-- debug-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If the bkit-managed section above \`<!-- bkit:end -->\` ships a ready-made \`debug-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
+        detect: `\`.agents/context.md\` enable${plural ? "" : "s"} context-fetch block${plural ? "s" : ""} that self-guard${plural ? "" : "s"} on a stack CLI but ship${plural ? "" : "s"} no matching \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\`: ${list}. bkit installs no stack CLIs itself, so in cloud the CLI is absent, the block's own \`command -v\` guard trips, and it self-skips (silent \`exit 0\`) — \`/bkit-debug\` fetches no runtime logs for ${plural ? "those sources" : "that source"} (reads as "clean", not "not wired up").`,
+        action: `For each flagged block, add a sibling \`<!-- context-fetch:provision <name> -->\` block below \`<!-- bkit:end -->\` — SAME name as the fetch block — whose bash body installs the CLI, self-guarded and install-only: \`command -v ${firstCli} >/dev/null 2>&1 || <install ${firstCli}>\` (e.g. \`pnpm add -g ${firstCli}\` for an npm-published CLI). If the bkit-managed section above \`<!-- bkit:end -->\` ships a ready-made \`context-fetch:provision ${firstName}\` recipe, copy that. Then re-run \`bkit install\` so the recipe bakes into \`.claude/cloud.md\`'s setup script; \`.claude/hooks/cloud-bootstrap.sh\` runs the same recipe on gh-runner / resumed sessions. A block that fetches via an MCP tool or only universal tools (curl/jq/date) needs no provision.`,
     };
 }
 /**
@@ -1444,18 +1444,18 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
     if (playwrightReporterHostile)
         advisories.push(playwrightReporterHostile);
-    const observabilityDebugFetch = detectObservabilityDebugFetchMissing(cwd);
-    if (observabilityDebugFetch)
-        advisories.push(observabilityDebugFetch);
-    const observabilityDebugFetchContext = detectObservabilityDebugFetchContextMissing(cwd);
-    if (observabilityDebugFetchContext)
-        advisories.push(observabilityDebugFetchContext);
-    const observabilityDebugFetchSource = detectObservabilityDebugFetchSourceNotEnabled(cwd);
-    if (observabilityDebugFetchSource)
-        advisories.push(observabilityDebugFetchSource);
-    const observabilityDebugFetchProvision = detectObservabilityDebugFetchProvisionMissing(cwd);
-    if (observabilityDebugFetchProvision)
-        advisories.push(observabilityDebugFetchProvision);
+    const contextFetch = detectContextFetchMissing(cwd);
+    if (contextFetch)
+        advisories.push(contextFetch);
+    const contextFetchContext = detectContextFetchContextMissing(cwd);
+    if (contextFetchContext)
+        advisories.push(contextFetchContext);
+    const contextFetchSource = detectContextFetchSourceNotEnabled(cwd);
+    if (contextFetchSource)
+        advisories.push(contextFetchSource);
+    const contextFetchProvision = detectContextFetchProvisionMissing(cwd);
+    if (contextFetchProvision)
+        advisories.push(contextFetchProvision);
     // bkit-not-on-path advisory — suggest the shell alias for local development.
     const bkitNotOnPath = detectBkitNotOnPath();
     if (bkitNotOnPath)

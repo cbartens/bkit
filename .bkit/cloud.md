@@ -108,7 +108,7 @@ Identical across repos: **setup-script body**, **network policy**, bkit **baseli
 
 ### Network access
 
-`Custom` when repo declares `allowed-domains` block (§ Cloud allowed domains in `.agents/config.md`). Select **Custom**, tick **Also include default list of common package managers** (EXTENDS trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/cloud.md` § Network access into **Allowed domains**. Log-backend/API hosts repo debug-fetch blocks reach (incl. implicit hosts of CLI blocks like `vercel` / `gcloud`) plus app production + preview/dev domains — declared apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>`. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
+`Custom` when repo declares `allowed-domains` block (§ Cloud allowed domains in `.agents/context.md`). Select **Custom**, tick **Also include default list of common package managers** (EXTENDS trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/cloud.md` § Network access into **Allowed domains**. Log-backend/API hosts repo context-fetch blocks reach (incl. implicit hosts of CLI blocks like `vercel` / `gcloud`) plus app production + preview/dev domains — declared apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>`. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
 
 No `allowed-domains` block → `Trusted` (default) enough — covers npm, GitHub Packages, vale tarball on `objects.githubusercontent.com`, Docker Hub, PyPI. Raise to `Full` only for open-internet tasks.
 
@@ -124,7 +124,7 @@ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 
 Claude pairs with **GitHub** tracker (see § Cloud-agent support matrix) — no `LINEAR_API_KEY` / `LINEAR_ISSUE_ID`. Set `GH_BKIT_TOKEN` for GitHub MCP; authenticate `gh` via `gh auth login --with-token` in bootstrap hook (env vars not visible during setup script — see § Notes).
 
-Optional (debug-fetch — only if you use `.agents/config.md` blocks; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `debug-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -170,12 +170,12 @@ Use **fine-grained** PAT scoped to target repo (or each consumer repo, comma-sep
 
 ### Setup script
 
-`bkit install` generates copy-paste-ready setup script into `.claude/cloud.md` § Setup script — resolved for this repo, with cache-bust line, base-tool installs, any `debug-fetch:provision` recipes. **Paste that**, not hand-copied snippet: stale copy drifts (hard-pinned pnpm can seed version known to break `bkit` download; `apt install gh` unreliable — gh not in default repos).
+`bkit install` generates copy-paste-ready setup script into `.claude/cloud.md` § Setup script — resolved for this repo, with cache-bust line, base-tool installs, any `context-fetch:provision` recipes. **Paste that**, not hand-copied snippet: stale copy drifts (hard-pinned pnpm can seed version known to break `bkit` download; `apt install gh` unreliable — gh not in default repos).
 
 What it does and why split from in-repo hook:
 
 - **`# cache-bust <date>-<n>`** first line generator writes (`bkit install` / `bkit upgrade` re-stamp). Snapshot keyed on setup script exact text — only job is to change: new date (or bumped same-day counter) forces fresh snapshot on next paste, re-pulling "latest"-resolved `gh` / `gcloud` binaries and base-image drift even when rest byte-identical. Leave in place — do not hand-edit.
-- **Base tools (vale, gh, jq)** install once into snapshot from upstream releases — `gh` from `cli/cli` releases redirect (not `apt`), `jq` because `curl`-based debug-fetch blocks pipe through it. Binaries cloud lacks but laptop has — not repo-level hook.
+- **Base tools (vale, gh, jq)** install once into snapshot from upstream releases — `gh` from `cli/cli` releases redirect (not `apt`), `jq` because `curl`-based context-fetch blocks pipe through it. Binaries cloud lacks but laptop has — not repo-level hook.
 - **pnpm corepack pre-warm** seeds one pnpm into snapshot via `corepack enable` (no hard-pinned version). In-repo, corepack resolves repo's `packageManager` (fetching if differs) — one setup script serves any pnpm pin; pre-warm is warm cache.
 - `pnpm install` and `vale sync` **not** here — belong in `.claude/hooks/cloud-bootstrap.sh` for resumed sessions when lockfile/styles drifted; each repo installs own deps.
 
@@ -315,7 +315,7 @@ GH_BKIT_TOKEN_INSTALL=<classic PAT with read:packages — consumer repos only>
 
 `LINEAR_ISSUE_ID` injected per-session by Cursor / Linear integration — do not hardcode.
 
-Optional (debug-fetch — only if you use `.agents/config.md` blocks; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `debug-fetch:provision` sibling):
+Optional (context-fetch — only if you use `.agents/context.md` blocks; tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. Cloud-dashboard entries, not `.bkit/.env` — bkit/agent tooling only. Non-secret selectors (`VERCEL_SCOPE` / `SUPABASE_PROJECT_ID`) commit in copied block so cloud agents inherit without dashboard entry. CLIs install from each block's `context-fetch:provision` sibling):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -324,7 +324,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 
 ## Network access (Cursor side)
 
-Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`, but the allowlist is **deliberately narrower** — Cursor warns a broad `*.` wildcard opens egress far wider than intended, so add the **specific** subdomains you need rather than a wildcard. If the repo declares `allowed-domains` in `.agents/config.md`, `.cursor/cloud.md` § Network access lists them apex-only (no auto-`*.` expansion, unlike the Claude side).
+Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`, but the allowlist is **deliberately narrower** — Cursor warns a broad `*.` wildcard opens egress far wider than intended, so add the **specific** subdomains you need rather than a wildcard. If the repo declares `allowed-domains` in `.agents/context.md`, `.cursor/cloud.md` § Network access lists them apex-only (no auto-`*.` expansion, unlike the Claude side).
 
 ## After modifying `.cursor/*`
 

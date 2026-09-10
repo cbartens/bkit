@@ -30,7 +30,7 @@ import {
  * template render that never touches package.json scripts. `bkit upgrade --latest`
  * is the documented consumer path, so without this the corrected script would
  * reach only consumers who happened to re-run `bkit install --tooling`.
- * (Same both-engines requirement as the debug-fetch migration, #334.)
+ * (Same both-engines requirement as the context-fetch migration, #334.)
  *
  * REPLACE-ONLY — never creates the key. Upgrade must not force-create a script
  * for a module the consumer never installed.

@@ -2940,7 +2940,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(perm.bash["curl *"]).toBe("ask");
     expect(perm.bash["wget *"]).toBe("ask");
     // Stack hosts (vercel/supabase/…) are NOT shipped — only tooling defaults +
-    // consumer `.agents/config.md` allowed-domains (after bkit:end).
+    // consumer `.agents/context.md` allowed-domains (after bkit:end).
     expect(perm.bash["curl *vercel.com*"]).toBeUndefined();
     expect(perm.bash["curl *github.com*"]).toBe("allow");
     const curlAskIdx = Object.keys(perm.bash).indexOf("curl *");
@@ -2997,7 +2997,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-net-"));
     fs.mkdirSync(path.join(tmp, ".agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmp, ".agents", "config.md"),
+      path.join(tmp, ".agents", "context.md"),
       "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nvercel.com\nsupabase.com\n<!-- allowed-domains:end -->\n",
       "utf-8",
     );
