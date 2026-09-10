@@ -1655,7 +1655,7 @@ export function validateModuleFlagsForVerb(
   if (verb === "install" && moduleFlags.size === 0) {
     return (
       "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-      "--claude, --cursor, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
+      "--claude, --cursor, --codex, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
       "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage."
     );
   }

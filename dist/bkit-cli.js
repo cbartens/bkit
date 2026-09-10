@@ -528,7 +528,7 @@ Usage:
   bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
                                  core foundation. At least one module flag is REQUIRED —
                                  a bare \`bkit install\` errors (name the modules below).
-                                 Hosts compose: --claude --cursor --opencode=<provider>.
+                                 Hosts compose: --claude --cursor --codex --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 when a managed file needs
                                  re-rendering; Tier-3 (seed-or-print, e.g. ci.yml) drift
@@ -652,6 +652,11 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Ships .opencode/** (agents, commands, opencode.json, gateguard).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.
+  --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway
+                  (openai), so only --opencode is provider-pluggable. Ships .codex/agents/*.toml
+                  + .codex/hooks.json + .codex/hooks/gateguard.cjs, plus the workflow skills
+                  (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
+                  .codex/ layer is trusted — until then GateGuard is installed and never fires.
   --ci            Stack-agnostic CI/quality foundation: the ci.yml SKELETON (gate graph +
                   capstone contract + branch-protection, with Node/TS build/test steps as
                   commented examples) + Vale prose-lint. No Node/TS footprint — runs green
