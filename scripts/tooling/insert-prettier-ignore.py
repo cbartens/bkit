@@ -8,11 +8,15 @@ The per-table escape hatch is the chosen workaround: the comment must
 sit directly above the table head with no blank line between them.
 
 Usage:
-  python3 tooling/prettier/insert-prettier-ignore.py [path ...]
+  python3 scripts/tooling/insert-prettier-ignore.py [--check] [path ...]
 
 Defaults to `.agents`, `docs`, and `README.md` if no paths are supplied.
 Skips tables inside fenced code blocks (``` / ~~~). Skips tables already
-wrapped.
+wrapped. `--check` writes nothing and exits non-zero if any file would
+change — use it as a gate.
+
+Exits non-zero when it finds table damage escaping cannot repair (see
+audit_text), whether or not --check was passed.
 """
 
 from __future__ import annotations
@@ -114,26 +118,40 @@ def normalize_separator(line: str) -> str:
     return leading_ws + "| " + " | ".join(out) + " |" + nl
 
 
+class FenceTracker:
+    """Tracks ``` / ~~~ fenced code blocks across a line-by-line walk.
+
+    Shared by process_text and audit_text so the two can never disagree about
+    what counts as fenced — a table inside a fence is illustrative text, not a
+    table, and must be neither rewritten nor reported.
+    """
+
+    def __init__(self) -> None:
+        self.in_fence = False
+        self.marker = ""
+
+    def feed(self, line: str) -> bool:
+        """Return True when `line` opens, sits inside, or closes a fence."""
+        stripped = line.lstrip()
+        if not self.in_fence:
+            if stripped.startswith("```") or stripped.startswith("~~~"):
+                self.in_fence = True
+                self.marker = "```" if stripped.startswith("```") else "~~~"
+                return True
+            return False
+        if stripped.startswith(self.marker):
+            self.in_fence = False
+        return True
+
+
 def process_text(src: str) -> str:
     lines = src.splitlines(keepends=True)
     out: list[str] = []
-    in_fence = False
-    fence_marker = ""
+    fence = FenceTracker()
     i = 0
     while i < len(lines):
         line = lines[i]
-        stripped = line.lstrip()
-        # Track fenced code blocks (``` or ~~~)
-        if not in_fence and (stripped.startswith("```") or stripped.startswith("~~~")):
-            in_fence = True
-            fence_marker = "```" if stripped.startswith("```") else "~~~"
-            out.append(line)
-            i += 1
-            continue
-        if in_fence:
-            if stripped.startswith(fence_marker):
-                in_fence = False
-                fence_marker = ""
+        if fence.feed(line):
             out.append(line)
             i += 1
             continue
@@ -180,28 +198,81 @@ def process_text(src: str) -> str:
     return "".join(out)
 
 
-def process_file(path: Path) -> bool:
-    src = path.read_text(encoding="utf-8")
-    new = process_text(src)
-    if new != src:
-        path.write_text(new, encoding="utf-8")
-        return True
-    return False
+# The damage this script deliberately will NOT touch
+# --------------------------------------------------
+# Escaping is only safe where we KNOW a pipe is cell content rather than a
+# column delimiter, and the one place we know that is inside an inline-code
+# span (see maybe_escape). A bare pipe in plain cell prose —
+# "boundary=browser | network", "3-way split: REST | Webhooks | Inngest" — is
+# indistinguishable from a real delimiter without reading the sentence.
+# Escaping the wrong one MERGES two genuine cells, which is worse than the
+# defect it set out to fix, so these are reported for a human instead.
+#
+# Both shapes below are punished silently by GFM, which is why they survive
+# for months in a doc nobody notices is broken:
+#
+#   truncated-row     A body row yields MORE cells than the separator has
+#                     columns. GFM drops the overflow, so the tail of the row
+#                     simply never renders.
+#   unrendered-table  Header cell count != separator cell count. GFM then
+#                     refuses to build a table AT ALL and emits the raw pipes
+#                     as a paragraph — the whole block is lost, not one row.
+
+Problem = tuple[int, str, str]  # (1-based line, kind, human-readable detail)
 
 
-# Generated boards prettier never formats (they are in `.prettierignore`) and
-# whose marker blocks a fold FULLY regenerates on every workflow close. A
-# marker injected here is wiped by the next fold — pure churn — so these are
-# excluded even when passed as an explicit file arg.
-GENERATED_BOARDS = {Path("docs/roadmap.md")}
+def audit_text(src: str) -> list[Problem]:
+    """Report table damage that escaping cannot repair.
 
-
-def is_generated_board(path: Path) -> bool:
-    try:
-        rel = path.resolve().relative_to(Path.cwd().resolve())
-    except ValueError:
-        rel = path
-    return rel in GENERATED_BOARDS or path in GENERATED_BOARDS
+    Run against the POST-format text so anything this script already fixes by
+    escaping is not reported twice.
+    """
+    lines = src.splitlines()
+    fence = FenceTracker()
+    problems: list[Problem] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if fence.feed(line):
+            i += 1
+            continue
+        if not (
+            is_pipe_row(line)
+            and i + 1 < len(lines)
+            and is_separator_row(lines[i + 1])
+        ):
+            i += 1
+            continue
+        # The separator defines the table's real width; it is the only row that
+        # cannot contain a code span, so it is never itself miscounted.
+        ncols = len(split_cells(lines[i + 1].strip()[1:-1]))
+        nhead = len(split_cells(line.strip()[1:-1]))
+        if nhead != ncols:
+            problems.append(
+                (
+                    i + 1,
+                    "unrendered-table",
+                    f"header has {nhead} columns, separator has {ncols} — GFM "
+                    "renders this whole block as raw text, not a table",
+                )
+            )
+        j = i + 2
+        while j < len(lines) and is_pipe_row(lines[j]):
+            ncells = len(split_cells(lines[j].strip()[1:-1]))
+            if ncells > ncols:
+                problems.append(
+                    (
+                        j + 1,
+                        "truncated-row",
+                        f"{ncells} cells in a {ncols}-column table — GFM drops "
+                        f"the last {ncells - ncols}. If a pipe is cell content, "
+                        "escape it as \\|; otherwise the row carries more "
+                        "values than the header has columns.",
+                    )
+                )
+            j += 1
+        i = j
+    return problems
 
 
 def collect_targets(args: list[str]) -> list[Path]:
@@ -215,7 +286,6 @@ def collect_targets(args: list[str]) -> list[Path]:
             files.append(root)
         elif root.is_dir():
             files.extend(root.rglob("*.md"))
-    files = [f for f in files if not is_generated_board(f)]
     # Exclude vendored skill docs — any file inside a `skills/` DIRECTORY
     # (.agents/skills/**, etc.); third-party content we must not reformat.
     # Checks parent dirs only (f.parent.parts), so a file merely named
@@ -225,14 +295,44 @@ def collect_targets(args: list[str]) -> list[Path]:
 
 
 def main() -> int:
-    targets = collect_targets(sys.argv[1:])
+    argv = sys.argv[1:]
+    check_only = "--check" in argv
+    targets = collect_targets([a for a in argv if not a.startswith("-")])
+
     changed = 0
-    for p in sorted(targets):
-        if process_file(p):
-            changed += 1
-            print(f"updated: {p}")
-    print(f"\n{changed}/{len(targets)} files updated")
-    return 0
+    unformatted: list[Path] = []
+    problems: list[tuple[Path, int, str, str]] = []
+
+    for path in sorted(targets):
+        src = path.read_text(encoding="utf-8")
+        new = process_text(src)
+        if new != src:
+            if check_only:
+                unformatted.append(path)
+            else:
+                path.write_text(new, encoding="utf-8")
+                changed += 1
+                print(f"updated: {path}")
+        problems.extend((path, *pr) for pr in audit_text(new))
+
+    if check_only:
+        for path in unformatted:
+            print(f"needs formatting: {path}")
+        print(f"\n{len(unformatted)}/{len(targets)} files need formatting")
+    else:
+        print(f"\n{changed}/{len(targets)} files updated")
+
+    if problems:
+        print(
+            f"\n{len(problems)} table defect(s) escaping cannot repair — a pipe "
+            "in plain cell\nprose is indistinguishable from a column delimiter, "
+            "so these need a human:\n"
+        )
+        for path, line_no, kind, detail in problems:
+            print(f"  {path}:{line_no}  [{kind}]")
+            print(f"      {detail}")
+
+    return 1 if problems or unformatted else 0
 
 
 if __name__ == "__main__":
