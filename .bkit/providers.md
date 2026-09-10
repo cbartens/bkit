@@ -283,7 +283,7 @@ Pre-edit advisory hook, on all three hosts. First file touch per session → inv
 | --- | --- | --- | --- |
 | File / secrets | `.claude/settings.json` → `permissions.{allow,deny,ask}` (`Read(./**/*.pem)` deny; `.env` variants ask; `.env.example` allow) | `.cursor/hooks/guardrails.cjs` via `preToolUse` (`Read\|TabRead`) — same deny/ask policy | `.opencode/opencode.json` → `permission.read` map |
 | Shell / destructive | `permissions.deny` / `ask` on force-push (not `--force-with-lease`), `rm -rf /*`, publish, destructive git/gh, etc. Shell `curl` / `wget` are NOT gated here — `permissions` cannot match a URL host, so only the `WebFetch` TOOL is allowlisted | `.cursor/hooks/guardrails.cjs` via `beforeShellExecution` — same deny/ask policy | `permission.bash` deny/ask map (same rules) |
-| Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches with consumer `allowed-domains` from `.agents/context.md` (stack hosts never shipped) | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow + `webfetch: "ask"`; `curl *` ask then `curl *{domain}*` allow from same allowlist (baked into `opencode.json`) |
+| Network fetch | `WebSearch` + tooling `WebFetch(domain:…)`; install/upgrade enriches from the shipped egress registry union consumer `allowed-domains` in `.agents/context.md` (stack hosts never shipped), recording what it wrote so it can later prune it | `curl`/`wget` ask unless host ∈ `.cursor/allowlist.json` (tooling ∪ consumer domains) | `websearch` allow + `webfetch: "ask"`; `curl *` ask then `curl *{domain}*` allow from same allowlist (baked into `opencode.json`) |
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
@@ -293,7 +293,7 @@ Pre-edit advisory hook, on all three hosts. First file touch per session → inv
 
 ### Network allowlist — one source, three encodings
 
-**Source of truth (stack domains):** consumer `.agents/context.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` (apex domains). Plus stack-agnostic tooling defaults (GitHub, npm, provider docs, …). Never ship Vercel/Supabase/Sentry/etc. into every consumer.
+**Source of truth:** bkit's own hosts come from the egress registry (`.bkit/src/bkit-registry.ts`) and must never be re-declared. Stack domains come from consumer `.agents/context.md` → `<!-- allowed-domains:start -->` **after** `<!-- bkit:end -->` (apex domains). Never ship Vercel/Supabase/Sentry/etc. into every consumer.
 
 **`bkit install` / `bkit upgrade` apply that set differently per host** — same policy, native mechanics:
 
@@ -304,9 +304,9 @@ Pre-edit advisory hook, on all three hosts. First file touch per session → inv
 | **OpenCode** | Baked into `.opencode/opencode.json` → `permission.bash`: `curl *` / `wget *` **ask**, then `curl *{domain}*` / `wget *{domain}*` **allow** (last-match-wins) | OpenCode `webfetch` is Action-only (`ask`\|`allow`\|`deny`) — cannot store a URL map. Domain exceptions for shell fetch live in `bash`. No separate allowlist file. |
 | **Cursor** | Generated `.cursor/allowlist.json` read at **runtime** by `.cursor/hooks/guardrails.cjs` | Cursor has no project settings equivalent to Claude `permissions` / OpenCode `permission` for curl host globs. Parity is a **hook** (`beforeShellExecution`): ask on `curl`/`wget` unless the command contains a host from the allowlist. The JSON is Cursor-only by design (IDE-scoped artifact under `.cursor/`, not `.bkit/`). |
 
-**Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`. Missing file ⇒ guardrails falls back to tooling defaults embedded in the hook.
+**Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`. Missing file ⇒ the hook resolves no hosts and every host reads as unknown; there is deliberately no list embedded in the hook, because a second copy drifts from the registry silently.
 
-**Cloud egress (separate):** the same `allowed-domains` also feed `.claude/cloud.md` / `.cursor/cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Cloud allowed domains and `.bkit/cloud.md`.
+**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/cloud.md` / `.cursor/cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Cloud allowed domains and `.bkit/cloud.md`.
 
 ### MCP config asymmetry — GitHub tracker
 

@@ -108,9 +108,9 @@ Identical across repos: **setup-script body**, **network policy**, bkit **baseli
 
 ### Network access
 
-`Custom` when repo declares `allowed-domains` block (§ Cloud allowed domains in `.agents/context.md`). Select **Custom**, tick **Also include default list of common package managers** (EXTENDS trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/cloud.md` § Network access into **Allowed domains**. Log-backend/API hosts repo context-fetch blocks reach (incl. implicit hosts of CLI blocks like `vercel` / `gcloud`) plus app production + preview/dev domains — declared apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>`. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
+Always `Custom` — the rendered list carries bkit's own shipped hosts (trackers, registries, agent + provider APIs, the search host a `context=web` block calls) whether or not the repo declares anything. Select **Custom**, tick **Also include default list of common package managers** (EXTENDS trusted defaults — package registries, GitHub, cloud SDKs — never replaces them), paste domains bkit renders into `.claude/cloud.md` § Network access into **Allowed domains**. Declare only what bkit cannot see: log-backend/API hosts the implicit CLI blocks reach (`vercel` / `gcloud`) plus app production + preview/dev domains — apex-only, expanded by `bkit install` to `<domain>` + `*.<domain>` and unioned with the derived set. Under `Trusted` those hosts unreachable → cloud `/bkit-debug` gets no runtime logs; e2e can't hit deployment.
 
-No `allowed-domains` block → `Trusted` (default) enough — covers npm, GitHub Packages, vale tarball on `objects.githubusercontent.com`, Docker Hub, PyPI. Raise to `Full` only for open-internet tasks.
+No `allowed-domains` block still needs `Custom`: `Trusted` does not reach bkit's own tracker MCP, provider catalog or search hosts. Ticking **Also include default list of common package managers** keeps npm, GitHub Packages, the vale tarball on `objects.githubusercontent.com`, Docker Hub and PyPI. Raise to `Full` only for open-internet tasks.
 
 ### Environment variables
 
@@ -351,7 +351,7 @@ SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/da
 
 ## Network access (Cursor side)
 
-Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`, but the allowlist is **deliberately narrower** — Cursor warns a broad `*.` wildcard opens egress far wider than intended, so add the **specific** subdomains you need rather than a wildcard. If the repo declares `allowed-domains` in `.agents/context.md`, `.cursor/cloud.md` § Network access lists them apex-only (no auto-`*.` expansion, unlike the Claude side).
+Cloud Agents get network access by default; egress is configurable in the dashboard → **Security**: **Allow all** / **Default + allowlist** / **Allowlist only**, at user / environment / team scope. Analogue of Claude's `Trusted` / `Custom`, but the allowlist is **deliberately narrower** — Cursor warns a broad `*.` wildcard opens egress far wider than intended, so add the **specific** subdomains you need rather than a wildcard. `.cursor/cloud.md` § Network access lists the derived hosts union any declared `allowed-domains`, as exact hosts (no auto-`*.` expansion, unlike the Claude side).
 
 ## After modifying `.cursor/*`
 

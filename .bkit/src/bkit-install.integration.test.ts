@@ -27,6 +27,7 @@ import {
 import { getTemplatesRoot } from "./bkit-paths";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
+import { resolveNetworkAllowlist } from "./bkit-cloud-env";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1944,4 +1945,86 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
     expect(pkg.bkit?.opencodeProviders).toContain("ollama");
     expect(pkg.bkit?.opencodeProviders).toHaveLength(2);
   });
+});
+
+// T10 — the .bkit/version provenance record must survive a REAL install. The write
+// path is a fresh object literal, so any future field addition can silently drop this
+// one; a mocked install would never catch that. Real tmpdir consumer, spawned binary.
+describe("T10 — webFetchDerived survives a real install", () => {
+  const paths = () => ({
+    bkitInstallPath: path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    ),
+    tsxBin: path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    ),
+  });
+
+  const install = (tsxBin: string, bkitInstallPath: string) =>
+    spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--tooling"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+  const readDerived = (): string[] =>
+    JSON.parse(fs.readFileSync(path.join(tmpDir, ".bkit", "version"), "utf-8")).webFetchDerived;
+
+  // The shipped context.md already carries allowed-domains blocks of its own, so this
+  // brackets ITS block with a sentinel and rewrites only that. A non-global replace
+  // would strip the first shipped block and leave this one behind.
+  const setAllowedDomains = (domains: string[]) => {
+    const p = path.join(tmpDir, ".agents", "context.md");
+    const body = fs
+      .readFileSync(p, "utf-8")
+      .replace(/\n<!-- t10-probe -->[\s\S]*?<!-- t10-probe-end -->\n/g, "\n");
+    const block =
+      domains.length === 0
+        ? ""
+        : `\n<!-- t10-probe -->\n<!-- allowed-domains:start -->\n${domains.join(
+            "\n",
+          )}\n<!-- allowed-domains:end -->\n<!-- t10-probe-end -->\n`;
+    fs.writeFileSync(p, `${body}${block}`);
+  };
+
+  it("records the resolved grant set, then updates it when allowed-domains shrinks", () => {
+    const { bkitInstallPath, tsxBin } = paths();
+    if (!fs.existsSync(tsxBin)) return;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "t10", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
+    );
+    // preflight requires a repo root; the other spawned-install cases seed it the same way
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const first = install(tsxBin, bkitInstallPath);
+    expect(first.status, `install crashed:\n${first.stdout}\n${first.stderr}`).toBe(0);
+
+    const recorded = readDerived();
+    expect(Array.isArray(recorded)).toBe(true);
+    expect(recorded.length).toBeGreaterThan(0);
+    // equal to what the resolver produces for this consumer, not merely non-empty
+    expect([...recorded].sort()).toEqual(
+      resolveNetworkAllowlist(tmpDir)
+        .map((d) => `WebFetch(domain:${d})`)
+        .sort(),
+    );
+
+    // widen, then shrink: the record must follow the derived set both ways
+    setAllowedDomains(["shrink-probe.example"]);
+    expect(install(tsxBin, bkitInstallPath).status).toBe(0);
+    expect(readDerived()).toContain("WebFetch(domain:shrink-probe.example)");
+
+    setAllowedDomains([]);
+    expect(install(tsxBin, bkitInstallPath).status).toBe(0);
+    expect(readDerived()).not.toContain("WebFetch(domain:shrink-probe.example)");
+    // and the grant itself was withdrawn from settings, not just from the record
+    const allow = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    ).permissions.allow;
+    expect(allow).not.toContain("WebFetch(domain:shrink-probe.example)");
+  }, 180_000);
 });
