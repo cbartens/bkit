@@ -663,6 +663,18 @@ jobs:
 # partial/cached/light run is green by construction, NOT validated. bkit-tests-scope plans
 # what should run; bkit-tests-check enforces it ran. green == validated.
 #
+# THE 21,000-CHARACTER EXPRESSION CAP — why this prose is in YAML comments, not \`run:\` bodies.
+# GitHub compiles every block scalar containing \`\${{ … }}\` as ONE expression and refuses to
+# compile past 21,000 chars ("Exceeded max expression length 21000"). A comment inside \`run: |\`
+# counts; a YAML comment above the step costs nothing. Undocumented, invisible to the toolchain
+# — valid YAML, passes actionlint, passes GitHub's own @actions/workflow-parser. GitHub just
+# refuses: \`pull_request\` runs NEVER CREATED (PR sits with no checks, no API error); push to a
+# non-matching branch mints a zero-job run named after the file path. Consumer added ~4.6 KB of
+# prose to one E2E step -> CI stopped running on that branch for two hours with nothing to read.
+# Guard in the static lane with margin (scan every block scalar containing \`\${{\`, fail at
+# ~20,000); a long \`run:\` body -> move the logic into a script the step calls, unit-testable as
+# a side effect. See docs/deployments.md § "Workflow-file limits GitHub does not enforce visibly".
+#
 # ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
 # shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
@@ -749,6 +761,23 @@ jobs:
 #       # § "turbo // over-triggers web_affected on docs-only diffs".
 #       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
 #       - name: Read Markers                 # [U] commit msg (push) / PR title (PR) via env: (injection-safe); [skip ci]/[skip actions] push-only
+#       #   NO markers on workflow_dispatch — neither field populated, every marker inert. Steer a dispatch
+#       #   with INPUTS; add one whenever the dispatch default is expensive (consumer's dispatch forced both
+#       #   metered native build lanes past their reuse gate, 30 builds against a $45/mo limit, until an
+#       #   input defaulting to false gated the lookup).
+#       #   PARAMETERISED marker ([screensize desktop mobile]) is unparseable by an Actions expression (no
+#       #   regex, no capture groups) -> call a unit-tested script, UNCONDITIONALLY. A substring pre-gate in
+#       #   front of it = silent no-op: consumer gated on the literal \`[screenshots \` WITH A TRAILING SPACE,
+#       #   so bare \`[screenshots]\` never reached the parser, step exited 0 with an empty plan, run green
+#       #   having captured nothing. Parser owns every failure class (unknown value, invalid combination,
+#       #   arguments to a bare flag) — loudly, in the planner, before any lane starts.
+#       #   A WIDENING marker is an OR term, NEVER a condition: \`contains(plan.platforms, 'web')\` in a lane
+#       #   \`if:\` also REMOVES — \`[platform ios]\` on a web-touching commit silently drops the web lane, run
+#       #   green. Widen job gate + STEP gates together or not at all: job-level \`if:\` alone starts the lane
+#       #   and skips every step inside (one consumer: 25 step-level readers of web_affected behind 4
+#       #   job-level ones). Forcing a SUBSET -> derive a NEW boolean beside the shared value (build_forced
+#       #   next to web_affected), never widen it, and only for a lane with no step-level reader of that
+#       #   value. See docs/deployments.md § "Commit-message force tags".
 #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
 #       - name: Decide Run Level             # [U] Layer 2 (how-much): force-build/PR/dispatch/push-main -> full; push-dev ->
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
@@ -891,6 +920,50 @@ jobs:
 #     steps: Checkout / Setup / Install → Await Vercel Deployment → Run E2E Tests
 #       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
 #       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
+#   FANNING THIS STEP OUT (several runner invocations concurrently inside one step — GitHub steps run
+#   sequentially, so concurrency lives inside a single step): DISTINCT lane index per invocation, worker
+#   index derived globally (laneIndex * workersPerLane + parallelIndex). workerInfo.parallelIndex
+#   restarts at 0 in EVERY process, so any per-worker artefact keyed on it — storageState files,
+#   transform caches, blob report dirs, JSON output names, artifact dirs — is overwritten by a sibling.
+#   Per-shard DATA isolation does not cover this: a consumer's DB rows never collided (random owners)
+#   while 12 lanes clobbered each other's \`user-w0.json\` on disk — 486 undefined-property failures plus
+#   102 sign-in redirects, invisible to the suite's cross-tenant tripwire (a clobbered file still holds
+#   a valid identity). Throw on a bad index, never clamp (silently reading as 0 is the defect); assert
+#   DISTINCTNESS, not presence; bands unique, never dense. Loop-generated invocations are invisible to a
+#   static scan -> execute the real \`run:\` body in the guard, control plus mutations that must red. See
+#   docs/testing.md § "Concurrent invocations collide on disk, not just in the database".
+#   TWO MORE FAN-OUT AXES, same root cause. (1) SHARED IDENTITY vs per-principal rate limits: four
+#   lanes driving ONE fixture owner created more records in a minute than the product allows one
+#   user -> 429 on three of the four. That is the limiter working; the fixture was pretending four
+#   lanes are one person. Per-lane fixture identity under a suffix, teardown deletes by id, and
+#   guard the fixture build separately from the lanes. (2) SHARED SERVICE load: a per-navigation
+#   auth call became 3,500 GET /auth/v1/user in 4 minutes under a 12-lane fan-out, stalling the
+#   provider and reddening the @live lane on a SEPARATE machine. Audit per-request calls to shared
+#   external services BEFORE fanning out; verify locally first (JWKS) and call the service only
+#   when the local check cannot decide. Distinct from the phase-split lever — this cuts per-request
+#   cost, not peak concurrency.
+#
+# === JOB 2e — shared-resource reset lane (join, not per-lane) ===
+# bkit-stub:bkit-tests-reset — [D/DB] teardown of ONE shared stateful resource (demo tenant, seeded
+# account, fixture bucket) as a JOIN, not a per-lane step. WHEN: 2+ lanes write that resource
+# concurrently, BY DESIGN. Per-lane cleanup cannot do the job: a purge asserting "only canonical
+# rows remain" reds on rows a SIBLING lane wrote in the gap — a consumer's iOS lane found 3 such
+# rows in a 41-second window and failed on a state its own design calls normal. Move purge + assert
+# into ONE job that joins every writer.
+#   bkit-tests-reset:
+#     needs: [<every lane touching the resource>]
+#     if: always() && <ref/credential gate> && <any of those lanes != 'skipped'>
+#     timeout-minutes: 10
+#   \`always()\` — an interrupted or red lane still gets its cleanup. SKIP, never fail, when none of
+#   those lanes ran, so a PR or docs-only run adds nothing. NOT plan-gated on purpose: it must run
+#   on a partial plan too if the lanes did. Gate on the refs whose credentials the purge needs
+#   (a service-role key pulled from the host usually refuses any other ref). Log every row removed
+#   — otherwise the next unexplained row has no provenance. NOT a test tier: no \`<tier>_ran\` count,
+#   so the capstone asserts its \`result\` ONLY and tolerates \`skipped\` / \`cancelled\`. Fold into
+#   bkit-tests-check's \`needs:\`. Naming: it sits in the \`bkit-tests-*\` namespace, so any guard
+#   treating every \`bkit-tests-*\` job as a counting lane must exempt it BY NAME — same as the
+#   planner and bkit-tests-build. DROP if one lane owns the resource, or it is provisioned fresh
+#   per run (the migration lane below — the preferred answer).
 #
 # === JOB 2b — migration lane (always-on ordering + provisioning) ===
 # bkit-stub:bkit-tests-migration — [DB] ALWAYS-ON lane that owns BOTH halves of migration handling:

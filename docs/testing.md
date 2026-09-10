@@ -26,9 +26,9 @@ Graph **flat and wide** for static/unit/build/integration: scope fans out; capst
     always-on,       ├─ bkit-tests-unit         │    needs: [scope + ALL lanes]
     never skips      ├─ bkit-tests-build        │    if: !cancelled()
     (~15s)           ├─ bkit-tests-integration  │    asserts each lane succeeded
-                     ├─ bkit-tests-migration ───┼─→ bkit-tests-e2e
-                     │   always-on              └─→ bkit-tests-live
-                     │   (replay plan-/path-gated;
+                     ├─ bkit-tests-migration ───┼─→ bkit-tests-e2e ──┐
+                     │   always-on              └─→ bkit-tests-live ─┴─→ bkit-tests-reset
+                     │   (replay plan-/path-gated;                        if: always()
                      │    remote push on every
                      │    push to dev/main)
 
@@ -36,6 +36,8 @@ Graph **flat and wide** for static/unit/build/integration: scope fans out; capst
   bkit-tests-migration:          needs:[bkit-tests-scope]; NO job-level if (always-on)
   bkit-tests-e2e / -live:        needs:[scope, migration]; if: !cancelled() && scope==success
                                  && <own gate> && migration != 'failure'
+  bkit-tests-reset:              needs:[every lane touching the resource]; if: always()
+                                 && <ref gate> && <any of those lanes != 'skipped'>
 ```
 
 Adopt only lanes your repo has. Add lane the moment its tier exists — tier with no lane = tier nothing gates.
@@ -44,6 +46,7 @@ Adopt only lanes your repo has. Add lane the moment its tier exists — tier wit
 - **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration`.
 - **`bkit-tests-migration`** (optional; DB repos) — always-on ordering + provisioning lane: (1) fresh-DB replay + seed assert (plan-/path-gated per-step); (2) on every push to `dev`/`main`, remote `db push --linked --include-all` (un-gated by `run_migration` — self-heals a remote left behind). No job-level `if:` — e2e/live `needs:` it; a skip would cascade. Capstone asserts `success` whenever scope succeeded. See § Provision backing services fresh.
 - **`bkit-tests-live`** runs `@live` tier against deployed URL (`run_live`; drop job if no deploy). `needs:` planner + **migration** (when that lane owns remote push) — do **not** gate behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing: `@live` push-only, post-merge, PR-validated; non-compiling tree reds via own build).
+- **`bkit-tests-reset`** (optional; shared-resource repos) — teardown of ONE stateful resource that 2+ lanes write concurrently, by design (demo tenant, seeded account, fixture bucket), as a **join** rather than a per-lane step. Per-lane cleanup cannot do it: a purge asserting "only canonical rows remain" reds on rows a sibling wrote in the gap — consumer's iOS lane found 3 in a 41-second window and failed on a state its design calls normal. `needs:` every writer; `if: always()` (interrupted / red lane still gets cleanup); gated on the refs whose credentials the purge needs; **skips**, never fails, when no writer ran. NOT plan-gated — must run on a partial plan if the lanes did. Emits no `<tier>_ran`; capstone asserts `result` only, tolerating `skipped` / `cancelled`. DROP if one lane owns the resource, or it is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
 
 ### Which resources may each lane touch?
@@ -138,17 +141,22 @@ Two PR-time E2E concerns, both gated on **real preconditions** (event, head ref)
 
 ### Concurrent invocations collide on disk, not just in the database
 
-Per-shard data isolation (§ Optional hardening) is necessary and not sufficient. When one job launches several test-runner processes concurrently, anything the runner keys on its **own worker index** collides, because that index restarts at 0 in every process.
+Per-shard data isolation (§ Optional hardening) is necessary, **not** sufficient. One job launching several runner processes concurrently → anything keyed on the runner's **own worker index** collides: that index restarts at 0 in every process.
 
-A consumer fanned a single E2E step out over 12 concurrent Playwright invocations. Every process wrote its minted session into one shared auth directory as `user-w<N>.json`, `<N>` being Playwright's `workerInfo.parallelIndex` — so two lanes both wrote `user-w0.json`, the later write won, and browsers loaded sessions their own worker never built: 486 `Cannot read properties of undefined` failures plus 102 redirects to the sign-in page. The database rows never collided at all — owners were random, so the tenant tag was a label, not a key. The collision was purely on the filesystem, and the suite's own cross-tenant bleed tripwire could not see it: a file clobbered by a sibling lane still holds a perfectly valid identity.
+Consumer fanned one E2E step over 12 concurrent Playwright invocations. Each wrote its minted session into one shared auth dir as `user-w<N>.json`, `<N>` = `workerInfo.parallelIndex` → two lanes both wrote `user-w0.json`, later write won, browsers loaded sessions their own worker never built: 486 `Cannot read properties of undefined` + 102 sign-in redirects. DB rows never collided (random owners → tenant tag is a label, not a key); the collision was purely on disk, and the suite's cross-tenant bleed tripwire could not see it — a clobbered file still holds a valid identity.
 
-- **Make the index global.** Bind a distinct lane index per invocation and derive `laneIndex * workersPerLane + parallelIndex`. Unset, the offset is 0, so local runs stay byte-identical.
-- **Throw on a bad value, never clamp.** A lane index that silently reads as 0 is the precise defect being prevented.
-- **Assert distinctness, not presence.** A guard checking that each invocation _has_ a lane index passes with two lanes sharing 0, and restores the bug.
-- **Keep the bands unique, never dense.** A `--workers=1` lane leaves most of its band unused; that waste is the point. Tightening the spacing to each lane's real worker count is exactly how two bands come to overlap again.
-- **Test the loop by running it.** Once the invocations are generated by a loop rather than hand-written, a static scan cannot see the values. Execute the real `run:` body inside the guard, with a control that passes plus mutations (a pinned lane index, a stripped cache-dir suffix) that must red.
+- **Make the index global.** Distinct lane index per invocation → `laneIndex * workersPerLane + parallelIndex`. Unset → offset 0, local runs byte-identical.
+- **Throw on a bad value, never clamp.** An index silently reading as 0 is the defect being prevented.
+- **Assert distinctness, not presence.** A guard checking each invocation _has_ an index passes with two lanes sharing 0 — bug restored.
+- **Bands unique, never dense.** A `--workers=1` lane leaves most of its band unused; that waste is the point. Tightening spacing to real worker counts is how bands overlap again.
+- **Test the loop by running it.** Loop-generated invocations are invisible to a static scan → execute the real `run:` body in the guard, control plus mutations (pinned lane index, stripped cache-dir suffix) that must red.
 
-The same rule covers every other per-worker artefact keyed the same way — transform caches, blob report directories, JSON output names, artifact directories — and the fix removes the reason to serialise the lanes at all.
+Same rule for every per-worker artefact keyed that way — transform caches, blob report dirs, JSON output names, artifact dirs — and the fix removes the reason to serialise the lanes at all.
+
+Two further axes, same root cause:
+
+- **Shared identity vs per-principal rate limits.** Four lanes driving ONE fixture owner created more records in a minute than the product allows one user → 429 on three of four. The limiter was working; the fixture was pretending four lanes are one person. Per-lane fixture identity under a suffix, teardown deletes by id, and guard the fixture build **separately** from the lanes.
+- **Shared service load.** A per-navigation auth call became 3,500 `GET /auth/v1/user` in 4 minutes under a 12-lane fan-out, stalling the provider and reddening the `@live` lane on a **separate machine**. Audit per-request calls to shared external services before fanning out — verify locally first (JWKS), call the service only when the local check cannot decide. Distinct from the phase-split lever (`deployments.md` § Parallel test lanes): this cuts per-request cost, not peak concurrency.
 
 ## Which tier does a behaviour need?
 
@@ -281,7 +289,7 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 Beyond the gates above, three practices raise confidence further — opt-in, not baseline:
 
 - **Mutation testing** (e.g. StrykerJS over a Vitest suite) automates the "executed ≠ exercised" intent: it injects bugs into production code and fails when no test catches them, surfacing assertion-free / hollow tests the executed-count gate can't see. Run it as a **nightly full pass** gated on a survival-score threshold (start unset to baseline, then ratchet) plus a per-PR **incremental / `--since`** pass for fast affected-only signal. Gate on a threshold, never 100% (equivalent mutants make perfection unreachable). It complements the capstone — capstone asks "did tests run?", mutation asks "do they catch injected bugs?".
-- **E2E sharding** (`--shard` matrix + report merge) cuts wall-clock on a large browser suite — but it is **gated on per-shard data isolation** (the unique-ID independence above). A single shared seed pins `workers: 1` and blocks sharding until the data is isolated. Isolated data alone is still not enough once several invocations share one job — see § Concurrent invocations collide on disk, not just in the database.
+- **E2E sharding** (`--shard` matrix + report merge) cuts wall-clock on a large browser suite — but it is **gated on per-shard data isolation** (the unique-ID independence above). A single shared seed pins `workers: 1` and blocks sharding until the data is isolated. Isolated data is still not enough once several invocations share one job — § Concurrent invocations collide on disk, not just in the database.
 - **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk **only** when paired with explicit flake **tracking** — an auto-retry that silently passes hides a real regression, the inverse of "validated ≠ didn't fail".
 
 ## Coverage on PRs

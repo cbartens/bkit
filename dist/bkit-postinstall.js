@@ -892,6 +892,11 @@ const BKIT_STUBS = [
         file: ".github/workflows/ci.yml",
         description: "Split the workspace compile into its OWN lane (job) — `bkit-tests-build` — instead of a `Build All Packages` step inside another lane. WHEN: the build is slow enough that lanes needing it are waiting on it, or a compile break should report on its own. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install). Fold it into bkit-tests-check's `needs:`. This buys ~0 wall-clock on its own — it runs parallel to lanes that do not need it — so adopt it for TIME-TO-SIGNAL (a compile break reds in its own lane rather than hiding as a late step in a longer one), not as a speed lever. NOT a test tier: it emits no `<tier>_ran` count, so the capstone asserts its `result` only.",
     },
+    {
+        id: "bkit-tests-reset",
+        file: ".github/workflows/ci.yml",
+        description: "Own the teardown of ONE shared stateful resource (demo tenant, seeded account, fixture bucket) as a JOIN — `bkit-tests-reset` — instead of a cleanup step inside each lane. WHEN: two or more lanes write that resource concurrently, BY DESIGN. Per-lane cleanup CANNOT do the job: a purge that asserts `only canonical rows remain` reds on rows a sibling lane wrote in the gap between them, failing on a state the design calls normal. Wiring: needs:[every lane touching the resource]; `if: always()` so an interrupted or red lane still gets its cleanup; gate on the refs whose credentials the purge needs; SKIP (never fail) when none of those lanes ran, so a PR or docs-only run adds nothing. Deliberately NOT plan-gated — it must run on a partial plan too if the lanes did. NOT a test tier: emits no `<tier>_ran` count, so the capstone asserts its `result` only and tolerates `skipped` / `cancelled`. Fold into bkit-tests-check's `needs:`. DROP if one lane owns the resource, or it is provisioned fresh per run (docs/testing.md § Provision backing services fresh — the preferred answer).",
+    },
 ];
 export function detectBkitStubs(cwd) {
     const findings = [];

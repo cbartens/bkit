@@ -1142,7 +1142,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    fi
    ```
    **If** exit non-zero → **Failure Path**.
-2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push with EXACTLY ONE command: **If** `{BRANCH}` is `dev` / `main` → `git push origin "{BRANCH}"`. **Else** → `git push --force-with-lease origin "{BRANCH}"`.
+2. **If** `git diff origin/dev --name-only | grep -qiE '(^|/)(migrations|migrate)/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push with EXACTLY ONE command: **If** `{BRANCH}` is `dev` / `main` → `git push origin "{BRANCH}"`. **Else** → `git push --force-with-lease origin "{BRANCH}"`.
 3. Re-read labels → update status, write close telemetry, commit, run HEAD-Subject Assertion, and push to the feature branch in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '{state, body, labels: [.labels[].name]}'` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`. RAW READ REQUIRED — NEVER `mcp__github__issue_read` for body / comment text: it sanitises bodies, deleting HTML comments (both bkit markers) and angle-bracket spans.
    ```bash
@@ -1172,7 +1172,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="build" | .step=$step | .key=$key | .category="agentic" | .description="Build closed for {FID}" | .status="BUILT"' \
      >> "$WT/docs/roadmap.jsonl" || echo "[bkit-roadmap] append failed: $WT/docs/roadmap.jsonl"
    ROADMAP_LINE=$(tail -1 "$WT/docs/roadmap.jsonl" 2>/dev/null)
-   ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_upsert "$WT" "{FID}" ) || echo "[bkit-roadmap] upsert skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+   ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
    (
      if [ "$WT" = "$REPO_ROOT" ]; then
        echo "[bkit-roadmap] skipping dev-side roadmap mirror — adopt mode (worktree == main checkout); a dev checkout here would swap the branch under the run (feat-side row already written)" >&2
@@ -1190,7 +1190,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      CUR_BRANCH=$(git -C "$REPO_ROOT" branch --show-current)
      if git -C "$REPO_ROOT" checkout dev 2>/dev/null && git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null; then
        printf '%s\n' "$ROADMAP_LINE" >> "$REPO_ROOT/docs/roadmap.jsonl"
-       ( . "$REPO_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_upsert "$REPO_ROOT" "{FID}" ) || echo "[bkit-roadmap] upsert skipped on dev" >&2
+       ( . "$REPO_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$REPO_ROOT" ) || echo "[bkit-roadmap] fold skipped on dev" >&2
        git -C "$REPO_ROOT" add -- docs/roadmap.jsonl docs/roadmap.md
        git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): build roadmap update bkit [skip ci]" -- docs/roadmap.jsonl docs/roadmap.md
        git -C "$REPO_ROOT" push origin dev || echo "[bkit-roadmap] dev push failed — feat-side row already written" >&2
