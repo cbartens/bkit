@@ -476,18 +476,24 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-untrusted-fence.test.ts` | Unit | Untrusted-content fence: identical at every workflow write site, no second fence from shipped fetch blocks, `Context:` names untrusted `Read:` paths. |
 | `bkit-untrusted-input-coverage.test.ts` | Unit | Untrusted-input header bullet: run-time enumeration of `.bkit/prompts/` + `.bkit/workflows/`, three named clause constants, glob-scoped stale-variant deny, matcher negative controls. |
 
-## Roadmap fold test coverage
+## Roadmap fold + analysis test coverage
 
-`docs/roadmap.md` is a generated artifact over one input: the canonical `docs/roadmap.jsonl` feature ledger. `bkit_roadmap_fold` rewrites the whole generated region and runs at every phase close. `tests/roadmap-fold.bats` exercises the shell logic (real `jq`/`sh` over fixture ledgers, no mocks at the boundary — same idiom as `tests/counter-derive.bats`); a real workflow close is the runtime ground-truth.
+`docs/roadmap.md` is a generated artifact over two inputs: the canonical `docs/roadmap.jsonl` feature ledger and the gitignored `docs/tracker.jsonl` snapshot. `bkit_roadmap_fold` rewrites the whole generated region and runs at every phase close AND under `/bkit-roadmap`; the tracker sync, the reverse label-sync, the drift check, the cadence evaluator and both analysis leaves run under `/bkit-roadmap` only. `tests/roadmap-fold.bats` and `tests/roadmap-cadence.bats` exercise the shell logic (real `jq`/`sh` over fixture ledgers, no mocks at the boundary — same idiom as `tests/counter-derive.bats`); the workflow-file-content assertions (`bkit-roadmap-staging.integration.test.ts`, `bkit-roadmap-sync.integration.test.ts`) are the "boundary: workflow files" pattern documented above for `bkit-ship-invariants.test.ts` — a real workflow close is the runtime ground-truth, covered by the build plan's manual verification steps.
 
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
-| `bkit-roadmap-fold.test.ts` | Unit | `bkit-roadmap-fold.sh` sources `bkit-status-fold.sh` verbatim (template/repo byte-match hashed via `node:crypto`, never a shell `md5` shell-out); defines `bkit_roadmap_fold`, renders no tracker table, and defines NO board-parsing upsert path. |
+| `bkit-roadmap-fold.test.ts` | Unit | `bkit-roadmap-fold.sh` sources `bkit-status-fold.sh` verbatim (template/repo byte-match hashed via `node:crypto`, never a shell `md5` shell-out); defines `bkit_roadmap_fold` and the tracker renderer, and defines NO board-parsing upsert path. |
 | `tests/roadmap-fold.bats` | Shell (cross-process, real `jq`/fixtures) | Ledger projection under `tracker: none`; deterministic/idempotent regenerate; status projection incl. `ABANDONED` hidden; fail-open exit 0; bootstrap + self-heal; consumer text byte-unchanged; duplicate-line collapse; `## Shipped` capped at 10; marker repair. |
+| `bkit-roadmap-refresh-prompt.test.ts` | Unit | `@bkit-roadmap-refresh` writes only the `roadmap-analysis` block, no hardcoded model-ID/IDE literal; `ROADMAP_SCAN_COVERAGE` counter schema conformance, by executing `/bkit-roadmap` Step 4's real emitter against a git-backed fixture. |
+| `bkit-roadmap-utility.test.ts` | Unit | `/bkit-roadmap` sources the fold + drift check + cadence evaluator and invokes `@bkit-roadmap-refresh`; the cadence inject is cleared before evaluation and gitignored. |
 | `bkit-telemetry-migrate.integration.test.ts` (extended) | Integration | `docs/completed.md` → `docs/roadmap.jsonl` fifth migrate pair, parity gate + deletion, bootstrap seed, idempotent re-run. |
 | `bkit-ship-verdict.integration.test.ts` | Integration | `UPDATE_DOCS_VERDICT` resolves from a `SHIPPED`-status row only — a `BUILT`-only row must NOT green it. |
+| `bkit-roadmap-staging.integration.test.ts` | Integration (boundary: workflow files) | STRAY allowlist widened in design/plan (both `docs/roadmap.md` and `docs/roadmap.jsonl`); build/debug/ship existing-path staging; phase closes call `bkit_roadmap_fold` and never read the tracker, never reverse-sync labels, never re-stamp the tracker block; ship Step 10 stays mechanical-tier-only — no `@bkit-roadmap-refresh`, no cadence eval anywhere in `bkit-ship.md`. |
 | `bkit-roadmap-devwrite.integration.test.ts` | Integration (boundary: real temp git repo) | build/debug dev-lock ledger append returns the worktree to `feat/*`, lands the row on `dev`, fail-open when the lock is held. |
+| `bkit-roadmap-sync.integration.test.ts` | Integration (boundary: `bkit-roadmap.md` + real fixture ledger) | Reverse tracker-label sync lives in `/bkit-roadmap`, is MCP-only, drift-reconciling (never an unconditional write), settled-guarded, and never gates. Current labels come from the sync, not a per-candidate `issue_read`. |
+| `bkit-roadmap-reconcile.integration.test.ts` | Integration (boundary: real git branches) | Drift check warns on a live `feat/*` with no ledger row, silent otherwise, never writes `docs/roadmap.md`. |
+| `tests/roadmap-cadence.bats` | Shell (cross-process, real fixture ledger + `.bkit/stats.jsonl`) | Cadence fires at the 10th distinct `BUILT` FID since the last fire; repeat `BUILT` rows for one FID don't advance it; staleness path; rebaseline-on-fire; manifest-key fallback to 10/90. |
 
 ## Compliance grader test coverage
 

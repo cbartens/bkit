@@ -54,6 +54,9 @@ docs/plans/*/logs/**/.rebase-failed
 .bkit/.dev.lock
 .bkit/.runtime-cursor
 
+# Roadmap tracker snapshot + shortlist scratch — rebuilt each run, never commit.
+# docs/tracker.jsonl mirrors tracker content; a clone re-syncs.
+docs/tracker.jsonl
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 

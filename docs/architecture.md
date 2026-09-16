@@ -173,16 +173,20 @@ Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race
 
 ## Roadmap Ledger & Board (#380)
 
-`docs/roadmap.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). `docs/completed.md` is retired — deleted by the migration, no reader remains.
+`docs/roadmap.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated two-tier board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). `docs/completed.md` is retired — deleted by the migration, no reader remains.
 
 **Components:**
 
-- `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`. `bkit_roadmap_fold` rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `docs/roadmap.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered — a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
+- `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`. `bkit_roadmap_fold` rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `docs/roadmap.jsonl`, the `bkit:tracker` block from `docs/tracker.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and three consumer `## Notes` blocks carried through verbatim. Every phase close and `/bkit-roadmap` both call it; only `/bkit-roadmap` sets `BKIT_ROADMAP_TRACKER_REFRESHED=1` to re-stamp the tracker block. Everything above the first marker is preserved. `roadmap-notes-post` is last.
+- `.bkit/scripts/bkit-roadmap-cadence.sh` — threshold evaluator; fires once per `bkit.roadmap.buildCycles` distinct `BUILT` FIDs since the last `ROADMAP_CADENCE_FIRE`, or `bkit.roadmap.stalenessDays` elapsed since that fire (package.json manifest keys via `bkit-manifest.ts`, defaults 10/90). Evaluated only by `/bkit-roadmap`, immediately before the analysis leaf it feeds.
+- `.bkit/scripts/bkit-roadmap-reconcile.sh` — read-only drift check; warns on a live `feat/*` with no ledger row. Never mutates the board.
+- `.bkit/prompts/bkit-roadmap-refresh.md` (`@bkit-roadmap-refresh`) — opus analysis tier; writes only the `bkit:roadmap-analysis` block. On demand only, via `/bkit-roadmap` — never at a phase close.
+- `.bkit/workflows/bkit-roadmap.md` (`/bkit-roadmap`) — on-demand utility composing fold + drift check + cadence + analysis leaf; the sole entry point to the analysis tier.
 - `bkit-telemetry-migrate.ts` fifth pair — `docs/completed.md` → `docs/roadmap.jsonl` at `status:"SHIPPED"`, plus the bootstrap seed (one row per in-flight FID from `docs/plans/**`). Unreachable from `bkit upgrade`; the `completed-md-unmigrated` preflight advisory names the command (`docs/setup.md` § Roadmap ledger migration).
 
-**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last and is a declared read-input for the analysis tier. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
+**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` and `tracker` tables; the three `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last and is a declared read-input for the analysis tier. A legacy `## Backlog / Ideas` tail is folded into notes-post. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 
-Sensing is on-disk-first: every phase close full-regenerates the board from the ledger. Every roadmap branch exits 0 and never gates a close — grep keys in `docs/observability.md` § `[bkit-roadmap]`. Row contract: `.bkit/jsonl.md` § Per-Kind Fields. Test inventory: `docs/testing.md`.
+Sensing is on-disk-first: a phase close upserts `{FID}` from the ledger; `/bkit-roadmap` full-regenerates from the ledger. Every roadmap branch exits 0 and never gates a close — grep keys in `docs/observability.md` § `[bkit-roadmap]`. Row contract: `.bkit/jsonl.md` § Per-Kind Fields. Test inventory: `docs/testing.md`.
 
 ## Distribution
 

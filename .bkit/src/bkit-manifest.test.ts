@@ -18,6 +18,9 @@ import {
   DEFAULT_RENOVATE_RUNNER,
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
+  DEFAULT_ROADMAP_BUILD_CYCLES,
+  DEFAULT_ROADMAP_STALENESS_DAYS,
+  resolveRoadmapCadence,
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
@@ -757,3 +760,37 @@ describe("telemetry data files — absent from manifest format entries", () => {
 // ---------------------------------------------------------------------------
 // Roadmap cadence — #380 bkit.roadmap.{buildCycles,stalenessDays} defaults
 // ---------------------------------------------------------------------------
+
+describe("resolveRoadmapCadence — bkit.roadmap.{buildCycles,stalenessDays} (#380)", () => {
+  it("resolves both defaults when bkit.roadmap is absent", () => {
+    const cadence = resolveRoadmapCadence({});
+    expect(cadence.buildCycles).toBe(DEFAULT_ROADMAP_BUILD_CYCLES);
+    expect(cadence.stalenessDays).toBe(DEFAULT_ROADMAP_STALENESS_DAYS);
+  });
+
+  it("resolves both defaults when bkit is present but bkit.roadmap is absent", () => {
+    const cadence = resolveRoadmapCadence({ bkit: { issueTracker: "github" } });
+    expect(cadence.buildCycles).toBe(DEFAULT_ROADMAP_BUILD_CYCLES);
+    expect(cadence.stalenessDays).toBe(DEFAULT_ROADMAP_STALENESS_DAYS);
+  });
+
+  it("reads both values when set", () => {
+    const cadence = resolveRoadmapCadence({
+      bkit: { roadmap: { buildCycles: 5, stalenessDays: 14 } },
+    });
+    expect(cadence).toEqual({ buildCycles: 5, stalenessDays: 14 });
+  });
+
+  it("defaults ONLY the invalid field — a valid buildCycles survives an invalid stalenessDays", () => {
+    const cadence = resolveRoadmapCadence({
+      bkit: { roadmap: { buildCycles: 3, stalenessDays: -1 } },
+    });
+    expect(cadence.buildCycles).toBe(3);
+    expect(cadence.stalenessDays).toBe(DEFAULT_ROADMAP_STALENESS_DAYS);
+  });
+
+  it.each([0, -5, 1.5, "10", null, NaN, Infinity])("rejects invalid buildCycles %j", (bad) => {
+    const cadence = resolveRoadmapCadence({ bkit: { roadmap: { buildCycles: bad } } });
+    expect(cadence.buildCycles).toBe(DEFAULT_ROADMAP_BUILD_CYCLES);
+  });
+});
