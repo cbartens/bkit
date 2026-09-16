@@ -108,7 +108,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -207,7 +207,7 @@ description: "Ship Feature — Autonomous merge and archive"
    `{HANDOVER_REF}` = `dev` when `RUNTIME_DEVPUSHES` = true, else `{BRANCH}` — the ref step 7 actually pushed the artifact to.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Handover
    [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{HANDOVER_REF}/docs/plans/{YYYYMM}/logs/{FID}/ship-handover.md)
    {FID-ship-handover.md content verbatim}
@@ -324,7 +324,7 @@ description: "Ship Feature — Autonomous merge and archive"
      '{type:"step-done", workflow:"ship", step:"ship-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-input.md"]}' \
      >> "$STATUS"
    ```
-10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
@@ -334,7 +334,7 @@ description: "Ship Feature — Autonomous merge and archive"
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## Ship Workflow
     ### Step 1 — Start Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -449,7 +449,7 @@ description: "Ship Feature — Autonomous merge and archive"
 `{BODY}` = fenced block below:
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Step 2 — Verify PR (Worktree Setup + Regression Guard)
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
 [$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -548,7 +548,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Integrate (Path B) - Verdict: {RESOLVE_VERDICT}
    ```
    <!-- bkit:tracker true end -->
@@ -645,7 +645,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Re-validate + Deferred Sweep - Verdict: {SWEEP_VERDICT}
    ```
    <!-- bkit:tracker true end -->
@@ -785,7 +785,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Merge Gate + Merge PR - Verdict: {MERGE_VERDICT}
    ```
    <!-- bkit:tracker true end -->
@@ -860,7 +860,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 7 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -925,7 +925,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 8 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -1011,7 +1011,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Switch to Dev
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    ```
@@ -1094,7 +1094,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
@@ -1162,7 +1162,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 11 — Prune Skills
    ```
    <!-- bkit:tracker true end -->
@@ -1227,7 +1227,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 12 — Worktree Cleanup
    ```
    <!-- bkit:tracker true end -->
@@ -1415,7 +1415,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 13 — Close Workflow
    #### Artifacts
    {ARTIFACTS}

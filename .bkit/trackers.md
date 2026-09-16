@@ -66,7 +66,7 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | "not configured" stub |
 | `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | session prompt scan / `issue_write` create | session prompt scan / `save_issue` create | scan session prompt; else `ISSUE_ID=""` |
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
-| `issue-read` | Read state + labels + body + comments | `gh api` `/issues/{n}` + `/issues/{n}/comments` (raw — MCP `issue_read` sanitises bodies, deleting `<!-- bkit:* -->` markers and angle-bracket spans) | `get_issue` / `list_comments` | skip (vars empty) |
+| `issue-read` | Read state + labels + body + comments | `gh api` `/issues/{n}` + `/issues/{n}/comments` (raw — MCP `issue_read` sanitises bodies, deleting every HTML comment and angle-bracket span and HTML-escaping quotes) | `get_issue` / `list_comments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `gh api` body & comments (the search hit's own `body` is sanitised) | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
 | `issue-update-phase` | Step 1: set phase label + active state | `issue_write` labels | `save_issue` state+labels | skip |
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |

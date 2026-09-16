@@ -142,7 +142,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 - **Step 4.6 re-enumerates the configured contexts:** `contextsConfigured` was derived from `FETCH_BLOCKS`, set in Step 4.1's block. Every other value in that block is re-derived precisely because shell state does not cross a Bash-block boundary, so the one inherited value recorded `[]` whenever it did not — telemetry claiming no contexts were configured on a run that fetched them, and a tracker comment marking all five `NOT CONFIGURED`. The re-scan only needs the `context=` field, so it uses a narrower awk than the full marker parser.
 - **The `context-fetch` context list is duplicated four ways on purpose:** two shell loops and a `case` in `bkit-debug.md`, plus `CONTEXT_FETCH_CONTEXTS` in `bkit-preflight.ts`. Collapsing them would mean shipping a new managed shell helper for a five-item list. `bkit-context-fetchs.test.ts` asserts all four agree, and pins the TypeScript and awk marker parsers to the same whitespace grammar — a marker awk accepts but the parser rejects is a block that runs while `bkit check` reports it absent.
 - **Header `Placeholders:` line is generic on purpose:** workflow headers list only universally-required examples (`{FID}`, `{YYYYMM}`, plus plan's `{PARENT_FID}` / `{PARENT_YYYYMM}`); the rest of the placeholder inventory is asserted at the step that mints / derives each value. Per-placeholder detail: `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1; `{WORKTREE_PATH}` = absolute path set at worktree setup — mint mode (`RUNTIME_WORKTREES=true`): `.worktrees/{FID}`, adopt mode (`RUNTIME_WORKTREES=false`): `$REPO_ROOT` — required for subagent `Context` cwd; `{YYYYMM}` = canonical month bucket for the FID, design sets it ONCE at first start (`date +%Y%m`), downstream workflows discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`, debug defaults to current UTC month `date -u +%Y%m` when none exists, plan derives `{PARENT_YYYYMM}` similarly from `{PARENT_FID}`. Tracker-wired placeholders (`{ISSUE_ID}` / `{STATE}` / `{LABELS}`) asserted inline in each per-tracker `**Tracker:**` row — empty under `none`.
-- **Tracker context filtering (`<!-- bkit:generated -->` / `<!-- bkit:ignore-earlier -->`):** every comment-post template stamps `<!-- bkit:generated -->` as its first body line; `<!-- bkit:ignore-earlier -->` is human-placed in a body or comment. Both apply at the point of use, never at the fetch — fetch sites return `COMMENTS` raw; the artifact step joins into a named variable (`ISSUE_TEXT`; `RELATED_ISSUE_TEXT` per sweep hit), drops marker-carrying comments, then drops everything above the LAST cut marker. Point-of-use placement lets both steps share one sentence, keeps the fetch sites from drifting apart, and makes the artifact read the named variable and never the raw fields, so the cut cannot be bypassed downstream. Sweep = issue path with a `RELATED_` prefix (`RELATED_DESCRIPTION` / `RELATED_COMMENTS` / `RELATED_ISSUE_TEXT`); keep identical so a change to one is mechanical in the other. Sweep filter + cut MUST run per hit and accumulator `RELATED_ISSUES` MUST NEVER be filtered or cut — a marker belongs to its own issue; cutting the concatenation deletes every issue above it. Detection is marker-only: a heading-shape fallback needs lockstep maintenance with every template heading and eats human comments sharing a heading. Marker-only detection makes the READ PATH load-bearing — on GitHub, body and comment text MUST come from raw `gh api`, NEVER `mcp__github__issue_read`, which sanitises bodies and deletes every HTML comment (both markers, and `<!-- bkit:blocked-by -->`) plus angle-bracket spans; backticks are not an escape hatch, the sanitiser runs on raw markdown. A sanitised read makes both filters no-ops that still look trimmed, and turns a body read-modify-write (design blocked-by encode) into silent data loss on the write-back. `mcp__github__issue_read` remains correct for STRUCTURED fields only (`state`, `labels`, `milestone`). Ordering: explicit `sort oldest to newest`, same wording per tracker, on every path into `COMMENTS` — including the AGENTS.md skip branch, which bypasses the fetch and arrives newest-first (`AGENTS.md` § Route Step 1). Sort not reverse: correct whatever the call returned (GitHub `/issues/{n}/comments` oldest-first, Linear `list_comments` `orderBy: "createdAt desc"`). Failure is silent — a newest-first stream inverts the cut into keep-superseded / drop-current and still looks trimmed. Not collapsible to a shared `true` block despite identical sort and filter wording: tool names, params and field names differ. **Emitting the cut marker is prohibited, not just discouraged** (`.agents/rules.md` § Never self-cut): a workflow line that merely NAMES the token — a comment template narrating which comments it kept, a prose aside in a step's free text — ships a real marker into whatever the orchestrator posts, and the next run's cut fires on bkit's own output and deletes the human context above it. The generated filter is no backstop here: it drops comments only, never an issue body (which the design blocked-by encode rewrites), and never a sweep hit inside `RELATED_ISSUES`. Guard: `bkit-generated-marker.test.ts` pins total token occurrences across the workflow files to the sanctioned cut steps (5 `ISSUE_TEXT` + 6 `RELATED_ISSUE_TEXT`) and holds `.bkit/prompts/*.md` at zero, so no template, prose line or subagent prompt can add one.
+- **Tracker context filtering (`###### bkit:generated` / `###### bkit:ignore-earlier`):** every comment-post template stamps `###### bkit:generated` as its first body line; `###### bkit:ignore-earlier` is human-placed in a body or comment. Both are h6 headings, NOT HTML comments — `mcp__github__issue_read` deletes every HTML comment from a body, so an HTML-comment marker cannot survive a read (`docs/knowledge.jsonl` § `github-mcp-issue-read-sanitises-bodies-killing-every-html-comment-marker`). Detection is WHOLE-LINE and accepts either syntax — `###### bkit:{name}` or `<!-- bkit:{name} -->` — so markers already written into an issue keep working and an inline prose mention of a token is never a marker. Both apply at the point of use, never at the fetch — fetch sites return `COMMENTS` raw; the artifact step joins into a named variable (`ISSUE_TEXT`; `RELATED_ISSUE_TEXT` per sweep hit), drops marker-carrying comments, then drops everything above the LAST cut marker. Point-of-use placement lets both steps share one sentence, keeps the fetch sites from drifting apart, and makes the artifact read the named variable and never the raw fields, so the cut cannot be bypassed downstream. Sweep = issue path with a `RELATED_` prefix (`RELATED_DESCRIPTION` / `RELATED_COMMENTS` / `RELATED_ISSUE_TEXT`); keep identical so a change to one is mechanical in the other. Sweep filter + cut MUST run per hit and accumulator `RELATED_ISSUES` MUST NEVER be filtered or cut — a marker belongs to its own issue; cutting the concatenation deletes every issue above it. Detection is marker-only: a template-heading-shape fallback needs lockstep maintenance with every template heading and eats human comments sharing a heading; a dedicated h6 whose text IS the token is marker-only detection, not a shape fallback. On GitHub, body and comment text MUST still come from raw `gh api`, NEVER `mcp__github__issue_read`: it eats angle-bracket spans and HTML-escapes quotes, and a body read-modify-write (design blocked-by encode) through it is silent data loss on the write-back. `mcp__github__issue_read` remains correct for STRUCTURED fields only (`state`, `labels`, `milestone`). Ordering: explicit `sort oldest to newest`, same wording per tracker, on every path into `COMMENTS` — including the AGENTS.md skip branch, which bypasses the fetch and arrives newest-first (`AGENTS.md` § Route Step 1). Sort not reverse: correct whatever the call returned (GitHub `/issues/{n}/comments` oldest-first, Linear `list_comments` `orderBy: "createdAt desc"`). Failure is silent — a newest-first stream inverts the cut into keep-superseded / drop-current and still looks trimmed. Not collapsible to a shared `true` block despite identical sort and filter wording: tool names, params and field names differ. **Emitting the cut marker is prohibited, not just discouraged** (`.agents/rules.md` § Never self-cut): a workflow line that merely NAMES the token — a comment template narrating which comments it kept, a prose aside in a step's free text — ships a real marker into whatever the orchestrator posts, and the next run's cut fires on bkit's own output and deletes the human context above it. The generated filter is no backstop here: it drops comments only, never an issue body (which the design blocked-by encode rewrites), and never a sweep hit inside `RELATED_ISSUES`. Guard: `bkit-generated-marker.test.ts` pins total token occurrences across the workflow files to the sanctioned cut steps (5 `ISSUE_TEXT` + 6 `RELATED_ISSUE_TEXT`) and holds `.bkit/prompts/*.md` at zero, so no template, prose line or subagent prompt can add one.
 
 **Per-tracker operational notes** (rationale kept here, not in the workflow files per § Workflow Authoring Rules):
 
@@ -150,7 +150,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
   - **Query shape — two variables, not one.** `{QUERY_NL}` = ONE natural-language sentence, consumed ONLY by the search call; no `sort` / `order` / `orderBy`, no `in:title,body` qualifier (inert in a semantic query), results kept in RANK ORDER through the drop-own-issue and keep-first-10 steps or the ranking is discarded before use. The response carries an order but no score, so a relevance THRESHOLD is not implementable — rank position is the only signal. `{QUERY}` = the 3–6 keyword list, plan-only, consumed ONLY by the ledger awk: that awk splits on whitespace and counts distinct term hits with a `>=2 terms` rule, so feeding it a sentence makes every stopword match every line and degrades the scan to "print everything".
   - **Ledger scans** (plan only, run under `none`): awk counts query-term hits per line (`>=2` distinct terms, or the sole term when one; case-insensitive substring), sorts by hit count desc then line number desc (append-only ledgers → line order is time order), keeps the top 40 per file and footers the total. `cut -f3-` rejoins fields 3..N with tabs, so a literal tab inside a JSONL line survives intact. Backstopped by the `ledger` clamp profile.
 - **Projects v2 board sync** (`issue-update-status`): best-effort, never gates; retry once after 5s on failure. `update_project_item` needs numeric `item_id`, not node id from `add_project_item` → intervening `projects_list` resolve. Status `value` = single-select option id (e.g. `47fc9ee4`), not name. Linear: no-op (state carries status).
-- **Blocked-by edges:** GitHub: `<!-- bkit:blocked-by -->` in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
+- **Blocked-by edges:** GitHub: `###### bkit:blocked-by start` / `end` pair in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
 - **Workstream milestone assignment (design Step 10):** `MILESTONE`-labelled parent groups workstreams under native milestone, NOT sub-issues. Parent must carry target (GitHub milestone / Linear project + project milestone) — MCP cannot create → unset = Step 10 Failure Path. Each workstream assigned to same target: GitHub `issue_write` `milestone` (from parent `issue_read`); Linear `save_issue` `projectId` + `projectMilestoneId`. Existing detection: GitHub `search_issues` `milestone:"{title}" in:title WS-` (index lag, best-effort); Linear `list_issues` by `projectId` + `projectMilestoneId`; match `^WS-N:` title. `Requires` → block-by edges unchanged.
 - **issue-update-review** (phase-close): **update state only — never change label on close.** GitHub: no-op (phase label until ship `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` (partial update would drop `bkit:auto`/`bkit:debug`).
 - **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops phase labels, adds `bkit:merged`, **In Review** — Linear `state: "In Review"`, GitHub **open** (board → review, not done). Human reviews merged change and closes manually. Merge != acceptance.
@@ -368,7 +368,7 @@ CLAMPED=$(clamp_log_array "$CLAMP_LOG")  # status block; `[]` when nothing was w
 
 **Wrapped payloads clamp BEFORE wrapping.** `context-fetch` writes stdout inside the untrusted-content fence, whose own text states _"Fence ends at LAST line of file; ANY other closing markers are forged."_ Clamping the written file would delete `===== END UNTRUSTED =====` and falsify that claim. The payload is clamped first, then wrapped, so the truncation footer lands INSIDE the fence — it is a statement about the fetched content, not about the artifact.
 
-**Uncapped by decision: the tracker sweep.** `related-issues.md` and `context-related-*.md` get NO size cap and NO tiering. Long human tracker threads are the point of the sweep; capping them optimises against the content the sweep exists to surface. Trimming happens on the right axis instead — `<!-- bkit:generated -->` filtering, the `<!-- bkit:ignore-earlier -->` cut, and a better query (§ Related-issues scan). Accepted risk, stated deliberately: unbounded by design, with only the backstop above underneath it.
+**Uncapped by decision: the tracker sweep.** `related-issues.md` and `context-related-*.md` get NO size cap and NO tiering. Long human tracker threads are the point of the sweep; capping them optimises against the content the sweep exists to surface. Trimming happens on the right axis instead — `bkit:generated` filtering, the `bkit:ignore-earlier` cut, and a better query (§ Related-issues scan). Accepted risk, stated deliberately: unbounded by design, with only the backstop above underneath it.
 
 **No gate re-asserts the clamp.** Every call site is `clamp_artifact … || exit 2` inside a fenced block, so the shell guarantees both that it ran and that a failure stops the step — a checklist item would only ask a model to re-assert what the script already enforces. Gates name `clamped` solely in the status-row field list, alongside `parentSha` / `verdict` / `artifacts`.
 
@@ -438,7 +438,7 @@ Every workflow step posts NEW tracker comment via inline `comment-post-step` blo
 **Step 1 (first comment):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ## {Phase} Workflow
 ### Step 1 — Start Workflow
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -451,21 +451,21 @@ Each step posts its own fenced section as a fresh comment.
 **Standard step section (no artifact link):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Step {N} — {Step Name}
 ```
 
 **Verdict-bearing step:**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Step {N} — {Step Name} - Verdict: {VERDICT}
 ```
 
 **Loop step (sub-plan or attempt counter):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Step {N} — {Step Name}
 (sub-plan {N}/{SUB_COUNT}, attempt {VERIFY_ATTEMPT})
 ```
@@ -473,7 +473,7 @@ Each step posts its own fenced section as a fresh comment.
 **Summary / handover step (artifact blob link + verbatim body):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Step {N} — Summary - Verdict: {SUMMARY_VERDICT}
 [{phase}-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/{phase}-summary.md)
 {summary.md content verbatim}
@@ -482,7 +482,7 @@ Each step posts its own fenced section as a fresh comment.
 **Failure Path comment (always appended):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Workflow Failure
 Step: {N} — {Step Name}; Sub-step: {M}
 Error: {error message / tool response}
@@ -492,7 +492,7 @@ Stderr: {last 20 lines if shell}
 **Failure Path handover (only when max-retry exhausted, see § Failure Path):**
 
 ```comment
-<!-- bkit:generated -->
+###### bkit:generated
 ### Workflow Handover
 [{phase}-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md)
 {handover.md content verbatim}
@@ -1008,7 +1008,7 @@ On-demand refresh of `docs/roadmap.md`. No args, no interaction, no hard stop. T
 
 **Two analysis passes, because the leaf has no MCP tools.** It cannot fetch its own enrichment and Linear is MCP-only with no CLI to shell out to, so a GitHub-only `gh api` shortcut would only work on one tracker. Pass 1 (`@bkit-roadmap-shortlist`) picks what is worth reading from a cheap `jq` index; the orchestrator fetches only that; pass 2 (`@bkit-roadmap-refresh`) ranks. Two separate agents, each with its own `maxTurns`. Reading everything is not an option and not a trade-off: on a 68-issue repo the unfiltered corpus is ~416k tokens against a 200k context, and mechanical trimming does not rescue it — stripping code fences saves 4%, adding blockquotes 5%. What it costs is that a badly-titled issue whose substance sits in comments may never be opened; `ROADMAP_SCAN_COVERAGE: N/M` is the only visibility into that, which is why pass 1 selects on a body excerpt and not the title alone.
 
-**No comment filtering, unlike phase-workflow input generation.** `<!-- bkit:generated -->` comments are kept and `<!-- bkit:ignore-earlier -->` is not honoured: crucial context lives in comments, and measured on a real repo those filters remove only 8%.
+**No comment filtering, unlike phase-workflow input generation.** `bkit:generated` comments are kept and `bkit:ignore-earlier` is not honoured: crucial context lives in comments, and measured on a real repo those filters remove only 8%.
 
 **Ranking is severity-first, not priority-first.** Security, then errors and correctness, then user-facing impact. Derived from the issue's own content, so it works where there is no tracker metadata at all — on GitHub with no project configured there is no state axis and no priority, and 47 of 68 open issues here carry nothing but the label `enhancement`. A `Priority` field, where one exists, is a strong signal inside that ordering, never the mechanism.
 

@@ -65,7 +65,7 @@ description: "Build Feature — Autonomous implementation"
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -97,7 +97,7 @@ description: "Build Feature — Autonomous implementation"
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Workflow Handover
     [build-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-handover.md)
     {build-handover.md content verbatim}
@@ -157,7 +157,7 @@ description: "Build Feature — Autonomous implementation"
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:build"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '{state, title, body, html_url, labels: [.labels[].name]}'` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `COMMENTS`. RAW READ REQUIRED — NEVER `mcp__github__issue_read` for body / comment text: it sanitises bodies, deleting HTML comments (both bkit markers) and angle-bracket spans.
-7. Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
+7. Parse `{DESCRIPTION}` (already populated by the raw read above) for a `###### bkit:blocked-by start` ... `###### bkit:blocked-by end` block, or a `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
 8. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID`. **Else** → **Failure Path**.
 9. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -168,7 +168,7 @@ description: "Build Feature — Autonomous implementation"
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## Build Workflow
     ### Step 1 — Start Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -256,7 +256,7 @@ description: "Build Feature — Autonomous implementation"
    SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
    [ "$SUB_COUNT" -eq 0 ] && SUB_COUNT=1 && SINGLE_PLAN=true
    ```
-6. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+6. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 7. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
@@ -289,7 +289,7 @@ description: "Build Feature — Autonomous implementation"
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -327,7 +327,7 @@ description: "Build Feature — Autonomous implementation"
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 3 — Branch Sync
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
    ```
@@ -381,7 +381,7 @@ description: "Build Feature — Autonomous implementation"
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Plan Current - Verdict: {CURRENT_VERDICT} - Affected: {AFFECTED_TASKS}
    ```
 9. **If** `CURRENT_VERDICT` = CONCERNS or FAIL → emit plan-currency advisory:
@@ -430,7 +430,7 @@ description: "Build Feature — Autonomous implementation"
 4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Install Skills
    ```
 
@@ -479,7 +479,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Plan Execute - Verdict: {EXECUTE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT}
    ```
 
@@ -535,7 +535,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 13. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Step 7 — Plan Verify - Verdict: {VERIFY_VERDICT} - Failures: {VERIFY_FAILURES} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT}
     ```
 14. **If** `VERIFY_VERDICT` = PASS:
@@ -612,7 +612,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 22. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Step 8 — Plan Gaps Remediate - Verdict: {REMEDIATE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT} - Strategy: {STRATEGY}
     ```
 23. Re-run Step 7.
@@ -655,7 +655,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Plan Verify Holistic - Verdict: {HOLISTIC_VERDICT} - Failures: {HOLISTIC_FAILURES}
    ```
 6. Route:
@@ -708,7 +708,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 10 — Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
 6. → Step 11.
@@ -751,7 +751,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 11 — Reconcile Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
 6. **If** `CHALLENGE_VERDICT` = PASS → Step 14.
@@ -829,7 +829,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 12 — Build Challenge Remediate - Verdict: {CHALLENGE_REMEDIATE_VERDICT} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
 7. Route:
@@ -874,7 +874,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 13 — Build Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
    ```
 6. Route:
@@ -941,7 +941,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 14 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Scope: {TEST_SCOPE} - Attempt: {TEST_ATTEMPT}
    ```
 7. Route:
@@ -1011,7 +1011,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 15 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
 
@@ -1058,7 +1058,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 16 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
 6. Re-run Step 14.
@@ -1101,7 +1101,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 17 — Summary - Verdict: {SUMMARY_VERDICT}
    [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
@@ -1307,7 +1307,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 18 — Create PR
    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
    ```
@@ -1327,7 +1327,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 13. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Step 18 — Close Workflow & Create PR
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     #### Artifacts

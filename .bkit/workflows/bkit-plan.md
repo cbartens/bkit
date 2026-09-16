@@ -79,7 +79,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -183,7 +183,7 @@ description: "Plan Feature — Autonomous plan generation"
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## Plan Workflow
     ### Step 1 — Start Workflow
     [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
@@ -263,7 +263,7 @@ description: "Plan Feature — Autonomous plan generation"
    bkit_runtime_row plan "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
+4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
 5. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
@@ -302,7 +302,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -350,7 +350,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 3 — Generate Plan
    [plan-v1-draft.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md)
    ```
@@ -378,8 +378,8 @@ description: "Plan Feature — Autonomous plan generation"
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}" --jq '.body'` → `RELATED_DESCRIPTION`. RAW READ REQUIRED — the search hit's own `body` field is sanitised; NEVER use it.
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
@@ -387,8 +387,8 @@ description: "Plan Feature — Autonomous plan generation"
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in RANK ORDER; pass NO `orderBy`, NEVER re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `description` → `RELATED_DESCRIPTION`.
    - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## {identifier} — {title} ({state.name})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
@@ -458,7 +458,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Fetch Context
    [related-issues.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-issues.md)
    [related-deferrals.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md)
@@ -517,7 +517,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Review Plan - Verdict: {REVIEW_VERDICT} - Failures: {REVIEW_FAILURES}
    ```
    <!-- bkit:tracker true end -->
@@ -565,7 +565,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [plan-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md)
    ```
@@ -620,7 +620,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 7 — Scope Check - Verdict: {SCOPE_VERDICT} - Failures: {SCOPE_FAILURES}
    ```
    <!-- bkit:tracker true end -->
@@ -668,7 +668,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 8 — Apply Scope - Verdict: {APPLY_SCOPE_VERDICT}
    [plan-v3-checked.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md)
    ```
@@ -718,7 +718,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Complexity Check - Verdict: {COMPLEXITY_VERDICT}
    ```
    <!-- bkit:tracker true end -->
@@ -767,7 +767,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 10 — Complexity Split - Verdict: {SPLIT_VERDICT}
    [plan-v4-split.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md)
    ```
@@ -823,7 +823,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 11 — Summary - Verdict: {SUMMARY_VERDICT}
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
@@ -1051,7 +1051,7 @@ description: "Plan Feature — Autonomous plan generation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 12 — Close Workflow
    #### Artifacts
    {ARTIFACTS}

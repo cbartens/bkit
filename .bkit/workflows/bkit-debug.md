@@ -85,7 +85,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -111,7 +111,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Workflow Handover
     [debug-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md)
     {FID-debug-handover.md content verbatim}
@@ -265,7 +265,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## Debug Workflow
     ### Step 1 — Start Workflow - Mode: {DEBUG_MODE} - Push: {PUSH_MODE} - Attempt: {DEBUG_ATTEMPT}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -351,7 +351,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. `git branch --show-current` → update `BRANCH` to the adopted branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
 4. **If** `BRANCH` = `main` → **Failure Path**. Every other branch is eligible (`feat/{FID}`, `dev`, any hand-named branch).
-5. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+5. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 6. Update status and commit:
    ```bash
    DEBUG_MODE="{DEBUG_MODE}"
@@ -398,7 +398,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -490,7 +490,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 3 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Scope: {TEST_SCOPE} - Attempt: {NORMAL_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -702,8 +702,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `{QUERY_NL}` = ONE natural-language sentence describing failure (error class, failing-test name, exception terms in sentence); NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}" --jq '.body'` → `RELATED_DESCRIPTION`. RAW READ REQUIRED — the search hit's own `body` field is sanitised; NEVER use it.
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/context-related-{DEBUG_ATTEMPT}.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker github end -->
@@ -711,8 +711,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `{QUERY_NL}` = ONE natural-language sentence describing failure (error class, failing-test name, exception terms in sentence); NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in RANK ORDER; pass NO `orderBy`, NEVER re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `description` → `RELATED_DESCRIPTION`.
    - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## {identifier} — {title} ({state.name})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/context-related-{DEBUG_ATTEMPT}.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
@@ -756,7 +756,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below. One link per artifact in `ARTIFACTS` (`{ARTIFACT}` = its basename), then one `NOT CONFIGURED` line per context absent from `contextsConfigured`:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Fetch Context - Verdict: {FETCH_VERDICT} - Contexts: {CONTEXTS_CONFIGURED}
    [{ARTIFACT}](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/{ARTIFACT})
    context={MISSING_CONTEXT} NOT CONFIGURED — that evidence was not checked this attempt
@@ -828,7 +828,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Mode: {DIAGNOSE_MODE} - Strategy: {STRATEGY}  - Attempt: {NORMAL_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -908,7 +908,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {NORMAL_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -983,7 +983,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 7 — Failure Remediate Soak - Verdict: {SOAK_VERDICT} - Soak Attempt: {SOAK_ATTEMPT}/{MAX_SOAK_ATTEMPT} - Normal Attempt: {NORMAL_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -1045,7 +1045,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 8 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
    ```
    <!-- bkit:tracker true end -->
@@ -1098,7 +1098,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Summary - Verdict: {SUMMARY_VERDICT}
    [debug-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md)
    {FID-debug-summary.md content verbatim}
@@ -1458,7 +1458,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below - ONLY add PR link if `TRIGGER_PR` = 1:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ### Step 10 — Close Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})

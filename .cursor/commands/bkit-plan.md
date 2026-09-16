@@ -59,7 +59,7 @@ Plan Feature — Autonomous plan generation
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -122,7 +122,7 @@ Plan Feature — Autonomous plan generation
 10. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## Plan Workflow
     ### Step 1 — Start Workflow
     [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
@@ -199,7 +199,7 @@ Plan Feature — Autonomous plan generation
    bkit_runtime_row plan "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
+4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**.
 5. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
@@ -232,7 +232,7 @@ Plan Feature — Autonomous plan generation
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -271,7 +271,7 @@ Plan Feature — Autonomous plan generation
 4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 3 — Generate Plan
    [plan-v1-draft.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md)
    ```
@@ -295,8 +295,8 @@ Plan Feature — Autonomous plan generation
 2. `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}" --jq '.body'` → `RELATED_DESCRIPTION`. RAW READ REQUIRED — the search hit's own `body` field is sanitised; NEVER use it.
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 3. Scan `docs/deferrals.jsonl` for `{QUERY}` overlaps → match lines verbatim; case-insensitive substrings; line matches when it contains >= 2 distinct query terms, or sole term when only one; strongest term-overlap first; top 40 kept and total footered; 0 matches / file absent → `None.` → write `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`; first writer resets clamp log:
@@ -359,7 +359,7 @@ Plan Feature — Autonomous plan generation
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Fetch Context
    [related-issues.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-issues.md)
    [related-deferrals.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md)
@@ -409,7 +409,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Review Plan - Verdict: {REVIEW_VERDICT} - Failures: {REVIEW_FAILURES}
    ```
 
@@ -448,7 +448,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [plan-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md)
    ```
@@ -494,7 +494,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 7 — Scope Check - Verdict: {SCOPE_VERDICT} - Failures: {SCOPE_FAILURES}
    ```
 
@@ -533,7 +533,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 8 — Apply Scope - Verdict: {APPLY_SCOPE_VERDICT}
    [plan-v3-checked.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md)
    ```
@@ -574,7 +574,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Complexity Check - Verdict: {COMPLEXITY_VERDICT}
    ```
 
@@ -614,7 +614,7 @@ Plan Feature — Autonomous plan generation
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 10 — Complexity Split - Verdict: {SPLIT_VERDICT}
    [plan-v4-split.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md)
    ```
@@ -661,7 +661,7 @@ Plan Feature — Autonomous plan generation
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 11 — Summary - Verdict: {SUMMARY_VERDICT}
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
@@ -868,7 +868,7 @@ Plan Feature — Autonomous plan generation
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 12 — Close Workflow
    #### Artifacts
    {ARTIFACTS}

@@ -51,9 +51,19 @@ const WORKFLOW_FILES = [
 const SPEC_FILE = ".bkit/workflows.md";
 const ALL_FILES = [...WORKFLOW_FILES, SPEC_FILE] as const;
 
-const MARKER = "<!-- bkit:generated -->";
+// Markers are h6 headings, not HTML comments: mcp__github__issue_read deletes every
+// HTML comment from a body, so an HTML-comment marker cannot survive a read at all.
+// The legacy syntax stays READABLE so markers already written into an issue keep
+// working; only the heading form is ever emitted.
+const MARKER = "###### bkit:generated";
+const LEGACY_MARKER = "<!-- bkit:generated -->";
 const CUT_TOKEN = "bkit:ignore-earlier";
-const CUT_MARKER = `<!-- ${CUT_TOKEN} -->`;
+const CUT_MARKER = `###### ${CUT_TOKEN}`;
+const LEGACY_CUT_MARKER = `<!-- ${CUT_TOKEN} -->`;
+// A marker is a WHOLE LINE in either syntax. That is what makes an inline mention of
+// the token prose rather than a live marker, and it is the whole reason a prompt or a
+// step may now name the mechanism without arming it.
+const CUT_MARKER_LINE_RE = new RegExp(`^[ \\t]*(${CUT_MARKER}|${LEGACY_CUT_MARKER})[ \\t]*$`);
 const FENCE_RE = /^[ \t]*```comment$/;
 const TOTAL_EXPECTED_FENCES = 84;
 
@@ -103,58 +113,47 @@ describe("both filters are applied at the point of use", () => {
     it(`${variable}: ${count} joins, each dropping ${MARKER} and applying the cut`, () => {
       expect(occurrences(`into \`${variable}\``), "join step count").toBe(count);
       expect(
-        occurrences(`drop any comments from \`${variable}\` that contain \`${MARKER}\``),
+        occurrences(
+          `drop any comments from \`${variable}\` whose first line is \`${MARKER}\` or \`${LEGACY_MARKER}\``,
+        ),
         "drop step count",
       ).toBe(count);
       expect(
-        occurrences(`**If** \`${variable}\` contains marker \`${CUT_MARKER}\``),
+        occurrences(
+          `**If** \`${variable}\` contains whole-line marker \`${CUT_MARKER}\` or \`${LEGACY_CUT_MARKER}\``,
+        ),
         "cut step count",
       ).toBe(count);
     });
   }
 });
 
-describe("nothing bkit writes can carry the cut token", () => {
-  // A line that merely NAMES the cut token is enough to ship a real marker: a
-  // comment template narrating which comments it kept, a prose aside in a step's
-  // free text, a subagent prompt explaining the mechanism. The token then lands
-  // in a posted comment or an edited issue body, and the NEXT run's cut fires on
-  // bkit's own output and deletes the human context above it. The bkit:generated
-  // filter is not a backstop — it drops comments only, never an issue body, and
-  // never a sweep hit inside RELATED_ISSUES.
-  const SANCTIONED = Object.values(CUT_STEPS).reduce((a, b) => a + b, 0);
-  const CUT_STEP_RE = new RegExp(
-    `\\*\\*If\\*\\* \`(${Object.keys(CUT_STEPS).join("|")})\` contains marker \`${CUT_MARKER}\``,
-  );
-
+describe("nothing bkit ships can carry a live cut marker", () => {
+  // A whole-line cut marker in anything bkit writes lands in a posted comment or an
+  // edited issue body, and the NEXT run's cut fires on bkit's own output and deletes
+  // the human context above it. The bkit:generated filter is no backstop — it drops
+  // comments only, never an issue body, and never a sweep hit inside RELATED_ISSUES.
+  //
+  // Naming the token INLINE is allowed, and that is the point of whole-line detection:
+  // a step, a spec paragraph or a subagent prompt can describe the mechanism without
+  // arming it. Emitting the marker on its own line is what stays prohibited.
   const PROMPT_DIR = ".bkit/prompts";
   const PROMPT_FILES = fs
     .readdirSync(path.join(REPO_ROOT, PROMPT_DIR))
     .filter((name) => name.endsWith(".md"))
     .map((name) => `${PROMPT_DIR}/${name}`);
 
-  const mentions = (rel: string) => read(rel).split(CUT_TOKEN).length - 1;
+  const markerLines = (rel: string) =>
+    read(rel)
+      .split("\n")
+      .map((line, n) => ({ line, n: n + 1 }))
+      .filter(({ line }) => CUT_MARKER_LINE_RE.test(line))
+      .map(({ line, n }) => `${rel}:${n}: ${line.trim()}`);
 
-  it(`workflow files mention ${CUT_TOKEN} exactly ${SANCTIONED} times`, () => {
-    const total = WORKFLOW_FILES.reduce((sum, rel) => sum + mentions(rel), 0);
-    expect(total).toBe(SANCTIONED);
-  });
-
-  for (const rel of WORKFLOW_FILES) {
-    it(`${rel}: every ${CUT_TOKEN} line is a cut step`, () => {
-      const offenders = read(rel)
-        .split("\n")
-        .map((line, i) => ({ line, n: i + 1 }))
-        .filter(({ line }) => line.includes(CUT_TOKEN) && !CUT_STEP_RE.test(line))
-        .map(({ line, n }) => `${rel}:${n}: ${line.trim().slice(0, 80)}…`);
-      expect(offenders, "cut token outside a cut step ships a real marker").toEqual([]);
-    });
-  }
-
-  it(`no subagent prompt mentions ${CUT_TOKEN}`, () => {
+  it(`no shipped workflow, spec or prompt emits a ${CUT_TOKEN} marker line`, () => {
     expect(PROMPT_FILES.length, `${PROMPT_DIR} is empty`).toBeGreaterThan(0);
-    const offenders = PROMPT_FILES.filter((rel) => mentions(rel) > 0);
-    expect(offenders, "a subagent that names the token writes it into its artifact").toEqual([]);
+    const offenders = [...ALL_FILES, ...PROMPT_FILES].flatMap(markerLines);
+    expect(offenders, "a shipped cut marker arms the next run's cut").toEqual([]);
   });
 });
 

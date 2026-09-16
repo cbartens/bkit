@@ -43,7 +43,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -123,7 +123,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch / PR / run links; `MODE` = CI_DEV omits the PR line when `PR_URL` is empty and the run line when `RUN_ID` is empty):
     ```comment
-    <!-- bkit:generated -->
+    ###### bkit:generated
     ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -150,7 +150,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Dispatch - Phase: {PHASE}
    ```
 2. Derive `{REF}`. NEVER pass a bare `{FID}` or bare number — the dispatched workflow's Step 4 CREATES a new issue on no match.

@@ -59,7 +59,7 @@ Design Feature — Autonomous design phase
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
@@ -121,7 +121,7 @@ Design Feature — Autonomous design phase
 9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ## Design Workflow
    ### Step 1 — Start Workflow
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
@@ -196,7 +196,7 @@ Design Feature — Autonomous design phase
    bkit_runtime_row design "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` that contain `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md` = session prompt + `ISSUE_TEXT`.
+4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md` = session prompt + `ISSUE_TEXT`.
 5. Update status and commit:
    ```bash
    DIR="docs/plans/{YYYYMM}/logs/{FID}"
@@ -229,7 +229,7 @@ Design Feature — Autonomous design phase
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
@@ -253,8 +253,8 @@ Design Feature — Autonomous design phase
 1. `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}" --jq '.body'` → `RELATED_DESCRIPTION`. RAW READ REQUIRED — the search hit's own `body` field is sanitised; NEVER use it.
    - `gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` that contain `<!-- bkit:generated -->`.
-   - **If** `RELATED_ISSUE_TEXT` contains marker `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`.
+   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
 2. Launch all three subagents in parallel using `Task` tool:
@@ -283,7 +283,7 @@ Design Feature — Autonomous design phase
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 3 — Brainstorm & Ideate
    ```
 
@@ -319,7 +319,7 @@ Design Feature — Autonomous design phase
 4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 4 — Generate Design
    [design-v1-draft.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md)
    ```
@@ -365,7 +365,7 @@ Design Feature — Autonomous design phase
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 5 — Design Review - Verdict: {REVIEW_VERDICT}
    ```
 
@@ -412,7 +412,7 @@ Design Feature — Autonomous design phase
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 6 — Spike - Verdict: {SPIKE_VERDICT}
    [design-spike.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-spike.md)
    ```
@@ -453,7 +453,7 @@ Design Feature — Autonomous design phase
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 7 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [design-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md)
    ```
@@ -493,7 +493,7 @@ Design Feature — Autonomous design phase
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 8 — Design Organise - Verdict: {ORGANISE_VERDICT}
    [design-v3-organised.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md)
    ```
@@ -534,7 +534,7 @@ Design Feature — Autonomous design phase
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 9 — Summary - Verdict: {SUMMARY_VERDICT}
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
    {design-summary.md content verbatim}
@@ -573,7 +573,7 @@ Design Feature — Autonomous design phase
      `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}`.
      `{BODY}` = fenced block below:
      ```comment
-     <!-- bkit:generated -->
+     ###### bkit:generated
      ## Workstream Update — {FID}
      **Parent issue:** {ISSUE_ID}
      **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
@@ -604,7 +604,7 @@ Design Feature — Autonomous design phase
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}`.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ## Workstream Delete — {FID}
    **Parent issue:** {ISSUE_ID}
    **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
@@ -613,8 +613,8 @@ Design Feature — Autonomous design phase
 5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `{BLOCKED_BY_LIST}` from `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. Set `{ISSUE_ID}` = `{WORKSTREAM_ISSUE_ID[WS-{N}]}` for this call.
    
    Encode blocked-by via issue body marker block:
-   1. `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '.body'` → `{CURRENT_BODY}`. RAW READ REQUIRED — this body is written back at step 3; a sanitised read deletes every HTML comment and angle-bracket span in it, including the existing blocked-by block, and makes step 2 always take the append branch so blocks accumulate.
-   2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
+   1. `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '.body'` → `{CURRENT_BODY}`. RAW READ REQUIRED — this body is written back at step 3; a sanitised read eats angle-bracket spans and HTML-escapes quotes in it, and destroys them on the write-back.
+   2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `###### bkit:blocked-by start` ... `###### bkit:blocked-by end`, or `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers, emitting the h6 pair. **Else** → append `\n\n###### bkit:blocked-by start\n## Blocked by\n{BLOCKED_BY_LIST}\n###### bkit:blocked-by end` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
    3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
 
 
@@ -630,7 +630,7 @@ Design Feature — Autonomous design phase
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 10 — Design Workstream Issues
    ```
 
@@ -803,7 +803,7 @@ Design Feature — Autonomous design phase
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   <!-- bkit:generated -->
+   ###### bkit:generated
    ### Step 11 — Close Workflow
    #### Artifacts
    {ARTIFACTS}
