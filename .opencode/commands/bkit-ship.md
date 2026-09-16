@@ -904,16 +904,7 @@ $ARGUMENTS
 
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
-3. Drift check — warn on any live `feat/*` branch with no ledger row. Best-effort, fail-open; NEVER gates this step. Reverse tracker-label sync does NOT run here: it is a full-ledger repair pass that writes labels on issues other than `{FID}`, so it belongs to `/bkit-roadmap`, the one command that updates everything.
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   ROADMAP_JSONL="$BOOK_ROOT/docs/roadmap.jsonl"
-   . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-reconcile.sh" 2>/dev/null || echo "[bkit-roadmap] missing bkit-roadmap-reconcile.sh — run 'bkit install'" >&2
-   if command -v bkit_roadmap_drift_check >/dev/null 2>&1; then
-     bkit_roadmap_drift_check "$BOOK_ROOT" "$ROADMAP_JSONL"
-   fi
-   ```
-4. Launch two subagents in parallel using `Task` tool:
+3. Launch two subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `/bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
@@ -923,7 +914,7 @@ $ARGUMENTS
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-5. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    Then re-render the mechanical `roadmap-status` board from the ledger:
 
    ```bash
@@ -931,14 +922,14 @@ $ARGUMENTS
    ( . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$BOOK_ROOT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
    ```
 
-6. Derive `DOCS_VERDICT` — asserts a `SHIPPED`-status row for `{FID}` in `docs/roadmap.jsonl`. **Presence alone is NOT enough:** a `BUILT` row from the build close must NOT green this gate; only `status=="SHIPPED"` does.
+5. Derive `DOCS_VERDICT` — asserts a `SHIPPED`-status row for `{FID}` in `docs/roadmap.jsonl`. **Presence alone is NOT enough:** a `BUILT` row from the build close must NOT green this gate; only `status=="SHIPPED"` does.
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$BOOK_ROOT/docs/roadmap.jsonl" 2>/dev/null | wc -l | tr -d ' ')
    if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-7. Update status (bookkeeping to `$BOOK_ROOT`):
+6. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    SUMMARY_VERDICT="{SUMMARY_VERDICT}"
@@ -952,7 +943,7 @@ $ARGUMENTS
      '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
      >> "$STATUS"
    ```
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
@@ -960,7 +951,7 @@ $ARGUMENTS
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. Route:
+8. Route:
    - **If** `DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
    - **If** `DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
    - **Else** → **Failure Path**.

@@ -913,53 +913,6 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
 };
 
 // ---------------------------------------------------------------------------
-// Roadmap cadence — #380 ledger/audit injection threshold (Addendum 3 § Q)
-// ---------------------------------------------------------------------------
-
-/**
- * Default cadence thresholds for the `docs/roadmap.md` analysis-tier
- * ledger/audit injection (#380). `buildCycles` = distinct FIDs reaching
- * `BUILT` in `docs/roadmap.jsonl` since the last `ROADMAP_CADENCE_FIRE`
- * counter row; `stalenessDays` = a time-based fallback so the cadence still
- * fires on a low-build-volume repo. Read from `bkit.roadmap.buildCycles` /
- * `bkit.roadmap.stalenessDays` in the consumer `package.json`, defaults
- * apply when either key (or the whole `bkit.roadmap` object) is absent.
- */
-export const DEFAULT_ROADMAP_BUILD_CYCLES = 10;
-export const DEFAULT_ROADMAP_STALENESS_DAYS = 90;
-
-export interface RoadmapCadence {
-  buildCycles: number;
-  stalenessDays: number;
-}
-
-/** A positive finite integer, else `null` (caller falls back to the default). */
-function parsePositiveInt(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) return null;
-  return value > 0 ? value : null;
-}
-
-/**
- * Resolve the roadmap cadence thresholds from an already-parsed
- * `package.json`. Accepts the parsed object (mirrors `resolveRunnerLabel`)
- * so callers that already hold it avoid re-reading the file. Missing or
- * invalid values fall back to the defaults independently — a valid
- * `buildCycles` with an invalid `stalenessDays` keeps the former and
- * defaults only the latter.
- */
-export function resolveRoadmapCadence(pkg: Record<string, unknown>): RoadmapCadence {
-  const bkit = pkg["bkit"];
-  const roadmap =
-    bkit && typeof bkit === "object" ? (bkit as Record<string, unknown>)["roadmap"] : undefined;
-  const table = roadmap && typeof roadmap === "object" ? (roadmap as Record<string, unknown>) : {};
-
-  return {
-    buildCycles: parsePositiveInt(table["buildCycles"]) ?? DEFAULT_ROADMAP_BUILD_CYCLES,
-    stalenessDays: parsePositiveInt(table["stalenessDays"]) ?? DEFAULT_ROADMAP_STALENESS_DAYS,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 

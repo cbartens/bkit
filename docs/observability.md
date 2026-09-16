@@ -82,15 +82,12 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 
 ### `[bkit-roadmap]` prefix
 
-`docs/roadmap.md`/`docs/roadmap.jsonl` fold + close-hook + drift-check + reverse-sync fail-open lines (#380). Every branch exits 0 — the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
+`docs/roadmap.md`/`docs/roadmap.jsonl` fold + close-hook fail-open lines. Every branch exits 0 — the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
 
 - `[bkit-roadmap] upsert skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — close-hook upsert fail-open (script absent).
-- `[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — `/bkit-roadmap` fold fail-open (script absent).
+- `[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — phase-close fold fail-open (script absent).
 - `[bkit-roadmap] append failed: {path}` — ledger row append to `docs/roadmap.jsonl` failed (best-effort; exit 0).
 - `[bkit-roadmap] {message}` — fold bootstrap/self-heal/hint lines, including the empty-ledger `bkit telemetry migrate` hint before the migration has run.
-- `[bkit-roadmap] missing bkit-roadmap-reconcile.sh — run 'bkit install'` / `[bkit-roadmap] {FID}: live feat/* with no ledger row` — drift check (Directive 4, rescoped): warns only, never mutates `docs/roadmap.md`.
-- `[bkit-roadmap] reverse-sync skip {fid} — {reason}` / `[bkit-roadmap] reverse-sync applied {fid} -> {label}` / `[bkit-roadmap] reverse-sync conflict {fid}` / `[bkit-roadmap] reverse-sync no-op — tracker: none` — reverse tracker-label sync (Directive 3): settled-drift-guarded, best-effort, idempotent.
-- `[bkit-roadmap] analysis refresh failed — non-blocking, roadmap-status board (mechanical tier) is unaffected` — `@bkit-roadmap-refresh` (`roadmap-analysis` block) failed; the mechanical status tier is unaffected. `/bkit-roadmap` only — phase closes never run the analysis tier.
 
 ### `[bkit-ship-gate]` prefix
 
