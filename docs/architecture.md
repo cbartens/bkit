@@ -171,7 +171,7 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race live (#361). Close via `bkit telemetry validate` (exit 1 on `DE-<n>`/`KN-<n>` claimed by >1 slug `key`; postinstall advisory) + `bkit telemetry normalise` (drops `aliases[]` → `references[]`, keeps `ts`, re-keys colliding rows only). Cite slug `key`, never bare number.
 
-## Roadmap Ledger & Board (#380)
+## Roadmap Ledger & Board
 
 `docs/roadmap.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`). `docs/completed.md` is retired — deleted by the migration, no reader remains.
 
@@ -180,7 +180,7 @@ Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race
 - `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`. `bkit_roadmap_fold` rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `docs/roadmap.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and two consumer `## Notes` blocks carried through verbatim. Every phase close calls it. No tracker table is rendered — a wired tracker already shows its own issues, and a regenerated copy can only go stale. Everything above the first marker is preserved. `roadmap-notes-post` is last.
 - `bkit-telemetry-migrate.ts` fifth pair — `docs/completed.md` → `docs/roadmap.jsonl` at `status:"SHIPPED"`, plus the bootstrap seed (one row per in-flight FID from `docs/plans/**`). Unreachable from `bkit upgrade`; the `completed-md-unmigrated` preflight advisory names the command (`docs/setup.md` § Roadmap ledger migration).
 
-**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last and is a declared read-input for the analysis tier. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
+**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` tables; the two `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last. Nothing writes `roadmap-analysis` today — the fold carries whatever is in it through untouched. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 
 Sensing is on-disk-first: every phase close full-regenerates the board from the ledger. Every roadmap branch exits 0 and never gates a close — grep keys in `docs/observability.md` § `[bkit-roadmap]`. Row contract: `.bkit/jsonl.md` § Per-Kind Fields. Test inventory: `docs/testing.md`.
 
