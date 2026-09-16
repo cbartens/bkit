@@ -48,14 +48,14 @@ Hard stops after Design, Plan, and Ship. For every subagent step in execution or
 For the full pipeline reference, every subagent in execution order, and the mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see `.bkit/comparison.md`.
 
 > [!IMPORTANT]
-> **`GH_BKIT_TOKEN_INSTALL` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
+> **`BKIT_GH_TOKEN_INSTALL` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
 >
 > 1. **Local shell** — pick one of two flows (see § Local env setup for details):
->    - **(A) Quick:** `export GH_BKIT_TOKEN_INSTALL=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
+>    - **(A) Quick:** `export BKIT_GH_TOKEN_INSTALL=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
 >    - **(B) direnv + `.bkit/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.bkit/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.bkit/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
 > 2. **`.npmrc` at repo root** — registry mapping only; token goes in pnpm user-level config via `pnpm config set` — see § Consumer CI auth below
-> 3. **GitHub Actions repo secret** — `gh secret set GH_BKIT_TOKEN_INSTALL --body=<token>` per consumer repo
-> 4. **Vercel env vars** (if applicable) — `vercel env add GH_BKIT_TOKEN_INSTALL preview/production`
+> 3. **GitHub Actions repo secret** — `gh secret set BKIT_GH_TOKEN_INSTALL --body=<token>` per consumer repo
+> 4. **Vercel env vars** (if applicable) — `vercel env add BKIT_GH_TOKEN_INSTALL preview/production`
 >
 > **Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403 even when `Packages: read` is granted (verified 2026-05). Until GitHub fixes this, classic with `read:packages` scope is the only working option.
 
@@ -65,24 +65,24 @@ Two paste blocks below — **install** (first time) and **upgrade** (already on 
 
 ### Install — first time
 
-After creating a classic GitHub PAT with `read:packages` scope ([Tokens (classic)](https://github.com/settings/tokens)) and saving it as `GH_BKIT_TOKEN_INSTALL=<token>` in a local env file in this repo (e.g. `.env.local`, `apps/web/.env.preview`), copy the block below into Claude Code / Cursor / any coding agent. Replace `<ENV-FILE-PATH>` with your env file's path.
+After creating a classic GitHub PAT with `read:packages` scope ([Tokens (classic)](https://github.com/settings/tokens)) and saving it as `BKIT_GH_TOKEN_INSTALL=<token>` in a local env file in this repo (e.g. `.env.local`, `apps/web/.env.preview`), copy the block below into Claude Code / Cursor / any coding agent. Replace `<ENV-FILE-PATH>` with your env file's path.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
-1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `GH_BKIT_TOKEN_INSTALL=<token>` in `<ENV-FILE-PATH>` (e.g. `.env.local` or `apps/web/.env.preview`). Confirmed.
-2. Access `GH_BKIT_TOKEN_INSTALL` without leaking it into context: `source` is a shell builtin (not file I/O) — permission gates on `Read`/`grep`/`cat` do NOT see it. Pattern (same Bash invocation — shell state does NOT persist between tool calls):
+1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `BKIT_GH_TOKEN_INSTALL=<token>` in `<ENV-FILE-PATH>` (e.g. `.env.local` or `apps/web/.env.preview`). Confirmed.
+2. Access `BKIT_GH_TOKEN_INSTALL` without leaking it into context: `source` is a shell builtin (not file I/O) — permission gates on `Read`/`grep`/`cat` do NOT see it. Pattern (same Bash invocation — shell state does NOT persist between tool calls):
    ```bash
    set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; <command that needs the token>
    ```
-   Verify without leaking: `echo "len=${#GH_BKIT_TOKEN_INSTALL}"`.
-3. Ensure root `.npmrc` has registry mapping only (token NOT stored here — pnpm >=10.34.3 401s on project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` substitution):
+   Verify without leaking: `echo "len=${#BKIT_GH_TOKEN_INSTALL}"`.
+3. Ensure root `.npmrc` has registry mapping only (token NOT stored here — pnpm >=10.34.3 401s on project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` substitution):
    ```
    @cbartens:registry=https://npm.pkg.github.com
    ```
    Then auth + install + seed hosts/tooling in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    set -a; source <ENV-FILE-PATH>; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
      pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor --tooling
    ```
@@ -98,10 +98,10 @@ Same paste block ships in `.bkit/README.md` (mirrored into consumer repos on ins
 
 ````text
 Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resync.
-1. Ensure `GH_BKIT_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
+1. Ensure `BKIT_GH_TOKEN_INSTALL` is available for the GitHub Packages bump. If not already in the environment, load without leaking (`source` is a shell builtin — not file I/O). `source` and the command MUST be the SAME Bash invocation:
    ```bash
    set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; \
-     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
      bkit upgrade --latest
    ```
    If token already exported (direnv / shell profile), skip `source`:
@@ -130,15 +130,15 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | # | Step | Detail |
 | --- | --- | --- |
 | 1 | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages) | [§ Consumer CI auth](#consumer-ci-auth) step 1 |
-| 2 | Add `GH_BKIT_TOKEN_INSTALL` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
+| 2 | Add `BKIT_GH_TOKEN_INSTALL` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
 | 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
-| 4 | Export `GH_BKIT_TOKEN_INSTALL` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN_INSTALL=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
+| 4 | Export `BKIT_GH_TOKEN_INSTALL` for the `pnpm add` step (one-off — `export BKIT_GH_TOKEN_INSTALL=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
 | 5 | Run `bkit install --claude --cursor --tooling` to seed both hosts + tooling (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
-| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN_INSTALL`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
-| 6 | If deploying to Vercel: add `GH_BKIT_TOKEN_INSTALL` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
+| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `BKIT_GH_TOKEN_INSTALL`, `BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
+| 6 | If deploying to Vercel: add `BKIT_GH_TOKEN_INSTALL` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
 
-Seeded `.github/workflows/ci.yml` install step writes token into pnpm user-level config (`pnpm config set …`) before `pnpm install` and carries `GH_BKIT_TOKEN_INSTALL` env block — only thing CI needs to authenticate `@cbartens/bkit` is `GH_BKIT_TOKEN_INSTALL` secret from step 2. No cross-org `uses:` reference; `bkit` stays private without affecting consumer auth.
+Seeded `.github/workflows/ci.yml` install step writes token into pnpm user-level config (`pnpm config set …`) before `pnpm install` and carries `BKIT_GH_TOKEN_INSTALL` env block — only thing CI needs to authenticate `@cbartens/bkit` is `BKIT_GH_TOKEN_INSTALL` secret from step 2. No cross-org `uses:` reference; `bkit` stays private without affecting consumer auth.
 
 ### Then in the consumer repo
 
@@ -182,15 +182,15 @@ bkit check
 
 ### Local env setup
 
-Two flows — pick one. Both end with `GH_BKIT_TOKEN_INSTALL` and `GH_BKIT_TOKEN` in shell for pnpm and GitHub MCP. Linear repos also need `LINEAR_API_KEY`. Use `gh auth login` for CLI.
+Two flows — pick one. Both end with `BKIT_GH_TOKEN_INSTALL` and `BKIT_GH_TOKEN` in shell for pnpm and GitHub MCP. Linear repos also need `BKIT_LINEAR_API_KEY`. Use `gh auth login` for CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
-export GH_BKIT_TOKEN_INSTALL=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
-export GH_BKIT_TOKEN=<fine-grained PAT>                 # GitHub MCP
-export LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
+export BKIT_GH_TOKEN_INSTALL=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
+export BKIT_GH_TOKEN=<fine-grained PAT>                 # GitHub MCP
+export BKIT_LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
@@ -213,12 +213,12 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 
 # 3. One-time per consumer repo (after `bkit install` has seeded the templates)
 cp .bkit/.env.example .bkit/.env
-# Edit .bkit/.env: set GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN, LINEAR_API_KEY
+# Edit .bkit/.env: set BKIT_GH_TOKEN_INSTALL, BKIT_GH_TOKEN, BKIT_LINEAR_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
-echo "len=${#GH_BKIT_TOKEN}"                                            # non-zero → MCP token loaded
-gh auth status                                                       # gh CLI uses keyring, not GH_BKIT_TOKEN
+echo "len=${#BKIT_GH_TOKEN}"                                            # non-zero → MCP token loaded
+gh auth status                                                       # gh CLI uses keyring, not BKIT_GH_TOKEN
 ```
 
 After step 4, restart open Claude Code / Cursor sessions in this repo so new env reaches MCP servers.
@@ -227,19 +227,19 @@ After step 4, restart open Claude Code / Cursor sessions in this repo so new env
 
 #### One-time per machine — register the GH Packages token with pnpm
 
-After either flow makes `GH_BKIT_TOKEN_INSTALL` available in shell, write into pnpm user-level auth config so local `pnpm install` resolves `@cbartens/bkit`:
+After either flow makes `BKIT_GH_TOKEN_INSTALL` available in shell, write into pnpm user-level auth config so local `pnpm install` resolves `@cbartens/bkit`:
 
 ```bash
-pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
+pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
 ```
 
-pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` env-substitution (401s on download) — user-level step required; committed `.npmrc` carries only registry mapping. `pnpm config set` writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever pnpm reads) — same command across pnpm versions.
+pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution (401s on download) — user-level step required; committed `.npmrc` carries only registry mapping. `pnpm config set` writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever pnpm reads) — same command across pnpm versions.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
 bkit ships repo-side scaffolding for both cloud agents via opt-in `bkit install --auto=<variant>` — `.claude/hooks/cloud-bootstrap.sh` (per-session install), `.cursor/Dockerfile` + `.cursor/environment.json` (Cursor cloud image), phase-routed `.github/workflows/bkit-cloud.yml`. (`.cursor/hooks.json` — Linear preflight wiring — ships with `--cursor`, not `--auto`.) Install without `--auto` ships zero cloud footprint. **Online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) configured once per machine / account.
 
-For **post-CI auto-routing** (ship-vs-debug after CI), bkit ships single `.github/workflows/bkit-cloud.yml` with TWO runtime-gated dispatch jobs — **claude** job (`claude-code-action`, runs when `ANTHROPIC_API_KEY` set) and **opencode** job (`opencode run` CLI, runs when `OPENCODE_PROVIDER_KEY` set) — plus `/bkit-auto` slash command both clouds invoke from single source (Cursor wires via dashboard trigger; no GHA on Cursor side). `bkit install --auto=opencode` requires `tracker=github`.
+For **post-CI auto-routing** (ship-vs-debug after CI), bkit ships single `.github/workflows/bkit-cloud.yml` with TWO runtime-gated dispatch jobs — **claude** job (`claude-code-action`, runs when `BKIT_ANTHROPIC_API_KEY` set) and **opencode** job (`opencode run` CLI, runs when `OPENCODE_PROVIDER_KEY` set) — plus `/bkit-auto` slash command both clouds invoke from single source (Cursor wires via dashboard trigger; no GHA on Cursor side). `bkit install --auto=opencode` requires `tracker=github`.
 
 Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: `.bkit/cloud.md`. Host-delta matrix: `.bkit/providers.md` § Runtime environment.
 
@@ -281,7 +281,7 @@ bkit resolves from **GitHub Packages npm registry**. Authentication requires:
 
 2. **Add the secret** to your consumer repo:
    - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
-   - Name: `GH_BKIT_TOKEN_INSTALL`
+   - Name: `BKIT_GH_TOKEN_INSTALL`
    - Value: paste the PAT
 
 3. **Add `.npmrc`** at your repo root (committed, no secrets) — registry mapping ONLY. Auth token **not** stored here:
@@ -295,15 +295,15 @@ bkit resolves from **GitHub Packages npm registry**. Authentication requires:
    ```yaml
    - name: Install Dependencies
      run: |
-       pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
+       pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
        pnpm install --frozen-lockfile
      env:
-       GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+       BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
    ```
 
-> **⚠️ Why `pnpm config set`, not `.npmrc`:** pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` env-substitution — `pnpm install` 401s on `@cbartens/bkit` download (`ERR_PNPM_FETCH_401`) even when token set. `pnpm config set` writes token to pnpm user-level config (`~/.npmrc` on pnpm 10.x, `~/.config/pnpm/auth.ini` on pnpm 11.x). Leftover `_authToken` line in project `.npmrc` must be **removed** — 401s and, by config precedence (project > user), shadows user-level token. Note: `pnpm view @cbartens/bkit` (metadata) may still resolve with broken setup — verify with real `pnpm install`, not `view`.
+> **⚠️ Why `pnpm config set`, not `.npmrc`:** pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution — `pnpm install` 401s on `@cbartens/bkit` download (`ERR_PNPM_FETCH_401`) even when token set. `pnpm config set` writes token to pnpm user-level config (`~/.npmrc` on pnpm 10.x, `~/.config/pnpm/auth.ini` on pnpm 11.x). Leftover `_authToken` line in project `.npmrc` must be **removed** — 401s and, by config precedence (project > user), shadows user-level token. Note: `pnpm view @cbartens/bkit` (metadata) may still resolve with broken setup — verify with real `pnpm install`, not `view`.
 
-### Agent access to `GH_BKIT_TOKEN_INSTALL`
+### Agent access to `BKIT_GH_TOKEN_INSTALL`
 
 If permission rules block direct reads of `.env*` files (e.g. `Read(./.env*)`, `Bash(grep ... .env*)` denied), token still cannot be read — but **can** be exported into child process for duration of single command. Use in single Bash tool call:
 
@@ -312,20 +312,20 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 ```
 
 - `source` is shell builtin, not file I/O — agent permission layer (gates `Read` / `grep` / `cat`) does not see it. Token text never enters agent context.
-- `<command>` (e.g. `pnpm view @cbartens/bkit`, `bkit check`) inherits `GH_BKIT_TOKEN_INSTALL` via environment.
-- Verify token loaded **without leaking value**: `echo "len=${#GH_BKIT_TOKEN_INSTALL}"`.
+- `<command>` (e.g. `pnpm view @cbartens/bkit`, `bkit check`) inherits `BKIT_GH_TOKEN_INSTALL` via environment.
+- Verify token loaded **without leaking value**: `echo "len=${#BKIT_GH_TOKEN_INSTALL}"`.
 
-**Caveat:** shell state does not persist between separate Bash tool calls. `source` and consuming command MUST run in **same** invocation — chain with `;` or `&&`. When directing another agent, name file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; registry needs `GH_BKIT_TOKEN_INSTALL`"_).
+**Caveat:** shell state does not persist between separate Bash tool calls. `source` and consuming command MUST run in **same** invocation — chain with `;` or `&&`. When directing another agent, name file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; registry needs `BKIT_GH_TOKEN_INSTALL`"_).
 
 ## Consumer Vercel auth
 
-Vercel runs own `pnpm install` in fresh build container — cannot run pre-install shell step. Since pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${GH_BKIT_TOKEN_INSTALL}` env-substitution, set token via one-line `installCommand` writing pnpm user-level config before install.
+Vercel runs own `pnpm install` in fresh build container — cannot run pre-install shell step. Since pnpm >=10.34.3 no longer authenticates project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` env-substitution, set token via one-line `installCommand` writing pnpm user-level config before install.
 
-1. **Add `GH_BKIT_TOKEN_INSTALL` to Vercel env vars** for each environment that builds (preview + production at minimum):
+1. **Add `BKIT_GH_TOKEN_INSTALL` to Vercel env vars** for each environment that builds (preview + production at minimum):
 
    ```bash
-   vercel env add GH_BKIT_TOKEN_INSTALL preview
-   vercel env add GH_BKIT_TOKEN_INSTALL production
+   vercel env add BKIT_GH_TOKEN_INSTALL preview
+   vercel env add BKIT_GH_TOKEN_INSTALL production
    ```
 
    Or via web: Vercel project → Settings → Environment Variables. Token value = same PAT as GitHub Actions secret (scope: `read:packages`).
@@ -334,11 +334,11 @@ Vercel runs own `pnpm install` in fresh build container — cannot run pre-insta
 
    ```json
    {
-     "installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install"
+     "installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install"
    }
    ```
 
-   If legacy git-shim `installCommand` present (`git config --global url."https://x-access-token:$GH_BKIT_TOKEN_INSTALL@github.com/cbartens/bkit/".insteadOf …`), remove it — `pnpm config set` line replaces it entirely. (Registry-auth shim, not obsolete git-auth shim; see `docs/decisions.jsonl` DE-31.)
+   If legacy git-shim `installCommand` present (`git config --global url."https://x-access-token:$BKIT_GH_TOKEN_INSTALL@github.com/cbartens/bkit/".insteadOf …`), remove it — `pnpm config set` line replaces it entirely. (Registry-auth shim, not obsolete git-auth shim; see `docs/decisions.jsonl` DE-31.)
 
 3. **Trigger redeploy** (push commit) and watch Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
 
@@ -372,22 +372,22 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 <!-- prettier-ignore -->
 | `id` | When |
 | --- | --- |
-| `gh-bkit-token-unset-shell` / `gh-bkit-token-empty-shell` | `GH_BKIT_TOKEN_INSTALL` unset (or set but empty) in shell |
+| `gh-bkit-token-unset-shell` / `gh-bkit-token-empty-shell` | `BKIT_GH_TOKEN_INSTALL` unset (or set but empty) in shell |
 | `npmrc-missing-gh-packages` | `.npmrc` exists but lacks the `@cbartens` registry mapping |
 | `npmrc-legacy-authtoken` | `.npmrc` still carries a legacy `//npm.pkg.github.com/:_authToken=…` line (401s on pnpm >=10.34.3; move it to pnpm user-level config) |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
-| `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `GH_BKIT_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
+| `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `BKIT_GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
-| `ci-yml-missing-token-env` | ci.yml install step lacks the `pnpm config set` auth step and/or the `GH_BKIT_TOKEN_INSTALL` env mapping |
+| `ci-yml-missing-token-env` | ci.yml install step lacks the `pnpm config set` auth step and/or the `BKIT_GH_TOKEN_INSTALL` env mapping |
 | `tracker-setup-none` / `-github` / `-linear` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.githubProject` absent and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.githubProject: false`. |
 | `github-project-status-field-id-format` | `bkit.githubProject` is configured but `statusFieldId` holds a GraphQL node id (`PVTSSF_…`) or non-number — `projects_write` needs the numeric field id, so board sync silently no-ops. Re-derive via `gh api /orgs/<org>/projectsV2/<number>/fields`. |
 | `dep-updater-none` / `-renovate` / `-dependabot` | Optional post-install decision — which dependency updater is wired. `none` nudges `bkit install --dependency=renovate` or `--dependency=dependabot` (mutually exclusive). See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --auto=<variant>`; `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
-| `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `OPENROUTER_API_KEY`; `OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
+| `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
@@ -417,7 +417,7 @@ Three capabilities **opt-in** — never wired by plain host/tooling install. Def
 <!-- prettier-ignore -->
 | Decision | Default | Opt-in command | Advisory when unset |
 | --- | --- | --- | --- |
-| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`) | `tracker-setup-none` |
+| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`BKIT_LINEAR_API_KEY`) | `tracker-setup-none` |
 | **Dependency updater** | none (no auto dep PRs) | `bkit install --dependency=renovate` (recommended) **or** `--dependency=dependabot` — mutually exclusive | `dep-updater-none` |
 | **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\|cursor\|opencode` — installs `bkit-cloud.yml` (claude + opencode jobs, secret-gated) + cloud env scaffolding (cloud-bootstrap.sh, Cursor Dockerfile/environment.json) | `cloud-router-none` |
 
@@ -425,14 +425,14 @@ Three capabilities **opt-in** — never wired by plain host/tooling install. Def
 
 - **Tracker** wires real credentials and MCP servers into workflows — consumer must choose provider; bkit can't guess.
 - **Dependency updater** requires deliberate choice between two tools (Renovate needs one-time GitHub App install that can't be scripted). Shipping one by default forces a tool consumer may not want and, for Renovate, creates broken onboarding PR if App installed before config reaches default branch (see `docs/deployments.md` § GitHub Actions pinning).
-- **Cloud agents** install phase-routed `bkit-cloud.yml` (auto-dispatches bkit-ship on CI pass, bkit-debug on CI fail; design/plan/build via `workflow_dispatch`) plus cloud env scaffolding (`.claude/hooks/cloud-bootstrap.sh`, `.cursor/Dockerfile`, `.cursor/environment.json`). Workflow carries claude job and opencode job, each runtime-gated on provider secret — inert without key: claude needs `ANTHROPIC_API_KEY` (+ Claude GitHub App), opencode needs `OPENCODE_PROVIDER_KEY`. Both need GitHub Actions write permissions, GitHub tracker, and (Cursor half) dashboard trigger — tracker itself opt-in. Env scaffolding inert until Claude/Cursor cloud env wired in dashboard. Autonomous routing by default, wired to unconfigured tracker, is wrong default — install without `--auto` ships zero cloud footprint.
+- **Cloud agents** install phase-routed `bkit-cloud.yml` (auto-dispatches bkit-ship on CI pass, bkit-debug on CI fail; design/plan/build via `workflow_dispatch`) plus cloud env scaffolding (`.claude/hooks/cloud-bootstrap.sh`, `.cursor/Dockerfile`, `.cursor/environment.json`). Workflow carries claude job and opencode job, each runtime-gated on provider secret — inert without key: claude needs `BKIT_ANTHROPIC_API_KEY` (+ Claude GitHub App), opencode needs `OPENCODE_PROVIDER_KEY`. Both need GitHub Actions write permissions, GitHub tracker, and (Cursor half) dashboard trigger — tracker itself opt-in. Env scaffolding inert until Claude/Cursor cloud env wired in dashboard. Autonomous routing by default, wired to unconfigured tracker, is wrong default — install without `--auto` ships zero cloud footprint.
 
 **How to decide:**
 
 1. Run `bkit install --claude --cursor --tooling` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-none`, `cloud-router-none` if undecided.
 2. Pick tracker: `bkit install --tracker=github` (or `linear`). Persisted to `bkit.issueTracker`; future installs preserve (switching free).
 3. Pick dependency updater: `bkit install --dependency=renovate` (or `--dependency=dependabot`). Persisted to `bkit.depUpdater`. Renovate: re-run after merging config to default branch for App-install URL (Phase B).
-4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`ANTHROPIC_API_KEY`) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
+4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`BKIT_ANTHROPIC_API_KEY`) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
 5. **To opt out and silence nudge**, set field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). Advisory stays quiet.
 
 All three reversible — re-run install with relevant flag. Renovate ↔ Dependabot mutually exclusive: bkit refuses one while other's config present, with cleanup advisory.
@@ -448,7 +448,7 @@ bkit doctor
 
 Use `bkit doctor` to:
 
-- Check whether `GH_BKIT_TOKEN_INSTALL` is set in shell and on GitHub repo.
+- Check whether `BKIT_GH_TOKEN_INSTALL` is set in shell and on GitHub repo.
 - Surface `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
 - Preview all advisories `bkit install` would show post-install, without triggering writes.
 - Verify environment ready before `bkit install` on new machine.
@@ -504,7 +504,7 @@ Bare uninstall removes bkit-managed files and strips bkit-managed blocks, but **
 
 ## Phase 3 exit-1 and recovery
 
-When `bkit install` detects **blocker-severity** finding in Phase 3 (e.g. `ci.yml` missing `GH_BKIT_TOKEN_INSTALL` env mapping with `.npmrc` referencing token), exits 1 and prints single-line recovery command:
+When `bkit install` detects **blocker-severity** finding in Phase 3 (e.g. `ci.yml` missing `BKIT_GH_TOKEN_INSTALL` env mapping with `.npmrc` referencing token), exits 1 and prints single-line recovery command:
 
 ```
 [bkit-install] 1 Phase 3 blocker(s) detected. Recovery:

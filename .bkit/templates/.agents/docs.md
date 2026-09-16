@@ -37,7 +37,7 @@
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
 | `docs/roadmap.jsonl` | ● | ● | ● | ● | ● | Issue-state ledger — appended at every phase close. Append-only. |
-| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Generated board with best-next-step analysis, projected from two inputs: `docs/roadmap.jsonl` (bkit phase per FID) and the tracker snapshot (every open issue). |
+| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Generated board from `docs/roadmap.jsonl` + tracker snapshot; three consumer `## Notes` blocks (above bkit, between bkit and tracker, last after analysis) are never overwritten; plus best-next-step analysis. |
 | `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |

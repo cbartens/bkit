@@ -52,8 +52,15 @@ const SPEC_FILE = ".bkit/workflows.md";
 const ALL_FILES = [...WORKFLOW_FILES, SPEC_FILE] as const;
 
 const MARKER = "<!-- bkit:generated -->";
+const CUT_TOKEN = "bkit:ignore-earlier";
+const CUT_MARKER = `<!-- ${CUT_TOKEN} -->`;
 const FENCE_RE = /^[ \t]*```comment$/;
 const TOTAL_EXPECTED_FENCES = 84;
+
+// The cut steps are the ONLY sanctioned place the cut token may appear: one per
+// join into each named stream. Shared by the point-of-use check and the
+// no-self-cut check so the two cannot disagree about how many are legitimate.
+const CUT_STEPS = { ISSUE_TEXT: 5, RELATED_ISSUE_TEXT: 6 } as const;
 
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
 
@@ -85,8 +92,6 @@ describe("every comment template is stamped bkit:generated", () => {
 });
 
 describe("both filters are applied at the point of use", () => {
-  const CUT_MARKER = "<!-- bkit:ignore-earlier -->";
-
   // The point of use is the step that names the joined stream: `ISSUE_TEXT` for
   // the input artifact, `RELATED_ISSUE_TEXT` per hit in the related-issues
   // sweep. Counted by phrase rather than per line, because the sweep spreads its
@@ -94,9 +99,7 @@ describe("both filters are applied at the point of use", () => {
   const occurrences = (phrase: string) =>
     WORKFLOW_FILES.reduce((sum, rel) => sum + read(rel).split(phrase).length - 1, 0);
 
-  const EXPECTED = { ISSUE_TEXT: 5, RELATED_ISSUE_TEXT: 6 } as const;
-
-  for (const [variable, count] of Object.entries(EXPECTED)) {
+  for (const [variable, count] of Object.entries(CUT_STEPS)) {
     it(`${variable}: ${count} joins, each dropping ${MARKER} and applying the cut`, () => {
       expect(occurrences(`into \`${variable}\``), "join step count").toBe(count);
       expect(
@@ -109,6 +112,50 @@ describe("both filters are applied at the point of use", () => {
       ).toBe(count);
     });
   }
+});
+
+describe("nothing bkit writes can carry the cut token", () => {
+  // A line that merely NAMES the cut token is enough to ship a real marker: a
+  // comment template narrating which comments it kept, a prose aside in a step's
+  // free text, a subagent prompt explaining the mechanism. The token then lands
+  // in a posted comment or an edited issue body, and the NEXT run's cut fires on
+  // bkit's own output and deletes the human context above it. The bkit:generated
+  // filter is not a backstop — it drops comments only, never an issue body, and
+  // never a sweep hit inside RELATED_ISSUES.
+  const SANCTIONED = Object.values(CUT_STEPS).reduce((a, b) => a + b, 0);
+  const CUT_STEP_RE = new RegExp(
+    `\\*\\*If\\*\\* \`(${Object.keys(CUT_STEPS).join("|")})\` contains marker \`${CUT_MARKER}\``,
+  );
+
+  const PROMPT_DIR = ".bkit/prompts";
+  const PROMPT_FILES = fs
+    .readdirSync(path.join(REPO_ROOT, PROMPT_DIR))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => `${PROMPT_DIR}/${name}`);
+
+  const mentions = (rel: string) => read(rel).split(CUT_TOKEN).length - 1;
+
+  it(`workflow files mention ${CUT_TOKEN} exactly ${SANCTIONED} times`, () => {
+    const total = WORKFLOW_FILES.reduce((sum, rel) => sum + mentions(rel), 0);
+    expect(total).toBe(SANCTIONED);
+  });
+
+  for (const rel of WORKFLOW_FILES) {
+    it(`${rel}: every ${CUT_TOKEN} line is a cut step`, () => {
+      const offenders = read(rel)
+        .split("\n")
+        .map((line, i) => ({ line, n: i + 1 }))
+        .filter(({ line }) => line.includes(CUT_TOKEN) && !CUT_STEP_RE.test(line))
+        .map(({ line, n }) => `${rel}:${n}: ${line.trim().slice(0, 80)}…`);
+      expect(offenders, "cut token outside a cut step ships a real marker").toEqual([]);
+    });
+  }
+
+  it(`no subagent prompt mentions ${CUT_TOKEN}`, () => {
+    expect(PROMPT_FILES.length, `${PROMPT_DIR} is empty`).toBeGreaterThan(0);
+    const offenders = PROMPT_FILES.filter((rel) => mentions(rel) > 0);
+    expect(offenders, "a subagent that names the token writes it into its artifact").toEqual([]);
+  });
 });
 
 describe("no comment-fetch call site filters or cuts", () => {

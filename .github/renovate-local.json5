@@ -25,14 +25,14 @@
   // Private-registry read-auth anchor for npm.pkg.github.com.
   // bkit itself does not depend on @cbartens/bkit, so this stays inert here — but
   // it models the shipped pattern: consumers uncomment the `token:` line after
-  // adding GH_BKIT_TOKEN_INSTALL as a Mend repository secret. It lives in this
+  // adding BKIT_GH_TOKEN_INSTALL as a Mend repository secret. It lives in this
   // consumer-owned file (not the canonical-overwrite renovate.json5) so the
   // activation survives `bkit upgrade`; Renovate merges hostRules across presets.
   hostRules: [
     {
       matchHost: "npm.pkg.github.com",
       hostType: "npm",
-      // token: "{{ secrets.GH_BKIT_TOKEN_INSTALL }}",
+      // token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
     },
   ],
 

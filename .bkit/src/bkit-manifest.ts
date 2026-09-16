@@ -733,7 +733,7 @@ const CI_MANIFEST: ManifestEntry[] = [
 //
 //   cloud=claude (tracker=github):
 //   - bkit-cloud.yml        — phase-routed GitHub Action; carries BOTH claude + opencode jobs,
-//                              runtime-gated by secret presence. Requires ANTHROPIC_API_KEY +
+//                              runtime-gated by secret presence. Requires BKIT_ANTHROPIC_API_KEY +
 //                              Claude GitHub App + Actions write perms (for claude job).
 //   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).

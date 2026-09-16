@@ -90,5 +90,4 @@ playwright/.auth/
 # Local MCP / agent secrets — never commit
 .bkit/.env
 
-
 # <!-- bkit:end -->

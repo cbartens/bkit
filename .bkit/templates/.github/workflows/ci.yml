@@ -37,9 +37,9 @@ jobs:
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #
-    # GH_BKIT_TOKEN_INSTALL is declared at the job level so $GH_BKIT_TOKEN_INSTALL is available to the
+    # BKIT_GH_TOKEN_INSTALL is declared at the job level so $BKIT_GH_TOKEN_INSTALL is available to the
     # install step's `pnpm config set` (the REQUIRED GH Packages auth — pnpm >=10.34.3
-    # 401s on a project-.npmrc ${GH_BKIT_TOKEN_INSTALL} env-substitution) and to any later
+    # 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} env-substitution) and to any later
     # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
     # registry mapping; `pnpm config set` writes the shell-expanded literal token into
     # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
@@ -60,7 +60,7 @@ jobs:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
-      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
     # bkit:end verbose-ci-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -204,12 +204,12 @@ jobs:
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         # Write the GH Packages auth token into pnpm's user-level config before install
-        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN_INSTALL} ref).
+        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} ref).
         run: |
-          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
+          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
           pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 
       # Static checks first — they read the source tree and must scan it CLEAN.
       # Vitest/build run AFTER (below): they write coverage, dist/, and other
@@ -303,7 +303,7 @@ jobs:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       NODE_OPTIONS: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '--trace-warnings --trace-deprecation' || '' }}
-      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -391,10 +391,10 @@ jobs:
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: |
-          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
+          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
           pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
       # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — REMOTE `db push` belongs in `bkit-tests-migration`, NOT here

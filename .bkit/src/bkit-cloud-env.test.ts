@@ -133,13 +133,13 @@ describe("resolveCloudEnvVars", () => {
     write(
       ".bkit/.env",
       [
-        "GH_BKIT_TOKEN=from_bkit_env",
-        "ANTHROPIC_API_KEY=sk-should-be-dropped",
+        "BKIT_GH_TOKEN=from_bkit_env",
+        "BKIT_ANTHROPIC_API_KEY=sk-should-be-dropped",
         "UPSTASH_REDIS_REST_URL=redis://dropped",
         "EMPTY_VAR=",
       ].join("\n"),
     );
-    write("apps/web/.env.local", ["FOO=bar", "GH_BKIT_TOKEN=override_wins"].join("\n"));
+    write("apps/web/.env.local", ["FOO=bar", "BKIT_GH_TOKEN=override_wins"].join("\n"));
 
     const res = resolveCloudEnvVars(tmpDir);
     const map = Object.fromEntries(res.included);
@@ -147,14 +147,14 @@ describe("resolveCloudEnvVars", () => {
     expect(res.hasEnvrc).toBe(true);
     expect(res.sources).toEqual([".bkit/.env", "apps/web/.env.local"]);
     expect(map["FOO"]).toBe("bar");
-    expect(map["GH_BKIT_TOKEN"]).toBe("override_wins"); // later source wins
+    expect(map["BKIT_GH_TOKEN"]).toBe("override_wins"); // later source wins
     expect(res.unset).toContain("UPSTASH_REDIS_REST_URL");
     expect(map["UPSTASH_REDIS_REST_URL"]).toBeUndefined();
-    expect(res.hijackDropped).toContain("ANTHROPIC_API_KEY");
-    expect(map["ANTHROPIC_API_KEY"]).toBeUndefined();
+    expect(res.hijackDropped).toContain("BKIT_ANTHROPIC_API_KEY");
+    expect(map["BKIT_ANTHROPIC_API_KEY"]).toBeUndefined();
     expect(res.emptySkipped).toContain("EMPTY_VAR");
-    // GH_BKIT_TOKEN present → not a placeholder; GH_BKIT_TOKEN_INSTALL absent → placeholder.
-    expect(res.placeholders).toEqual(["GH_BKIT_TOKEN_INSTALL"]);
+    // BKIT_GH_TOKEN present → not a placeholder; BKIT_GH_TOKEN_INSTALL absent → placeholder.
+    expect(res.placeholders).toEqual(["BKIT_GH_TOKEN_INSTALL"]);
   });
 
   it("returns an empty resolution (both baseline placeholders) when no .envrc exists", () => {
@@ -162,18 +162,18 @@ describe("resolveCloudEnvVars", () => {
     const res = resolveCloudEnvVars(tmpDir);
     expect(res.hasEnvrc).toBe(false);
     expect(res.included).toEqual([]);
-    expect(res.placeholders).toEqual(["GH_BKIT_TOKEN", "GH_BKIT_TOKEN_INSTALL"]);
+    expect(res.placeholders).toEqual(["BKIT_GH_TOKEN", "BKIT_GH_TOKEN_INSTALL"]);
   });
 });
 
 describe("renderCloudEnvBlock", () => {
   it("emits resolved lines, placeholder lines for absent baseline, and appends autocompact", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real");
     const block = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir));
     const lines = block.split("\n");
-    expect(lines).toContain("GH_BKIT_TOKEN=real");
-    expect(lines).toContain("GH_BKIT_TOKEN_INSTALL=<classic PAT with read:packages>");
+    expect(lines).toContain("BKIT_GH_TOKEN=real");
+    expect(lines).toContain("BKIT_GH_TOKEN_INSTALL=<classic PAT with read:packages>");
     expect(lines).toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70");
   });
 
@@ -191,14 +191,14 @@ describe("renderCloudEnvNotes", () => {
     write(".envrc", ["dotenv_if_exists .bkit/.env", "unset SECRET_DROP"].join("\n"));
     write(
       ".bkit/.env",
-      ["GH_BKIT_TOKEN=x", "ANTHROPIC_API_KEY=y", "SECRET_DROP=z", "EMPTY="].join("\n"),
+      ["BKIT_GH_TOKEN=x", "BKIT_ANTHROPIC_API_KEY=y", "SECRET_DROP=z", "EMPTY="].join("\n"),
     );
     const notes = renderCloudEnvNotes(resolveCloudEnvVars(tmpDir));
     expect(notes).toContain("resolved");
     expect(notes).toContain("SECRET_DROP");
-    expect(notes).toContain("ANTHROPIC_API_KEY");
+    expect(notes).toContain("BKIT_ANTHROPIC_API_KEY");
     expect(notes).toContain("EMPTY");
-    expect(notes).toContain("GH_BKIT_TOKEN_INSTALL"); // placeholder
+    expect(notes).toContain("BKIT_GH_TOKEN_INSTALL"); // placeholder
   });
 
   it("emits a no-.envrc message when none exists", () => {
@@ -526,35 +526,35 @@ describe("cloudAutoModeEnvironment / renderCloudUserSettings", () => {
 });
 
 describe("cursorCloudPolicy", () => {
-  it("linear tracker: prepends LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
+  it("linear tracker: prepends BKIT_LINEAR_API_KEY, keeps GH baseline, no autocompact constant", () => {
     const p = cursorCloudPolicy("linear");
     expect(p.baseline.map(([n]) => n)).toEqual([
-      "LINEAR_API_KEY",
-      "GH_BKIT_TOKEN",
-      "GH_BKIT_TOKEN_INSTALL",
+      "BKIT_LINEAR_API_KEY",
+      "BKIT_GH_TOKEN",
+      "BKIT_GH_TOKEN_INSTALL",
     ]);
     expect(p.constants).toEqual([]);
   });
 
-  it("github tracker: GH baseline only (no LINEAR_API_KEY), no autocompact constant", () => {
+  it("github tracker: GH baseline only (no BKIT_LINEAR_API_KEY), no autocompact constant", () => {
     const p = cursorCloudPolicy("github");
-    expect(p.baseline.map(([n]) => n)).toEqual(["GH_BKIT_TOKEN", "GH_BKIT_TOKEN_INSTALL"]);
+    expect(p.baseline.map(([n]) => n)).toEqual(["BKIT_GH_TOKEN", "BKIT_GH_TOKEN_INSTALL"]);
     expect(p.constants).toEqual([]);
   });
 
-  it("renders a LINEAR_API_KEY placeholder for linear but not for github, and never autocompact", () => {
+  it("renders a BKIT_LINEAR_API_KEY placeholder for linear but not for github, and never autocompact", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
     const linear = cursorCloudPolicy("linear");
     const linearBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, linear), linear);
-    expect(linearBlock).toContain("GH_BKIT_TOKEN=real");
-    expect(linearBlock).toMatch(/^LINEAR_API_KEY=/m);
+    expect(linearBlock).toContain("BKIT_GH_TOKEN=real");
+    expect(linearBlock).toMatch(/^BKIT_LINEAR_API_KEY=/m);
     expect(linearBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
 
     const github = cursorCloudPolicy("github");
     const githubBlock = renderCloudEnvBlock(resolveCloudEnvVars(tmpDir, github), github);
-    expect(githubBlock).not.toContain("LINEAR_API_KEY");
+    expect(githubBlock).not.toContain("BKIT_LINEAR_API_KEY");
     expect(githubBlock).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
   });
 });
@@ -642,30 +642,30 @@ describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
 
   it("writes a sentinel-free, chmod-600 doc naming the repo", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real");
     expect(writeCursorCloudDoc(tmpDir, TOKENS, "linear")).toBe(true);
     const dst = path.join(tmpDir, ".cursor", "cloud.md");
     const out = fs.readFileSync(dst, "utf-8");
     expect(out).not.toMatch(/@@[A-Z_]+@@/);
     expect(out).toContain("test-repo");
-    expect(out).toContain("GH_BKIT_TOKEN=real");
+    expect(out).toContain("BKIT_GH_TOKEN=real");
     expect(fs.statSync(dst).mode & 0o777).toBe(0o600);
   });
 
-  it("linear tracker emits LINEAR_API_KEY; github tracker does not; neither emits autocompact", () => {
+  it("linear tracker emits BKIT_LINEAR_API_KEY; github tracker does not; neither emits autocompact", () => {
     write(".envrc", "dotenv_if_exists .bkit/.env");
-    write(".bkit/.env", "GH_BKIT_TOKEN=real");
+    write(".bkit/.env", "BKIT_GH_TOKEN=real");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "linear");
     const linearOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
-    expect(linearOut).toContain("LINEAR_API_KEY=");
+    expect(linearOut).toContain("BKIT_LINEAR_API_KEY=");
     expect(linearOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
 
     writeCursorCloudDoc(tmpDir, TOKENS, "github");
     const githubOut = fs.readFileSync(path.join(tmpDir, ".cursor", "cloud.md"), "utf-8");
-    // The env-var paste block must not carry LINEAR_API_KEY on the GitHub tracker. (The
+    // The env-var paste block must not carry BKIT_LINEAR_API_KEY on the GitHub tracker. (The
     // prose still mentions LINEAR_ISSUE_ID as an injected var — assert on the block line.)
-    expect(githubOut).not.toMatch(/^LINEAR_API_KEY=/m);
+    expect(githubOut).not.toMatch(/^BKIT_LINEAR_API_KEY=/m);
     expect(githubOut).not.toContain("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE");
   });
 

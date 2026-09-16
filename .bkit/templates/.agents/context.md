@@ -39,7 +39,7 @@ Unnamed block => omit the name segment (`context-runtime-{DEBUG_ATTEMPT}.md`). U
 
 **Enabling:** copy an example below `<!-- bkit:end -->`, set env vars. **Tokens (local):** typically `apps/web/.env.local` via `.envrc`. App/stack creds, not `.bkit/.env`. Self-gate — missing CLI / token → `[context-fetch:<name>] skipped — …` stderr, exit 0. Enable none → `<!-- context-fetch:none intentional -->` after `<!-- bkit:end -->`. No such lane → `<!-- context-fetch:none e2e -->` (space-separated contexts). Upgrade does not copy examples down.
 
-**Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud (headless, never see `.bkit/.env`). Non-interactive auth — dashboard env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `TAVILY_API_KEY`), never `vercel login`. Secret tokens → cloud dashboard; non-secret selectors (scope / project ref / `--environment`) commit in copied block so cloud agents inherit them. Token identical preview/prod — selector only changes. Other backends (`gcloud` / `aws` / `datadog`) self-gate on needed credential.
+**Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud (headless, never see `.bkit/.env`). Non-interactive auth — dashboard env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `BKIT_TAVILY_API_KEY`), never `vercel login`. Secret tokens → cloud dashboard; non-secret selectors (scope / project ref / `--environment`) commit in copied block so cloud agents inherit them. Token identical preview/prod — selector only changes. Other backends (`gcloud` / `aws` / `datadog`) self-gate on needed credential.
 
 **Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on credential/tool (`command -v <tool>` + token check; miss → `[context-fetch:<name>] skipped — …` stderr, `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
 
@@ -247,7 +247,7 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
 ```bash
 # External signal (read-only): known upstream causes for third-party library error
 # strings, dependency-version regressions, vendor API changes, toolchain quirks.
-# Enable: set TAVILY_API_KEY. Example only — any search API that returns url +
+# Enable: set BKIT_TAVILY_API_KEY. Example only — any search API that returns url +
 # snippet works. Operator cred, same place as other context-fetch tokens (direnv /
 # app env locally; cloud dashboard for headless). Free tier 1000 credits/month, no card;
 # search_depth advanced = 2 credits/call, basic = 1. Key: https://app.tavily.com
@@ -255,14 +255,14 @@ curl -sG "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/analytics/
 QUERY="${QUERY:-}"
 [ -n "$QUERY" ] \
   || { echo "[context-fetch:tavily] skipped — QUERY unset; substitute error-signature keywords into this block before running it" >&2; exit 0; }
-[ -n "${TAVILY_API_KEY:-}" ] \
-  || { echo "[context-fetch:tavily] skipped — TAVILY_API_KEY unset. FALLBACK: run this same query with your host's own web tools (Claude WebSearch + WebFetch; Cursor / OpenCode equivalent) and record url + verbatim quote per claim. No such tool available => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2; exit 0; }
+[ -n "${BKIT_TAVILY_API_KEY:-}" ] \
+  || { echo "[context-fetch:tavily] skipped — BKIT_TAVILY_API_KEY unset. FALLBACK: run this same query with your host's own web tools (Claude WebSearch + WebFetch; Cursor / OpenCode equivalent) and record url + verbatim quote per claim. No such tool available => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2; exit 0; }
 RESP=$(mktemp)
 # include_answer stays false: a generated summary has no quotable source and cannot
 # satisfy the url + verbatim-quote rule. include_raw_content:true adds full page text
 # (~15k chars/result) when the extracted snippet is not enough.
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' --max-time 40 https://api.tavily.com/search \
-  -H "Authorization: Bearer ${TAVILY_API_KEY}" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${BKIT_TAVILY_API_KEY}" -H "Content-Type: application/json" \
   -d "$(jq -nc --arg q "$QUERY" '{query:$q, search_depth:"advanced", max_results:5, include_raw_content:false, include_answer:false}')")
 if [ "$CODE" != "200" ]; then
   echo "[context-fetch:tavily] skipped — api.tavily.com HTTP ${CODE:-000}: $(jq -r '.detail.error // .detail // "no body"' "$RESP" 2>/dev/null | head -c 140). 000 = host unreachable (add tavily.com to the cloud Trusted-egress allowlist), 401 = bad key, 429/432 = credits exhausted. FALLBACK: re-run this query with your host's own web tools and record url + verbatim quote per claim. Unavailable => external signal is UNCHECKED this attempt, NEVER 'no known upstream issue'." >&2

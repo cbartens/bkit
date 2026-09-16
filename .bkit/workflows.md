@@ -43,7 +43,7 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
-| `/bkit-roadmap` | no | n/a | Regenerated `docs/roadmap.md` (`roadmap-status` + `roadmap-analysis` blocks) |
+| `/bkit-roadmap` | no | n/a | Regenerated `docs/roadmap.md` (`roadmap-status` + `tracker` tables; `## Notes` blocks carried through) |
 
 ## Workflow Authoring Rules
 
@@ -996,7 +996,7 @@ On-demand refresh of `docs/roadmap.md`. No args, no interaction, no hard stop. T
 
 **Why everything whole-board lives here.** A workflow running on one issue may mutate only that issue. Three operations break that rule by nature and therefore belong to this command alone: the tracker read (touches every open issue), the reverse label-sync (writes labels on issues other than the one in hand — it moved out of ship's close for exactly this reason), and the analysis pass.
 
-**Two blocks, two axes, deliberately not reconciled.** `roadmap-status` is what bkit has done, from the ledger. `bkit:tracker` is what the team says, from `docs/tracker.jsonl`. The analysis needs every open issue PRESENT so it can weigh them; it does not need the two axes aligned, and dropping that reconciliation is what keeps this small — it also removed the key-namespace normalisation and additive-merge from the fold's jq. Duplication between the blocks is accepted: labels are rendered so a `bkit:*` phase is visible on both.
+**Two blocks, two axes, deliberately not reconciled.** `roadmap-status` is what bkit has done, from the ledger. `bkit:tracker` is what the team says, from `docs/tracker.jsonl`. Three consumer `## Notes` blocks sit around those lists (above bkit, between bkit and tracker, last after analysis) and are carried through verbatim — never overwritten. The analysis needs every open issue PRESENT so it can weigh them; it does not need the two axes aligned, and dropping that reconciliation is what keeps this small — it also removed the key-namespace normalisation and additive-merge from the fold's jq. Duplication between the blocks is accepted: labels are rendered so a `bkit:*` phase is visible on both.
 
 **Sections come from the values present, never a fixed list.** GitHub project columns and Linear workflow states are both user-defined. `### Other` catches an issue that is not on the project board, or on it with Status unset — without it those issues would silently vanish, defeating the point.
 

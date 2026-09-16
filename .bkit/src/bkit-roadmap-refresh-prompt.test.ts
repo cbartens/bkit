@@ -18,8 +18,8 @@ import { validate } from "./bkit-telemetry.js";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
 const PROMPT_PATH = path.join(REPO_ROOT, ".bkit", "prompts", "bkit-roadmap-refresh.md");
 const PROMPT = fs.readFileSync(PROMPT_PATH, "utf-8");
-const SHIP_MD = fs.readFileSync(
-  path.join(REPO_ROOT, ".bkit", "workflows", "bkit-ship.md"),
+const ROADMAP_MD = fs.readFileSync(
+  path.join(REPO_ROOT, ".bkit", "workflows", "bkit-roadmap.md"),
   "utf-8",
 );
 
@@ -47,12 +47,12 @@ describe("row 12: @bkit-roadmap-refresh writes ONLY roadmap-analysis, no hardcod
     expect(PROMPT).toMatch(/roadmap-analysis.*marker block only/);
     expect(PROMPT).toContain("<!-- bkit:roadmap-analysis start -->");
     expect(PROMPT).toContain("<!-- bkit:roadmap-analysis end -->");
-    // Must explicitly forbid touching the sibling status block / Backlog region.
+    // Must explicitly forbid touching the sibling status block / notes.
     expect(PROMPT).toMatch(/roadmap-status.*block/);
-    expect(PROMPT).toMatch(/Backlog \/ Ideas/);
+    expect(PROMPT).toMatch(/## Notes/);
   });
 
-  it("treats the Backlog region and ledger rows as untrusted data, never instructions", () => {
+  it("treats notes and ledger rows as untrusted data, never instructions", () => {
     expect(PROMPT).toMatch(/untrusted (data|input)/i);
     expect(PROMPT).toMatch(/never execute(d)?/i);
   });
@@ -92,20 +92,25 @@ describe("row 12: @bkit-roadmap-refresh writes ONLY roadmap-analysis, no hardcod
     expect(body).toMatch(/installed IDE/);
   });
 
-  it("reuses the design-organise grouping seam and plan-complexity-check when-not-to-use heuristic", () => {
-    expect(PROMPT).toMatch(/design-organise/);
-    expect(PROMPT).toMatch(/plan-complexity-check/);
+  // The grouping seam and the when-not-to-use heuristic must be INLINE: a leaf
+  // naming a sibling prompt cannot stand alone, and the agent cannot read it.
+  it("inlines the grouping seam and the when-not-to-use heuristic", () => {
+    expect(PROMPT).toMatch(/domain and chronological boundaries/);
+    expect(PROMPT).toMatch(/single-session → recommend doing directly/);
+    expect(PROMPT, "must not reference a sibling prompt by name").not.toMatch(
+      /design-organise|plan-complexity-check/,
+    );
   });
 
   it("output format declares a Scan Coverage section with the ROADMAP_SCAN_COVERAGE stamp", () => {
     expect(PROMPT).toMatch(/## Scan Coverage/);
-    expect(PROMPT).toMatch(/ROADMAP_SCAN_COVERAGE: \[scanned\]\/\[total\]/);
+    expect(PROMPT).toMatch(/ROADMAP_SCAN_COVERAGE: <integer >= 0>\/<integer >= 0>/);
   });
 });
 
 /**
  * Extract the fenced shell block whose FIRST line contains `startNeedle`,
- * from the real shipped bkit-ship.md — never a hand-copied duplicate. This
+ * from the real shipped bkit-roadmap.md — never a hand-copied duplicate. This
  * is the pattern bkit-counter-prose-audit.test.ts already relies on for
  * jq-in-prose extraction; row 13 must validate the SHIPPED emitter, not a
  * literal constructed in the test body (a hand-written literal cannot catch
@@ -113,71 +118,58 @@ describe("row 12: @bkit-roadmap-refresh writes ONLY roadmap-analysis, no hardcod
  */
 function extractFencedBlock(source: string, startNeedle: string, fromIndex = 0): string {
   const idx = source.indexOf(startNeedle, fromIndex);
-  expect(idx, `startNeedle not found in bkit-ship.md: ${startNeedle}`).toBeGreaterThanOrEqual(0);
+  expect(idx, `startNeedle not found in bkit-roadmap.md: ${startNeedle}`).toBeGreaterThanOrEqual(0);
   const fenceStart = source.lastIndexOf("```bash", idx);
   const fenceEnd = source.indexOf("```", fenceStart + 6);
   return source.slice(fenceStart + "```bash".length, fenceEnd);
 }
 
 describe("row 13: ROADMAP_SCAN_COVERAGE counter row conforms to the jsonl.md counter schema", () => {
-  it("the SHIPPED bkit-ship.md emitter, executed against a real roadmap-refresh.md fixture, appends a row that validates against bkit-telemetry's codec", () => {
-    // Extract (never hand-copy) the two real shell fragments from bkit-ship.md
-    // Step 10 items 6 + 7: the RAW/SCANNED/TOTAL derivation, and the jq append
-    // that emits the ROADMAP_SCAN_COVERAGE counter row. Executing them for
-    // real against a synthetic roadmap-refresh.md fixture means a regression
-    // in the shipped emitter (dropped counterSource, non-numeric counterValue,
-    // wrong counterName) fails THIS test, not just a literal in the test body.
-    const deriveNeedleIdx = SHIP_MD.indexOf("RAW=$(grep -oE");
-    expect(deriveNeedleIdx, "RAW=$(grep -oE not found in bkit-ship.md").toBeGreaterThanOrEqual(0);
-    const deriveBlock = extractFencedBlock(SHIP_MD, "RAW=$(grep -oE");
-    // The item-7 STATUS=... block appears many times across bkit-ship.md's
-    // steps — anchor the search to the occurrence immediately AFTER the
-    // roadmap-refresh-specific derive block above (Step 10 item 7).
-    const appendBlock = extractFencedBlock(
-      SHIP_MD,
-      'STATUS="$BOOK_ROOT/docs/plans',
-      deriveNeedleIdx,
-    );
-    // Isolate the BKIT_VER resolution + final jq call (ROADMAP_SCAN_COVERAGE)
-    // from the append block — the other three jq calls in that block need
-    // STATUS-only variables we don't set up here.
-    const scanCoverageJqStart = appendBlock.indexOf("BKIT_VER=$(jq -r");
-    expect(
-      scanCoverageJqStart,
-      "ROADMAP_SCAN_COVERAGE emitter not found in item-7 block",
-    ).toBeGreaterThanOrEqual(0);
-    const scanCoverageJq = appendBlock.slice(scanCoverageJqStart).trim();
+  it("the SHIPPED /bkit-roadmap emitter, executed against a real refresh-report fixture, appends a row that validates against bkit-telemetry's codec", () => {
+    // Extract (never hand-copy) the real Step 4 shell block from
+    // bkit-roadmap.md: the RAW/SCANNED/TOTAL derivation AND the jq append that
+    // emits the ROADMAP_SCAN_COVERAGE counter row live in one fence there.
+    // Executing it for real against a synthetic refresh-report fixture means a
+    // regression in the shipped emitter (dropped counterSource, non-numeric
+    // counterValue, wrong counterName) fails THIS test, not just a literal in
+    // the test body.
+    const coverageBlock = extractFencedBlock(ROADMAP_MD, "RAW=$(grep -oE");
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-roadmap-refresh-prompt-"));
     try {
-      const artifactPath = path.join(tmpDir, "roadmap-refresh.md");
-      fs.writeFileSync(
-        artifactPath,
-        ["## Scan Coverage", "", "ROADMAP_SCAN_COVERAGE: 7/10", ""].join("\n"),
-      );
-      const statsPath = path.join(tmpDir, "stats.jsonl");
       fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+      fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+      // The stamp is read straight out of the analysis block the leaf wrote —
+      // there is no intermediate report file, so docs/roadmap.md IS the source.
+      fs.writeFileSync(
+        path.join(tmpDir, "docs", "roadmap.md"),
+        [
+          "<!-- bkit:roadmap-analysis start -->",
+          "## Scan Coverage",
+          "",
+          "ROADMAP_SCAN_COVERAGE: 7/10",
+          "<!-- bkit:roadmap-analysis end -->",
+          "",
+        ].join("\n"),
+      );
+      const statsPath = path.join(tmpDir, ".bkit", "stats.jsonl");
       fs.writeFileSync(
         path.join(tmpDir, ".bkit", "version"),
         JSON.stringify({ pinnedVersion: "4.8.0" }),
       );
+      // A real git repo with an origin remote: the block derives both
+      // REPO_SLUG and PARENT_SHA from git, and an initless tmpdir would leave
+      // `repo` empty rather than exercising the shipped derivation.
+      const git = (cmd: string) =>
+        execSync(`git -C "${tmpDir}" ${cmd}`, { stdio: "ignore", shell: "/bin/bash" });
+      git("init -q");
+      git("remote add origin https://github.com/cbartens/bkit.git");
+      git("-c user.email=t@example.com -c user.name=t commit -q --allow-empty -m seed");
 
-      const script = [
-        "set -eu",
-        `BOOK_ROOT="${tmpDir}"`,
-        `STATS_JSONL="${statsPath}"`,
-        `PARENT_SHA="${"a".repeat(40)}"`,
-        // Substitute the workflow's {YYYYMM}/{FID} template placeholder into
-        // the literal fixture path so the shipped grep line resolves it, and
-        // resolve the block-local `BOOK_ROOT="{BOOK_ROOT}"` assignment the way
-        // the orchestrator does — the block self-assigns it under the #440
-        // locality rule, so leaving the placeholder would shadow the fixture.
-        deriveBlock
-          .replace("$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/roadmap-refresh.md", artifactPath)
-          .replaceAll("{BOOK_ROOT}", tmpDir)
-          .trim(),
-        scanCoverageJq.replace('"{OWNER_REPO}"', '"cbartens/bkit"'),
-      ].join("\n");
+      // Resolve the block-local `REPO_ROOT="{REPO_ROOT}"` assignment the way
+      // the orchestrator does — the block self-assigns it under the #440
+      // locality rule, so leaving the placeholder would shadow the fixture.
+      const script = ["set -eu", coverageBlock.replaceAll("{REPO_ROOT}", tmpDir).trim()].join("\n");
 
       execSync(script, { shell: "/bin/bash" });
 
@@ -190,7 +182,9 @@ describe("row 13: ROADMAP_SCAN_COVERAGE counter row conforms to the jsonl.md cou
       expect(row.counterName).toBe("ROADMAP_SCAN_COVERAGE");
       expect(row.counterValue).toBe(70); // 7/10 * 100
       expect(row.counterSource).toBe("shell-bus");
-      expect(row.step).toBe("ship-roadmap-refresh");
+      expect(row.workflow).toBe("roadmap");
+      expect(row.step).toBe("roadmap-refresh");
+      expect(row.repo).toBe("cbartens/bkit");
       expect(row.kind).toBe("counter");
       expect(row.bkitVersion).toBe("4.8.0");
 

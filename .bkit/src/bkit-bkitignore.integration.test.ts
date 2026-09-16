@@ -151,8 +151,8 @@ describe("filterBkitIgnored — Tier-3 drift suppressed when file is in .bkitign
     const nonTier3: PreflightFinding = {
       id: "gh-bkit-token-unset-shell",
       severity: "advisory",
-      detect: "GH_BKIT_TOKEN_INSTALL is not set in the shell environment (undefined).",
-      action: "Export GH_BKIT_TOKEN_INSTALL.",
+      detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment (undefined).",
+      action: "Export BKIT_GH_TOKEN_INSTALL.",
     };
 
     const result = filterBkitIgnored([nonTier3], tmpDir);

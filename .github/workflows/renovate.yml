@@ -41,7 +41,7 @@ on:
     # fast no-op when nothing is due (Renovate exits in seconds outside its window).
     - cron: "17 6 * * *"
 
-# Least privilege: Renovate authenticates EVERY GitHub operation with GH_BKIT_TOKEN
+# Least privilege: Renovate authenticates EVERY GitHub operation with BKIT_GH_TOKEN
 # below (a fine-grained PAT or App token — NOT GITHUB_TOKEN, whose PRs do not trigger
 # downstream CI, so platformAutomerge / branch-protection would never fire). The job
 # GITHUB_TOKEN therefore needs no write scope.
@@ -84,7 +84,7 @@ jobs:
           # (Personal-account tokens only: Account permission "Email addresses: Read" lets
           # Renovate use your verified email as the git author — org-owned tokens have no
           # such permission, so set RENOVATE_GIT_AUTHOR below instead.)
-          token: ${{ secrets.GH_BKIT_TOKEN }}
+          token: ${{ secrets.BKIT_GH_TOKEN }}
         env:
           # Scope to THIS repo only — never org-wide autodiscover.
           RENOVATE_REPOSITORIES: ${{ github.repository }}
@@ -108,13 +108,13 @@ jobs:
           # Private-registry read auth for the restricted @cbartens/bkit package,
           # injected via env so the consumer-owned renovate-local.json5 needs NO
           # Mend-only "{{ secrets.* }}" templating (keep its token: line COMMENTED on
-          # self-hosted). GH_BKIT_TOKEN_INSTALL (read:packages) is already a repo Actions
+          # self-hosted). BKIT_GH_TOKEN_INSTALL (read:packages) is already a repo Actions
           # secret. Without this, lockfile regen 401s and every dep PR fails CI with
           # ERR_PNPM_OUTDATED_LOCKFILE. See docs/deployments.md § Renovate read-auth.
           RENOVATE_HOST_RULES: >-
-            [{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.GH_BKIT_TOKEN_INSTALL }}"}]
+            [{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.BKIT_GH_TOKEN_INSTALL }}"}]
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun || 'null' }}
-          # This env block deliberately declares NO ANTHROPIC_API_KEY / LINEAR_API_KEY
+          # This env block deliberately declares NO ANTHROPIC_API_KEY / BKIT_LINEAR_API_KEY
           # — the Renovate runner must never see them (docs/security.md § Supply-Chain
           # token isolation). Do not add them.

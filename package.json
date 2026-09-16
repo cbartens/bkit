@@ -94,7 +94,8 @@
     "githubProject": false,
     "opencodeProvider": "opencode-go",
     "opencodeProviders": [
-      "opencode-go"
+      "opencode-go",
+      "openrouter"
     ],
     "renovateRunner": "self",
     "capstoneJob": "bkit-tests-check",

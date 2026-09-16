@@ -96,7 +96,7 @@ One verb scheme across every step in `ci.yml`, so a red run can be triaged from 
 
 <!-- prettier-ignore -->
 | Verb | Means |
-| --- | --- |
+|---|---|
 | `Assert` | a red here is a real failure |
 | `Check` | looks and reports, cannot red the lane |
 | `Run` | invokes a named tool or suite |
@@ -411,7 +411,7 @@ Each of the five phase workflows' Step 2 (Worktree Setup) now also emits the dur
 
 A 4th `bkit_wait_ci` call site sits OUTSIDE the gate: `bkit-ship.md` Step 5's presence-only duplicate-dispatch probe. `bkit-ci-dispatch-gate-alignment.test.ts` keeps its negative gate assertions on `bkit-ship.md` and adds two contracts — the probe (one dispatch site, shim sourced before it, dispatch guarded on `CI_WAIT_RESULT`, `ship-revalidate-dispatch` row, head-anchored poll) and the gate-refusal re-entry (`REVALIDATE_REASON=gate-refusal` second trigger, sweep skipped, bounded by `MAX_REVALIDATE_ATTEMPT` singly defined in `bkit-counter-bus-config.sh`).
 
-`tests/cloud-bootstrap-preflight.bats` isolates the gh-preflight block inside `.claude/hooks/cloud-bootstrap.sh` (a tmp `CLAUDE_PROJECT_DIR` with no `pnpm-lock.yaml`/`.vale.ini`/`.agents/context.md` self-skips the rest of the hook) — covers: sanctioned `GH_TOKEN`/`GITHUB_TOKEN` env preferred over `gh auth login --with-token`; `RUNTIME_GITHUBCLI` recorded loudly every run; the dual-lane WARNING (non-blocking — SessionStart hooks cannot hard-stop a session) firing only when `GH_BKIT_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` are ALL unset.
+`tests/cloud-bootstrap-preflight.bats` isolates the gh-preflight block inside `.claude/hooks/cloud-bootstrap.sh` (a tmp `CLAUDE_PROJECT_DIR` with no `pnpm-lock.yaml`/`.vale.ini`/`.agents/context.md` self-skips the rest of the hook) — covers: sanctioned `GH_TOKEN`/`GITHUB_TOKEN` env preferred over `gh auth login --with-token`; `RUNTIME_GITHUBCLI` recorded loudly every run; the dual-lane WARNING (non-blocking — SessionStart hooks cannot hard-stop a session) firing only when `BKIT_GH_TOKEN`/`GH_TOKEN`/`GITHUB_TOKEN` are ALL unset.
 
 `BKIT_RUNTIME_SH` / `BKIT_CLOUD_BOOTSTRAP_SH` override the template-relative default script path (same convention as `BKIT_COUNTER_BUS`).
 

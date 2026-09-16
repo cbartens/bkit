@@ -132,7 +132,7 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`bkit-postinstall.t
 
 ## Phase 3 Token-Surface Detectors
 
-Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
+Phase 3 detects missing/misconfigured `BKIT_GH_TOKEN_INSTALL` at four surfaces; actionable advisory text. Detector names = audit trail:
 
 <!-- prettier-ignore -->
 | Detector | Surface |

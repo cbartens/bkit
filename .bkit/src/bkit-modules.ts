@@ -999,18 +999,18 @@ export function runCoreModule(ctx: ModuleContext): void {
       detect: "First install detected (.bkit-version was absent).",
       action:
         "Post-install steps:\n\n" +
-        "1. Add GH_BKIT_TOKEN_INSTALL to your GitHub Actions repository secrets:\n" +
+        "1. Add BKIT_GH_TOKEN_INSTALL to your GitHub Actions repository secrets:\n" +
         "   - Create a classic PAT with `read:packages` scope (fine-grained PATs are\n" +
         "     not currently supported by GitHub Packages npm registry).\n" +
         "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
-        "   - Name: GH_BKIT_TOKEN_INSTALL\n" +
+        "   - Name: BKIT_GH_TOKEN_INSTALL\n" +
         "   - See README.md ## Consumer CI auth for full setup.\n\n" +
         "2. Add a `.npmrc` at your repo root with the @cbartens registry mapping (the\n" +
         "   auth token is NOT stored here — it goes in pnpm's user-level config):\n" +
         "     @cbartens:registry=https://npm.pkg.github.com\n\n" +
         "3. Write the token into pnpm's user-level config (run once; CI does this in its\n" +
-        "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN_INSTALL} ref:\n" +
-        '     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"\n\n' +
+        "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} ref:\n" +
+        '     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
         "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
         "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
         "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
@@ -1463,7 +1463,7 @@ export function runCursorModule(ctx: ModuleContext): void {
   }
 
   // Post-install advisory: macOS GUI-isolation note.
-  // MCP token placeholders (${GH_BKIT_TOKEN}, ${LINEAR_API_KEY}, …) in .cursor/mcp.json are
+  // MCP token placeholders (${BKIT_GH_TOKEN}, ${BKIT_LINEAR_API_KEY}, …) in .cursor/mcp.json are
   // expanded by Cursor from the process environment. When Cursor is launched from the
   // Dock/Finder (launchd), it does NOT inherit the login-shell / direnv env — tokens
   // resolve empty and MCP calls fail with auth errors (#279/#280).
@@ -1471,20 +1471,20 @@ export function runCursorModule(ctx: ModuleContext): void {
     id: "cursor-gui-isolation",
     severity: "advisory",
     detect:
-      "Cursor's MCP token placeholders (${GH_BKIT_TOKEN}, …) resolve from process.env. " +
+      "Cursor's MCP token placeholders (${BKIT_GH_TOKEN}, …) resolve from process.env. " +
       "Dock/Finder-launched Cursor does not inherit the login-shell / direnv env.",
     action:
       "[cursor] Use `bkit cursor` to launch Cursor — it execs the binary directly with " +
       ".bkit/.env merged into the environment so MCP tokens resolve correctly. " +
       "Quit Cursor first (a running instance will not see the new env). " +
-      'Alternative: `launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"` (session-scoped; must re-run after reboot) ' +
+      'Alternative: `launchctl setenv BKIT_GH_TOKEN "$BKIT_GH_TOKEN"` (session-scoped; must re-run after reboot) ' +
       "then relaunch from Dock.",
   });
 
   // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/cloud.md`.
   // Twin of `.claude/cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
   // secret values resolved from `.envrc` under the Cursor env-var policy (Linear tracker
-  // adds LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
+  // adds BKIT_LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
   // `bkit check` drift — values are machine-local and expected to differ. Skipped on
   // dry-run (`bkit check`) so a read-only check never writes secrets. Upgrade regenerates
   // it via the same helper (see runUpgrade caller).
@@ -1523,8 +1523,8 @@ export function opencodeProviderId(providerKey: string): string {
 }
 
 /**
- * The provider secret env var name for a bkit provider key (`OPENROUTER_API_KEY`,
- * `OPENCODE_API_KEY`, ...). Empty string for an unknown key. Mirrors
+ * The provider secret env var name for a bkit provider key (`BKIT_OPENROUTER_API_KEY`,
+ * `BKIT_OPENCODE_API_KEY`, ...). Empty string for an unknown key. Mirrors
  * {@link opencodeProviderId}; used to compare a self-installed opencode.yml handler's `env:`
  * secret against the installed provider.
  */
@@ -1584,11 +1584,11 @@ export function detectOpencodeYmlProviderDrift(cwd: string): PreflightFinding | 
   // The handler's hardcoded `model: <providerId>/<model>` line (opencode `run --model`).
   const ymlModel = content.match(/^\s*model:\s*(\S+)/m)?.[1] ?? null;
   const ymlPrefix = ymlModel ? ymlModel.split("/")[0] : null;
-  // The handler's hardcoded provider secret — an `env:` key like OPENROUTER_API_KEY / OPENCODE_API_KEY.
+  // The handler's hardcoded provider secret — an `env:` key like BKIT_OPENROUTER_API_KEY / BKIT_OPENCODE_API_KEY.
   const ymlEnvVar = content.match(/^\s*([A-Z][A-Z0-9_]*(?:_API_KEY|_HOST)):/m)?.[1] ?? null;
 
   // Two independent drift signals. The model prefix is the precise one (it distinguishes the two
-  // opencode gateways that share OPENCODE_API_KEY); the env var catches a wrong/absent secret.
+  // opencode gateways that share BKIT_OPENCODE_API_KEY); the env var catches a wrong/absent secret.
   const modelDrift = ymlPrefix !== null && ymlPrefix !== expectedPrefix;
   const envDrift = !new RegExp(`\\b${expectedEnvVar}\\b`).test(content);
   if (!modelDrift && !envDrift) return null;
@@ -1664,7 +1664,7 @@ export function renderOpencodeJson(
   let mcpEntry: string;
   if (tracker === "github") {
     mcpEntry =
-      '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:GH_BKIT_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+      '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:BKIT_GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
   } else if (tracker === "linear") {
     mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
   } else {
@@ -1686,7 +1686,7 @@ export function renderOpencodeJson(
     }
     // Built-in opencode gateways (Zen/Go): opencode resolves the provider from models.dev,
     // so there is no npm driver and no baseURL — emit a minimal block keyed by the
-    // opencode-side provider id carrying only the apiKey ({env:OPENCODE_API_KEY}).
+    // opencode-side provider id carrying only the apiKey ({env:BKIT_OPENCODE_API_KEY}).
     if (providerDefaults.builtin) {
       const pid = providerDefaults.providerId ?? provider;
       const options: Record<string, unknown> = { apiKey: providerDefaults.apiPlaceholder };
@@ -2073,12 +2073,12 @@ export function runOpencodeModule(ctx: ModuleContext): void {
             `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`
           );
         }
-        // opencode-native gateways (opencode-zen / opencode-go) → OPENCODE_API_KEY only.
+        // opencode-native gateways (opencode-zen / opencode-go) → BKIT_OPENCODE_API_KEY only.
         // Built-in: no baseURL to seed; models use the opencode-side provider id.
-        if (pd.builtin || pd.envVar === "OPENCODE_API_KEY") {
+        if (pd.builtin || pd.envVar === "BKIT_OPENCODE_API_KEY") {
           const modelPrefix = opencodeProviderId(provider);
           return (
-            `  1. opencode gateway "${provider}". Create an API key at https://opencode.ai/auth (one OPENCODE_API_KEY covers both opencode-zen and opencode-go).\n` +
+            `  1. opencode gateway "${provider}". Create an API key at https://opencode.ai/auth (one BKIT_OPENCODE_API_KEY covers both opencode-zen and opencode-go).\n` +
             `  2. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
             `     ${pd.envVar}=<your-api-key>\n` +
             `  3. Built-in provider (no npm/baseURL). Models are referenced as ${modelPrefix}/<id>.\n`
@@ -2115,7 +2115,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
 // `uses: cbartens/bkit/...@<ref>` line in the canonical CI template. While
 // `cbartens/bkit` stays private and consumers live in other GitHub orgs, such
 // references cannot be resolved by the runner's GITHUB_TOKEN. The canonical
-// install flow is the install step's `pnpm config set` + GH_BKIT_TOKEN_INSTALL env —
+// install flow is the install step's `pnpm config set` + BKIT_GH_TOKEN_INSTALL env —
 // see README §"Consumer CI auth". `runCiModule` calls this and throws
 // before writing if any matches are found, so a regression is caught at
 // dev/CI time, never in a consumer repo.
@@ -2148,20 +2148,20 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 
   2. Ensure the install step writes the auth token into pnpm's user-level config
      BEFORE install. pnpm >=10.34.3 no longer authenticates a project-.npmrc
-     \${GH_BKIT_TOKEN_INSTALL} env-substitution (it 401s on download):
+     \${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download):
 
         - name: Install Dependencies
           run: |
-            pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"
+            pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
             pnpm install --frozen-lockfile
           env:
-            GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+            BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 
   3. Remove any 'Configure private-repo auth' step (git config --global
      url."...cbartens/bkit...".insteadOf "...") — this git auth-shim is
      obsolete. The .npmrc + \`pnpm config set\` approach replaces it entirely.
 
-  4. Ensure the GitHub repo secret GH_BKIT_TOKEN_INSTALL is set with a PAT that has
+  4. Ensure the GitHub repo secret BKIT_GH_TOKEN_INSTALL is set with a PAT that has
      read:packages scope (classic) or Packages: read permission (fine-grained).
 
   5. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
@@ -2381,9 +2381,9 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 
   Open .bkit/.env.example. Compare against the bkit reference below.
   Merge any new entries you find into your existing file — this file is for bkit
-  and agent tooling secrets ONLY: tracker/cloud-agent tokens (GH_BKIT_TOKEN,
-  GH_BKIT_TOKEN_INSTALL, LINEAR_API_KEY, ANTHROPIC_API_KEY, CURSOR_API_KEY) and opencode
-  provider keys (OPENCODE_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_KEY).
+  and agent tooling secrets ONLY: tracker/cloud-agent tokens (BKIT_GH_TOKEN,
+  BKIT_GH_TOKEN_INSTALL, BKIT_LINEAR_API_KEY, BKIT_ANTHROPIC_API_KEY, BKIT_CURSOR_API_KEY) and opencode
+  provider keys (BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY).
   App/stack creds do NOT belong here — your
   app's runtime keys AND the /bkit-debug observability tokens (e.g. a Vercel or
   Supabase log-read token) live in your app env files (e.g. apps/web/.env.local,
@@ -2592,13 +2592,13 @@ export function runCiModule(ctx: ModuleContext): void {
   // cannot resolve such a reference and CI fails with "repository not found"
   // before any install step runs. The canonical install flow is the install
   // step's `pnpm config set` (writes the token to pnpm's user-level config) +
-  // GH_BKIT_TOKEN_INSTALL env — see README §"Consumer CI auth". Hard error so the
+  // BKIT_GH_TOKEN_INSTALL env — see README §"Consumer CI auth". Hard error so the
   // regression is caught at dev/CI time, never written into a consumer repo.
   const templateContent = fs.readFileSync(templatePath, "utf-8");
   const foreignUses = scanForeignBkitUses(templateContent);
   if (foreignUses.length > 0) {
     throw new Error(
-      `${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .bkit/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN_INSTALL env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`,
+      `${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .bkit/templates/.github/workflows/ci.yml and use the env-var pattern (BKIT_GH_TOKEN_INSTALL env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`,
     );
   }
 
@@ -2624,7 +2624,7 @@ export function runCiModule(ctx: ModuleContext): void {
 
   // bkit-cloud.yml is no longer shipped by the ci module (`--tooling`). Post-CI
   // auto-routing is now opt-in via `bkit install --auto=<variant>` (see `runCloudModule`
-  // below). The router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
+  // below). The router is inert without BKIT_ANTHROPIC_API_KEY + BKIT_LINEAR_API_KEY secrets, GitHub
   // Actions write permissions, and (Cursor half) a dashboard trigger — and it
   // depends on the issue tracker, which is itself opt-in. Shipping it on every
   // tooling install wired an autonomous router to a tracker that may
@@ -2679,7 +2679,7 @@ export function runCiModule(ctx: ModuleContext): void {
     }
   }
 
-  // Note: GH_BKIT_TOKEN_INSTALL secret check and Vercel detection are now Phase 3 responsibilities.
+  // Note: BKIT_GH_TOKEN_INSTALL secret check and Vercel detection are now Phase 3 responsibilities.
   // runPostInstallCheck in bkit-postinstall.ts handles them after writes complete.
 }
 
@@ -3115,12 +3115,12 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
   // to regenerate pnpm-lock.yaml for ANY dependency bump — without a token the regen
   // 401s, every dependency PR lands with a stale lockfile, and CI fails
   // \`pnpm install --frozen-lockfile\` (ERR_PNPM_OUTDATED_LOCKFILE). The GitHub-Actions
-  // \`GH_BKIT_TOKEN_INSTALL\` CI secret is NOT visible to Mend's hosted runner — provision it
+  // \`BKIT_GH_TOKEN_INSTALL\` CI secret is NOT visible to Mend's hosted runner — provision it
   // on Renovate's side, then activate the token below. This anchor lives here
   // (consumer-owned) and NOT in renovate.json5 (canonical-overwrite, clobbered every
   // \`bkit upgrade\`): Renovate merges hostRules across presets, so the token SURVIVES
   // upgrades.
-  //   - Mend hosted: add \`GH_BKIT_TOKEN_INSTALL\` (a PAT with \`read:packages\`) as a Mend
+  //   - Mend hosted: add \`BKIT_GH_TOKEN_INSTALL\` (a PAT with \`read:packages\`) as a Mend
   //     repository secret (https://developer.mend.io/github/<owner>/<repo> → Settings →
   //     Secrets). You MUST tick "If checked - secret will be used during the scan as an
   //     environment variable." — without it the secret is never exposed to the scan and
@@ -3131,7 +3131,7 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
     {
       matchHost: "npm.pkg.github.com",
       hostType: "npm",
-      // token: "{{ secrets.GH_BKIT_TOKEN_INSTALL }}",
+      // token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
     },
   ],
 
@@ -3286,9 +3286,9 @@ export function runRenovateModule(ctx: ModuleContext): void {
           : "Phase A — land the config on the default branch first:\n\n" +
             "  0. Commit `.github/renovate.json5`, `.github/renovate-local.json5`, AND `.github/workflows/renovate.yml`; open a PR to your integration branch and merge through to " +
             `\`${defaultBranch}\`. Then continue:\n\n`) +
-        "  1. Add a repo Actions secret `GH_BKIT_TOKEN` — a fine-grained PAT. Repository permissions (as labelled in the token UI): Contents: Read and write, Pull requests: Read and write, Workflows: Read and write, Commit statuses: Read and write (else Renovate creates the `renovate/*` branch but 403s on `/commits/{sha}/statuses` and opens NO PR — symptom is a lone branch with no PR; fine-grained PATs have no `Checks` permission, commit statuses is the mechanism), Issues: Read and write, Dependabot alerts: Read, Metadata: Read-only. Do NOT use the default `GITHUB_TOKEN`: PRs it opens do not trigger CI, so `platformAutomerge` never fires and update PRs pile up. (Durable alternative with no annual expiry: a GitHub App token — see the `renovate.yml` header and docs/deployments.md § Self-hosted Renovate.)\n" +
+        "  1. Add a repo Actions secret `BKIT_GH_TOKEN` — a fine-grained PAT. Repository permissions (as labelled in the token UI): Contents: Read and write, Pull requests: Read and write, Workflows: Read and write, Commit statuses: Read and write (else Renovate creates the `renovate/*` branch but 403s on `/commits/{sha}/statuses` and opens NO PR — symptom is a lone branch with no PR; fine-grained PATs have no `Checks` permission, commit statuses is the mechanism), Issues: Read and write, Dependabot alerts: Read, Metadata: Read-only. Do NOT use the default `GITHUB_TOKEN`: PRs it opens do not trigger CI, so `platformAutomerge` never fires and update PRs pile up. (Durable alternative with no annual expiry: a GitHub App token — see the `renovate.yml` header and docs/deployments.md § Self-hosted Renovate.)\n" +
         "  2. Commit authorship: on a PERSONAL-account token also add the Account permission `Email addresses: Read` so Renovate commits with your verified email. ORG-owned tokens have NO Email-addresses permission — instead set the repo variable `RENOVATE_GIT_AUTHOR` (Settings -> Secrets and variables -> Actions -> Variables), e.g. `Renovate Bot <renovate@your-domain>`. Skipping both is fine but commits then show the Mend bot author as `Unverified`.\n" +
-        "  3. Confirm a repo Actions secret `GH_BKIT_TOKEN_INSTALL` (a PAT with `read:packages`) exists — the workflow injects it via `RENOVATE_HOST_RULES` so private `@cbartens/bkit` lockfile regen succeeds. Keep the `token:` line in `.github/renovate-local.json5` COMMENTED (the workflow supplies the token; an uncommented Mend-style `{{ secrets.* }}` line adds an empty-token rule self-hosted and 401s).\n" +
+        "  3. Confirm a repo Actions secret `BKIT_GH_TOKEN_INSTALL` (a PAT with `read:packages`) exists — the workflow injects it via `RENOVATE_HOST_RULES` so private `@cbartens/bkit` lockfile regen succeeds. Keep the `token:` line in `.github/renovate-local.json5` COMMENTED (the workflow supplies the token; an uncommented Mend-style `{{ secrets.* }}` line adds an empty-token rule self-hosted and 401s).\n" +
         "  4. Enable GitHub's vulnerability feed (Settings -> Advanced Security): turn ON `Dependency graph` and `Dependabot alerts`. Keep `Dependabot security updates` and `Dependabot version updates` OFF — those make Dependabot open its OWN PRs, competing with Renovate. Renovate reads the alerts and opens the security-fix PRs itself (and already carries `osvVulnerabilityAlerts` for an OSV source too).\n" +
         "  5. SUSPEND the Mend Renovate App for this repo if it is installed (GitHub UI -> Settings -> Applications -> Renovate -> Configure -> remove this repo; no `gh api` equivalent). Otherwise Mend AND this workflow open the same `renovate/*` PRs. bkit cannot verify the App state (off-repo).\n" +
         "  6. Trigger the workflow once from the Actions tab -> Renovate -> Run workflow (optionally `dryRun=full`, `logLevel=debug`) to confirm auth + config load before the schedule takes over. It adopts any existing Dependency Dashboard issue and open `renovate/*` PRs (the default `renovate/` branch prefix is unchanged).\n" +
@@ -3322,8 +3322,8 @@ export function runRenovateModule(ctx: ModuleContext): void {
       "Phase B — activate Renovate by installing the GitHub App (one-time, manual, free; bkit cannot automate this — no `gh api` equivalent exists):\n\n" +
       "  1. Open https://github.com/apps/renovate and click Install.\n" +
       '  2. Choose "Only select repositories" → pick this repo.\n' +
-      "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `GH_BKIT_TOKEN_INSTALL` secret is NOT visible to Mend's runner. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` token anchor for `npm.pkg.github.com` — activate it (it survives `bkit upgrade`; the canonical `renovate.json5` deliberately holds no token):\n" +
-      '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `GH_BKIT_TOKEN_INSTALL` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.GH_BKIT_TOKEN_INSTALL }}"` in `.github/renovate-local.json5`.\n' +
+      "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `BKIT_GH_TOKEN_INSTALL` secret is NOT visible to Mend's runner. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` token anchor for `npm.pkg.github.com` — activate it (it survives `bkit upgrade`; the canonical `renovate.json5` deliberately holds no token):\n" +
+      '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `BKIT_GH_TOKEN_INSTALL` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}"` in `.github/renovate-local.json5`.\n' +
       "     - Self-hosted: set the `RENOVATE_HOST_RULES` env var (or an `encrypted` block). See docs/deployments.md § GitHub Actions pinning.\n" +
       '  4. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranchPatterns: ["dev"]`).\n' +
       "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
@@ -3425,7 +3425,7 @@ export function runDependabotModule(ctx: ModuleContext): void {
 //
 //   cloud=claude (tracker=github):
 //   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action; requires
-//        ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
+//        BKIT_ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
 //   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
 //        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
 //
@@ -3511,8 +3511,8 @@ export function runCloudModule(ctx: ModuleContext): void {
         "REQUIRED ONE-TIME SETUP:\n" +
         "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
         "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
-        "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
-        "  - Do NOT add `GH_BKIT_TOKEN_INSTALL` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
+        "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1` (job env keeps this vendor name; local `.bkit/.env` stores it as `BKIT_ANTHROPIC_API_KEY`).\n" +
+        "  - Do NOT add `BKIT_GH_TOKEN_INSTALL` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
         "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
         "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
         "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).\n\n" +
@@ -3532,8 +3532,8 @@ export function runCloudModule(ctx: ModuleContext): void {
         "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
         "  - Name: the repo name (e.g. `app-gether-life`; bkit's own is `bkit`) — one environment per repo, since secrets are per-repo.\n" +
         "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale + gh + corepack-pinned pnpm — exact versions live in cloud.md, not duplicated here).\n" +
-        "  - Environment variables: `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP), `GH_BKIT_TOKEN_INSTALL` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
-        "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_BKIT_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
+        "  - Environment variables: `BKIT_GH_TOKEN` (fine-grained PAT for GitHub MCP), `BKIT_GH_TOKEN_INSTALL` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+        "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `BKIT_GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
         "  - Network access: `Trusted` (default). One environment per repo (secrets differ per repo); the setup script + variable *names* are identical across repos, only the values change. See cloud.md § Sharing across repos → Claude.",
     });
   } else if (variant === "opencode") {
@@ -3573,7 +3573,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
         "REQUIRED ONE-TIME SETUP:\n" +
         "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
+        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`BKIT_OPENROUTER_API_KEY`/`BKIT_OLLAMA_API_KEY`/`BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
         "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
         "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
         "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
@@ -3634,7 +3634,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
         "  - Prompt (paste literally, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`.\n" +
         "  - Allowed concurrency: latest-supersedes.\n" +
-        "  - Set `LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
+        "  - Set `BKIT_LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
         "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
         "IN REPO (Tier 2 markered; consumer customises outside `# <!-- bkit:start -->` markers):\n" +
         "  - `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below the bkit block.\n" +
@@ -3650,8 +3650,8 @@ export function runCloudModule(ctx: ModuleContext): void {
       action:
         "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/cloud.md` (gitignored) on every install.\n\n" +
         "IN THE CLOUD AGENTS DASHBOARD (https://cursor.com/dashboard/cloud-agents → your environment → Secrets tab) — add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript):\n" +
-        "  - `GH_BKIT_TOKEN`, `GH_BKIT_TOKEN_INSTALL`.\n" +
-        "  - Tracker secret (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
+        "  - `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`.\n" +
+        "  - Tracker secret (Linear): `BKIT_LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
         "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
         "Full recipe in bkit's `cloud.md`; the paste-ready block is in `.cursor/cloud.md`.",
     });

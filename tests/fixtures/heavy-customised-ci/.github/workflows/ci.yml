@@ -22,14 +22,14 @@ jobs:
 
       # bkit:start
       - name: Install Dependencies
-        # `.npmrc` references ${GH_BKIT_TOKEN_INSTALL} for the @cbartens scope (npm.pkg.github.com).
+        # `.npmrc` references ${BKIT_GH_TOKEN_INSTALL} for the @cbartens scope (npm.pkg.github.com).
         # Passing the secret as env is sufficient — no separate auth action is needed.
         # cbartens/bkit is private and cross-org for any consumer outside cbartens/, so a
         # `uses: cbartens/bkit/...@<ref>` reference cannot be resolved by the runner's
         # GITHUB_TOKEN at action-resolution time. See README §"Consumer CI auth".
         run: pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+          BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
 
       - name: Run Typecheck

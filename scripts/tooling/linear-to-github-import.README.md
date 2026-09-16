@@ -12,7 +12,7 @@ Imports one Linear project's issues into one GitHub repo + Projects v2 board. Po
    - `scripts/linear-to-github-import.ts`
    - `docs/linear-issues.csv` (or use a fresh Linear CSV export — must include columns `ID, Title, Description, Status, Priority, Labels, Created, Assignee, Creator, UUID, Project, Parent issue`)
 2. **GitHub auth**: `gh auth login` — token needs `project`, `repo` scopes. The script reads `gh auth token --secure-storage` (keyring) by default; override with `GH_PROJECT_TOKEN=…`.
-3. **Linear key**: `export LINEAR_API_KEY=lin_api_…` (personal API key from linear.app/settings/api).
+3. **Linear key**: `export BKIT_LINEAR_API_KEY=lin_api_…` (personal API key from linear.app/settings/api).
 4. **Node**: `pnpm exec tsx` available (or `npx tsx`).
 5. **GitHub Projects v2 board** must exist with single-select fields:
    - `Status` with options `Backlog, Ready, In progress, In review, Done` (rename in `STATUS_MAP` if different).

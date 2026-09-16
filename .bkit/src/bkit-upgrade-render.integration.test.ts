@@ -203,7 +203,9 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     ).toBeDefined();
     expect(installed.provider?.["opencode-go"]?.npm).toBeUndefined();
     expect(installed.provider?.["opencode-go"]?.options?.baseURL).toBeUndefined();
-    expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe(
+      "{env:BKIT_OPENCODE_API_KEY}",
+    );
 
     // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
@@ -223,7 +225,7 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     const upgrade = runBkit(["upgrade", "--auto-apply"]);
     expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
     const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
-    expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
     expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
     expect(
       after.provider?.["ollama"],

@@ -15,7 +15,7 @@ export const OPENCODE_PROVIDERS = [
     "ollama",
     // opencode-native gateways — two DISTINCT models.dev providers with separate catalogs.
     // CLI: opencode-zen / opencode-go. Agent model pins: opencode/<id> (Zen built-in id) and
-    // opencode-go/<id>. Both auth via OPENCODE_API_KEY. See providers.md § Models.
+    // opencode-go/<id>. Both auth via BKIT_OPENCODE_API_KEY. See providers.md § Models.
     "opencode-zen",
     "opencode-go",
 ];
@@ -648,7 +648,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   opencode.json; agent defaults track the last-installed (active) provider.
                   Provider value is REQUIRED. Supported: openrouter, ollama,
                   opencode-zen, opencode-go (opencode-native gateways;
-                  auth via OPENCODE_API_KEY; legacy alias \`opencode\` → opencode-zen).
+                  auth via BKIT_OPENCODE_API_KEY; legacy alias \`opencode\` → opencode-zen).
                   Ships .opencode/** (agents, commands, opencode.json, gateguard).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.opencodeProviders.
@@ -678,7 +678,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Switchable by re-install. (--dependency=renovate also works = mend.)
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
-                  tracker=github + ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
+                  tracker=github + BKIT_ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
                   needs tracker=linear; --auto=opencode needs tracker=github + a remote
                   opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
                   uninstall only.
@@ -720,7 +720,7 @@ Examples:
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
-  bkit install --opencode=ollama                Ollama cloud endpoint (OLLAMA_API_KEY).
+  bkit install --opencode=ollama                Ollama cloud endpoint (BKIT_OLLAMA_API_KEY).
   bkit uninstall --opencode=openrouter          remove openrouter block only; keep the gateway.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --renovate=self
@@ -739,14 +739,14 @@ macOS GUI-isolation note (launchctl fallback):
   If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
   make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
   survive reboot — must re-run after each restart):
-    launchctl setenv GH_BKIT_TOKEN "$GH_BKIT_TOKEN"
-    launchctl setenv OPENCODE_API_KEY "$OPENCODE_API_KEY"   # etc.
+    launchctl setenv BKIT_GH_TOKEN "$BKIT_GH_TOKEN"
+    launchctl setenv BKIT_OPENCODE_API_KEY "$BKIT_OPENCODE_API_KEY"   # etc.
   For a persistent approach, add a RunAtLoad LaunchAgent plist under
   ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
   whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
 Consumer CI auth:
-  Set GH_BKIT_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
+  Set BKIT_GH_TOKEN_INSTALL in GitHub Actions secrets (classic PAT with read:packages scope —
   fine-grained PATs are not currently supported by GitHub Packages npm registry).
   See README.md ## Consumer CI auth for setup steps.
 

@@ -797,7 +797,7 @@ description: "Plan Feature — Autonomous plan generation"
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
        >> "$ROADMAP_JSONL" || echo "[bkit-roadmap] append failed: $ROADMAP_JSONL"
-     ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_upsert "$WT" "{FID}" ) || echo "[bkit-roadmap] upsert skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+     ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
      bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=stage \
        || { echo "[bkit-book] plan-close bookkeeping stage failed" >&2; exit 1; }
      git commit --allow-empty -m "docs({FID}): plan DONE bkit [skip ci]"
@@ -817,7 +817,7 @@ description: "Plan Feature — Autonomous plan generation"
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
        >> "docs/roadmap.jsonl" || echo "[bkit-roadmap] append failed: docs/roadmap.jsonl"
-     ( . ".bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_upsert "." "{FID}" ) || echo "[bkit-roadmap] upsert skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+     ( . ".bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "." ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
      git add -- docs/roadmap.jsonl docs/roadmap.md
      git commit --allow-empty -m "docs({FID}): plan roadmap update bkit [skip ci]" -- docs/roadmap.jsonl docs/roadmap.md
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)

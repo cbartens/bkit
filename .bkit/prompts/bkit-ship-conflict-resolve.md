@@ -32,7 +32,8 @@ maxTurns: 100
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
 - **Allowed resolutions:**
-  - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `docs/roadmap.md`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → union both sides. Do NOT hand-merge these; `bkit_rebase_resolve` (Process step 6) already did, byte-identically to `merge=union`. Interleaved / duplicated rows are resolved by the reader's last-wins-by-`ts` fold and are NOT a reason to emit `FAIL`.
+  - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → union both sides. Do NOT hand-merge these; `bkit_rebase_resolve` already did, byte-identically to `merge=union`. Interleaved / duplicated rows are resolved by the reader's last-wins-by-`ts` fold and are NOT a reason to emit `FAIL`.
+  - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. The board is regenerated from `docs/roadmap.jsonl` later this cycle and is NEVER a reason to emit `FAIL`.
   - Non-overlapping additive edits to same file → concatenate preserving both sides.
   - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
   - `package.json` dep-version bumped on one side only → take bump.
@@ -58,7 +59,7 @@ maxTurns: 100
    . "$REPO_ROOT/.bkit/scripts/bkit-rebase-resolve.sh" || { echo "[bkit-rebase] missing bkit-rebase-resolve.sh — run 'bkit install'" >&2; exit 2; }
    bkit_rebase_resolve && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
    ```
-   **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to step 9 (verify) → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to step 7. Do NOT `git rebase --abort` here — step 11 owns that.
+   **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do NOT `git rebase --abort` here — the `FAIL` branch owns that.
 7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.

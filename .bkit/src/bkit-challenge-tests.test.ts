@@ -156,7 +156,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
     // same id into the phase3 array before dedup, exercising the intra-phase
     // dedupeById path in runPostInstallCheck.
 
-    process.env.GH_BKIT_TOKEN_INSTALL = "test-token";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test-token";
 
     // Write a malformed .npmrc so detectNpmrcAuth emits "npmrc-missing-gh-packages"
     fs.writeFileSync(path.join(tmpDir, ".npmrc"), "# empty\n", "utf-8");
@@ -188,7 +188,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
     // detectNpmrcAuth emits "npmrc-missing-gh-packages" first
     // mocked detectValePackageNotSynced emits the same id second
     // → first occurrence (from detectNpmrcAuth) must win per the contract
-    process.env.GH_BKIT_TOKEN_INSTALL = "test-token";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test-token";
     fs.writeFileSync(path.join(tmpDir, ".npmrc"), "# broken\n", "utf-8");
 
     const spyVale = vi.spyOn(postinstall, "detectValePackageNotSynced").mockReturnValue({
@@ -233,9 +233,9 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
       {
         id: "gh-bkit-token-unset-shell",
         severity: "advisory",
-        detect: "GH_BKIT_TOKEN_INSTALL is not set in the shell environment.",
+        detect: "BKIT_GH_TOKEN_INSTALL is not set in the shell environment.",
         action:
-          "Export GH_BKIT_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN_INSTALL=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+          "Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export BKIT_GH_TOKEN_INSTALL=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
       },
     ];
 
@@ -262,10 +262,10 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
       ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.
 
       --- 2/2 [advisory] gh-bkit-token-unset-shell ---
-      DETECT: GH_BKIT_TOKEN_INSTALL is not set in the shell environment.
-      ACTION: Export GH_BKIT_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
+      DETECT: BKIT_GH_TOKEN_INSTALL is not set in the shell environment.
+      ACTION: Export BKIT_GH_TOKEN_INSTALL in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
 
-          export GH_BKIT_TOKEN_INSTALL=<your-pat>
+          export BKIT_GH_TOKEN_INSTALL=<your-pat>
 
       The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
 
@@ -388,7 +388,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
   it("detectShellToken returns 'missing' when env var is deleted (spy observation)", () => {
     // Confirms the spy pattern is functional: call the real implementation and
     // verify result, then observe via spy that it was called.
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     const spy = vi.spyOn(postinstall, "detectShellToken");
     const result = detectShellToken();
     // The directly-imported function returns "missing"
@@ -396,7 +396,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
     spy.mockRestore();
   });
 
-  it("runPostInstallCheck emits gh-bkit-token-unset-shell when GH_BKIT_TOKEN_INSTALL is explicitly deleted", () => {
+  it("runPostInstallCheck emits gh-bkit-token-unset-shell when BKIT_GH_TOKEN_INSTALL is explicitly deleted", () => {
     // Harden: explicitly delete the env var so the test cannot silently pass
     // due to ambient env state. This mirrors what the subprocess test would
     // exercise, without relying on tsx being available.
@@ -406,7 +406,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
     // live-binding means the spy patches the export object but the internal
     // call site still uses the local binding). We therefore control the env var
     // directly and assert on the output finding to prove the code path fires.
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
 
     // gh CLI unavailable → unknown (no additional gh-secret finding)
     execSync.mockImplementation(() => {
@@ -440,8 +440,8 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       action: "PREFLIGHT ACTION TEXT",
     };
 
-    // GH_BKIT_TOKEN_INSTALL unset → Phase 3 will emit its own gh-bkit-token-unset-shell
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+    // BKIT_GH_TOKEN_INSTALL unset → Phase 3 will emit its own gh-bkit-token-unset-shell
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     execSync.mockImplementation(() => {
       throw new Error("gh: command not found");
     });
@@ -455,7 +455,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     expect(matches[0]!.detect).not.toBe("PREFLIGHT DETECT TEXT — must NOT survive into output");
     // Phase 3 detect text is well-known
     expect(matches[0]!.detect).toContain(
-      "GH_BKIT_TOKEN_INSTALL is not set in the shell environment",
+      "BKIT_GH_TOKEN_INSTALL is not set in the shell environment",
     );
   });
 
@@ -467,8 +467,8 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       action: "Preflight husky action",
     };
 
-    process.env.GH_BKIT_TOKEN_INSTALL = "set";
-    execSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL\n"); // gh secret present → no gh findings
+    process.env.BKIT_GH_TOKEN_INSTALL = "set";
+    execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // gh secret present → no gh findings
 
     const result = runPostInstallCheck(
       [uniquePreflightAdvisory],
@@ -489,8 +489,8 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       { id: "beta", severity: "advisory", detect: "beta detect", action: "beta action" },
     ];
 
-    process.env.GH_BKIT_TOKEN_INSTALL = "set";
-    execSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL\n"); // no GH secret missing
+    process.env.BKIT_GH_TOKEN_INSTALL = "set";
+    execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // no GH secret missing
 
     const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
 

@@ -17,8 +17,8 @@ teardown() {
   rm -rf "$TMPD"
 }
 
-# row 5 — bootstrap: absent roadmap.md -> created with two markers + banner + Backlog
-@test "row 5: bootstrap creates docs/roadmap.md with both marker blocks + Backlog region" {
+# row 5 — bootstrap: absent roadmap.md -> created with marker blocks; notes-post is last
+@test "row 5: bootstrap creates docs/roadmap.md with both marker blocks; notes-post is last" {
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   [ "$status" -eq 0 ]
   [ -f "$TMPD/docs/roadmap.md" ]
@@ -26,7 +26,11 @@ teardown() {
   grep -qF '<!-- bkit:roadmap-status end -->' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-analysis end -->' "$TMPD/docs/roadmap.md"
-  grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  grep -qF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md"
+  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis end -->' "$TMPD/docs/roadmap.md" | tail -1 | cut -d: -f1)
+  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ "$ANALYSIS" -lt "$POST" ]
 }
 
 # row 1 — projects the phase-sectioned board under tracker:none (no MCP call
@@ -107,7 +111,128 @@ SCRATCH-ABOVE
 
   grep -qF 'SCRATCH-ABOVE' "$TMPD/docs/roadmap.md"
   grep -qF 'SCRATCH-BELOW' "$TMPD/docs/roadmap.md"
-  grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+}
+
+# Three consumer-owned notes islands: above the bkit list, between bkit and
+# tracker, and below the tracker list. Seeded on bootstrap, carried through
+# every regenerate, never overwritten.
+@test "notes: bootstrap emits three notes blocks in order around bkit and tracker" {
+  cat > "$TMPD/docs/tracker.jsonl" <<'EOF'
+{"ts":1,"kind":"tracker","key":"#1","title":"open issue","labels":[],"status":"Todo"}
+EOF
+  run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+  [ "$status" -eq 0 ]
+  PRE=$(grep -nF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  MID=$(grep -nF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  TRACKER=$(grep -nF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ -n "$PRE" ] && [ -n "$STATUS" ] && [ -n "$MID" ] && [ -n "$TRACKER" ] && [ -n "$POST" ] && [ -n "$ANALYSIS" ]
+  [ "$PRE" -lt "$STATUS" ]
+  [ "$STATUS" -lt "$MID" ]
+  [ "$MID" -lt "$TRACKER" ]
+  [ "$TRACKER" -lt "$ANALYSIS" ]
+  [ "$ANALYSIS" -lt "$POST" ]
+}
+
+@test "notes: notes-mid and notes-post still emit when the tracker block is omitted" {
+  run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+  [ "$status" -eq 0 ]
+  PRE=$(grep -nF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  MID=$(grep -nF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ -n "$PRE" ] && [ -n "$STATUS" ] && [ -n "$MID" ] && [ -n "$POST" ] && [ -n "$ANALYSIS" ]
+  ! grep -qF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md"
+  [ "$PRE" -lt "$STATUS" ]
+  [ "$STATUS" -lt "$MID" ]
+  [ "$MID" -lt "$ANALYSIS" ]
+  [ "$ANALYSIS" -lt "$POST" ]
+}
+
+@test "notes: user text in all three notes blocks survives a regenerate" {
+  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}
+EOF
+  cat > "$TMPD/docs/tracker.jsonl" <<'EOF'
+{"ts":1,"kind":"tracker","key":"#1","title":"open issue","labels":[],"status":"Todo"}
+EOF
+  bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+
+  awk '
+    /<!-- bkit:roadmap-notes-pre start -->/ { print; print "PRE-NOTE-KEEP"; skip=1; next }
+    /<!-- bkit:roadmap-notes-pre end -->/ { skip=0 }
+    /<!-- bkit:roadmap-notes-mid start -->/ { print; print "MID-NOTE-KEEP"; skip=1; next }
+    /<!-- bkit:roadmap-notes-mid end -->/ { skip=0 }
+    /<!-- bkit:roadmap-notes-post start -->/ { print; print "POST-NOTE-KEEP"; skip=1; next }
+    /<!-- bkit:roadmap-notes-post end -->/ { skip=0 }
+    skip { next }
+    { print }
+  ' "$TMPD/docs/roadmap.md" > "$TMPD/docs/roadmap.md.notes" && mv "$TMPD/docs/roadmap.md.notes" "$TMPD/docs/roadmap.md"
+
+  echo '{"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/docs/roadmap.jsonl"
+  bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+
+  grep -qF 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF '418-rate-limit' "$TMPD/docs/roadmap.md"
+  [ "$(grep -c 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  [ "$(grep -c 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  [ "$(grep -c 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  PRE=$(grep -nF 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  MID=$(grep -nF 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  TRACKER=$(grep -nF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  POST=$(grep -nF 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ "$PRE" -lt "$STATUS" ]
+  [ "$STATUS" -lt "$MID" ]
+  [ "$MID" -lt "$TRACKER" ]
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ "$TRACKER" -lt "$ANALYSIS" ]
+  [ "$ANALYSIS" -lt "$POST" ]
+}
+
+@test "notes: an existing board without notes markers gains them without losing head or notes-post" {
+  cat > "$TMPD/docs/roadmap.md" <<'EOF'
+# Roadmap
+
+HEAD-KEEP
+
+<!-- bkit:roadmap-status start -->
+old board
+<!-- bkit:roadmap-status end -->
+
+<!-- bkit:roadmap-analysis start -->
+ANALYSIS-KEEP
+<!-- bkit:roadmap-analysis end -->
+
+## Backlog / Ideas
+
+TAIL-KEEP
+EOF
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+
+  run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+  [ "$status" -eq 0 ]
+  grep -qF 'HEAD-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF 'TAIL-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF 'ANALYSIS-KEEP' "$TMPD/docs/roadmap.md"
+  grep -qF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md"
+  grep -qF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md"
+  grep -qF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md"
+  grep -qF '412-export-csv' "$TMPD/docs/roadmap.md"
+  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  [ "$(grep -c 'HEAD-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  [ "$(grep -c 'TAIL-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis end -->' "$TMPD/docs/roadmap.md" | tail -1 | cut -d: -f1)
+  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  TAIL=$(grep -nF 'TAIL-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ "$ANALYSIS" -lt "$POST" ]
+  [ "$POST" -lt "$TAIL" ]
 }
 
 # row 19 — a merge=union collision duplicating ledger LINES still projects
@@ -190,7 +315,7 @@ EOF
   [[ "$output" == *"[bkit-roadmap]"* ]]
 }
 
-@test "row 26: first bootstrap over a hand-authored board preserves its content under Backlog / Ideas" {
+@test "row 26: first bootstrap over a hand-authored board preserves its content in notes-post" {
   cat > "$TMPD/docs/roadmap.md" <<'EOF'
 # My Own Roadmap
 
@@ -201,12 +326,13 @@ EOF
 
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD' 2>&1"
   [ "$status" -eq 0 ]
-  # the consumer's own text survives, and lands in the never-regenerated region
   grep -qF 'ship the billing rewrite' "$TMPD/docs/roadmap.md"
   grep -qF 'decide on the queue vendor' "$TMPD/docs/roadmap.md"
-  [ "$(grep -n '## Backlog / Ideas' "$TMPD/docs/roadmap.md" | cut -d: -f1)" \
-    -lt "$(grep -n 'ship the billing rewrite' "$TMPD/docs/roadmap.md" | cut -d: -f1)" ]
-  # and the full scaffold is written around it
+  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  [ "$(grep -n '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)" \
+    -lt "$(grep -n 'ship the billing rewrite' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)" ]
+  [ "$(grep -n '<!-- bkit:roadmap-analysis end -->' "$TMPD/docs/roadmap.md" | tail -1 | cut -d: -f1)" \
+    -lt "$(grep -n '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)" ]
   grep -qF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md"
   grep -qF '412-export-csv' "$TMPD/docs/roadmap.md"
@@ -232,5 +358,6 @@ EOF
   [[ "$output" != *"bootstrapping docs/roadmap.md"* ]]
   grep -qF 'consumer note' "$TMPD/docs/roadmap.md"
   grep -qF '412-export-csv' "$TMPD/docs/roadmap.md"
-  [ "$(grep -c '## Backlog / Ideas' "$TMPD/docs/roadmap.md")" -eq 1 ]
+  grep -qF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md"
+  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
 }

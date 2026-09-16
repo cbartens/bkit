@@ -47,7 +47,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
 │   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
 │   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
-│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
+│   ├── bkit-cloud-env.ts   # Resolves the `.claude/cloud.md` + `.cursor/cloud.md` env/secret blocks by FOLLOWING the consumer's .envrc (honours its `unset` lines, drops session-hijack keys) — one resolver, a per-cloud policy (Cursor+Linear adds BKIT_LINEAR_API_KEY; Claude adds autocompact); no hardcoded stack-specific key list, keeping the shipped surface stack-independent
 │   ├── bkit-context-migrate.ts # Content-preserving relocation of consumer context-fetch blocks docs/observability.md -> .agents/context.md (#334). MOVE, never transform; wired into BOTH install and upgrade (separate engines)
 │   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
 │   ├── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
@@ -88,7 +88,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   └─ On any error    → discardAllStaging removes .bkit-staging/ — consumer files untouched
     │
     └─ Phase 3: Post-install re-detection + commit
-        ├─ Token-surface detectors (GH_BKIT_TOKEN_INSTALL at 4 surfaces)
+        ├─ Token-surface detectors (BKIT_GH_TOKEN_INSTALL at 4 surfaces)
         ├─ CI YAML env-var check
         ├─ Vale package sync check
         ├─ devDeps freshness check
@@ -177,17 +177,17 @@ Legacy consumer ledgers (`de-<n>-…` keys + `aliases:["DE-<n>"]`) kept the race
 
 **Components:**
 
-- `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`. `bkit_roadmap_fold` rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `docs/roadmap.jsonl`, the `bkit:tracker` block from `docs/tracker.jsonl`, and the `bkit:roadmap-analysis` block carried through verbatim. Every phase close and `/bkit-roadmap` both call it; only `/bkit-roadmap` sets `BKIT_ROADMAP_TRACKER_REFRESHED=1` to re-stamp the tracker block. Everything above the first marker and below the last is preserved.
+- `.bkit/scripts/bkit-roadmap-fold.sh` — deterministic status tier; sources `bkit-status-fold.sh`. `bkit_roadmap_fold` rewrites the whole generated region of `docs/roadmap.md` in one pass: the `bkit:roadmap-status` block from `docs/roadmap.jsonl`, the `bkit:tracker` block from `docs/tracker.jsonl`, the `bkit:roadmap-analysis` block carried through verbatim, and three consumer `## Notes` blocks carried through verbatim. Every phase close and `/bkit-roadmap` both call it; only `/bkit-roadmap` sets `BKIT_ROADMAP_TRACKER_REFRESHED=1` to re-stamp the tracker block. Everything above the first marker is preserved. `roadmap-notes-post` is last.
 - `.bkit/scripts/bkit-roadmap-cadence.sh` — threshold evaluator; fires once per `bkit.roadmap.buildCycles` distinct `BUILT` FIDs since the last `ROADMAP_CADENCE_FIRE`, or `bkit.roadmap.stalenessDays` elapsed since that fire (package.json manifest keys via `bkit-manifest.ts`, defaults 10/90). Evaluated only by `/bkit-roadmap`, immediately before the analysis leaf it feeds.
 - `.bkit/scripts/bkit-roadmap-reconcile.sh` — read-only drift check; warns on a live `feat/*` with no ledger row. Never mutates the board.
 - `.bkit/prompts/bkit-roadmap-refresh.md` (`@bkit-roadmap-refresh`) — opus analysis tier; writes only the `bkit:roadmap-analysis` block. On demand only, via `/bkit-roadmap` — never at a phase close.
 - `.bkit/workflows/bkit-roadmap.md` (`/bkit-roadmap`) — on-demand utility composing fold + drift check + cadence + analysis leaf; the sole entry point to the analysis tier.
 - `bkit-telemetry-migrate.ts` fifth pair — `docs/completed.md` → `docs/roadmap.jsonl` at `status:"SHIPPED"`, plus the bootstrap seed (one row per in-flight FID from `docs/plans/**`). Unreachable from `bkit upgrade`; the `completed-md-unmigrated` preflight advisory names the command (`docs/setup.md` § Roadmap ledger migration).
 
-**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only bytes strictly between the two marker pairs; the `## Backlog / Ideas` region below them is never regenerated and is a declared read-input for the analysis tier. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
+**Ownership boundary:** `docs/roadmap.md` is consumer-owned — `bkit install` never creates or overwrites it and `bkit check` drift stays clean. bkit rewrites only the mechanical `roadmap-status` and `tracker` tables; the three `## Notes` blocks and `roadmap-analysis` are carried through. `roadmap-notes-post` is last and is a declared read-input for the analysis tier. A legacy `## Backlog / Ideas` tail is folded into notes-post. Ship stages both roadmap paths through the frozen `BOOK_PATHS` allow-list.
 
 Sensing is on-disk-first: a phase close upserts `{FID}` from the ledger; `/bkit-roadmap` full-regenerates from the ledger. Every roadmap branch exits 0 and never gates a close — grep keys in `docs/observability.md` § `[bkit-roadmap]`. Row contract: `.bkit/jsonl.md` § Per-Kind Fields. Test inventory: `docs/testing.md`.
 
 ## Distribution
 
-`@cbartens/bkit` published to GitHub Packages on every git tag via `.github/workflows/release.yml`. Consumers auth with `GH_BKIT_TOKEN_INSTALL` PAT (`read:packages`). See `docs/deployments.md` (four-surface matrix) + `docs/decisions.jsonl` DE-3.
+`@cbartens/bkit` published to GitHub Packages on every git tag via `.github/workflows/release.yml`. Consumers auth with `BKIT_GH_TOKEN_INSTALL` PAT (`read:packages`). See `docs/deployments.md` (four-surface matrix) + `docs/decisions.jsonl` DE-3.

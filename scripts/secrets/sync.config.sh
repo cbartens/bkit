@@ -21,17 +21,27 @@ AGENT_ENV_FILES=(
 PREVIEW_ENV_FILE=".bkit/.env"
 
 # The GitHub Actions secrets bkit's workflows consume:
-#   - ANTHROPIC_API_KEY       → claude.yml + bkit-cloud.yml (claude job)
-#   - GH_BKIT_TOKEN_INSTALL   → classic read:packages, for the cloud agent's `bkit install`
+#   - ANTHROPIC_API_KEY       → claude.yml + bkit-cloud.yml (claude job). Local
+#                               `.bkit/.env` stores the same value as BKIT_ANTHROPIC_API_KEY
+#                               so direnv does not export the vendor name.
+#   - BKIT_GH_TOKEN_INSTALL   → classic read:packages, for the cloud agent's `bkit install`
 #                               (@cbartens/bkit fetch); bkit's own ci.yml needs no token
-#   - GH_BKIT_TOKEN           → the general fine-grained WRITE token; self-hosted Renovate's
+#   - BKIT_GH_TOKEN           → the general fine-grained WRITE token; self-hosted Renovate's
 #                               platform auth (opens PRs, pushes renovate/* branches, edits
 #                               workflow SHAs) + the GitHub MCP server (#325 / DE-35)
 GITHUB_KEYS=(
   "ANTHROPIC_API_KEY"
-  "GH_BKIT_TOKEN_INSTALL"
-  "GH_BKIT_TOKEN"
+  "BKIT_GH_TOKEN_INSTALL"
+  "BKIT_GH_TOKEN"
 )
+
+# When the GitHub secret name differs from the `.bkit/.env` key, map it here.
+github_source_key() {
+  case "$1" in
+    ANTHROPIC_API_KEY) printf '%s' "BKIT_ANTHROPIC_API_KEY" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
 
 # Never pushed, never deleted — secrets bkit's workflows need that are NOT stored in
 # .bkit/.env (generated/registered out of band).

@@ -83,10 +83,10 @@ describe("package.json manifest invariants (BAR-138)", () => {
 const POSTINSTALL_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-postinstall.ts"), "utf-8");
 const MODULES_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-modules.ts"), "utf-8");
 
-describe("GH_BKIT_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.ts)", () => {
-  // The action string is now embedded in the const GH_BKIT_TOKEN_INSTALL_MISSING_ACTION
+describe("BKIT_GH_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.ts)", () => {
+  // The action string is now embedded in the const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION
   const match = POSTINSTALL_SRC.match(
-    /const GH_BKIT_TOKEN_INSTALL_MISSING_ACTION\s*=\s*([\s\S]*?)(?=\nconst |\nexport )/,
+    /const BKIT_GH_TOKEN_INSTALL_MISSING_ACTION\s*=\s*([\s\S]*?)(?=\nconst |\nexport )/,
   );
   const body = match ? match[1] : POSTINSTALL_SRC;
 
@@ -96,32 +96,32 @@ describe("GH_BKIT_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.
 
   it("postinstall source prescribes the user-level pnpm config set auth shape (#274)", () => {
     expect(POSTINSTALL_SRC).toContain(
-      'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"',
+      'pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"',
     );
-    expect(POSTINSTALL_SRC).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(POSTINSTALL_SRC).toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
   it("postinstall source contains read:packages scope reference", () => {
     expect(POSTINSTALL_SRC).toContain("read:packages");
   });
 
-  it("GH_BKIT_TOKEN_INSTALL_MISSING action keeps the token out of the committed .npmrc (#274)", () => {
+  it("BKIT_GH_TOKEN_INSTALL_MISSING action keeps the token out of the committed .npmrc (#274)", () => {
     // The committed project .npmrc carries only the registry mapping; the auth token is
     // written to pnpm's user-level config — so the action must NOT prescribe the
-    // env-substitution `_authToken=${GH_BKIT_TOKEN_INSTALL}` line that 401s on pnpm >=10.34.3.
-    expect(body).not.toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}");
+    // env-substitution `_authToken=${BKIT_GH_TOKEN_INSTALL}` line that 401s on pnpm >=10.34.3.
+    expect(body).not.toContain("//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}");
   });
 
   it("postinstall source does NOT contain git insteadOf shim language", () => {
     expect(POSTINSTALL_SRC).not.toContain("git config --global url.");
   });
 
-  it("GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
-    expect(MODULES_SRC).not.toContain("GH_BKIT_TOKEN_INSTALL_MISSING_INSTRUCTIONS");
+  it("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+    expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_MISSING_INSTRUCTIONS");
   });
 
-  it("GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
-    expect(MODULES_SRC).not.toContain("GH_BKIT_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS");
+  it("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+    expect(MODULES_SRC).not.toContain("BKIT_GH_TOKEN_INSTALL_UNKNOWN_INSTRUCTIONS");
   });
 
   it("VERCEL_AUTH_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
@@ -130,8 +130,8 @@ describe("GH_BKIT_TOKEN_INSTALL_MISSING action strings (now in bkit-postinstall.
 });
 
 describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
-  it("postinstall source contains vercel env add GH_BKIT_TOKEN_INSTALL", () => {
-    expect(POSTINSTALL_SRC).toContain("vercel env add GH_BKIT_TOKEN_INSTALL");
+  it("postinstall source contains vercel env add BKIT_GH_TOKEN_INSTALL", () => {
+    expect(POSTINSTALL_SRC).toContain("vercel env add BKIT_GH_TOKEN_INSTALL");
   });
 
   it("postinstall source contains .npmrc reference", () => {
@@ -140,7 +140,7 @@ describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
 
   it("postinstall source prescribes the Vercel installCommand auth (pnpm config set before install)", () => {
     expect(POSTINSTALL_SRC).toContain(
-      '"installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install"',
+      '"installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install"',
     );
   });
 
@@ -161,9 +161,9 @@ describe("CI_YML_MERGE_INSTRUCTIONS (in bkit-modules.ts — used for Tier 3 merg
     expect(body).toContain(".npmrc");
   });
 
-  it("contains GH_BKIT_TOKEN_INSTALL env block for install step", () => {
-    expect(body).toContain("GH_BKIT_TOKEN_INSTALL:");
-    expect(body).toContain("secrets.GH_BKIT_TOKEN_INSTALL");
+  it("contains BKIT_GH_TOKEN_INSTALL env block for install step", () => {
+    expect(body).toContain("BKIT_GH_TOKEN_INSTALL:");
+    expect(body).toContain("secrets.BKIT_GH_TOKEN_INSTALL");
   });
 
   it("contains read:packages scope reference", () => {
@@ -280,7 +280,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cbartens/bkit/.github/actions/setup-auth@v1
         with:
-          token: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+          token: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
       - uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
 `;
     expect(scanForeignBkitUses(sample)).toEqual([
@@ -299,7 +299,7 @@ jobs:
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
         env:
-          GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}
+          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
 `;
     expect(scanForeignBkitUses(sample)).toEqual([]);
   });

@@ -1068,25 +1068,25 @@ afterEach(() => {
 });
 
 describe("B4 — detectShellToken differentiates unset from empty-string", () => {
-  it("returns 'present' when GH_BKIT_TOKEN_INSTALL is set and non-empty", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "ghp_sometoken";
+  it("returns 'present' when BKIT_GH_TOKEN_INSTALL is set and non-empty", () => {
+    process.env.BKIT_GH_TOKEN_INSTALL = "ghp_sometoken";
     expect(detectShellToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_BKIT_TOKEN_INSTALL is undefined (unset)", () => {
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+  it("returns 'missing' when BKIT_GH_TOKEN_INSTALL is undefined (unset)", () => {
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     expect(detectShellToken()).toBe("missing");
   });
 
-  it("returns 'empty' when GH_BKIT_TOKEN_INSTALL is set to empty string", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "";
+  it("returns 'empty' when BKIT_GH_TOKEN_INSTALL is set to empty string", () => {
+    process.env.BKIT_GH_TOKEN_INSTALL = "";
     expect(detectShellToken()).toBe("empty");
   });
 
   it("'empty' and 'missing' are distinct values (not equal)", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "";
+    process.env.BKIT_GH_TOKEN_INSTALL = "";
     expect(detectShellToken()).not.toBe("missing");
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     expect(detectShellToken()).not.toBe("empty");
   });
 });
@@ -1095,8 +1095,8 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 // B6 — advisory auth shape (BAR-142 §B6 + #274 user-level pnpm config set)
 //
 // Advisory text must prescribe the user-level auth shape
-//   `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"`
-// and must NOT prescribe committing an `_authToken=${GH_BKIT_TOKEN_INSTALL}` line in the project
+//   `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"`
+// and must NOT prescribe committing an `_authToken=${BKIT_GH_TOKEN_INSTALL}` line in the project
 // .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the legacy
 // line is flagged for removal by detectNpmrcLegacyAuthToken, never prescribed).
 //
@@ -1105,21 +1105,21 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 // ---------------------------------------------------------------------------
 
 describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
-  it("gh-bkit-token-secret-unknown action text instructs `export GH_BKIT_TOKEN_INSTALL=$(gh auth token)`", () => {
+  it("gh-bkit-token-secret-unknown action text instructs `export BKIT_GH_TOKEN_INSTALL=$(gh auth token)`", () => {
     const src = fs.readFileSync(path.join(__dirname, "bkit-postinstall.ts"), "utf-8");
-    expect(src).toContain("export GH_BKIT_TOKEN_INSTALL=$(gh auth token)");
+    expect(src).toContain("export BKIT_GH_TOKEN_INSTALL=$(gh auth token)");
   });
 
   it("advisory strings prescribe the user-level `pnpm config set` auth shape", () => {
     for (const f of ["bkit-modules.ts", "bkit-postinstall.ts"]) {
       const src = fs.readFileSync(path.join(__dirname, f), "utf-8");
       expect(src, `${f} must prescribe the user-level pnpm config set auth shape`).toMatch(
-        /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN_INSTALL/,
+        /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$BKIT_GH_TOKEN_INSTALL/,
       );
     }
   });
 
-  it("no advisory string anywhere in scripts prescribes the broken ${GH_BKIT_TOKEN_INSTALL:-} form", () => {
+  it("no advisory string anywhere in scripts prescribes the broken ${BKIT_GH_TOKEN_INSTALL:-} form", () => {
     const scripts = ["bkit-modules.ts", "bkit-postinstall.ts", "bkit-preflight.ts", "bkit-cli.ts"];
     for (const f of scripts) {
       const p = path.join(__dirname, f);
@@ -1127,8 +1127,8 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
       const src = fs.readFileSync(p, "utf-8");
       expect(
         src,
-        `${f} must not prescribe \${GH_BKIT_TOKEN_INSTALL:-} (pnpm cannot parse :-)`,
-      ).not.toMatch(/_authToken=\\?\$\{GH_BKIT_TOKEN_INSTALL:-\}/);
+        `${f} must not prescribe \${BKIT_GH_TOKEN_INSTALL:-} (pnpm cannot parse :-)`,
+      ).not.toMatch(/_authToken=\\?\$\{BKIT_GH_TOKEN_INSTALL:-\}/);
     }
   });
 });
@@ -1192,7 +1192,7 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
 // 2026-05-13; the latent-bug fixes from BAR-186 remain:
 //   - Brew-bin check is Darwin-gated (Linux sandbox / CI pass through).
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
-//   - Missing LINEAR_API_KEY still hard-stops when a Linear issue is present.
+//   - Missing BKIT_LINEAR_API_KEY still hard-stops when a Linear issue is present.
 //
 // Runtime behaviour (real bash subprocess) is covered in
 // bkit-preflight.integration.test.ts; only the source-level (no-subprocess)
@@ -1486,7 +1486,7 @@ describe("detectExtraMcpServers", () => {
 describe("detectMissingDotenv", () => {
   it("flags when .bkit/.env.example exists but .bkit/.env does not", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
     const f = detectMissingDotenv(tmpDir);
     expect(f).not.toBeNull();
     expect(f!.id).toBe("mcp-env-missing-dotenv");
@@ -1497,8 +1497,8 @@ describe("detectMissingDotenv", () => {
 
   it("does NOT flag when both .env.example and .env exist", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_BKIT_TOKEN=ghp_test\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=ghp_test\n", "utf-8");
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
 
@@ -1506,15 +1506,15 @@ describe("detectMissingDotenv", () => {
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
 
-  it("github tracker: token prose omits LINEAR_API_KEY; linear keeps it (issue #138)", () => {
+  it("github tracker: token prose omits BKIT_LINEAR_API_KEY; linear keeps it (issue #138)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
     const gh = detectMissingDotenv(tmpDir, "github")!;
-    expect(gh.detect).not.toContain("LINEAR_API_KEY");
-    expect(gh.action).not.toContain("LINEAR_API_KEY");
-    expect(gh.action).toContain("GH_BKIT_TOKEN");
+    expect(gh.detect).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(gh.action).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(gh.action).toContain("BKIT_GH_TOKEN");
     const linear = detectMissingDotenv(tmpDir, "linear")!;
-    expect(linear.action).toContain("LINEAR_API_KEY");
+    expect(linear.action).toContain("BKIT_LINEAR_API_KEY");
   });
 });
 
@@ -1527,47 +1527,47 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=\nGH_BKIT_TOKEN_INSTALL=\nLINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
     expect(findings).toHaveLength(3);
     const ids = findings.map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token_install");
-    expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
+    expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
-  it("github tracker: does NOT flag blank LINEAR_API_KEY (issue #138)", () => {
+  it("github tracker: does NOT flag blank BKIT_LINEAR_API_KEY (issue #138)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=\nGH_BKIT_TOKEN_INSTALL=\nLINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token_install");
-    expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
+    expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
   it("returns one advisory for the blank key only", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=ghp_test\nGH_BKIT_TOKEN_INSTALL=ghp_bkit\nLINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
     expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("mcp-env-blank-key-linear_api_key");
+    expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
   });
 
   it("returns empty array when all three keys are set and non-empty", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=ghp_test\nGH_BKIT_TOKEN_INSTALL=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\nBKIT_LINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
@@ -1577,17 +1577,17 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=ghp_test\nGH_BKIT_TOKEN_INSTALL=ghp_bkit\n",
+      "BKIT_GH_TOKEN=ghp_test\nBKIT_GH_TOKEN_INSTALL=ghp_bkit\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
     expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("mcp-env-blank-key-linear_api_key");
+    expect(findings[0]!.id).toBe("mcp-env-blank-key-bkit_linear_api_key");
   });
 
   it("advisory action text contains [mcp-env] prefix and no BAR-XXX references", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_BKIT_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=\n", "utf-8");
     const findings = detectBlankDotenvKeys(tmpDir);
     for (const f of findings) {
       expect(f.action).toContain("[mcp-env]");
@@ -1708,7 +1708,7 @@ describe("detectDirenvNotAllowed", () => {
 describe("[mcp-env] detector outputs", () => {
   it("detectMissingDotenv fires when .env.example exists but .env absent", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
     const finding = detectMissingDotenv(tmpDir);
     expect(finding?.id).toBe("mcp-env-missing-dotenv");
   });
@@ -1717,19 +1717,19 @@ describe("[mcp-env] detector outputs", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_BKIT_TOKEN=\nGH_BKIT_TOKEN_INSTALL=\nLINEAR_API_KEY=\n",
+      "BKIT_GH_TOKEN=\nBKIT_GH_TOKEN_INSTALL=\nBKIT_LINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir).map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
-    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token_install");
-    expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
+    expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
+    expect(ids).toContain("mcp-env-blank-key-bkit_linear_api_key");
   });
 
   it("all [mcp-env] advisories have no BAR-XXX references", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_BKIT_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_BKIT_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "BKIT_GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "BKIT_GH_TOKEN=\n", "utf-8");
     const findings = [
       detectMissingDotenv(tmpDir),
       ...detectBlankDotenvKeys(tmpDir),

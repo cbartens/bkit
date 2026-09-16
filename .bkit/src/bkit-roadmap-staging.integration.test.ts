@@ -90,7 +90,7 @@ describe("row 11: STRAY allowlist widened in design/plan; build/debug/ship exist
     // PR-path occurrence (2 sites per file).
     const appendPattern =
       /\[bkit-roadmap\] append failed: (?:\$ROADMAP_JSONL|docs\/roadmap\.jsonl)"/g;
-    const foldPattern = /bkit_roadmap_fold\s+"[^"]+"\s+"\$TRACKER_ROWS"/g;
+    const foldPattern = /bkit_roadmap_fold\s+"[^"]+"/g;
     for (const [name, content] of [
       ["design", DESIGN],
       ["plan", PLAN],
@@ -159,67 +159,52 @@ describe("row 11: STRAY allowlist widened in design/plan; build/debug/ship exist
   });
 });
 
-describe("row 20: tracker enrichment is an invocable orchestrator step, gated wired-only via the real #202 resolver (#380)", () => {
-  // Validate through the REAL bkit-trackers.ts resolver (the mechanism `bkit
-  // install` uses to render host mirrors) rather than string-presence on the
-  // raw source — GAP-2: a comment asserting "tracker enrichment" as prose was
-  // previously enough to pass; this must fail unless a real, invocable
-  // `list_issues` call exists inside a `github`/`linear` marker pair AND is
-  // mechanically stripped when the tracker resolves to `none`.
+// A close re-renders the status block straight from docs/roadmap.jsonl. It can,
+// because tracker rows live in their own marker block, so the block holds
+// nothing the ledger does not — there is no on-disk state left to preserve and
+// therefore nothing to parse back. A close still never reads the tracker.
+describe("phase close re-renders the status block from the ledger — never reads the tracker", () => {
   for (const [name, content] of [
     ["design", DESIGN],
     ["plan", PLAN],
     ["build", BUILD],
     ["debug", DEBUG],
-    // ship joined the loop once its close grew a fold (#380 blocking gap 1).
-    // It is the close where dropping enrichment hurts most: the fold is a FULL
-    // regenerate, so a ship without it blanks every tracker-only FID from the
-    // board at exactly the moment a human reads it for "what next".
     ["ship", SHIP],
   ] as const) {
-    it(`${name}: github/linear resolution each carry an invocable list_issues call feeding a fold input path, never gh/search_issues`, () => {
+    it(`${name}: close folds from the ledger and issues no tracker read`, () => {
       const github = substituteWorkflow(content, "github");
       const linear = substituteWorkflow(content, "linear");
+      const none = substituteWorkflow(content, "none");
       expect(github.orphans, `${name} github resolution left orphan tracker markers`).toEqual([]);
       expect(linear.orphans, `${name} linear resolution left orphan tracker markers`).toEqual([]);
-
-      expect(github.output, `${name}/github must invoke mcp__github__list_issues`).toMatch(
-        /mcp__github__list_issues\(/,
-      );
-      expect(linear.output, `${name}/linear must invoke mcp__linear__list_issues`).toMatch(
-        /mcp__linear__list_issues\(/,
-      );
-      // NEVER gh/search_issues for the tracker enrichment read.
-      expect(github.output, `${name}/github must not use search_issues for enrichment`).not.toMatch(
-        /list_issues[\s\S]{0,400}search_issues/,
-      );
-
-      // The resolved output must feed a concrete fold input path — not just
-      // name the concept. TRACKER_ROWS must both be assigned from a stable
-      // absolute path AND threaded as bkit_roadmap_fold's 2nd argument.
-      for (const resolved of [github.output, linear.output]) {
-        expect(resolved, `${name} resolved output missing TRACKER_ROWS assignment`).toMatch(
-          /TRACKER_ROWS="[^"]*\.bkit\/\.roadmap-tracker-rows-\{FID\}\.json"/,
-        );
-        expect(
-          resolved,
-          `${name} resolved output must pass TRACKER_ROWS into bkit_roadmap_fold`,
-        ).toMatch(/bkit_roadmap_fold\s+"[^"]+"\s+"\$TRACKER_ROWS"/);
-      }
-    });
-
-    it(`${name}: under tracker "none" the list_issues call is mechanically ABSENT while the fold call still runs (fail-open no-op)`, () => {
-      const none = substituteWorkflow(content, "none");
       expect(none.orphans, `${name} none resolution left orphan tracker markers`).toEqual([]);
-      expect(none.output, `${name}/none must NOT invoke any list_issues call`).not.toMatch(
-        /list_issues\(/,
-      );
-      // The fold still runs (TRACKER_ROWS points at a file that was never
-      // written, so bkit_roadmap_fold's own fail-open handles the absent-file
-      // case — this is what makes enrichment "additive, never a precondition").
-      expect(none.output, `${name}/none must still invoke bkit_roadmap_fold`).toMatch(
-        /bkit_roadmap_fold\s+"[^"]+"\s+"\$TRACKER_ROWS"/,
-      );
+
+      for (const resolved of [github.output, linear.output, none.output]) {
+        expect(resolved, `${name} close must fold the status block`).toMatch(
+          /bkit_roadmap_fold\s+"[^"]+"/,
+        );
+        expect(resolved, `${name} bkit_roadmap_upsert no longer exists`).not.toContain(
+          "bkit_roadmap_upsert",
+        );
+        expect(resolved, `${name} close must not thread tracker rows into the fold`).not.toContain(
+          "TRACKER_ROWS",
+        );
+        expect(resolved, `${name} close must not write tracker-rows scratch`).not.toMatch(
+          /roadmap-tracker-rows/,
+        );
+        expect(resolved, `${name} close must not run tracker enrichment`).not.toContain(
+          "Tracker enrichment",
+        );
+        // Only /bkit-roadmap re-fetches the tracker, so only it stamps that
+        // block as fresh; a close carries the previous stamp forward.
+        expect(resolved, `${name} close must not stamp the tracker block fresh`).not.toContain(
+          "BKIT_ROADMAP_TRACKER_REFRESHED",
+        );
+        // Reverse label sync writes labels on OTHER issues — /bkit-roadmap only.
+        expect(resolved, `${name} close must not reverse-sync labels`).not.toContain(
+          "reverse-sync",
+        );
+      }
     });
   }
 });
@@ -235,7 +220,7 @@ describe("close-hook ledger rows use the correct phase status per workflow", () 
   });
 });
 
-describe("row 11 extension: ship Step 10 launches THREE subagents, including @bkit-roadmap-refresh (#380 Sub-plan 2 Task 9)", () => {
+describe("row 11 extension: ship Step 10 is MECHANICAL-TIER ONLY — two subagents, no analysis leaf", () => {
   const step10Start = SHIP.indexOf("## 🧠 Step 10 — Update Docs & Summary");
   const step10End = SHIP.indexOf("## 🤖 Step 11 — Prune Skills");
   const step10 = SHIP.slice(step10Start, step10End);
@@ -245,46 +230,52 @@ describe("row 11 extension: ship Step 10 launches THREE subagents, including @bk
     expect(step10End).toBeGreaterThan(step10Start);
   });
 
-  it("names all three subagents in the launch list", () => {
+  it("names both subagents in the launch list", () => {
     expect(step10).toContain("Invoke `@bkit-ship-update-docs`");
     expect(step10).toContain("Invoke `@bkit-ship-summary`");
-    expect(step10).toContain("Invoke `@bkit-roadmap-refresh`");
-    expect(step10).toMatch(/Launch three subagents in parallel/);
+    expect(step10).toMatch(/Launch two subagents in parallel/);
   });
 
-  it("the roadmap-refresh.md artifact is named in the wait/assert list and Gate 10 checklist", () => {
-    expect(step10).toMatch(/roadmap-refresh\.md/);
-    const gateStart = step10.indexOf("### 🔒 Gate 10");
-    expect(gateStart).toBeGreaterThan(-1);
-    const gate = step10.slice(gateStart);
-    expect(gate).toContain("roadmap-refresh.md");
-    expect(gate).toContain("@bkit-roadmap-refresh");
+  // The whole point of the ship/roadmap split: an opus analysis pass on every
+  // ship close is the cost this removes. A reintroduced `@bkit-roadmap-refresh`
+  // invocation anywhere in bkit-ship.md fails here, not in review.
+  it("bkit-ship.md never invokes @bkit-roadmap-refresh and never names its artifacts", () => {
+    expect(SHIP).not.toContain("@bkit-roadmap-refresh");
+    expect(SHIP).not.toContain("roadmap-refresh.md");
+    expect(SHIP).not.toContain("ROADMAP_VERDICT");
+    expect(SHIP).not.toContain("ROADMAP_SCAN_COVERAGE");
+    expect(SHIP).not.toContain("ship-roadmap-refresh");
   });
 
-  it("the roadmap-cadence/reverse-sync/drift-check block precedes the subagent launch (so a fired cadence can be folded into the analysis pass)", () => {
-    const cadenceIdx = step10.indexOf("Roadmap cadence + reverse tracker sync + drift check");
-    const launchIdx = step10.indexOf("Launch three subagents in parallel");
-    expect(cadenceIdx).toBeGreaterThan(-1);
-    expect(launchIdx).toBeGreaterThan(cadenceIdx);
+  it("the cadence evaluator is NOT run at ship close — it belongs to /bkit-roadmap", () => {
+    expect(SHIP).not.toContain("bkit_roadmap_cadence_eval");
+    expect(SHIP).not.toContain("ROADMAP_CADENCE_FIRE");
+    expect(SHIP).not.toContain("roadmap-cadence-inject");
+  });
+
+  it("the mechanical tier survives: drift check precedes the launch, the fold follows it", () => {
+    const driftIdx = step10.indexOf("Drift check");
+    const launchIdx = step10.indexOf("Launch two subagents in parallel");
+    const foldIdx = step10.indexOf("bkit_roadmap_fold");
+    expect(driftIdx).toBeGreaterThan(-1);
+    expect(launchIdx).toBeGreaterThan(driftIdx);
+    // Load-bearing: the fold must read the SHIPPED row @bkit-ship-update-docs
+    // writes, so it runs after the subagents, never beside them.
+    expect(foldIdx).toBeGreaterThan(launchIdx);
   });
 
   it("Step 10 introduces NO new git add/commit of docs/ — staging stays the single Step 13 BOOK_PATHS commit (design Addendum 4 § T)", () => {
     expect(step10).not.toMatch(/git\s+(-C\s+\S+\s+)?add\s+.*docs\//);
     expect(step10).not.toMatch(/git\s+(-C\s+\S+\s+)?commit\b/);
   });
-
-  it("ROADMAP_VERDICT is read but never gates the route — the analysis tier is additive best-effort", () => {
-    expect(step10).toMatch(/ROADMAP_VERDICT.*NEVER a gating input/);
-  });
 });
 
 describe("bkit-ship-invariants + bkit check stay green after the Step 10 rewrite", () => {
-  it("Gate 10 still requires both pre-existing verdicts plus the new one", () => {
+  it("Gate 10 still requires both pre-existing verdicts", () => {
     const gateStart = SHIP.indexOf("### 🔒 Gate 10");
     const gateEnd = SHIP.indexOf("bkit:tracker true start", gateStart);
     const gate = SHIP.slice(gateStart, gateEnd);
     expect(gate).toMatch(/DOCS_VERDICT.*PASS\|FAIL/);
     expect(gate).toMatch(/SUMMARY_VERDICT.*PASS\|CONCERNS\|FAIL/);
-    expect(gate).toMatch(/ROADMAP_VERDICT.*PASS\|CONCERNS\|FAIL/);
   });
 });

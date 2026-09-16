@@ -57,14 +57,20 @@
       "wget *githubusercontent.com*": "allow",
       "curl *linear.app*": "allow",
       "wget *linear.app*": "allow",
+      "curl *models.dev*": "allow",
+      "wget *models.dev*": "allow",
       "curl *npmjs.com*": "allow",
       "wget *npmjs.com*": "allow",
+      "curl *npmjs.org*": "allow",
+      "wget *npmjs.org*": "allow",
       "curl *ollama.com*": "allow",
       "wget *ollama.com*": "allow",
       "curl *opencode.ai*": "allow",
       "wget *opencode.ai*": "allow",
       "curl *openrouter.ai*": "allow",
       "wget *openrouter.ai*": "allow",
+      "curl *skills.sh*": "allow",
+      "wget *skills.sh*": "allow",
       "curl *tavily.com*": "allow",
       "wget *tavily.com*": "allow"
     }
@@ -74,7 +80,7 @@
       "type": "remote",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
-        "Authorization": "Bearer {env:GH_BKIT_TOKEN}",
+        "Authorization": "Bearer {env:BKIT_GH_TOKEN}",
         "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
       }
     }
@@ -85,7 +91,15 @@
   "provider": {
     "opencode-go": {
       "options": {
-        "apiKey": "{env:OPENCODE_API_KEY}"
+        "apiKey": "{env:BKIT_OPENCODE_API_KEY}"
+      }
+    },
+    "openrouter": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "OpenRouter",
+      "options": {
+        "baseURL": "https://openrouter.ai/api/v1",
+        "apiKey": "{env:BKIT_OPENROUTER_API_KEY}"
       }
     }
   }

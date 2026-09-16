@@ -13,8 +13,8 @@
 #
 # Two sources, by tier (get_val prefers AGENT_ENV_FILES, then falls back to the
 # web env file):
-#   - .bkit/.env              → agent/CI-tier secrets (GH_BKIT_TOKEN_INSTALL, GH_BKIT_TOKEN,
-#                               ANTHROPIC_API_KEY, CURSOR_API_KEY)
+#   - .bkit/.env              → agent/CI-tier secrets (BKIT_GH_TOKEN_INSTALL, BKIT_GH_TOKEN,
+#                               BKIT_ANTHROPIC_API_KEY, BKIT_CURSOR_API_KEY)
 #   - apps/web/.env.preview   → deploy-infra tokens (VERCEL_*, SUPABASE_ACCESS_TOKEN)
 #
 # Mirror semantics within the curated scope:
@@ -59,7 +59,8 @@ fi
 # this script's $ENV_FILE. Each grep is `2>/dev/null ... || true` so a missing
 # key resolves to empty instead of aborting under `set -euo pipefail`.
 get_val() {
-  local search_key="$1"
+  local search_key
+  search_key="$(github_source_key "$1")"
   local val=""
   local f
   for f in "${AGENT_ENV_FILES[@]}"; do

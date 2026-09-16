@@ -213,7 +213,7 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 
     // Assert registry-auth env var is present (BAR-138: replaced git auth-shim)
-    expect(onDisk).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(onDisk).toContain("BKIT_GH_TOKEN_INSTALL");
     // BAR-138: the old git auth-shim has been removed from the template
     expect(onDisk).not.toContain("git config --global url.");
   });
@@ -273,7 +273,7 @@ jobs:
     expect(result.suggested).toBe(true);
     expect(advisories2).toHaveLength(1);
     expect(advisories2[0]!.action).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(advisories2[0]!.action).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(advisories2[0]!.action).toContain("BKIT_GH_TOKEN_INSTALL");
     expect(advisories2[0]!.action).not.toContain("{{TEMPLATE_CONTENT}}");
   });
 });
@@ -637,7 +637,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     expect(local).toMatch(/matchHost:\s*"npm\.pkg\.github\.com"/);
     // ... but the token line ships COMMENTED so an un-provisioned consumer is
     // non-breaking (a `{{ secrets.* }}` ref errors if the Mend secret is unset).
-    expect(local).toMatch(/\/\/\s*token:\s*"\{\{ secrets\.GH_BKIT_TOKEN_INSTALL \}\}"/);
+    expect(local).toMatch(/\/\/\s*token:\s*"\{\{ secrets\.BKIT_GH_TOKEN_INSTALL \}\}"/);
   });
 
   it("canonical renovate.json5 ships NO hostRules token anchor — it lives only in renovate-local.json5 (#199)", () => {
@@ -652,7 +652,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     // Guard the active config KEY + secret ref — the explanatory comment may
     // still mention `hostRules` in prose.
     expect(renovate).not.toMatch(/^\s*hostRules:/m);
-    expect(renovate).not.toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
+    expect(renovate).not.toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
   });
 
   it("substitutes REPO_SLUG into renovate.json5's local-preset extends entry", () => {
@@ -872,7 +872,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/ANTHROPIC_API_KEY/);
+    expect(advisory!.action).toMatch(/Add `ANTHROPIC_API_KEY`/);
     expect(advisory!.action).toMatch(/install-github-app/);
     expect(advisory!.action).toMatch(/required/);
     // Bare `Auto` must NOT appear in advisory text (migrated to bkit:auto)
@@ -896,7 +896,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(advisory).toBeDefined();
     expect(advisory!.action).toMatch(/OPENCODE_PROVIDER_KEY/);
     expect(advisory!.action).toMatch(/opencode\/opencode\.json/);
-    expect(advisory!.action).not.toMatch(/ANTHROPIC_API_KEY/);
+    expect(advisory!.action).not.toMatch(/BKIT_ANTHROPIC_API_KEY/);
     expect(advisory!.action).not.toMatch(/bkit-auto\.yml/);
   });
 
@@ -922,16 +922,16 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/LINEAR_API_KEY/);
-    expect(advisory!.action).not.toMatch(/ANTHROPIC_API_KEY/);
+    expect(advisory!.action).toMatch(/BKIT_LINEAR_API_KEY/);
+    expect(advisory!.action).not.toMatch(/BKIT_ANTHROPIC_API_KEY/);
   });
 
-  it("cloud=claude: advisory does NOT reference LINEAR_API_KEY (GitHub-only path)", () => {
+  it("cloud=claude: advisory does NOT reference BKIT_LINEAR_API_KEY (GitHub-only path)", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" });
     runCloudModule(ctx);
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
-    expect(advisory!.action).not.toMatch(/LINEAR_API_KEY/);
+    expect(advisory!.action).not.toMatch(/BKIT_LINEAR_API_KEY/);
     expect(advisory!.action).toMatch(/install-github-app/);
     expect(advisory!.action).toMatch(/@claude/);
   });
@@ -991,7 +991,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
     const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
     expect(yml).toContain("id-token: write");
-    expect(yml).not.toContain("LINEAR_API_KEY");
+    expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
     expect(yml).not.toContain("mcp__linear__*");
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/); // all sentinels resolved
@@ -1048,7 +1048,7 @@ describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", (
   for (const tracker of ["github", "none", "linear"] as const) {
     it(`${tracker} tracker → GitHub-only output (no Linear references, no sentinels)`, () => {
       const out = renderCloudWorkflow(template, tracker);
-      expect(out).not.toContain("LINEAR_API_KEY");
+      expect(out).not.toContain("BKIT_LINEAR_API_KEY");
       expect(out).not.toContain("mcp__linear__*");
       expect(out).toContain("mcp__github__*");
       expect(out).not.toMatch(/@@CLOUD_TRACKER/);
@@ -1328,7 +1328,7 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
 // MED-5 regression — advisories copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
-describe("MED-5: first-install advisory GH_BKIT_TOKEN_INSTALL block has no broken backslash-escape sequences", () => {
+describe("MED-5: first-install advisory BKIT_GH_TOKEN_INSTALL block has no broken backslash-escape sequences", () => {
   it("advisories emitted on first install contain no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
     const versionFile = path.join(tmpDir, ".bkit", "version");
@@ -1341,8 +1341,8 @@ describe("MED-5: first-install advisory GH_BKIT_TOKEN_INSTALL block has no broke
 
     const combined = advisories.map((a) => a.action).join("\n");
 
-    // Must contain the GH_BKIT_TOKEN_INSTALL setup (confirming it's the first-install block)
-    expect(combined).toContain("GH_BKIT_TOKEN_INSTALL");
+    // Must contain the BKIT_GH_TOKEN_INSTALL setup (confirming it's the first-install block)
+    expect(combined).toContain("BKIT_GH_TOKEN_INSTALL");
 
     // Must NOT contain a literal backslash-dollar sequence.
     expect(combined).not.toContain("\\$");
@@ -1359,12 +1359,12 @@ describe("MED-5: first-install advisory GH_BKIT_TOKEN_INSTALL block has no broke
     // The first-install advisory should have structured action text
     const firstInstallAdvisory = advisories.find((a) => a.id === "first-install-postinstall-steps");
     expect(firstInstallAdvisory).toBeDefined();
-    expect(firstInstallAdvisory?.action).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(firstInstallAdvisory?.action).toContain("BKIT_GH_TOKEN_INSTALL");
   });
 });
 
 describe(".bkit-version first-run signal extra-logging", () => {
-  it("first install (no .bkit-version) emits GH_BKIT_TOKEN_INSTALL setup in advisories", () => {
+  it("first install (no .bkit-version) emits BKIT_GH_TOKEN_INSTALL setup in advisories", () => {
     const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, advisories });
@@ -1376,9 +1376,9 @@ describe(".bkit-version first-run signal extra-logging", () => {
     // dispatchModules flushes postDispatch (where .bkit-version is written)
     dispatchModules(new Set(["core"]), ctx);
 
-    // advisories should contain GH_BKIT_TOKEN_INSTALL setup
+    // advisories should contain BKIT_GH_TOKEN_INSTALL setup
     const combined = advisories.map((a) => a.action).join("\n");
-    expect(combined).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(combined).toContain("BKIT_GH_TOKEN_INSTALL");
     expect(combined).toContain("package.json");
   });
 
@@ -1400,7 +1400,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     dispatchModules(new Set(["core"]), ctx2);
 
     const combined2 = advisories2.map((a) => a.action).join("\n");
-    expect(combined2).not.toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(combined2).not.toContain("BKIT_GH_TOKEN_INSTALL");
     expect(combined2).not.toContain("First install detected");
   });
 });
@@ -2149,8 +2149,8 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
   it("no drift when a consumer adds an EXTRA line inside a managed block (subset — extras OK)", () => {
     // "All the content and more" stays quiet: an added env var is not drift.
     const consumer = readTemplate().replace(
-      "      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}",
-      "      GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}\n      MY_CONSUMER_VAR: '1'",
+      "      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}",
+      "      BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}\n      MY_CONSUMER_VAR: '1'",
     );
     writeConsumer(consumer);
     expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
@@ -2640,7 +2640,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       parsed.provider?.openrouter,
       "openrouter provider seeded on first install",
     ).toBeDefined();
-    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("OPENROUTER_API_KEY");
+    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("BKIT_OPENROUTER_API_KEY");
 
     // opencode-go renders a built-in block keyed `opencode-go` (apiKey only — no npm/baseURL).
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode-go" }));
@@ -2651,7 +2651,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       "openrouter provider preserved (additive install)",
     ).toBeDefined();
     const go = parsed.provider?.["opencode-go"];
-    expect((go?.options as Record<string, unknown>)?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect((go?.options as Record<string, unknown>)?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
     expect(go?.npm).toBeUndefined();
     expect((go?.options as Record<string, unknown>)?.baseURL).toBeUndefined();
   });
@@ -2668,7 +2668,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       name: "hijacked",
       options: {
         baseURL: "http://localhost:11434/v1",
-        apiKey: "{env:OPENCODE_API_KEY}",
+        apiKey: "{env:BKIT_OPENCODE_API_KEY}",
       },
     };
     fs.writeFileSync(jsonPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
@@ -2679,7 +2679,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(block?.npm).toBeUndefined();
     expect(block?.name).toBeUndefined();
     expect((block?.options as Record<string, unknown>)?.baseURL).toBeUndefined();
-    expect((block?.options as Record<string, unknown>)?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+    expect((block?.options as Record<string, unknown>)?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
     expect(Object.keys(block ?? {})).toEqual(["options"]);
   });
 
@@ -2749,7 +2749,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(advisory).toBeDefined();
     expect(advisory!.detect).toMatch(/opencode host installed/);
     // Advisory names the provider key env var
-    expect(advisory!.action).toMatch(/OPENROUTER_API_KEY/);
+    expect(advisory!.action).toMatch(/BKIT_OPENROUTER_API_KEY/);
     // Advisory references bkit doctor/status
     expect(advisory!.action).toMatch(/bkit doctor/);
     expect(advisory!.action).toMatch(/bkit status/);
@@ -2763,7 +2763,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 
     const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/OLLAMA_API_KEY/);
+    expect(advisory!.action).toMatch(/BKIT_OLLAMA_API_KEY/);
   });
 
   it("dry-run: no agent/command .md files written to disk, advisory still emitted", () => {
@@ -2892,13 +2892,13 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
   // Resolved at collection time — the `it` bodies below run after a chdir into a temp repo.
   const CLAUDE_SETTINGS_TEMPLATE = path.resolve(".bkit/templates/.claude/settings.json");
 
-  it("openrouter (remote): npm driver, aggregator baseURL, apiKey via {env:OPENROUTER_API_KEY}", () => {
+  it("openrouter (remote): npm driver, aggregator baseURL, apiKey via {env:BKIT_OPENROUTER_API_KEY}", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const block = parsed.provider?.openrouter;
     expect(block).toBeTruthy();
     expect(block.npm).toBe("@ai-sdk/openai-compatible");
     expect(block.options.baseURL).toBe("https://openrouter.ai/api/v1");
-    expect(block.options.apiKey).toBe("{env:OPENROUTER_API_KEY}");
+    expect(block.options.apiKey).toBe("{env:BKIT_OPENROUTER_API_KEY}");
     expect(block.api).toBeUndefined(); // an "api" field makes opencode reject the whole config
     expect(JSON.stringify(block)).not.toContain("${");
   });
@@ -2909,7 +2909,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const gh = parsed.mcp?.github;
     expect(gh.type).toBe("remote");
-    expect(gh.headers.Authorization).toBe("Bearer {env:GH_BKIT_TOKEN}");
+    expect(gh.headers.Authorization).toBe("Bearer {env:BKIT_GH_TOKEN}");
     expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
     expect(JSON.stringify(parsed.mcp)).not.toContain("${");
   });
@@ -3037,14 +3037,14 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("ollama: npm driver, cloud baseURL, apiKey via {env:OLLAMA_API_KEY}", () => {
+  it("ollama: npm driver, cloud baseURL, apiKey via {env:BKIT_OLLAMA_API_KEY}", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "ollama"));
     const block = parsed.provider?.["ollama"];
     expect(block).toBeTruthy();
     expect(block.api).toBeUndefined();
     expect(block.npm).toBe("@ai-sdk/openai-compatible");
     expect(block.options.baseURL).toBe("https://ollama.com/v1");
-    expect(block.options.apiKey).toBe("{env:OLLAMA_API_KEY}");
+    expect(block.options.apiKey).toBe("{env:BKIT_OLLAMA_API_KEY}");
   });
 
   it("opencode-zen / opencode-go: built-in providers (apiKey only — no npm/baseURL)", () => {
@@ -3063,7 +3063,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       expect(block.npm).toBeUndefined();
       expect(block.name).toBeUndefined();
       expect(block.options?.baseURL).toBeUndefined();
-      expect(block.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
+      expect(block.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
       expect(Object.keys(block)).toEqual(["options"]);
       expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
       expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
@@ -3175,7 +3175,7 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
 
   it("reconciling a LATER provider's block keeps the existing key order (upgrade path)", () => {
     seed({
-      "opencode-go": { options: { apiKey: "{env:OPENCODE_API_KEY}" } },
+      "opencode-go": { options: { apiKey: "{env:BKIT_OPENCODE_API_KEY}" } },
       openrouter: { npm: "@ai-sdk/openai-compatible", name: "OpenRouter", options: {} },
     });
     // The "additional provider" reconcile on upgrade seeds ONLY openrouter.
@@ -3186,7 +3186,7 @@ describe("reconcileOpencodeJson — preserves existing provider order", () => {
           name: "OpenRouter",
           options: {
             baseURL: "https://integrate.api.openrouter.com/v1",
-            apiKey: "{env:OPENROUTER_API_KEY}",
+            apiKey: "{env:BKIT_OPENROUTER_API_KEY}",
           },
         },
       },

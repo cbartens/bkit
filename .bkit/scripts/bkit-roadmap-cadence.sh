@@ -10,9 +10,9 @@
 #       NOT advance the count — dedup by `key`), crosses buildCycles; OR
 #   (b) stalenessDays have elapsed since that same fire row's `ts`.
 #
-# Anchored on the last FIRE, never the last analysis-refresh `ts` — the
-# analysis block refreshes every ship close, so a refresh-anchored counter
-# would reset every ship and never reach the threshold.
+# Anchored on the last FIRE, never the last analysis-refresh `ts` — every
+# `/bkit-roadmap` run refreshes the analysis block, so a refresh-anchored
+# counter would reset on each run and never reach the threshold.
 #
 # When no ROADMAP_CADENCE_FIRE row has EVER been written, the baseline is the
 # EARLIEST row's `ts` in docs/roadmap.jsonl (the repo's own roadmap-tracking

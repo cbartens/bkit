@@ -18,7 +18,7 @@
  * Defaults to dry-run. Pass `--apply` to write.
  *
  * Required env:
- *   LINEAR_API_KEY      Linear personal API key (loaded via direnv from .bkit/.env)
+ *   BKIT_LINEAR_API_KEY      Linear personal API key (loaded via direnv from .bkit/.env)
  *
  * Token resolution for GitHub:
  *   1. process.env.GH_PROJECT_TOKEN  (explicit override)
@@ -65,8 +65,8 @@ if (!OWNER || !REPO_NAME) die(`--repo must be owner/name, got ${REPO}`);
 // Tokens
 // ─────────────────────────────────────────────────────────────────────────────
 
-const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
-if (!LINEAR_API_KEY) die("LINEAR_API_KEY missing — load .bkit/.env via direnv");
+const BKIT_LINEAR_API_KEY = process.env.BKIT_LINEAR_API_KEY;
+if (!BKIT_LINEAR_API_KEY) die("BKIT_LINEAR_API_KEY missing — load .bkit/.env via direnv");
 
 function resolveGhToken(): string {
   if (process.env.GH_PROJECT_TOKEN) return process.env.GH_PROJECT_TOKEN;
@@ -207,7 +207,7 @@ async function linearGraphql<T = any>(
   const res = await fetch("https://api.linear.app/graphql", {
     method: "POST",
     headers: {
-      Authorization: LINEAR_API_KEY!,
+      Authorization: BKIT_LINEAR_API_KEY!,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),

@@ -111,39 +111,39 @@ function makeWs(...writes: import("./bkit-install").WriteEntry[]): WriteSet {
 // ---------------------------------------------------------------------------
 
 describe("detectShellToken", () => {
-  it("returns 'present' when GH_BKIT_TOKEN_INSTALL is set and non-empty", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "some-token-value";
+  it("returns 'present' when BKIT_GH_TOKEN_INSTALL is set and non-empty", () => {
+    process.env.BKIT_GH_TOKEN_INSTALL = "some-token-value";
     expect(detectShellToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_BKIT_TOKEN_INSTALL is not set", () => {
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+  it("returns 'missing' when BKIT_GH_TOKEN_INSTALL is not set", () => {
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     expect(detectShellToken()).toBe("missing");
   });
 
-  it("B4: returns 'empty' when GH_BKIT_TOKEN_INSTALL is set to empty string (differentiates from unset)", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "";
+  it("B4: returns 'empty' when BKIT_GH_TOKEN_INSTALL is set to empty string (differentiates from unset)", () => {
+    process.env.BKIT_GH_TOKEN_INSTALL = "";
     expect(detectShellToken()).toBe("empty");
   });
 });
 
 // ---------------------------------------------------------------------------
-// detectShellGhMcpToken (GH_BKIT_TOKEN — GitHub MCP auth)
+// detectShellGhMcpToken (BKIT_GH_TOKEN — GitHub MCP auth)
 // ---------------------------------------------------------------------------
 
 describe("detectShellGhMcpToken", () => {
-  it("returns 'present' when GH_BKIT_TOKEN is set and non-empty", () => {
-    process.env.GH_BKIT_TOKEN = "ghp_value";
+  it("returns 'present' when BKIT_GH_TOKEN is set and non-empty", () => {
+    process.env.BKIT_GH_TOKEN = "ghp_value";
     expect(detectShellGhMcpToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_BKIT_TOKEN is not set", () => {
-    delete process.env.GH_BKIT_TOKEN;
+  it("returns 'missing' when BKIT_GH_TOKEN is not set", () => {
+    delete process.env.BKIT_GH_TOKEN;
     expect(detectShellGhMcpToken()).toBe("missing");
   });
 
-  it("returns 'empty' when GH_BKIT_TOKEN is set to empty string", () => {
-    process.env.GH_BKIT_TOKEN = "";
+  it("returns 'empty' when BKIT_GH_TOKEN is set to empty string", () => {
+    process.env.BKIT_GH_TOKEN = "";
     expect(detectShellGhMcpToken()).toBe("empty");
   });
 });
@@ -455,7 +455,7 @@ describe("detectNpmrcAuth", () => {
     // Still 'present' for the registry check; the legacy line is flagged separately.
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcAuth(tmpDir)).toBe("present");
@@ -464,7 +464,7 @@ describe("detectNpmrcAuth", () => {
   it("returns 'missing' when .npmrc exists but lacks the @cbartens registry mapping", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
+      "//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcAuth(tmpDir)).toBe("missing");
@@ -492,7 +492,7 @@ describe("detectNpmrcLegacyAuthToken", () => {
   it("returns true when .npmrc carries a legacy GH Packages auth-token line", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
       "utf-8",
     );
     expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(true);
@@ -540,7 +540,7 @@ describe("detectVercelInstallCommandMissingAuth", () => {
       path.join(tmpDir, "vercel.json"),
       JSON.stringify({
         installCommand:
-          'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" && pnpm install',
+          'pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && pnpm install',
       }),
       "utf-8",
     );
@@ -552,7 +552,7 @@ describe("detectVercelInstallCommandMissingAuth", () => {
       path.join(tmpDir, "vercel.json"),
       JSON.stringify({
         installCommand:
-          "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL && pnpm install",
+          "pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install",
       }),
       "utf-8",
     );
@@ -582,12 +582,12 @@ describe("detectVercelInstallCommandMissingAuth", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectGhSecret", () => {
-  it("returns 'present' when gh CLI reports GH_BKIT_TOKEN_INSTALL exists", () => {
-    execSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL\n");
+  it("returns 'present' when gh CLI reports BKIT_GH_TOKEN_INSTALL exists", () => {
+    execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n");
     expect(detectGhSecret()).toBe("present");
   });
 
-  it("returns 'missing' when gh CLI reports no GH_BKIT_TOKEN_INSTALL", () => {
+  it("returns 'missing' when gh CLI reports no BKIT_GH_TOKEN_INSTALL", () => {
     execSync.mockReturnValue("OTHER_SECRET\n");
     expect(detectGhSecret()).toBe("missing");
   });
@@ -661,7 +661,7 @@ describe("detectVercelEnv", () => {
     expect(result).toBe("unknown");
   });
 
-  it("returns 'present' when vercel CLI reports GH_BKIT_TOKEN_INSTALL", () => {
+  it("returns 'present' when vercel CLI reports BKIT_GH_TOKEN_INSTALL", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
@@ -670,11 +670,11 @@ describe("detectVercelEnv", () => {
       '{"projectId":"proj_x"}',
       "utf-8",
     );
-    execFileSync.mockReturnValue("GH_BKIT_TOKEN_INSTALL  preview\n");
+    execFileSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("present");
   });
 
-  it("returns 'missing' when vercel CLI output lacks GH_BKIT_TOKEN_INSTALL", () => {
+  it("returns 'missing' when vercel CLI output lacks BKIT_GH_TOKEN_INSTALL", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
@@ -725,10 +725,10 @@ describe("detectCiYmlMissingTokenEnv", () => {
   };
   // #274 canonical correct install step: pnpm config set (user-level auth) + env mapping.
   const CONFIG_SET =
-    '          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL"';
+    '          pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"';
   const INSTALL = "          pnpm install --frozen-lockfile";
   const ENV_BLOCK =
-    "        env:\n          GH_BKIT_TOKEN_INSTALL: \${{ secrets.GH_BKIT_TOKEN_INSTALL }}";
+    "        env:\n          BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}";
   const correctStep = `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n${ENV_BLOCK}`;
 
   it("returns null when install step has both pnpm config set and env mapping", () => {
@@ -738,14 +738,14 @@ describe("detectCiYmlMissingTokenEnv", () => {
 
   it("returns null when env mapping uses quotes (with config set)", () => {
     writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN_INSTALL: "\${{ secrets.GH_BKIT_TOKEN_INSTALL }}"`,
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: "\${{ secrets.BKIT_GH_TOKEN_INSTALL }}"`,
     );
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
 
   it("returns null when env mapping has no inner spaces (with config set)", () => {
     writeCi(
-      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN_INSTALL: \${{secrets.GH_BKIT_TOKEN_INSTALL}}`,
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          BKIT_GH_TOKEN_INSTALL: \${{secrets.BKIT_GH_TOKEN_INSTALL}}`,
     );
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
@@ -771,7 +771,7 @@ describe("detectCiYmlMissingTokenEnv", () => {
     writeCi(`      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}`);
     const result = detectCiYmlMissingTokenEnv(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).toContain("GH_BKIT_TOKEN_INSTALL env mapping");
+    expect(result!.detect).toContain("BKIT_GH_TOKEN_INSTALL env mapping");
   });
 
   it("returns null when ci.yml is absent", () => {
@@ -791,11 +791,11 @@ describe("detectCiYmlMissingTokenEnv", () => {
     expect(result!.detect).toContain("401");
   });
 
-  it("elevates to blocker when .npmrc carries a legacy ${GH_BKIT_TOKEN_INSTALL} ref and wiring is incomplete", () => {
+  it("elevates to blocker when .npmrc carries a legacy ${BKIT_GH_TOKEN_INSTALL} ref and wiring is incomplete", () => {
     writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN_INSTALL}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
       "utf-8",
     );
     const result = detectCiYmlMissingTokenEnv(tmpDir);
@@ -1465,7 +1465,7 @@ describe("buildRenovateSelfHostedMendAdvisory", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildTokenRenameMigrationAdvisory — GH_BKIT_TOKEN scheme split migration
+// buildTokenRenameMigrationAdvisory — BKIT_GH_TOKEN scheme split migration
 // ---------------------------------------------------------------------------
 
 describe("buildTokenRenameMigrationAdvisory", () => {
@@ -1475,20 +1475,20 @@ describe("buildTokenRenameMigrationAdvisory", () => {
   };
 
   it("fires when .bkit/.env still has GH_MCP_TOKEN (old scheme)", () => {
-    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_MCP_TOKEN=y\n");
+    writeEnv("BKIT_GH_TOKEN_INSTALL=x\nGH_MCP_TOKEN=y\n");
     const r = buildTokenRenameMigrationAdvisory(tmpDir);
     expect(r).not.toBeNull();
     expect(r!.id).toBe("gh-token-scheme-rename");
-    expect(r!.action).toMatch(/GH_MCP_TOKEN.*->.*GH_BKIT_TOKEN/);
+    expect(r!.action).toMatch(/GH_MCP_TOKEN.*->.*BKIT_GH_TOKEN/);
   });
 
-  it("fires when GH_BKIT_TOKEN present without the new GH_BKIT_TOKEN_INSTALL", () => {
-    writeEnv("GH_BKIT_TOKEN=x\n");
+  it("fires when GH_BKIT_TOKEN_INSTALL / GH_BKIT_TOKEN still present (pre-BKIT_ prefix)", () => {
+    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_BKIT_TOKEN=y\n");
     expect(buildTokenRenameMigrationAdvisory(tmpDir)?.id).toBe("gh-token-scheme-rename");
   });
 
-  it("null for the new scheme (GH_BKIT_TOKEN_INSTALL present, no GH_MCP_TOKEN)", () => {
-    writeEnv("GH_BKIT_TOKEN_INSTALL=x\nGH_BKIT_TOKEN=y\n");
+  it("null for the new scheme (BKIT_GH_TOKEN_INSTALL present, no retired names)", () => {
+    writeEnv("BKIT_GH_TOKEN_INSTALL=x\nBKIT_GH_TOKEN=y\n");
     expect(buildTokenRenameMigrationAdvisory(tmpDir)).toBeNull();
   });
 
@@ -1693,8 +1693,8 @@ describe("detectCiRouterSecrets", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
-    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no LINEAR_API_KEY.
+  it("any tracker: emits ONLY BKIT_ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
+    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no BKIT_LINEAR_API_KEY.
     // This supersedes the old "Linear tracker: emits ANTHROPIC + LINEAR" behavior.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1710,7 +1710,7 @@ describe("detectCiRouterSecrets", () => {
     expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
   });
 
-  it("github tracker: emits ONLY ANTHROPIC — no LINEAR_API_KEY advisory (issue #138)", () => {
+  it("github tracker: emits ONLY ANTHROPIC — no BKIT_LINEAR_API_KEY advisory (issue #138)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
@@ -1735,7 +1735,7 @@ describe("detectCiRouterSecrets", () => {
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
-    execSync.mockReturnValue("ANTHROPIC_API_KEY\nLINEAR_API_KEY\n");
+    execSync.mockReturnValue("ANTHROPIC_API_KEY\nBKIT_LINEAR_API_KEY\n");
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 });
@@ -1774,7 +1774,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
   });
 
-  it("github tracker: omits LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
+  it("github tracker: omits BKIT_LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
@@ -1786,9 +1786,9 @@ describe("buildCloudDashboardsAdvisory", () => {
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.detect).not.toContain("LINEAR_API_KEY");
-    expect(result!.action).not.toContain("LINEAR_API_KEY");
-    expect(result!.action).toContain("ANTHROPIC_API_KEY");
+    expect(result!.detect).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(result!.action).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(result!.action).toContain("BKIT_ANTHROPIC_API_KEY");
   });
 
   it("lists cloud context-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
@@ -1802,8 +1802,8 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("vercel login");
   });
 
-  it("cloud=cursor variant: LINEAR_API_KEY appears in the checklist (cursor path)", () => {
-    // LINEAR_API_KEY belongs to cloud=cursor (Linear tracker), not cloud=claude.
+  it("cloud=cursor variant: BKIT_LINEAR_API_KEY appears in the checklist (cursor path)", () => {
+    // BKIT_LINEAR_API_KEY belongs to cloud=cursor (Linear tracker), not cloud=claude.
     // Simulate: no bkit-cloud.yml, but .cursor/ exists + cloudAgents=cursor recorded.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1816,8 +1816,8 @@ describe("buildCloudDashboardsAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.action).toContain("LINEAR_API_KEY");
-    expect(result!.action).not.toContain("ANTHROPIC_API_KEY");
+    expect(result!.action).toContain("BKIT_LINEAR_API_KEY");
+    expect(result!.action).not.toContain("BKIT_ANTHROPIC_API_KEY");
   });
 });
 
@@ -2007,7 +2007,7 @@ describe("runPostInstallCheck deduplication", () => {
     // cross-phase dedup: if preflightAdvisories has an id that Phase 3 would also emit,
     // Phase 3 wins (its entry replaces preflight's).
     // Set up: shell token missing → Phase 3 will emit gh-bkit-token-unset-shell
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
 
     // Simulate a preflight advisory with the same id
     const preflightAdvisories: PreflightFinding[] = [
@@ -2029,8 +2029,8 @@ describe("runPostInstallCheck deduplication", () => {
     expect(matches[0]!.detect).not.toBe("Old preflight detect text");
   });
 
-  it("gh-bkit-token-unset-shell is emitted when GH_BKIT_TOKEN_INSTALL is unset", () => {
-    delete process.env.GH_BKIT_TOKEN_INSTALL;
+  it("gh-bkit-token-unset-shell is emitted when BKIT_GH_TOKEN_INSTALL is unset", () => {
+    delete process.env.BKIT_GH_TOKEN_INSTALL;
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
   });
@@ -2042,20 +2042,20 @@ describe("runPostInstallCheck deduplication", () => {
       "utf-8",
     );
     // Ensure token is set so only npmrc advisory fires
-    process.env.GH_BKIT_TOKEN_INSTALL = "test";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(true);
   });
 
   it("no finding is emitted for .npmrc when file is absent (silent skip)", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "test";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // No .npmrc file
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(false);
   });
 
   it("devdeps-need-fetch emitted when WriteSet has devDepsAdded", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "test";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     const ws = makeWs({ path: "package.json", action: "update", devDepsAdded: ["prettier"] });
     const result = runPostInstallCheck([], ws, makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "devdeps-need-fetch")).toBe(true);
@@ -2066,7 +2066,7 @@ describe("runPostInstallCheck deduplication", () => {
     // appears at the back of the list (Phase 3 position), not inserted at preflight position.
     // This ensures the output order is stable: preflight findings (not superseded) first,
     // Phase 3 findings second.
-    process.env.GH_BKIT_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
+    process.env.BKIT_GH_TOKEN_INSTALL = "test"; // token present → no shell-token finding from Phase 3
 
     const preflightAdvisories: PreflightFinding[] = [
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "p1", action: "a1" },
@@ -2087,7 +2087,7 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("deduplicates duplicate ids within incoming preflightAdvisories (intra-preflight dedup)", () => {
-    process.env.GH_BKIT_TOKEN_INSTALL = "test";
+    process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // Two entries with the same id — only the first should survive.
     const preflightAdvisories: PreflightFinding[] = [
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "first", action: "a1" },
@@ -2901,36 +2901,36 @@ describe("detectOpencodeYmlProviderDrift", () => {
 
   it("null when in sync (handler model prefix + secret match the installed provider)", () => {
     writePkg("openrouter");
-    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "BKIT_OPENROUTER_API_KEY");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 
   it("flags drift when the handler is pinned to a different provider than installed", () => {
-    // Installed = opencode-go (OPENCODE_API_KEY), handler = openrouter — the real repo state.
+    // Installed = opencode-go (BKIT_OPENCODE_API_KEY), handler = openrouter — the real repo state.
     writePkg("opencode-go");
-    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "BKIT_OPENROUTER_API_KEY");
     const f = detectOpencodeYmlProviderDrift(tmpDir);
     expect(f?.id).toBe("opencode-yml-provider-drift");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("opencode-go");
-    expect(f?.detect).toContain("OPENROUTER_API_KEY");
-    expect(f?.action).toContain("OPENCODE_API_KEY");
+    expect(f?.detect).toContain("BKIT_OPENROUTER_API_KEY");
+    expect(f?.action).toContain("BKIT_OPENCODE_API_KEY");
     expect(f?.action).toContain("opencode-go/<model>");
   });
 
   it("flags env-var drift even when the model prefix matches", () => {
     // model prefix opencode-go matches, but the secret env var is wrong (OPENROUTER vs OPENCODE).
     writePkg("opencode-go");
-    writeOpencodeYml("opencode-go/some-model", "OPENROUTER_API_KEY");
+    writeOpencodeYml("opencode-go/some-model", "BKIT_OPENROUTER_API_KEY");
     const f = detectOpencodeYmlProviderDrift(tmpDir);
     expect(f?.id).toBe("opencode-yml-provider-drift");
   });
 
-  it("distinguishes the two OPENCODE_API_KEY gateways by model prefix", () => {
-    // Both opencode-zen and opencode-go use OPENCODE_API_KEY, so only the model prefix
+  it("distinguishes the two BKIT_OPENCODE_API_KEY gateways by model prefix", () => {
+    // Both opencode-zen and opencode-go use BKIT_OPENCODE_API_KEY, so only the model prefix
     // (opencode vs opencode-go) tells them apart. Installed = go, handler pinned to zen.
     writePkg("opencode-go");
-    writeOpencodeYml("opencode/zen-model", "OPENCODE_API_KEY");
+    writeOpencodeYml("opencode/zen-model", "BKIT_OPENCODE_API_KEY");
     const f = detectOpencodeYmlProviderDrift(tmpDir);
     expect(f?.id).toBe("opencode-yml-provider-drift");
     expect(f?.detect).toContain("opencode-go/<model>");
@@ -2938,7 +2938,7 @@ describe("detectOpencodeYmlProviderDrift", () => {
 
   it("null when bkit.opencodeProvider is not recorded (cannot determine intended provider)", () => {
     writePkg(null);
-    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "OPENROUTER_API_KEY");
+    writeOpencodeYml("openrouter/moonshotai/kimi-k3", "BKIT_OPENROUTER_API_KEY");
     expect(detectOpencodeYmlProviderDrift(tmpDir)).toBeNull();
   });
 });

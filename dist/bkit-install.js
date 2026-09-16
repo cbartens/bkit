@@ -1616,7 +1616,7 @@ async function resolveLatestPublishedVersion(cwd) {
     const r = spawnSync("pnpm", ["view", "@cbartens/bkit", "version"], { cwd, encoding: "utf-8" });
     if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
         console.error(`${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
-            `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (GH_BKIT_TOKEN_INSTALL, ` +
+            `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (BKIT_GH_TOKEN_INSTALL, ` +
             `classic PAT, read:packages), or pin a version with --to=<version>.`);
         process.exit(1);
     }
@@ -1679,7 +1679,7 @@ async function runSelfBump(flags, cwd) {
     });
     if (add.status !== 0) {
         console.error(`${LOG_PREFIX} \`${addCmd}\` failed (exit ${add.status ?? "null"}). ` +
-            `Most common cause: GitHub Packages auth — set GH_BKIT_TOKEN_INSTALL (classic PAT, read:packages). Nothing re-rendered.`);
+            `Most common cause: GitHub Packages auth — set BKIT_GH_TOKEN_INSTALL (classic PAT, read:packages). Nothing re-rendered.`);
         process.exit(1);
     }
     // Re-exec the just-installed (NEW) bkit so IT renders + re-pins, not this old process.
@@ -1930,7 +1930,7 @@ async function main() {
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
-    // so that MCP token placeholders (GH_BKIT_TOKEN, OPENCODE_API_KEY, …) resolve correctly
+    // so that MCP token placeholders (BKIT_GH_TOKEN, BKIT_OPENCODE_API_KEY, …) resolve correctly
     // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
     if (verb === "cursor" || verb === "opencode") {
         await launchApp(verb, process.cwd());
@@ -2001,12 +2001,12 @@ async function main() {
             const providersToCheck = allProviders.length > 0 ? allProviders : activeProvider ? [activeProvider] : [];
             // Per-provider cred check (present/absent only — no value echoed).
             // Every provider names one API key. Any provider absent here falls back to
-            // `${PROVIDER}_API_KEY` (see below).
+            // `BKIT_${PROVIDER}_API_KEY` (see below).
             const PROVIDER_KEYS = {
-                openrouter: ["OPENROUTER_API_KEY"],
-                ollama: ["OLLAMA_API_KEY"], // Ollama cloud endpoint (ollama.com)
-                "opencode-zen": ["OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
-                "opencode-go": ["OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
+                openrouter: ["BKIT_OPENROUTER_API_KEY"],
+                ollama: ["BKIT_OLLAMA_API_KEY"], // Ollama cloud endpoint (ollama.com)
+                "opencode-zen": ["BKIT_OPENCODE_API_KEY"], // opencode-native gateway (Zen; https://opencode.ai/zen/v1)
+                "opencode-go": ["BKIT_OPENCODE_API_KEY"], // opencode-native gateway (Go; https://opencode.ai/zen/go/v1)
             };
             if (providersToCheck.length === 0) {
                 console.log(`${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`);
@@ -2015,7 +2015,7 @@ async function main() {
                 for (const provider of providersToCheck) {
                     const roleLabel = provider === activeProvider ? "(active)" : "(installed)";
                     console.log(`${LOG_PREFIX} --- ${provider} ${roleLabel} ---`);
-                    const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
+                    const keys = PROVIDER_KEYS[provider] ?? [`BKIT_${provider.toUpperCase()}_API_KEY`];
                     for (const key of keys) {
                         const present = Boolean(process.env[key] && process.env[key].trim().length > 0);
                         console.log(`${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`);

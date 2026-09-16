@@ -1,7 +1,7 @@
 // bkit-templates-content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template has been updated for registry-based auth)
 // Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
-// enforces template CONTENT (GH_BKIT_TOKEN_INSTALL, renovate baseBranchPatterns, etc.).
+// enforces template CONTENT (BKIT_GH_TOKEN_INSTALL, renovate baseBranchPatterns, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -28,12 +28,12 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).not.toContain("git config --global url.");
   });
 
-  it("install step carries env: GH_BKIT_TOKEN_INSTALL block", () => {
-    expect(content).toContain("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}");
+  it("install step carries env: BKIT_GH_TOKEN_INSTALL block", () => {
+    expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
   });
 
-  it("env: GH_BKIT_TOKEN_INSTALL appears under the install step (after pnpm install --frozen-lockfile)", () => {
-    // Note: GH_BKIT_TOKEN_INSTALL is declared at BOTH job-level (so subsequent pnpm/npx
+  it("env: BKIT_GH_TOKEN_INSTALL appears under the install step (after pnpm install --frozen-lockfile)", () => {
+    // Note: BKIT_GH_TOKEN_INSTALL is declared at BOTH job-level (so subsequent pnpm/npx
     // steps don't emit ".npmrc env substitution failed" warnings) AND at the
     // install step itself (explicit, plus required by the BAR-138 contract).
     // This assertion locates the step-level declaration adjacent to the install
@@ -43,7 +43,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     const envTokenIdx = lines.findIndex(
       (l, i) =>
         i > installLineIdx &&
-        l.includes("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}"),
+        l.includes("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}"),
     );
     expect(installLineIdx).toBeGreaterThan(-1);
     expect(envTokenIdx).toBeGreaterThan(installLineIdx);
@@ -372,7 +372,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // instead (RENOVATE_LOCAL_STUB), which bkit never overwrites. Guard the
     // config KEY + the secret ref (prose may still reference `hostRules`).
     expect(content).not.toMatch(/^\s*hostRules:/m);
-    expect(content).not.toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
+    expect(content).not.toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
   });
 });
 
@@ -410,17 +410,17 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).toMatch(/cancel-in-progress:\s*false/);
   });
 
-  it("authenticates with GH_BKIT_TOKEN, never the default GITHUB_TOKEN", () => {
+  it("authenticates with BKIT_GH_TOKEN, never the default GITHUB_TOKEN", () => {
     // GITHUB_TOKEN-opened PRs don't trigger CI, so platformAutomerge never fires (#325).
-    expect(content).toMatch(/token:\s*\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}/);
+    expect(content).toMatch(/token:\s*\$\{\{\s*secrets\.BKIT_GH_TOKEN\s*\}\}/);
     expect(content).not.toMatch(/token:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/);
     expect(content).not.toMatch(/token:\s*\$\{\{\s*github\.token\s*\}\}/);
   });
 
-  it("injects private-registry auth via RENOVATE_HOST_RULES from GH_BKIT_TOKEN_INSTALL", () => {
+  it("injects private-registry auth via RENOVATE_HOST_RULES from BKIT_GH_TOKEN_INSTALL", () => {
     expect(content).toMatch(/RENOVATE_HOST_RULES:/);
     expect(content).toMatch(/npm\.pkg\.github\.com/);
-    expect(content).toMatch(/secrets\.GH_BKIT_TOKEN_INSTALL/);
+    expect(content).toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
   });
 
   it("scopes to this repo only (no org-wide autodiscover)", () => {
@@ -438,11 +438,48 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     // The names may appear in a "do NOT add these" comment, but must never be
     // referenced as `secrets.*` (which would expose them to the Renovate runner).
     expect(content).not.toMatch(/secrets\.ANTHROPIC_API_KEY/);
+    expect(content).not.toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY/);
     expect(content).not.toMatch(/secrets\.LINEAR_API_KEY/);
+    expect(content).not.toMatch(/secrets\.BKIT_LINEAR_API_KEY/);
   });
 
   it("uses least-privilege job permissions (contents: read)", () => {
     expect(content).toMatch(/permissions:\s+contents:\s*read/);
+  });
+});
+
+describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => {
+  const ENV_EXAMPLE = path.resolve(".bkit/templates/.bkit/.env.example");
+  const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
+  const assigned = [...content.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
+
+  it("assigns BKIT_GH_TOKEN and BKIT_GH_TOKEN_INSTALL, not GH_BKIT_*", () => {
+    expect(assigned).toContain("BKIT_GH_TOKEN");
+    expect(assigned).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(assigned).not.toContain("GH_BKIT_TOKEN");
+    expect(assigned).not.toContain("GH_BKIT_TOKEN_INSTALL");
+  });
+
+  it("every assigned key starts with BKIT_", () => {
+    expect(assigned.length).toBeGreaterThan(0);
+    expect(assigned.filter((k) => !k.startsWith("BKIT_"))).toEqual([]);
+  });
+
+  it("vendor API keys are BKIT_-prefixed", () => {
+    for (const key of [
+      "BKIT_LINEAR_API_KEY",
+      "BKIT_ANTHROPIC_API_KEY",
+      "BKIT_CURSOR_API_KEY",
+      "BKIT_OPENCODE_API_KEY",
+      "BKIT_OPENROUTER_API_KEY",
+      "BKIT_OLLAMA_API_KEY",
+      "BKIT_TAVILY_API_KEY",
+    ]) {
+      expect(assigned).toContain(key);
+    }
+    expect(assigned).not.toContain("LINEAR_API_KEY");
+    expect(assigned).not.toContain("ANTHROPIC_API_KEY");
+    expect(assigned).not.toContain("OPENCODE_API_KEY");
   });
 });
 

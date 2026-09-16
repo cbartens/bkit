@@ -488,7 +488,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
             npm: "@ai-sdk/openai-compatible",
             options: {
               baseURL: "https://api.openrouter.com/openai/v1",
-              apiKey: "{env:OPENROUTER_API_KEY}",
+              apiKey: "{env:BKIT_OPENROUTER_API_KEY}",
             },
           },
           ollama: {
@@ -509,7 +509,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
             npm: "@ai-sdk/openai-compatible",
             options: {
               baseURL: "https://api.openrouter.com/openai/v1",
-              apiKey: "{env:OPENROUTER_API_KEY}",
+              apiKey: "{env:BKIT_OPENROUTER_API_KEY}",
             },
           },
         },

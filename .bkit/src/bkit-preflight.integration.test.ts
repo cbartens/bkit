@@ -8,7 +8,7 @@
 // preflight). Dispatch-specific bypass logic was reverted on 2026-05-13; the
 // latent-bug fixes from BAR-186 remain:
 //   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
-//   - Missing LINEAR_API_KEY still hard-stops when a Linear issue is present.
+//   - Missing BKIT_LINEAR_API_KEY still hard-stops when a Linear issue is present.
 
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
@@ -53,12 +53,12 @@ describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
     expect(result.stdout).toBe("");
   });
 
-  it("missing LINEAR_API_KEY hard-stops when LINEAR_ISSUE_ID is present (regression guard)", () => {
+  it("missing BKIT_LINEAR_API_KEY hard-stops when LINEAR_ISSUE_ID is present (regression guard)", () => {
     const result = runSessionStartHook({
       LINEAR_ISSUE_ID: "BAR-186-test",
-      // no LINEAR_API_KEY
+      // no BKIT_LINEAR_API_KEY
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("LINEAR_API_KEY not set");
+    expect(result.stderr).toContain("BKIT_LINEAR_API_KEY not set");
   });
 });

@@ -43,12 +43,17 @@ maxTurns: 100
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Read plan (`[x]` = done, `[ ]` = pending). Find first `[ ]` task, resume.
 5. Read each task `Done when` — criteria MUST be satisfied before next task. Missing `Done when` on any task → set `Verdict` = `FAIL` via `Edit`.
-6. Update **Create** after each task — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
-7. Implement sequentially — edit / create source per task → at every gate confirm conditions met → append log → proceed.
-8. Run `pnpm bkit:gate:static` — ALL local lint / typecheck MUST pass.
-9. Update **Create** — set `Verdict` via `Edit`; mapping:
-   - `PASS` = every pending `[ ]` plan task has `DONE` log entry AND local lint / typecheck pass.
-   - `FAIL` = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint / typecheck fail.
+6. **If** plan-currency report supplied → ONLY apply to tasks it names; NEVER edit plan file:
+   - `Reword` → implement at current paths.
+   - `Broken` already landed → log `DONE — already landed`.
+   - `Broken` not landed → implement against current code or `BLOCKED`.
+7. Update **Create** after each task — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
+8. Implement sequentially — edit / create source per task → at every gate confirm conditions met → append log → proceed.
+9. Run `pnpm bkit:gate:static` — ALL local lint / typecheck MUST pass.
+10. Update **Create** — set `Verdict` via `Edit`; mapping:
+
+- `PASS` = every pending `[ ]` plan task has `DONE` log entry AND local lint / typecheck pass.
+- `FAIL` = any pending `[ ]` task ends `BLOCKED` with NO later `DONE` OR local lint / typecheck fail.
 
 **Output format:**
 

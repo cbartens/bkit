@@ -80,7 +80,6 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
      if ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
        echo "Invalid CI_DEV FID: $FID" >&2; exit 1
      fi
-     # Upper-case: Linear identifiers must read `ABC-123`. No-op for numeric ids.
      ISSUE_ID=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]')
      BRANCH=dev
      HEAD_SHA=$(git rev-parse origin/dev 2>/dev/null || echo "")

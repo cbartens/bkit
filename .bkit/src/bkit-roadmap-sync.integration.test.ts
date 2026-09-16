@@ -1,8 +1,11 @@
 /**
- * bkit-roadmap-sync.integration.test.ts — #380 Sub-plan 2 Task 11, matrix
- * row 15.
+ * bkit-roadmap-sync.integration.test.ts — reverse tracker-label sync.
  *
- * Boundary: real workflow source (`bkit-ship.md`) resolved through the REAL
+ * The sync lives in `/bkit-roadmap`, not in a phase close: it is a full-ledger
+ * repair pass that writes labels on issues OTHER than the one any single
+ * workflow is about, so only the command that updates everything may run it.
+ *
+ * Boundary: real workflow source (`bkit-roadmap.md`) resolved through the REAL
  * #202 tracker-marker resolver (`substituteWorkflow`) — the same mechanism
  * `bkit install` uses to render host mirrors — never a string-presence check
  * on the raw, unresolved source. The candidate-discovery shell fragment is
@@ -20,24 +23,27 @@ import { describe, expect, it } from "vitest";
 import { substituteWorkflow } from "./bkit-trackers.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
+const ROADMAP = fs.readFileSync(
+  path.join(REPO_ROOT, ".bkit", "workflows", "bkit-roadmap.md"),
+  "utf-8",
+);
 const SHIP = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", "bkit-ship.md"), "utf-8");
 
-/** Slice of Step 10 item 3 covering ONLY the reverse tracker-label sync (both
- * the deterministic shell candidate-discovery AND the orchestrator-mediated
- * per-tracker write prose that follows it), never the cadence or drift-check
- * neighbours. */
+/** Slice of Step 3 covering ONLY the reverse tracker-label sync (both the
+ * deterministic shell candidate-discovery AND the orchestrator-mediated
+ * per-tracker write prose that follows it), never the drift-check neighbour. */
 function reverseSyncSlice(output: string): string {
-  const start = output.indexOf("Reverse tracker-label sync");
-  const end = output.indexOf("4. Launch three subagents");
-  expect(start, "Reverse tracker-label sync section not found").toBeGreaterThanOrEqual(0);
+  const start = output.indexOf("Compute the reverse label-sync candidates");
+  const end = output.indexOf("Gate 3 —");
+  expect(start, "reverse label-sync section not found").toBeGreaterThanOrEqual(0);
   expect(end, "end-of-section anchor not found").toBeGreaterThan(start);
   return output.slice(start, end);
 }
 
 describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, settled-drift-guarded (#380)", () => {
   it("github/linear resolutions invoke an update_issue call, never gh/search_issues", () => {
-    const github = substituteWorkflow(SHIP, "github");
-    const linear = substituteWorkflow(SHIP, "linear");
+    const github = substituteWorkflow(ROADMAP, "github");
+    const linear = substituteWorkflow(ROADMAP, "linear");
     expect(github.orphans, "github resolution left orphan tracker markers").toEqual([]);
     expect(linear.orphans, "linear resolution left orphan tracker markers").toEqual([]);
 
@@ -56,7 +62,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("is a no-op under tracker: none", () => {
-    const none = substituteWorkflow(SHIP, "none");
+    const none = substituteWorkflow(ROADMAP, "none");
     expect(none.orphans, "none resolution left orphan tracker markers").toEqual([]);
     expect(none.output).toMatch(/reverse-sync no-op — tracker: none/);
     expect(none.output).not.toMatch(/issue_write/);
@@ -64,7 +70,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("encodes the settled-vs-transitioning predicate: no live feat/{FID} branch AND no in-flight phase event", () => {
-    const github = substituteWorkflow(SHIP, "github");
+    const github = substituteWorkflow(ROADMAP, "github");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     // Live-branch guard (skips if a feat/{FID} branch is live, locally or
     // remotely) — remote check is a SINGLE bounded `ls-remote --heads`
@@ -72,7 +78,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
     // (attempt-3-verify Gap 2: 50+ network round trips per ship).
     expect(reverseSyncGithub).toMatch(/show-ref --verify --quiet "refs\/heads\/feat\/\$RS_FID"/);
     expect(reverseSyncGithub).toMatch(
-      /RS_REMOTE_HEADS=\$\(git -C "\$BOOK_ROOT" ls-remote --heads origin/,
+      /RS_REMOTE_HEADS=\$\(git -C "\$REPO_ROOT" ls-remote --heads origin/,
     );
     expect(reverseSyncGithub).toMatch(
       /printf '%s\\n' "\$RS_REMOTE_HEADS" \| grep -q "refs\/heads\/feat\/\$RS_FID\\\$"/,
@@ -90,7 +96,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("terminal-aware phase mapping: SHIPPED maps to bkit:merged, never bkit:ship, so it cannot oscillate against Step 13", () => {
-    const github = substituteWorkflow(SHIP, "github");
+    const github = substituteWorkflow(ROADMAP, "github");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     expect(reverseSyncGithub).toMatch(
       /\{DESIGNED:"design",PLANNED:"plan",BUILT:"build",SHIPPED:"merged"\}/,
@@ -99,7 +105,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("DEBUGGED is excluded from the phase-replacement map — bkit:debug is additive, never a phase replacement (attempt-3-verify Gap 1)", () => {
-    const github = substituteWorkflow(SHIP, "github");
+    const github = substituteWorkflow(ROADMAP, "github");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     // The phase-replacement map must NOT contain a DEBUGGED entry: mapping
     // DEBUGGED -> bkit:debug here would make the per-candidate
@@ -111,7 +117,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("resolves the tracker id + bkit:{phase} label from the settled-candidate JSON — never a literal ellipsis", () => {
-    const github = substituteWorkflow(SHIP, "github");
+    const github = substituteWorkflow(ROADMAP, "github");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     // The candidate discovery derives a concrete tracker id + label, never a
     // bare "[...]" ellipsis placeholder with no mapping.
@@ -125,8 +131,8 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("reconciles DRIFT, never an unconditional write: reads current labels, computes the full replacement set, skips when already in sync (attempt-2-verify Gap 1)", () => {
-    const github = substituteWorkflow(SHIP, "github");
-    const linear = substituteWorkflow(SHIP, "linear");
+    const github = substituteWorkflow(ROADMAP, "github");
+    const linear = substituteWorkflow(ROADMAP, "linear");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     const reverseSyncLinear = reverseSyncSlice(linear.output);
 
@@ -135,9 +141,13 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
     expect(reverseSyncGithub).not.toMatch(/labels:\s*\[\{RS\.label\}\]/);
     expect(reverseSyncLinear).not.toMatch(/labels:\s*\[\{RS\.label\}\]/);
 
-    // A read of the issue's CURRENT labels must precede the write.
-    expect(reverseSyncGithub).toMatch(/mcp__github__issue_read\(\{\s*method:\s*"get"/);
-    expect(reverseSyncLinear).toMatch(/mcp__linear__get_issue\(\{/);
+    // The issue's CURRENT labels come from the Step 1 sync, not a fresh
+    // per-candidate read: docs/tracker.jsonl already holds every open issue's
+    // labels, so the old one-issue_read-per-candidate cost is gone.
+    expect(reverseSyncGithub).toMatch(/docs\/tracker\.jsonl/);
+    expect(reverseSyncLinear).toMatch(/docs\/tracker\.jsonl/);
+    expect(reverseSyncGithub).not.toMatch(/mcp__github__issue_read/);
+    expect(reverseSyncLinear).not.toMatch(/mcp__linear__get_issue/);
     expect(reverseSyncGithub).toMatch(/\{RS_CURRENT_LABELS\}/);
     expect(reverseSyncLinear).toMatch(/\{RS_CURRENT_LABELS\}/);
 
@@ -158,7 +168,7 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
   });
 
   it("is wrapped so it never gates the close — every branch is a continue/echo, not an exit", () => {
-    const github = substituteWorkflow(SHIP, "github");
+    const github = substituteWorkflow(ROADMAP, "github");
     const reverseSyncGithub = reverseSyncSlice(github.output);
     expect(reverseSyncGithub).not.toMatch(/\bexit\s+[1-9]/);
   });
@@ -166,28 +176,24 @@ describe("row 15: reverse tracker-label sync — MCP-only, no-op under none, set
 
 /**
  * Extract the fenced shell fragment whose FIRST line contains `startNeedle`,
- * from the real shipped bkit-ship.md — never a hand-copied duplicate.
+ * from the real shipped bkit-roadmap.md — never a hand-copied duplicate.
  */
 function extractFencedBlock(source: string, startNeedle: string): string {
   const idx = source.indexOf(startNeedle);
-  expect(idx, `startNeedle not found in bkit-ship.md: ${startNeedle}`).toBeGreaterThanOrEqual(0);
+  expect(idx, `startNeedle not found in bkit-roadmap.md: ${startNeedle}`).toBeGreaterThanOrEqual(0);
   const fenceStart = source.lastIndexOf("```bash", idx);
   const fenceEnd = source.indexOf("```", fenceStart + 6);
   return source.slice(fenceStart + "```bash".length, fenceEnd);
 }
 
-/** Isolate the candidate-discovery loop from the full Step-10-item-3 fence
- * (which also carries the cadence + drift-check fragments this test doesn't
- * exercise). */
+/** Isolate the candidate-discovery loop. In `/bkit-roadmap` it is its own
+ * fence — the drift check sits in a separate one — so the block runs from
+ * `RS_CANDIDATES=` to the end of the fence. */
 function reverseSyncShellBlock(): string {
-  const fullFence = extractFencedBlock(SHIP, "ROADMAP_JSONL=");
-  const rsStart = fullFence.indexOf("# Reverse tracker-label sync");
-  expect(rsStart, "reverse-sync comment header not found in Step 10 fence").toBeGreaterThanOrEqual(
-    0,
-  );
-  const rsEnd = fullFence.indexOf("# Drift check", rsStart);
-  expect(rsEnd, "drift-check comment header not found after reverse-sync").toBeGreaterThan(rsStart);
-  return fullFence.slice(rsStart, rsEnd);
+  const fullFence = extractFencedBlock(ROADMAP, "RS_REMOTE_HEADS=");
+  const rsStart = fullFence.indexOf("RS_CANDIDATES=");
+  expect(rsStart, "RS_CANDIDATES= not found in the discovery fence").toBeGreaterThanOrEqual(0);
+  return fullFence.slice(rsStart);
 }
 
 describe("row 15 (behavioural): candidate discovery over a real fixture ledger", () => {
@@ -255,13 +261,14 @@ describe("row 15 (behavioural): candidate discovery over a real fixture ledger",
       fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
 
       const rsBlock = reverseSyncShellBlock().replace(
-        "$BOOK_ROOT/.bkit/.roadmap-reverse-sync-{FID}.json",
+        "$REPO_ROOT/.bkit/.roadmap-reverse-sync.json",
         path.join(tmpDir, ".bkit", "roadmap-reverse-sync.json"),
       );
 
       const script = [
         "set -eu",
-        `BOOK_ROOT="${tmpDir}"`,
+        `REPO_ROOT="${tmpDir}"`,
+        'RS_REMOTE_HEADS=""',
         `ROADMAP_JSONL="${path.join(tmpDir, "docs", "roadmap.jsonl")}"`,
         rsBlock.trim(),
       ].join("\n");

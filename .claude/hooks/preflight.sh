@@ -63,10 +63,10 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 fi
 
-# LINEAR_API_KEY required to call the Linear GraphQL API.
-if [[ -z "${LINEAR_API_KEY:-}" ]]; then
-  echo "Guard pre-check: FAIL — LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID}." >&2
-  emit_context "Guard pre-check: FAIL — LINEAR_API_KEY missing for ${LINEAR_ISSUE_ID}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+# BKIT_LINEAR_API_KEY required to call the Linear GraphQL API.
+if [[ -z "${BKIT_LINEAR_API_KEY:-}" ]]; then
+  echo "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID}." >&2
+  emit_context "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY missing for ${LINEAR_ISSUE_ID}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
   exit 1
 fi
 
@@ -81,7 +81,7 @@ print(json.dumps({"query": os.environ["Q"], "variables": {"id": os.environ["LINE
 RESPONSE=$(curl -sS \
   -X POST \
   -H "Content-Type: application/json" \
-  -H "Authorization: ${LINEAR_API_KEY}" \
+  -H "Authorization: ${BKIT_LINEAR_API_KEY}" \
   --data "$BODY" \
   "https://api.linear.app/graphql" 2>/dev/null) || {
     echo "Guard pre-check: FAIL — Linear API request failed for ${LINEAR_ISSUE_ID}." >&2

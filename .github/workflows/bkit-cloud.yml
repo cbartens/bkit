@@ -149,7 +149,7 @@ jobs:
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
-          # Do not swap in GH_BKIT_TOKEN_INSTALL — it has no access to the consumer repo.
+          # Do not swap in BKIT_GH_TOKEN_INSTALL — it has no access to the consumer repo.
           token: ${{ github.token }}
 
       # Tool parity with the copy-paste cloud.md web env (which installs vale in its
@@ -836,11 +836,11 @@ jobs:
           # Fan out the single OPENCODE_PROVIDER_KEY secret to every supported cloud provider's
           # env var name, so the committed .opencode/opencode.json {env:VAR} reference resolves
           # regardless of which provider the consumer installed (openrouter/ollama/opencode).
-          # `opencode` (the opencode-native Zen gateway) reads OPENCODE_API_KEY. No Claude
+          # `opencode` (the opencode-native Zen gateway) reads BKIT_OPENCODE_API_KEY. No Claude
           # identity leak — ANTHROPIC_API_KEY is absent.
-          OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          OLLAMA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          BKIT_OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          BKIT_OLLAMA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          BKIT_OPENCODE_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).
           BKIT_PHASE: ${{ steps.ctx.outputs.phase }}

@@ -33,7 +33,13 @@
       "WebFetch(domain:tavily.com)",
       "WebFetch(domain:*.tavily.com)",
       "WebFetch(domain:githubcopilot.com)",
-      "WebFetch(domain:*.githubcopilot.com)"
+      "WebFetch(domain:*.githubcopilot.com)",
+      "WebFetch(domain:models.dev)",
+      "WebFetch(domain:*.models.dev)",
+      "WebFetch(domain:npmjs.org)",
+      "WebFetch(domain:*.npmjs.org)",
+      "WebFetch(domain:skills.sh)",
+      "WebFetch(domain:*.skills.sh)"
     ],
     "deny": [
       "Bash(rm -rf /*)",

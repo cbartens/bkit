@@ -56,20 +56,16 @@ $ARGUMENTS
 1. Abort any in-progress rebase, record the failure, release the lock — **state only, no `add` / `commit` / `push`**:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   # Detect in-block; never inherit across a Bash-block boundary.
    if [ -f "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" ]; then
      . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh"
      bkit_runtime_detect "$REPO_ROOT" "{FID}" || echo "[bkit-runtime] detect failed in Failure Path" >&2
    else
      echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2
    fi
-   # NEVER bkit_runtime_assert_resolved here; unresolved falls back to least-capable.
    case "${RUNTIME_DEVPUSHES:-}" in
      true | false) ;;
      *) echo "[bkit-runtime] RUNTIME_DEVPUSHES unresolved — least-capable fallback (current branch, no dev push)" >&2; RUNTIME_DEVPUSHES=false; RUNTIME_WORKTREES=false ;;
    esac
-   # BOOK_ROOT — the single tree every status/artifact write targets.
-   # RUNTIME_DEVPUSHES=true → dev tree ($REPO_ROOT); false → current branch tree.
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT="$WT_TOP"
@@ -77,7 +73,6 @@ $ARGUMENTS
      BOOK_ROOT="$REPO_ROOT"
    fi
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   # Abort any in-progress rebase BEFORE appending status.
    if git rev-parse --git-path rebase-merge >/dev/null 2>&1 || git rev-parse --git-path rebase-apply >/dev/null 2>&1; then
      git rebase --abort
    fi
@@ -86,7 +81,6 @@ $ARGUMENTS
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    rm -f "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
-   # Step 4 reads .deferred-blocked; only Step 1 clears it.
    ```
 2. Resolve merge state — `gh pr view {PR_NUMBER} --json state --jq .state 2>/dev/null` → `FAILED_STATE` (empty when `{PR_NUMBER}` unset).
    **Decide `{LABELS}`:**
@@ -111,7 +105,6 @@ $ARGUMENTS
 7. Reconcile branch-side artifacts into `BOOK_ROOT`, then flush one commit and one push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   # Detect in-block; never inherit across a Bash-block boundary.
    if [ -f "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" ]; then
      . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh"
      bkit_runtime_detect "$REPO_ROOT" "{FID}" || echo "[bkit-runtime] detect failed in Failure Path" >&2
@@ -129,7 +122,6 @@ $ARGUMENTS
      BOOK_ROOT="$REPO_ROOT"
    fi
    LOGDIR_REL="docs/plans/{YYYYMM}/logs/{FID}"
-   # Artifact reconciliation. NEVER `${WORKTREE_PATH:-…/{FID}}` — an inner `}` closes the expansion early.
    SRC_WT="${WORKTREE_PATH:-}"
    [ -n "$SRC_WT" ] || SRC_WT="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$SRC_WT/$LOGDIR_REL" ] && [ "$SRC_WT" != "$BOOK_ROOT" ]; then
@@ -168,7 +160,6 @@ $ARGUMENTS
      WT="$BOOK_ROOT"
      TARGET=$(git -C "$WT" branch --show-current)
    fi
-   # The ONE commit + the ONE push. Path-scoped, never -A, never force.
    if [ "$FLUSH" = 1 ]; then
      [ -n "$TARGET" ] || { echo "push target empty (detached HEAD?) — refusing to push; bookkeeping left uncommitted in $WT" >&2; exit 1; }
      git -C "$WT" status --short
@@ -215,18 +206,14 @@ $ARGUMENTS
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before ship" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
-   # BOOK_ROOT — the single tree every status/artifact write targets.
-   # RUNTIME_DEVPUSHES=true → dev tree ($REPO_ROOT); false → current branch tree.
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ -n "${RUNTIME_DEVPUSHES:-}" ] && [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT="$WT_TOP"
    else
      BOOK_ROOT="$REPO_ROOT"
    fi
-   # Outbox: outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
    mkdir -p "$OUTBOX"
-   # Clear stale sentinels from a prior run.
    rm -f "$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/.deferred-blocked"
    rm -f "$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/.rebase-failed"
    LOCK="$BOOK_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
@@ -253,7 +240,6 @@ $ARGUMENTS
      rm -f "$LOCK"
      (set -C; printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
    fi
-   # Preflight actions:write permission once (needed for gh workflow run in Step 5).
    gh api /repos/{OWNER_REPO}/actions/permissions >/dev/null 2>&1 || echo "[bkit-ship] actions:write preflight — gh may lack dispatch permission" >&2
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
@@ -320,7 +306,6 @@ $ARGUMENTS
      WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
      if [ -d "$WORKTREE_PATH" ]; then
        cd "$WORKTREE_PATH"
-       # Path A: NO rebase. The worktree is read-only until Step 4 (Path B).
      else
        if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
          git worktree add "$WORKTREE_PATH" "feat/{FID}"
@@ -334,7 +319,6 @@ $ARGUMENTS
        cd "$WORKTREE_PATH"
      fi
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
-     # Write ownership marker to outbox (outside the worktree — survives removal/crash).
      OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
      mkdir -p "$OUTBOX"
      touch "$OUTBOX/.worktree-owned"
@@ -526,7 +510,6 @@ $ARGUMENTS
        --arg rr "${REVALIDATE_REASON:-head-move}" --argjson d "$DISPATCHED" --argjson a "${CI_WAIT_ATTEMPTS:-0}" \
        '{type:"ship-revalidate-dispatch", workflow:"ship", at:$t, head:$h, probe:$r, reason:$rr, dispatched:$d, attempts:$a}' \
        >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-     # Sample rate_limit before the poll loop.
      gh api rate_limit >/dev/null 2>&1
      DEADLINE=$(( $(date +%s) + ${SHIP_CI_WAIT_TIMEOUT_S:-1800} ))
      ATTEMPT=0
@@ -640,11 +623,8 @@ $ARGUMENTS
    BOOK_ROOT="{BOOK_ROOT}"
    GATE_HEAD="{GATE_HEAD}"
    GATE_SH="$REPO_ROOT/.bkit/scripts/bkit-ship-gate.sh"
-   # Export STATUS_PATH — the gate's override audit row MUST land in BOOK_ROOT.
    export STATUS_PATH="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   # `|| GATE_EXIT=$?` captures the refusal code without `set -e` aborting the routing below.
    GATE_EXIT=0
-   # `--branch` REQUIRED: it is what separates exit 14 from exit 10.
    bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" --branch "feat/{FID}" || GATE_EXIT=$?
    ```
    **If** `GATE_EXIT` != 0 → write a status row carrying the exit code, then route:
@@ -865,7 +845,6 @@ $ARGUMENTS
        [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
        sleep 10
      done
-     # trap releases .dev.lock on EXIT (dev-tree serialisation)
      trap 'rm -f "$DEVLOCK"' EXIT
      [ "$RUNTIME_WORKTREES" = "true" ] && [ "$RUNTIME_DEVPUSHES" = "true" ] || { echo "Refusing local dev checkout: RUNTIME_WORKTREES='$RUNTIME_WORKTREES' RUNTIME_DEVPUSHES='$RUNTIME_DEVPUSHES'" >&2; exit 1; }
      git checkout dev
@@ -925,175 +904,31 @@ $ARGUMENTS
 
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
-3. Roadmap cadence + reverse tracker sync + drift check (best-effort, fail-open, NEVER gates this step; runs BEFORE the analysis leaf so a fired cadence can be folded into its ranking):
+3. Drift check — warn on any live `feat/*` branch with no ledger row. Best-effort, fail-open; NEVER gates this step. Reverse tracker-label sync does NOT run here: it is a full-ledger repair pass that writes labels on issues other than `{FID}`, so it belongs to `/bkit-roadmap`, the one command that updates everything.
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    ROADMAP_JSONL="$BOOK_ROOT/docs/roadmap.jsonl"
-   STATS_JSONL="$BOOK_ROOT/.bkit/stats.jsonl"
-   CADENCE_INJECT="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/roadmap-cadence-inject.md"
-   . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-cadence.sh" 2>/dev/null || echo "[bkit-roadmap] missing bkit-roadmap-cadence.sh — run 'bkit install'" >&2
-   if command -v bkit_roadmap_cadence_eval >/dev/null 2>&1; then
-     PKG="$BOOK_ROOT/package.json"
-     BUILD_CYCLES=$(jq -r '.bkit.roadmap.buildCycles // 10' "$PKG" 2>/dev/null)
-     case "$BUILD_CYCLES" in '' | *[!0-9]*) BUILD_CYCLES=10 ;; esac
-     STALENESS_DAYS=$(jq -r '.bkit.roadmap.stalenessDays // 90' "$PKG" 2>/dev/null)
-     case "$STALENESS_DAYS" in '' | *[!0-9]*) STALENESS_DAYS=90 ;; esac
-     CADENCE_RESULT=$(bkit_roadmap_cadence_eval "$ROADMAP_JSONL" "$STATS_JSONL" "$BUILD_CYCLES" "$STALENESS_DAYS" 2>/dev/null)
-     CADENCE_ACTION=$(printf '%s' "$CADENCE_RESULT" | awk '{print $(1)}')
-     CADENCE_COUNT=$(printf '%s' "$CADENCE_RESULT" | awk '{print $(2)}')
-     if [ "$CADENCE_ACTION" = "FIRE" ]; then
-       echo "[bkit-analysis] roadmap cadence FIRE — $CADENCE_COUNT distinct BUILT FIDs since last fire (threshold $BUILD_CYCLES)" >&2
-       jq -nc --arg repo "{OWNER_REPO}" --arg t "$(date -u +%FT%TZ)" --argjson cv "${CADENCE_COUNT:-0}" --arg p "$(git -C "$BOOK_ROOT" rev-parse HEAD)" \
-         '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "ship" | .repo = $repo | .step = "ship-roadmap-cadence" | .counterName = "ROADMAP_CADENCE_FIRE" | .counterValue = $cv | .counterSource = "shell-bus" | .parentSha = $p' \
-         >> "$STATS_JSONL" || echo "[bkit-roadmap] append failed: $STATS_JSONL"
-       {
-         echo "## Cadence Injection"
-         echo "- Run an audit (generic pass; a concrete lens is substituted once the lens engine lands) — cadence threshold crossed."
-         jq -c 'select(.kind=="deferral" and (.status=="OPEN" or .status==null))' "$BOOK_ROOT/docs/deferrals.jsonl" 2>/dev/null | jq -s -c 'sort_by(.severity, .ts) | .[0:3]' 2>/dev/null | jq -r '.[] | "- deferral: \(.key // .summary)"' 2>/dev/null
-         jq -c 'select(.kind=="failure" and (.status=="OPEN" or .status==null))' "$BOOK_ROOT/docs/failures.jsonl" 2>/dev/null | jq -s -c 'sort_by(.severity, .ts) | .[0:3]' 2>/dev/null | jq -r '.[] | "- failure: \(.key // .summary)"' 2>/dev/null
-       } >"$CADENCE_INJECT" 2>/dev/null || echo "[bkit-roadmap] cadence injection write failed: $CADENCE_INJECT" >&2
-     else
-       echo "[bkit-analysis] roadmap cadence advance — $CADENCE_COUNT distinct BUILT FIDs since last fire (threshold $BUILD_CYCLES)" >&2
-     fi
-   else
-     echo "[bkit-roadmap] cadence evaluator unavailable — skipping (fail-open, never gates)" >&2
-   fi
-
-   # Reverse tracker-label sync (Directive 3) — settled-candidate DISCOVERY is
-   # tracker-agnostic deterministic shell (testable, sourceable), never gates.
-   # "Settled" (eligible) means NO matching live feat/{FID} branch AND NO
-   # in-flight workflow phase event for that FID (its per-FID status log,
-   # resolved MONTH-AGNOSTICALLY via a glob over every docs/plans/*/logs/{FID}/
-   # directory — a settled FID's plan month may differ from the CURRENT
-   # ship's {YYYYMM}, and a hardcoded {YYYYMM} would silently miss it and
-   # treat it as settled by default) — anything else is actively transitioning
-   # and is skipped. Resolves each settled FID's tracker id from the
-   # `{ISSUE_ID}-{slug}` FID convention (github: leading numeric prefix;
-   # linear: leading TEAM-N prefix) and maps its latest `docs/roadmap.jsonl`
-   # status to a `bkit:{phase}` label — TERMINAL-AWARE: `SHIPPED` maps to
-   # `bkit:merged`, the SAME terminal label Step 13 (Close) sets for the FID
-   # being shipped right now, never `bkit:ship` — otherwise this pass would
-   # relabel every previously-shipped, already-`bkit:merged` FID back to
-   # `bkit:ship` on every subsequent ship, oscillating against Step 13. Never
-   # invents a resolution mechanism, never syncs a candidate whose id can't be
-   # resolved. Writes the settled-candidate list (FID + DESIRED label ONLY —
-   # never the full label set, and never a pre-decided "apply") to a JSON
-   # array; this is candidate discovery, NOT a drift verdict — the actual
-   # DRIFT comparison (desired label vs the issue's CURRENT tracker labels)
-   # and the read-modify-write label update happen in per-tracker
-   # ORCHESTRATOR-MEDIATED prose below (leaf prompts carry no tracker MCP
-   # tools — a shell fence cannot issue an MCP call, and this repo's own
-   # ledger already holds 50+ distinct FIDs, so writing unconditionally here
-   # would relabel every settled issue on every ship regardless of whether it
-   # already agrees).
-   RS_CANDIDATES="$BOOK_ROOT/.bkit/.roadmap-reverse-sync-{FID}.json"
-   : >"$RS_CANDIDATES.tmp" 2>/dev/null
-   # Single bounded remote read (was: one `git ls-remote` round trip PER
-   # settled FID — 50+ network calls per ship on this repo's ledger alone,
-   # growing unboundedly). One `ls-remote --heads` lists every remote
-   # `feat/*` branch up front; each FID is then matched against the
-   # in-memory list. Fail-open identical to the old per-FID form: if the
-   # remote read fails (offline/no network), `$RS_REMOTE_HEADS` is empty and
-   # the live-branch check falls back to the LOCAL `show-ref` only — exactly
-   # what happened before when a single `ls-remote --exit-code` failed.
-   RS_REMOTE_HEADS=$(git -C "$BOOK_ROOT" ls-remote --heads origin 2>/dev/null || true)
-   for RS_FID in $(jq -r 'select(.kind=="feature") | .key' "$ROADMAP_JSONL" 2>/dev/null | sort -u); do
-     if git -C "$BOOK_ROOT" show-ref --verify --quiet "refs/heads/feat/$RS_FID" || printf '%s\n' "$RS_REMOTE_HEADS" | grep -q "refs/heads/feat/$RS_FID\$"; then
-       echo "[bkit-roadmap] reverse-sync skip $RS_FID — live feat/{FID} branch (actively transitioning)" >&2
-       continue
-     fi
-     RS_STATUS_LOG=$(ls "$BOOK_ROOT"/docs/plans/*/logs/"$RS_FID"/status.jsonl 2>/dev/null | head -1)
-     if [ -n "$RS_STATUS_LOG" ] && [ -f "$RS_STATUS_LOG" ] && [ -n "$(jq -c 'select(.type=="workflow-started")' "$RS_STATUS_LOG" 2>/dev/null | tail -1)" ] && [ -z "$(jq -c 'select(.type=="step-done" and (.step|test("close-workflow$")))' "$RS_STATUS_LOG" 2>/dev/null | tail -1)" ]; then
-       echo "[bkit-roadmap] reverse-sync skip $RS_FID — in-flight workflow phase event (not settled)" >&2
-       continue
-     fi
-     RS_STATUS=$(jq -c --arg fid "$RS_FID" 'select(.kind=="feature" and .key==$fid)' "$ROADMAP_JSONL" 2>/dev/null | jq -s -r 'sort_by(.ts) | last | .status // empty' 2>/dev/null)
-     # DEBUGGED is deliberately EXCLUDED from this map: `bkit:debug` is an
-     # ADDITIVE label (workflow headers: "Debug workflow active, additive —
-     # phase label persists") layered ON TOP of whatever phase label is
-     # already there, never a replacement for it. This reverse-sync only
-     # ever replaces the ONE phase label (design|plan|build|ship|merged) it
-     # computes here with `{RS.label}` — mapping DEBUGGED -> `bkit:debug`
-     # would make that replacement collapse an existing `{bkit:build,
-     # bkit:debug}` pair down to just `{bkit:debug}`, destroying the real
-     # phase label for a settled DEBUGGED FID. A DEBUGGED FID is therefore
-     # simply skipped as unmapped (same path as e.g. ABANDONED) — its
-     # existing phase label + additive `bkit:debug` are left exactly as the
-     # debug workflow itself set them.
-     RS_PHASE=$(printf '%s' "$RS_STATUS" | jq -R -r '{DESIGNED:"design",PLANNED:"plan",BUILT:"build",SHIPPED:"merged"}[.] // empty' 2>/dev/null)
-     if [ -z "$RS_PHASE" ]; then
-       echo "[bkit-roadmap] reverse-sync skip $RS_FID — no bkit:{phase} mapping for status=$RS_STATUS (e.g. ABANDONED, DEBUGGED — additive, not phase-replacing)" >&2
-       continue
-     fi
-     RS_GITHUB_ID=$(printf '%s' "$RS_FID" | grep -oE '^[0-9]+' || true)
-     RS_LINEAR_ID=$(printf '%s' "$RS_FID" | grep -oE '^[A-Za-z]+-[0-9]+' || true)
-     if [ -z "$RS_GITHUB_ID" ] && [ -z "$RS_LINEAR_ID" ]; then
-       echo "[bkit-roadmap] reverse-sync skip $RS_FID — could not resolve a tracker id from FID convention {ISSUE_ID}-{slug}" >&2
-       continue
-     fi
-     jq -nc --arg fid "$RS_FID" --arg phase "$RS_PHASE" --arg label "bkit:$RS_PHASE" --arg gh "$RS_GITHUB_ID" --arg li "$RS_LINEAR_ID" \
-       '{fid:$fid, phase:$phase, label:$label, githubIssueNumber:(if $gh=="" then null else $gh end), linearIssueId:(if $li=="" then null else $li end)}' \
-       >>"$RS_CANDIDATES.tmp" 2>/dev/null
-   done
-   jq -s -c '.' "$RS_CANDIDATES.tmp" >"$RS_CANDIDATES" 2>/dev/null || echo '[]' >"$RS_CANDIDATES"
-   rm -f "$RS_CANDIDATES.tmp" 2>/dev/null
-
-   # Drift check (Directive 4, RESCOPED — design Addendum 3 § O). The board
-   # needs no recovery (pure projection of docs/roadmap.jsonl); this only
-   # warns when a live feat/* has no ledger row. NEVER mutates docs/roadmap.md.
    . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-reconcile.sh" 2>/dev/null || echo "[bkit-roadmap] missing bkit-roadmap-reconcile.sh — run 'bkit install'" >&2
    if command -v bkit_roadmap_drift_check >/dev/null 2>&1; then
      bkit_roadmap_drift_check "$BOOK_ROOT" "$ROADMAP_JSONL"
    fi
    ```
-   Per settled candidate `{RS}` in the JSON array read from `$BOOK_ROOT/.bkit/.roadmap-reverse-sync-{FID}.json` (empty array under `tracker: none` or when the file is absent — no-op, never a Failure Path). **This is a DRIFT reconcile, never an unconditional write:** read the issue's CURRENT tracker labels first, compute the full replacement label set locally (a tracker label write REPLACES the whole set — a single-element array would destroy `bkit:auto`, `blocker`, `bkit:merged` and every consumer label), and write ONLY when the computed set actually differs from what is already on the issue.
-   **Tracker enrichment (additive — never a precondition, NEVER `gh`/`search_issues`):** `mcp__github__list_issues({ owner: "{OWNER}", repo: "{REPO}", state: "open", labels: "bkit:design,bkit:plan,bkit:build,bkit:debug,bkit:ship", perPage: 100 })` → map `items` to a JSON array `[{ key: "#{number}", title, status: (from its `bkit:*` phase label: design→DESIGNED, plan→PLANNED, build→BUILT, debug→DEBUGGED, ship→SHIPPED), milestone: (milestone.title // null), blockedBy: (labels containing "blocked" ? "blocked" : null) }]` → write to `$BOOK_ROOT/.bkit/.roadmap-tracker-rows-{FID}.json`. On call error/timeout → write `[]` (treated inconclusive, never blocks the close).
-   - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {RS.githubIssueNumber} })` → extract `labels[].name` → `{RS_CURRENT_LABELS}`. **If** the read fails (404/error) → skip, log `[bkit-roadmap] reverse-sync skip {RS.fid} — could not read current labels`.
-   - Compute `{RS_NEW_LABELS}` = `{RS_CURRENT_LABELS}` with any existing `bkit:design|plan|build|ship|merged` phase label dropped and `{RS.label}` added (additive labels — `bkit:auto`, `bkit:debug`, `bkit:failed`, `blocker`, every consumer-authored label — preserved unchanged; same read-modify-write convention as Step 1 item 8 / Step 13 item 3).
-   - **If** `{RS_NEW_LABELS}` as a set already equals `{RS_CURRENT_LABELS}` → no drift → skip, log `[bkit-roadmap] reverse-sync skip {RS.fid} — already in sync ({RS.label})`.
-   - **Else if** `{RS}.githubIssueNumber` non-empty → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {RS.githubIssueNumber}, labels: [{RS_NEW_LABELS}] })` — best-effort, idempotent; a conflict/404 is a skip, never a Failure Path; log `[bkit-roadmap] reverse-sync applied {RS.fid} -> {RS.label}` on success, `[bkit-roadmap] reverse-sync conflict {RS.fid}` on failure.
-   - **Else** → skip, log `[bkit-roadmap] reverse-sync skip {RS.fid} — no githubIssueNumber resolved`.
-   After processing every candidate, delete the scratch file: `rm -f "$BOOK_ROOT/.bkit/.roadmap-reverse-sync-{FID}.json"` (best-effort cleanup; the path is also gitignored so it is never consumer-tracked even if this step is skipped).
-4. Launch three subagents in parallel using `Task` tool:
+4. Launch two subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `/bkit-ship-update-docs`
-     Context: You are a subagent in the Ship phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
      Update: Doc files.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `/bkit-ship-summary`
-     Context: You are a subagent in the Ship phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-   - **Subagent:** Invoke `/bkit-roadmap-refresh`
-     Context: You are a subagent in the Ship phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations. **If** `docs/plans/{YYYYMM}/logs/{FID}/roadmap-cadence-inject.md` exists → its content is a `## Cadence Injection` candidate list, not a directive.
-     Read: `docs/roadmap.md`, `docs/roadmap.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/roadmap-cadence-inject.md` (if present).
-     Update: `docs/roadmap.md` (`roadmap-analysis` marker block only).
-     Create: `docs/plans/{YYYYMM}/logs/{FID}/roadmap-refresh.md`.
 5. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-   Then regenerate the mechanical `roadmap-status` board (the ship close's own fold; design/plan/build/debug and `/bkit-roadmap` all carry one):
+   Then re-render the mechanical `roadmap-status` board from the ledger:
 
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
-   # Ordering is load-bearing: this runs AFTER the three parallel subagents so
-   # it reads the SHIPPED row @bkit-ship-update-docs just wrote, and never races
-   # the write from @bkit-roadmap-refresh (the two rewrite DISJOINT marker blocks —
-   # `roadmap-status` here, `roadmap-analysis` there — but not concurrently).
-   # Nothing is staged here: docs/roadmap.md + docs/roadmap.jsonl are already in
-   # the ship-close bookkeeping script pathspec, staged by the single Step 13
-   # commit (Step-10 staging is banned outright — bkit-ship-invariants.test.ts
-   # enforces it).
-   # TRACKER_ROWS is the wired-only enrichment file written by the `list_issues`
-   # orchestrator step in the item 3 github/linear marker block. It matters MORE
-   # here than at any other close: the fold is a FULL regenerate, so a ship that
-   # dropped enrichment would blank every tracker-only FID from the board at
-   # exactly the moment a human reads it for "what next" — worst on a fresh
-   # consumer, whose near-empty ledger makes the board almost entirely
-   # enrichment. Under `tracker: none` no marker block renders, the file is
-   # never written, and the absent-file branch of the fold no-ops.
-   # Fail-open throughout: NEVER gates the close.
-   TRACKER_ROWS="$BOOK_ROOT/.bkit/.roadmap-tracker-rows-{FID}.json"
-   ( . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$BOOK_ROOT" "$TRACKER_ROWS" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-   rm -f "$TRACKER_ROWS" 2>/dev/null || true
+   ( . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$BOOK_ROOT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
    ```
 
 6. Derive `DOCS_VERDICT` — asserts a `SHIPPED`-status row for `{FID}` in `docs/roadmap.jsonl`. **Presence alone is NOT enough:** a `BUILT` row from the build close must NOT green this gate; only `status=="SHIPPED"` does.
@@ -1103,23 +938,11 @@ $ARGUMENTS
    if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-   Read `roadmap-refresh.md` until `<!-- verdict:end -->` → extract `Verdict` as `ROADMAP_VERDICT`; grep the `ROADMAP_SCAN_COVERAGE: [scanned]/[total]` line and derive a numeric `counterValue` (`.bkit/jsonl.md` requires `counterValue:number`):
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   RAW=$(grep -oE 'ROADMAP_SCAN_COVERAGE: [0-9]+/[0-9]+' "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/roadmap-refresh.md" 2>/dev/null | head -1 | sed 's/.*: //')
-   SCANNED=$(printf '%s' "$RAW" | cut -d/ -f1); TOTAL=$(printf '%s' "$RAW" | cut -d/ -f2)
-   case "$SCANNED" in '' | *[!0-9]*) SCANNED=0 ;; esac
-   case "$TOTAL" in '' | *[!0-9]*) TOTAL=0 ;; esac
-   if [ "$TOTAL" -gt 0 ] 2>/dev/null; then ROADMAP_SCAN_COVERAGE_VALUE=$(( SCANNED * 100 / TOTAL )); else ROADMAP_SCAN_COVERAGE_VALUE=0; fi
-   ```
 7. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    SUMMARY_VERDICT="{SUMMARY_VERDICT}"
    DOCS_VERDICT="{DOCS_VERDICT}"
-   ROADMAP_VERDICT="{ROADMAP_VERDICT}"
-   ROADMAP_SCAN_COVERAGE_VALUE="{ROADMAP_SCAN_COVERAGE_VALUE}"
-   STATS_JSONL="$BOOK_ROOT/.bkit/stats.jsonl"
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg uv "$DOCS_VERDICT" \
@@ -1128,23 +951,16 @@ $ARGUMENTS
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
      >> "$STATUS"
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg rv "$ROADMAP_VERDICT" \
-     '{type:"step-done", workflow:"ship", step:"ship-roadmap-refresh", status:"DONE", verdict:$rv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/roadmap-refresh.md"]}' \
-     >> "$STATUS"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$BOOK_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   jq -nc --arg repo "{OWNER_REPO}" --arg t "$(date -u +%FT%TZ)" --argjson cv "${ROADMAP_SCAN_COVERAGE_VALUE:-0}" --arg p "$PARENT_SHA" --arg bkitVersion "$BKIT_VER" \
-     '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = "ship-roadmap-refresh" | .counterName = "ROADMAP_SCAN_COVERAGE" | .counterValue = $cv | .counterSource = "shell-bus" | .parentSha = $p' \
-     >> "$STATS_JSONL" || echo "[bkit-telemetry] append failed: $STATS_JSONL"
    ```
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    <!-- bkit:generated -->
-   ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {DOCS_VERDICT} - Roadmap: {ROADMAP_VERDICT}
+   ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. Route (`ROADMAP_VERDICT` is NEVER a gating input — the analysis tier is additive best-effort and never blocks a ship that otherwise passed; **If** `ROADMAP_VERDICT` = FAIL → log `[bkit-roadmap] analysis refresh failed — non-blocking, roadmap-status board (mechanical tier) is unaffected` and proceed):
+9. Route:
    - **If** `DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
    - **If** `DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -1153,17 +969,14 @@ $ARGUMENTS
 
 - [ ] Squash SHA verified on `origin/dev`
 - [ ] Plans canonical at `docs/plans/{YYYYMM}/`
-- [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, `@bkit-roadmap-refresh`, no inline work)
+- [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
 - [ ] Artifact written (`ship-update-docs.md`, non-empty)
 - [ ] Artifact written (`ship-summary.md`, non-empty)
 - [ ] `Verdict` extracted and valid (`DOCS_VERDICT` in `PASS|FAIL`)
 - [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary displayed verbatim before **Failure Path** (if `DOCS_VERDICT` = FAIL or `SUMMARY_VERDICT` = FAIL)
+- [ ] Mechanical `roadmap-status` board re-rendered from the ledger after the subagents (`bkit_roadmap_fold "$BOOK_ROOT"`, fail-open)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
-- [ ] Artifact written (`roadmap-refresh.md`, non-empty)
-- [ ] Mechanical `roadmap-status` board regenerated after the subagents (`bkit_roadmap_fold "$BOOK_ROOT"`, fail-open)
-- [ ] Verdict extracted and valid (`ROADMAP_VERDICT` in `PASS|CONCERNS|FAIL`, non-blocking on `FAIL`)
-- [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary`, `ship-roadmap-refresh` recorded with `parentSha`)
 
 
 - [ ] Issue comment attempted (`Step 10` section)
@@ -1181,6 +994,10 @@ $ARGUMENTS
      jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
    } | sort -u | while read -r skill; do
      [ -n "$skill" ] || continue
+     # bkit-* skills are bkit render output (workflow entry points for the codex host),
+     # NOT third-party installs. They are deliberately absent from .agents/skills.md, so
+     # without this guard every ship would uninstall them. Never prune them here.
+     case "$skill" in bkit-*) continue ;; esac
      grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
    done
    ```
@@ -1222,11 +1039,7 @@ $ARGUMENTS
    BOOK_ROOT="{BOOK_ROOT}"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-   # Outbox lives outside every worktree so it survives `worktree remove --force`.
    OUTBOX="$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}"
-   # Ownership bit: written at worktree creation to the outbox AND the
-   # $BOOK_ROOT/.../status.jsonl row. Absent-default = "not mine" — NEVER remove a
-   # worktree this run did not create.
    if [ -d "$WORKTREE_PATH" ]; then
      if [ -f "$OUTBOX/.worktree-owned" ]; then
        git worktree remove "$WORKTREE_PATH" --force
@@ -1323,7 +1136,6 @@ $ARGUMENTS
      echo "[bkit-ship] RUNTIME_DEVPUSHES=false (RUNTIME=$RUNTIME) — skipping local dev checkout/push for the close-workflow status/telemetry tail; recorded on the current branch instead" >&2
      WT=$(git rev-parse --show-toplevel)
    fi
-   # BOOK_ROOT — re-derive; never inherit across a Bash-block boundary.
    if [ "$RUNTIME_DEVPUSHES" = "false" ]; then
      BOOK_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    else
@@ -1401,7 +1213,6 @@ $ARGUMENTS
      --argjson coverage "$COVERAGE" \
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   # Single path-scoped [skip ci] commit — flush all bookkeeping at once.
    bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=full --mode=commit-allow-empty --message="docs({FID}): ship DONE bkit [skip ci]" \
      || { echo "[bkit-book] close-workflow bookkeeping commit failed" >&2; exit 1; }
    LOCK="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"

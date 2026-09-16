@@ -616,7 +616,7 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
   }
 
   // opencode-native gateways — two providers `opencode-zen` + `opencode-go`, both auth via
-  // OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).
+  // BKIT_OPENCODE_API_KEY; render path is the npm-driver custom-provider format (explicit baseURL).
   it("--opencode=opencode-zen is accepted", () => {
     expect(parseArgs(["install", "--opencode=opencode-zen"]).opencodeProvider).toBe("opencode-zen");
   });

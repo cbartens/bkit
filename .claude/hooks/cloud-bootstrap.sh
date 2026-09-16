@@ -52,7 +52,7 @@ cd "$REPO_ROOT"
 # its job is to make a silent no-op loud and tell the operator how to fix the snapshot.
 if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && command -v jq >/dev/null 2>&1; then
   TRUST_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$REPO_ROOT")
-  TRUST_FILE="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  TRUST_FILE="${CLAUDE_CONFIG_DIR:-${HOME:-}}/.claude.json"
   TRUSTED=$(jq -r --arg p "$TRUST_ROOT" '.projects[$p].hasTrustDialogAccepted // false' "$TRUST_FILE" 2>/dev/null || printf 'false')
   if [ "$TRUSTED" != "true" ]; then
     log "WORKSPACE NOT TRUSTED at $TRUST_ROOT -- Claude Code is ignoring EVERY permissions.allow row in .claude/settings.json for this session (deny/ask still apply, so destructive-op gating is unaffected). This container clones to a different path than the setup script baked in. Fix: re-paste the setup script from .claude/cloud.md section 4, which re-stamps the cache-bust line and rebuilds the snapshot."
@@ -62,8 +62,8 @@ fi
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
   # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
   # config before install (supplements the project .npmrc auth token line).
-  if [ -n "${GH_BKIT_TOKEN_INSTALL:-}" ]; then
-    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN_INSTALL" || log "pnpm config set failed (non-blocking)"
+  if [ -n "${BKIT_GH_TOKEN_INSTALL:-}" ]; then
+    pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" || log "pnpm config set failed (non-blocking)"
   fi
   log "pnpm install --frozen-lockfile"
   pnpm install --frozen-lockfile --prefer-offline || log "pnpm install failed (non-blocking)"
@@ -79,7 +79,7 @@ fi
 # Authenticate the gh CLI for the PR / branch / git-push surface (session-scoped).
 # On GitHub Actions runners gh is already authed via GITHUB_TOKEN (env wins over
 # stored creds), so the `gh auth status` guard no-ops there; it fires only where gh
-# isn't yet authed — e.g. Claude Code on the web. GH_BKIT_TOKEN comes from the
+# isn't yet authed — e.g. Claude Code on the web. BKIT_GH_TOKEN comes from the
 # dashboard env vars (see cloud.md § Environment variables).
 #
 # gh hardening (#341 C2): prefer the SANCTIONED `GH_TOKEN`/`GITHUB_TOKEN` env
@@ -95,7 +95,7 @@ fi
 # "Prefer the sanctioned lane" means prefer it WHEN IT WORKS; when it is present
 # and broken, say so precisely.
 #
-# Single shared token — GH_BKIT_TOKEN is the one secret both this hook (gh) and
+# Single shared token — BKIT_GH_TOKEN is the one secret both this hook (gh) and
 # the GitHub MCP server (.mcp.json's Authorization header) read; no second
 # secret is introduced.
 if ! command -v gh >/dev/null 2>&1; then
@@ -111,10 +111,10 @@ elif [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
   # environment variable from inside a session (env vars are set in the dashboard;
   # see cloud.md). So name the fault and the fix precisely and let the
   # workflow-level Step-1 preflight fail the run closed onto the MCP lane.
-  log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so GH_BKIT_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See issue #341 §2/§6a."
-elif [ -n "${GH_BKIT_TOKEN:-}" ]; then
+  log "gh-preflight: WARNING — GH_TOKEN/GITHUB_TOKEN is set but does NOT authenticate (placeholder or expired). It takes precedence over any stored 'gh auth login' credential, so gh cannot be repaired from this hook. Fix it where it is defined — the cloud environment's Environment variables — by setting a valid token or removing the variable so BKIT_GH_TOKEN can be used instead. Until then gh stays down and workflows fall back to the GitHub MCP lane. See issue #341 §2/§6a."
+elif [ -n "${BKIT_GH_TOKEN:-}" ]; then
   log "gh auth login --with-token"
-  printf '%s' "$GH_BKIT_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
+  printf '%s' "$BKIT_GH_TOKEN" | gh auth login --with-token || log "gh auth login failed (non-blocking)"
 fi
 
 # gh-preflight (#341 C2): loud, NEVER-silent RUNTIME_GITHUBCLI record. SessionStart hooks
@@ -131,12 +131,12 @@ fi
 log "gh-preflight: RUNTIME_GITHUBCLI=${RUNTIME_GITHUBCLI}"
 
 # Dual-lane signal: gh and the GitHub MCP server are BOTH keyed off the same
-# GH_BKIT_TOKEN (this hook + .mcp.json's Authorization header) — if none of
-# GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
+# BKIT_GH_TOKEN (this hook + .mcp.json's Authorization header) — if none of
+# BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are set, neither lane can authenticate.
 # Loud, non-blocking (see above); the workflow-level Step-1 preflight is what
 # actually fails the run closed.
-if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${GH_BKIT_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
-  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — GH_BKIT_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
+if [ "$RUNTIME_GITHUBCLI" = "false" ] && [ -z "${BKIT_GH_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ]; then
+  log "DUAL-LANE WARNING: neither gh nor the GitHub MCP server can authenticate — BKIT_GH_TOKEN/GH_TOKEN/GITHUB_TOKEN are all unset. Both lanes read the same credential; the workflow's Step-1 preflight will fail closed. Non-blocking signal only (SessionStart hooks cannot abort the session) — see issue #341 §2/§6a."
 fi
 
 # Provision context-fetch CLIs the consumer declared in .agents/context.md. Stack-agnostic:

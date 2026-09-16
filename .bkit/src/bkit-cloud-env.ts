@@ -10,7 +10,7 @@
 //
 // Faithful to app-gether's `scripts/generate-claude-cloud.sh` by construction: its
 // EXCLUDE_KEYS are exactly the vars `.envrc` unsets, and its REVIEW_KEYS is
-// ANTHROPIC_API_KEY — both reproduced here without a bespoke key list.
+// BKIT_ANTHROPIC_API_KEY — both reproduced here without a bespoke key list.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -30,14 +30,18 @@ export const CURSOR_CLOUD_RELPATH = path.join(".cursor", "cloud.md");
 // Session-hijack keys: exporting these into a cloud env redirects Claude Code's
 // OWN model calls onto API-key billing instead of the user's subscription
 // (`.bkit/cloud.md` § Environment variables). Always dropped from the paste block.
-export const SESSION_HIJACK_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
+export const SESSION_HIJACK_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "BKIT_ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+] as const;
 
 // bkit baseline env-var NAMES every Claude-on-web environment needs. Emitted as a
 // placeholder ONLY when absent from the resolved `.envrc` set — a present value
-// (e.g. GH_BKIT_TOKEN already in `.bkit/.env`) keeps its real resolved value.
+// (e.g. BKIT_GH_TOKEN already in `.bkit/.env`) keeps its real resolved value.
 const BASELINE_TOKEN_PLACEHOLDERS: ReadonlyArray<readonly [string, string]> = [
-  ["GH_BKIT_TOKEN", "<fine-grained PAT — see .bkit/cloud.md § GH_BKIT_TOKEN permissions>"],
-  ["GH_BKIT_TOKEN_INSTALL", "<classic PAT with read:packages>"],
+  ["BKIT_GH_TOKEN", "<fine-grained PAT — see .bkit/cloud.md § BKIT_GH_TOKEN permissions>"],
+  ["BKIT_GH_TOKEN_INSTALL", "<classic PAT with read:packages>"],
 ];
 
 // Earlier-compaction override — a bkit constant, not a secret. Appended to the
@@ -50,7 +54,7 @@ const AUTOCOMPACT_VALUE = "70";
 // both clouds (same dotenv sources, same unset/hijack/empty drops) — only the
 // baseline placeholder set and the appended constants differ. Claude pairs with the
 // GitHub tracker and wants the autocompact override; Cursor pairs with Linear (and
-// so also needs `LINEAR_API_KEY`) and has no autocompact knob. Keeping one resolver
+// so also needs `BKIT_LINEAR_API_KEY`) and has no autocompact knob. Keeping one resolver
 // with a small policy object is what guarantees the two generated docs describe the
 // SAME cloud environment — just different mechanics (pasted setup vs. Dockerfile).
 export interface CloudEnvPolicy {
@@ -67,11 +71,11 @@ export const CLAUDE_CLOUD_POLICY: CloudEnvPolicy = {
   constants: [[AUTOCOMPACT_KEY, AUTOCOMPACT_VALUE]],
 };
 
-// Cursor Background Agents: `LINEAR_API_KEY` prepended for the Linear tracker
+// Cursor Background Agents: `BKIT_LINEAR_API_KEY` prepended for the Linear tracker
 // (preflight.sh calls the Linear GraphQL API and hard-fails without it); GitHub
 // tracker uses the same GH baseline as Claude, minus the autocompact knob.
 const CURSOR_LINEAR_PLACEHOLDER: readonly [string, string] = [
-  "LINEAR_API_KEY",
+  "BKIT_LINEAR_API_KEY",
   "<Linear personal API key — https://linear.app/settings/api>",
 ];
 export function cursorCloudPolicy(tracker: IssueTracker): CloudEnvPolicy {
@@ -852,7 +856,7 @@ export function renderCursorNetworkAllowlist(cwd: string): string {
  * selector; on Cursor the toolchain lives in `.cursor/Dockerfile` + the per-snapshot
  * `.cursor/environment.json` `install` (both committed, nothing to paste), so this doc
  * is narrower: it resolves the **dashboard environment variables** to real values from
- * the consumer's `.envrc` (Cursor policy — Linear tracker adds `LINEAR_API_KEY`, no
+ * the consumer's `.envrc` (Cursor policy — Linear tracker adds `BKIT_LINEAR_API_KEY`, no
  * autocompact knob) and surfaces any context-fetch CLIs for parity.
  *
  * Like `.claude/cloud.md` it is gitignored + chmod 600 and UNTRACKED (never pushed to

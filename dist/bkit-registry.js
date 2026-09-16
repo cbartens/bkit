@@ -13,37 +13,37 @@ export const OPENCODE_PROVIDER_DEFAULTS = {
     // and makes opencode reject the whole config) and read keys via {env:VAR} — never
     // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
     openrouter: {
-        envVar: "OPENROUTER_API_KEY",
+        envVar: "BKIT_OPENROUTER_API_KEY",
         baseURL: "https://openrouter.ai/api/v1",
-        apiPlaceholder: "{env:OPENROUTER_API_KEY}",
+        apiPlaceholder: "{env:BKIT_OPENROUTER_API_KEY}",
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "OpenRouter",
     },
     // Cloud-hosted Ollama (ollama.com). Matches opencode's own naming where built-in
     // `ollama` = the cloud service.
     ollama: {
-        envVar: "OLLAMA_API_KEY",
+        envVar: "BKIT_OLLAMA_API_KEY",
         baseURL: "https://ollama.com/v1",
-        apiPlaceholder: "{env:OLLAMA_API_KEY}",
+        apiPlaceholder: "{env:BKIT_OLLAMA_API_KEY}",
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "Ollama",
     },
     // opencode-native gateways — two DISTINCT models.dev providers, both auth'd via
-    // OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
+    // BKIT_OPENCODE_API_KEY. Built-in (apiKey only): OpenCode resolves endpoints + per-model SDK
     // from models.dev. CLI keys are opencode-zen / opencode-go; Zen's models.dev id is
     // `opencode` (agent pins opencode/<id>), Go's id is `opencode-go` (opencode-go/<id>).
     "opencode-zen": {
-        envVar: "OPENCODE_API_KEY",
+        envVar: "BKIT_OPENCODE_API_KEY",
         baseURL: "",
-        apiPlaceholder: "{env:OPENCODE_API_KEY}",
+        apiPlaceholder: "{env:BKIT_OPENCODE_API_KEY}",
         builtin: true,
         providerId: "opencode",
         displayName: "OpenCode Zen",
     },
     "opencode-go": {
-        envVar: "OPENCODE_API_KEY",
+        envVar: "BKIT_OPENCODE_API_KEY",
         baseURL: "",
-        apiPlaceholder: "{env:OPENCODE_API_KEY}",
+        apiPlaceholder: "{env:BKIT_OPENCODE_API_KEY}",
         builtin: true,
         providerId: "opencode-go",
         displayName: "OpenCode Go",

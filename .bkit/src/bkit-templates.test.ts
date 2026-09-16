@@ -163,13 +163,13 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block).not.toBeNull();
     expect(block!).toContain("VERBOSE_CI");
     expect(block!).toContain("TURBO_LOG_LEVEL");
-    expect(block!).toContain("GH_BKIT_TOKEN_INSTALL");
+    expect(block!).toContain("BKIT_GH_TOKEN_INSTALL");
   });
 
   it("ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
     expect(content).toMatch(
-      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN_INSTALL/,
+      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$BKIT_GH_TOKEN_INSTALL/,
     );
   });
 });

@@ -975,7 +975,7 @@ describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () =
 
 describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)", () => {
   // BAR-138: The consumer CI template was updated to use GitHub Packages
-  // registry auth (.npmrc + GH_BKIT_TOKEN_INSTALL env var) instead of the old git
+  // registry auth (.npmrc + BKIT_GH_TOKEN_INSTALL env var) instead of the old git
   // auth-shim (git config --global url.insteadOf). Tests updated accordingly.
 
   it("ci.yml template exists", () => {
@@ -992,12 +992,12 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     expect(content).not.toContain("Configure private-repo auth");
   });
 
-  it("ci.yml template install step carries env: GH_BKIT_TOKEN_INSTALL for registry auth (BAR-138)", () => {
+  it("ci.yml template install step carries env: BKIT_GH_TOKEN_INSTALL for registry auth (BAR-138)", () => {
     const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
-    // GH_BKIT_TOKEN_INSTALL must be present as the env var for registry auth
-    expect(content).toContain("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}");
-    // GH_BKIT_TOKEN_INSTALL is now declared at job-level too (so non-install pnpm steps
+    // BKIT_GH_TOKEN_INSTALL must be present as the env var for registry auth
+    expect(content).toContain("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}");
+    // BKIT_GH_TOKEN_INSTALL is now declared at job-level too (so non-install pnpm steps
     // don't emit ".npmrc env substitution failed" warnings). Locate the step-
     // level declaration adjacent to the install command, skipping any earlier
     // job-level occurrence.
@@ -1006,7 +1006,7 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     const envTokenLine = lines.findIndex(
       (l, i) =>
         i > installLine &&
-        l.includes("GH_BKIT_TOKEN_INSTALL: ${{ secrets.GH_BKIT_TOKEN_INSTALL }}"),
+        l.includes("BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }}"),
     );
     expect(installLine).toBeGreaterThan(-1);
     expect(envTokenLine).toBeGreaterThan(installLine);
@@ -1391,28 +1391,30 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
   // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
   // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
   // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
-  // The only column where opus and sonnet separate — every other provider's ceiling
-  // sits under the sonnet target, so opus+sonnet collapse there.
-  it("openrouter: kimi-k3 opus, gemini-3.7-flash sonnet, v4-pro-0813 convergent, v4-flash haiku", () => {
+  // OpenRouter opus+sonnet collapse onto V4.1 Flash (clears both Claude targets).
+  // Haiku stays on the cheapest sufficient pin; convergent stays a distinct family.
+  it("openrouter: v4.1-flash opus+sonnet, glm-5.3-flash haiku, kimi-k3 convergent", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("moonshotai/kimi-k3");
-    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("google/gemini-3.7-flash");
-    expect(lookup.get("bkit-design-summary")).toBe("deepseek/deepseek-v4-flash");
-    expect(lookup.get("bkit-build-challenge-2")).toBe("deepseek/deepseek-v4-pro-0813");
-    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("deepseek/deepseek-v4-pro-0813");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("deepseek/deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("deepseek/deepseek-v4.1-flash");
+    expect(lookup.get("bkit-design-summary")).toBe("z-ai/glm-5.3-flash");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("moonshotai/kimi-k3");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("moonshotai/kimi-k3");
     // The gateway prefix belongs to the renderer, not the table.
     expect(formatModelPin("opencode", "openrouter", lookup.get("bkit-design-summary")!)).toBe(
-      "openrouter/deepseek/deepseek-v4-flash",
+      "openrouter/z-ai/glm-5.3-flash",
     );
   });
 
-  // The undated deepseek-v4-pro slug is frozen on the 0423 snapshot (42.6); the GA
-  // build is a separate slug. Guards against silently reverting to the stale pin.
-  it("openrouter: convergent pin is the dated GA deepseek build, never the frozen slug", () => {
+  // Guards against silently reverting convergent to a DeepSeek slug, or haiku to V4 Flash.
+  it("openrouter: convergent is kimi-k3; frozen/dated v4-pro slugs stay off the column", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
     const pins = [...lookup.values()];
     expect(pins).not.toContain("deepseek/deepseek-v4-pro");
-    expect(pins.some((m) => m === "deepseek/deepseek-v4-pro-0813")).toBe(true);
+    expect(pins).not.toContain("deepseek/deepseek-v4-pro-0813");
+    expect(pins.some((m) => m === "moonshotai/kimi-k3")).toBe(true);
+    expect(pins.some((m) => m === "deepseek/deepseek-v4.1-flash")).toBe(true);
+    expect(pins.some((m) => m === "z-ai/glm-5.3-flash")).toBe(true);
   });
 
   // This column exists to carry work when the Claude quota is spent — a Claude pin
