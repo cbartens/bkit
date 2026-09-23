@@ -488,7 +488,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-telemetry-migrate.integration.test.ts` (extended) | Integration | `docs/completed.md` → `.bkit/issues.jsonl` fifth migrate pair, parity gate + deletion, bootstrap seed, idempotent re-run. |
 | `bkit-ship-verdict.integration.test.ts` | Integration | `UPDATE_DOCS_VERDICT` resolves from a `SHIPPED`-status row only — a `BUILT`-only row must NOT green it. |
 | `bkit-roadmap-devwrite.integration.test.ts` | Integration (boundary: real temp git repo) | build/debug dev-lock ledger append returns the worktree to `feat/*`, lands the row on `dev`, fail-open when the lock is held. |
-| `bkit-catalog-parity.test.ts`, `bkit-untrusted-input-coverage.test.ts` | Unit | Cover the five `/bkit-utility-review-*` commands generically: each needs a `### ` section in `.bkit/workflows.md` and the narrowest-scoped-token clause. No per-command content assertions — that machinery is what this change removed. |
+| `bkit-catalog-parity.test.ts`, `bkit-untrusted-input-coverage.test.ts` | Unit | Cover the five `bkit-utility-review-*` agents generically: each needs a row in `.bkit/prompts.md` and the narrowest-scoped-token clause. No per-agent content assertions — that machinery is what this change removed. |
 
 ## Compliance grader test coverage
 
