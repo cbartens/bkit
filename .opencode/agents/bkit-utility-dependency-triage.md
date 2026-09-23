@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-dependency-triage
 description: Senior release engineer batching open dependency PRs into a single verified CI run.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

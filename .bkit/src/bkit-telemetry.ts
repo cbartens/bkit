@@ -267,7 +267,7 @@ export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
 /**
  * The `feature` kind's six-state phase ladder — the canonical status for
- * `docs/roadmap.jsonl` (#380), appended once per phase close, same-`key`
+ * `.bkit/issues.jsonl` (#380), appended once per phase close, same-`key`
  * (the FID). `SHIPPED` projects into the roadmap's `## Shipped` section
  * (last 10, ts desc); `ABANDONED` hides the FID from every section.
  * `ABANDONED` is appended only by a human, or an agent on explicit human
@@ -562,7 +562,7 @@ export interface DecisionPayload {
 }
 
 // feature — keyed by explicit `key` field (the FID). The canonical row for
-// `docs/roadmap.jsonl` (#380): a `deferral`/`failure` row MINUS `severity`,
+// `.bkit/issues.jsonl` (#380): a `deferral`/`failure` row MINUS `severity`,
 // PLUS the six-state FeatureStatus ladder in place of TriageStatus. Appended
 // at every one of the five phase closes (design/plan/build/debug/ship) —
 // same-`key` append, last-write-wins fold gives the current phase.

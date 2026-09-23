@@ -1,7 +1,7 @@
 # JSONL Entry Format
 
 > [!CAUTION]
-> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/roadmap.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
+> **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/issues.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). Codec: `.bkit/src/bkit-telemetry.ts`. Which `kind` → which ledger + workflow write timing: `.bkit/workflows.md` § Telemetry Ledgers.
 >
 > **Rules:**
 >
@@ -39,8 +39,7 @@ One file per `kind`; writers:
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover` |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate` |
-| `feature` | `docs/roadmap.jsonl` | design / plan / build / debug orchestrators at their phase close; `@bkit-ship-update-docs` (`SHIPPED`); `ABANDONED` only by a human, or an agent on explicit human instruction |
-| `tracker` | `docs/tracker.jsonl` | the `/bkit-roadmap` utility only — a gitignored snapshot of every open tracker issue, REWRITTEN in full each run, NEVER appended to |
+| `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 10 on `$BOOK_ROOT`; `ABANDONED` only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** ONLY agents listed as writers for a given kind are allowed to write that specific kind; NO exceptions.
 
@@ -50,10 +49,10 @@ One file per `kind`; writers:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `ts` | `number` | Unix milliseconds — primary id. Minted via `jq '… \| .ts = (now*1000\|floor)'`, NEVER a literal (§ Write Idiom). |
-| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`, `tracker`. |
+| `kind` | `string` | Closed enum: `compliance`, `outcome`, `counter`, `friction`, `deferral`, `failure`, `knowledge`, `decision`, `feature`. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`. |
 | `bkitVersion` | `string` | bkit version that emitted the row — sole version stamp; readers tally rows per `bkitVersion` for triage. |
-| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship`, or `roadmap` for the on-demand `/bkit-roadmap` utility (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
+| `workflow` | `string` | Emitting workflow: `design` / `plan` / `build` / `debug` / `ship` (part of the dedup tuple for `compliance` / `counter` / `outcome`). |
 | `step` | `string` | The workflow step the row was emitted at, e.g. `build-close-workflow`, `ship-close-gate`. Never an agent name. See § Who Wrote It. |
 | `subagent` | `string?` | The subagent that wrote the row, e.g. `bkit-build-challenge-remediate`. Set on every subagent-written row; absent on orchestrator-written rows. See § Who Wrote It. |
 | `model` | `string?` | The model that wrote the row, from the writing subagent's own frontmatter `model:`. Set only where `subagent` is set. See § Who Wrote It. |
@@ -73,7 +72,6 @@ One file per `kind`; writers:
 | `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (REQUIRED — no severity; see `docs/roadmap.md`), `shippedAt:number?` (§ Ship Date). |
-| `tracker` | `key` (raw issue id — `#412` github, `TEAM-42` linear), `title`, `description`, `labels:string[]`, `status?` (the tracker's OWN state name, verbatim, NEVER normalised; absent renders under `### Other`), `priority?`, `updatedAt?`, `url?`, `comments?:string[]` (shortlist only), `commentsTruncated?:boolean`. |
 
 ## Who Wrote It — `step` vs `subagent` vs `model`
 
@@ -473,7 +471,7 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
 }
 ```
 
-`docs/roadmap.jsonl`:
+`.bkit/issues.jsonl`:
 
 <!-- prettier-ignore -->
 ```jsonl

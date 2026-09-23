@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

@@ -440,9 +440,9 @@ describe("triage ladder — OPEN -> TRIAGED -> CLOSED", () => {
   });
 });
 
-// #380 — `feature` kind: the canonical row for docs/roadmap.jsonl, a
+// #380 — `feature` kind: the canonical row for .bkit/issues.jsonl, a
 // deferral/failure row MINUS severity, PLUS the six-state phase ladder.
-describe("feature kind — docs/roadmap.jsonl (#380)", () => {
+describe("feature kind — .bkit/issues.jsonl (#380)", () => {
   it("is a valid kind, keyed by (kind, repo, key)", () => {
     expect(VALID_KINDS.has("feature")).toBe(true);
     const e = featureEvent("412-export-csv");

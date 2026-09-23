@@ -7,11 +7,11 @@ _(above the bkit list — yours, never overwritten)_
 <!-- bkit:roadmap-notes-pre end -->
 
 <!-- bkit:roadmap-status start -->
-> Generated tables — do NOT hand-edit the `bkit` or `Tracker` tables; append to `docs/roadmap.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last.
+> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last.
 
 ## bkit
 
-_(refreshed 2026-09-16T00:00:31Z)_
+_(refreshed 2026-09-16T08:59:40Z)_
 
 ### Design
 
@@ -47,19 +47,13 @@ _(none)_
 | 325 | Self-hosted Renovate GitHub Actions OOM — move to Mend hosted runner | 1783234091000 |
 <!-- bkit:roadmap-status end -->
 
-<!-- bkit:roadmap-notes-mid start -->
-## Notes
-
-_(between bkit and tracker — yours, never overwritten)_
-<!-- bkit:roadmap-notes-mid end -->
-
 <!-- bkit:roadmap-analysis start -->
 
-_(no analysis yet — run /bkit-roadmap or ship to populate)_
+_(no analysis yet — run /bkit-utility-review-roadmap to populate)_
 <!-- bkit:roadmap-analysis end -->
 
 <!-- bkit:roadmap-notes-post start -->
 ## Notes
 
-_(below the tracker list — yours, never overwritten)_
+_(end of the board — yours, never overwritten)_
 <!-- bkit:roadmap-notes-post end -->

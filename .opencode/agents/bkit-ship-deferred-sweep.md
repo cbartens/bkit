@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

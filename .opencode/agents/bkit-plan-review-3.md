@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/moonshotai/kimi-k3
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-logs-ship
 description: Senior SRE running post-deploy smoke checks for new errors and regressions.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

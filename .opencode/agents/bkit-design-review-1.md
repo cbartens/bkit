@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-1
 description: Senior engineer assessing whether designs are buildable with the approved stack.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

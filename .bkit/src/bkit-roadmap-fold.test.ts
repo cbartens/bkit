@@ -57,9 +57,9 @@ describe("#380 bkit-roadmap-fold.sh — template exists + defines the projection
     expect(content).toMatch(/^bkit_roadmap_fold\(\)\s*\{/m);
   });
 
-  // The status block is a pure projection of docs/roadmap.jsonl now that
-  // tracker rows render in their own marker block, so a phase close re-renders
-  // it instead of parsing the on-disk board back to preserve foreign rows.
+  // The status block is a pure projection of .bkit/issues.jsonl, so a phase
+  // close re-renders it instead of parsing the on-disk board back to preserve
+  // foreign rows.
   // `bkit_roadmap_upsert` and the board parser it needed are both gone.
   it("defines no board-parsing upsert path — the fold is the only entrypoint", () => {
     const content = fs.readFileSync(TEMPLATE_PATH, "utf-8");
@@ -67,35 +67,27 @@ describe("#380 bkit-roadmap-fold.sh — template exists + defines the projection
     expect(content).not.toMatch(/_bkit_roadmap_parse_status/);
   });
 
-  it("renders the tracker block from docs/tracker.jsonl with an Other catch-all", () => {
+  // The board renders what has no other home. A wired tracker already shows its
+  // own issues, so the fold must not grow a second copy of them.
+  it("renders no tracker table and reads no tracker snapshot", () => {
     const content = fs.readFileSync(TEMPLATE_PATH, "utf-8");
-    expect(content).toMatch(/^_bkit_roadmap_render_tracker\(\)\s*\{/m);
-    expect(content).toContain("docs/tracker.jsonl");
-    expect(content).toContain("Other");
-  });
-
-  // Two blocks, two cadences: only /bkit-roadmap re-fetches the tracker, so a
-  // phase close must carry the existing stamp forward rather than mint a new
-  // one and claim freshness it does not have.
-  it("stamps each block and gates the tracker stamp on an explicit refresh flag", () => {
-    const content = fs.readFileSync(TEMPLATE_PATH, "utf-8");
-    expect(content).toContain("BKIT_ROADMAP_TRACKER_REFRESHED");
+    expect(content).not.toMatch(/_bkit_roadmap_render_tracker/);
+    expect(content).not.toContain("docs/tracker.jsonl");
+    expect(content).not.toContain("BKIT_ROADMAP_TRACKER_REFRESHED");
     expect(content).toMatch(/_\(refreshed/);
   });
 
-  // Three consumer-owned notes islands sit around the generated lists and are
+  // Two consumer-owned notes islands bracket the generated region and are
   // carried through verbatim — never regenerated, never dropped on a fold.
-  it("defines three notes marker pairs carried through the fold verbatim", () => {
+  it("defines two notes marker pairs carried through the fold verbatim", () => {
     const content = fs.readFileSync(TEMPLATE_PATH, "utf-8");
     expect(content).toContain("<!-- bkit:roadmap-notes-pre start -->");
     expect(content).toContain("<!-- bkit:roadmap-notes-pre end -->");
-    expect(content).toContain("<!-- bkit:roadmap-notes-mid start -->");
-    expect(content).toContain("<!-- bkit:roadmap-notes-mid end -->");
     expect(content).toContain("<!-- bkit:roadmap-notes-post start -->");
     expect(content).toContain("<!-- bkit:roadmap-notes-post end -->");
+    expect(content).not.toContain("roadmap-notes-mid");
     expect(content).toMatch(/never overwritten/);
     expect(content).toMatch(/notes-post is last/);
-    expect(content).not.toMatch(/printf '## Backlog \/ Ideas/);
   });
 
   it("repo copy byte-matches the template (installed copy is not stale) — hashed via node:crypto, never a shell md5 shell-out", () => {

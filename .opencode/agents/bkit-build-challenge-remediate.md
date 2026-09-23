@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against prioritised review reports.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

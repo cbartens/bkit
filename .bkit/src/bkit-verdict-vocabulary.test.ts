@@ -41,7 +41,7 @@ const PROMPT_DIR = ".bkit/prompts";
  * These have no prompt-side declaration by design.
  */
 const EXEMPT_COMPUTED = new Set([
-  "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on docs/roadmap.jsonl
+  "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on .bkit/issues.jsonl
   "MERGE_VERDICT", // ship derives it from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
   "FETCH_VERDICT", // debug derives it from context-fetch block outcomes
@@ -164,7 +164,7 @@ export function variableSources(): Map<string, string> {
  * artifact file. Maps variable -> agent directly, skipping the artifact hop,
  * so the prompt-side vocabulary is still checked. Used where the subagent
  * writes no report of its own (`/bkit-roadmap`, whose only durable outputs are
- * docs/roadmap.md, docs/roadmap.jsonl and docs/tracker.jsonl).
+ * docs/roadmap.md, .bkit/issues.jsonl and docs/tracker.jsonl).
  */
 function messageVariableAgents(): Map<string, string> {
   const out = new Map<string, string>();

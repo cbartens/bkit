@@ -996,7 +996,7 @@ describe("migrate — idempotency", () => {
 });
 
 // ---------------------------------------------------------------------------
-// #380 Directive 2 — docs/completed.md → docs/roadmap.jsonl (fifth pair) +
+// #380 Directive 2 — docs/completed.md → .bkit/issues.jsonl (fifth pair) +
 // Addendum 3 § S bootstrap seed (matrix rows 9, 24)
 // ---------------------------------------------------------------------------
 
@@ -1018,7 +1018,7 @@ describe("mapCompletedCategory — legacy vocabulary onto the domain set", () =>
   });
 });
 
-describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row 9)", () => {
+describe("migrate — docs/completed.md → .bkit/issues.jsonl (#380, matrix row 9)", () => {
   it("every well-formed entry becomes a SHIPPED feature row; parity gate passes and DELETES completed.md", async () => {
     const dir = setupFixtureDir({
       knContent: FIXTURE_KN_MD,
@@ -1037,7 +1037,7 @@ describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row
     expect(fs.existsSync(path.join(dir, "docs", "completed.md.bak"))).toBe(false);
 
     const rows = fs
-      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .filter(Boolean)
@@ -1062,7 +1062,7 @@ describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row
     const result = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
     expect(result.ok).toBe(true);
     expect(fs.existsSync(path.join(dir, "docs", "completed.md.bak"))).toBe(false);
-    expect(fs.existsSync(path.join(dir, "docs", "roadmap.jsonl.migrating"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "docs", "issues.jsonl.migrating"))).toBe(false);
   });
 
   it("re-run is an idempotent no-op for the completed.md pair", async () => {
@@ -1079,7 +1079,7 @@ describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row
     const second = await runMigrate({ ...MIGRATE_OPTS, cwd: dir });
     expect(second.ran).toBe(false);
     const rows = fs
-      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .filter(Boolean);
@@ -1116,7 +1116,7 @@ describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row
     // "jsonl already non-empty", so an absent .md with an empty/absent .jsonl
     // (the true first-run state) read as "not already done" and fell through to
     // `return abort("knowledge.md not found ...")` — aborting the ENTIRE run,
-    // including the unrelated completed.md -> roadmap.jsonl pair this consumer
+    // including the unrelated completed.md -> issues.jsonl pair this consumer
     // actually wanted to migrate.
     const dir = setupFixtureDir({
       completedContent: FIXTURE_COMPLETED_MD,
@@ -1132,10 +1132,10 @@ describe("migrate — docs/completed.md → docs/roadmap.jsonl (#380, matrix row
     expect(result.featureRowCount).toBe(2);
     expect(result.completedMdDeleted).toBe(true);
     expect(fs.existsSync(path.join(dir, "docs", "completed.md"))).toBe(false);
-    expect(fs.existsSync(path.join(dir, "docs", "roadmap.jsonl"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, ".bkit", "issues.jsonl"))).toBe(true);
 
     const rows = fs
-      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .filter(Boolean)
@@ -1183,7 +1183,7 @@ describe("migrate — Addendum 3 § S bootstrap seed (#380, matrix row 24)", () 
     expect(result.seedRowCount).toBe(2);
 
     const rows = fs
-      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .filter(Boolean)
@@ -1207,7 +1207,7 @@ describe("migrate — Addendum 3 § S bootstrap seed (#380, matrix row 24)", () 
     expect(second.seedRowCount).toBe(0);
 
     const rows = fs
-      .readFileSync(path.join(dir, "docs", "roadmap.jsonl"), "utf-8")
+      .readFileSync(path.join(dir, ".bkit", "issues.jsonl"), "utf-8")
       .trim()
       .split("\n")
       .filter(Boolean);
@@ -1220,7 +1220,7 @@ describe("migrate — Addendum 3 § S bootstrap seed (#380, matrix row 24)", () 
     fs.mkdirSync(plansDir, { recursive: true });
     fs.writeFileSync(path.join(plansDir, "999-already-shipped-design.md"), "# design\n", "utf-8");
     fs.writeFileSync(
-      path.join(dir, "docs", "roadmap.jsonl"),
+      path.join(dir, ".bkit", "issues.jsonl"),
       `${JSON.stringify({ ts: 1, kind: "feature", repo: "x/y", bkitVersion: "1", workflow: "ship", step: "s", key: "999-already-shipped", category: "other", description: "d", status: "SHIPPED" })}\n`,
       "utf-8",
     );

@@ -64,7 +64,7 @@ Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude -
 
 ## Roadmap ledger migration
 
-One-time, per repo carrying a legacy `docs/completed.md`. `docs/roadmap.jsonl` is the canonical feature ledger; `docs/roadmap.md` is its generated board.
+One-time, per repo carrying a legacy `docs/completed.md`. `.bkit/issues.jsonl` is the canonical feature ledger; `docs/roadmap.md` is its generated board.
 
 ```bash
 pnpm bkit telemetry migrate --dry-run   # preview, no writes

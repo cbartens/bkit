@@ -121,10 +121,10 @@ teardown() {
 
 # #380 matrix row 22 — every new [bkit-roadmap] fail branch exits 0 (never gates the close).
 
-@test "#380: docs/roadmap.jsonl append to an unwritable path is fail-open (exit 0)" {
+@test "#380: .bkit/issues.jsonl append to an unwritable path is fail-open (exit 0)" {
   RODIR="$TMPDIR_LOCAL/readonly-docs"
   : >"$RODIR"
-  FILE="$RODIR/roadmap.jsonl"
+  FILE="$RODIR/issues.jsonl"
   OUTPUT=$(jq -nc --arg key "412-export-csv" \
     '. | .ts=(now*1000|floor) | .kind="feature" | .repo="x/y" | .bkitVersion="1" | .workflow="build" | .step="build-close-workflow" | .key=$key | .category="agentic" | .description="d" | .status="BUILT"' \
     >> "$FILE" 2>&1 || echo "[bkit-roadmap] append failed: $FILE")
@@ -141,45 +141,4 @@ teardown() {
   run env PATH="$FAKEBIN:/usr/bin:/bin" bash -c ". '$FOLD_SH'; bkit_roadmap_fold '$TMPDIR_LOCAL'"
   [ "$status" -eq 0 ]
   [[ "$output" == *"[bkit-roadmap]"* ]]
-}
-
-# #380 Sub-plan 2 — cadence/sync/reconcile fail branches (extends matrix row 22).
-
-@test "#380: bkit_roadmap_cadence_eval with jq absent from PATH is fail-open (exit 0, SKIP 0)" {
-  CADENCE_SH="$BATS_TEST_DIRNAME/../.bkit/templates/.bkit/scripts/bkit-roadmap-cadence.sh"
-  FAKEBIN="$TMPDIR_LOCAL/fakebin"
-  mkdir -p "$FAKEBIN"
-  run env PATH="$FAKEBIN:/usr/bin:/bin" bash -c ". '$CADENCE_SH'; bkit_roadmap_cadence_eval '$TMPDIR_LOCAL/roadmap.jsonl' '$TMPDIR_LOCAL/stats.jsonl' 10 90"
-  [ "$status" -eq 0 ]
-  [[ "$output" == "SKIP 0" ]]
-}
-
-@test "#380: .bkit/stats.jsonl ROADMAP_CADENCE_FIRE append to an unwritable path is fail-open (exit 0)" {
-  RODIR="$TMPDIR_LOCAL/readonly-stats"
-  : >"$RODIR"
-  FILE="$RODIR/stats.jsonl"
-  OUTPUT=$(jq -nc --arg repo "x/y" --argjson cv 10 --arg p "abc123" \
-    '. | .ts=(now*1000|floor) | .kind="counter" | .workflow="ship" | .repo=$repo | .step="ship-roadmap-cadence" | .counterName="ROADMAP_CADENCE_FIRE" | .counterValue=$cv | .counterSource="shell-bus" | .parentSha=$p' \
-    >> "$FILE" 2>&1 || echo "[bkit-roadmap] append failed: $FILE")
-  STATUS=$?
-  [ "$STATUS" -eq 0 ]
-  [[ "$OUTPUT" == *"[bkit-roadmap]"* ]]
-}
-
-@test "#380: bkit_roadmap_drift_check with jq absent from PATH is fail-open (exit 0, no stdout warning)" {
-  RECONCILE_SH="$BATS_TEST_DIRNAME/../.bkit/templates/.bkit/scripts/bkit-roadmap-reconcile.sh"
-  FAKEBIN="$TMPDIR_LOCAL/fakebin"
-  mkdir -p "$FAKEBIN"
-  REPO="$TMPDIR_LOCAL/norepo"
-  mkdir -p "$REPO"
-  run env PATH="$FAKEBIN:/usr/bin:/bin" bash -c ". '$RECONCILE_SH'; bkit_roadmap_drift_check '$REPO' '$REPO/roadmap.jsonl'"
-  [ "$status" -eq 0 ]
-}
-
-@test "#380: bkit_roadmap_drift_check against a non-git directory is fail-open (exit 0, never a Failure Path)" {
-  RECONCILE_SH="$BATS_TEST_DIRNAME/../.bkit/templates/.bkit/scripts/bkit-roadmap-reconcile.sh"
-  NOTGIT="$TMPDIR_LOCAL/notgit"
-  mkdir -p "$NOTGIT"
-  run bash -c ". '$RECONCILE_SH'; bkit_roadmap_drift_check '$NOTGIT' '$NOTGIT/roadmap.jsonl'"
-  [ "$status" -eq 0 ]
 }

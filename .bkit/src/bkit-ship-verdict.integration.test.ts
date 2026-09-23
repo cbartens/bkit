@@ -3,7 +3,7 @@
  *
  * Boundary: real jq + real fs (no mocks). Runs the EXACT `DOCS_VERDICT`
  * derivation shipped in `.bkit/workflows/bkit-ship.md` Step 10 against a
- * fixture `docs/roadmap.jsonl`, so a drift between this test and the shipped
+ * fixture `.bkit/issues.jsonl`, so a drift between this test and the shipped
  * shell can never pass silently.
  */
 
@@ -30,6 +30,7 @@ let tmpDir: string;
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-verdict-test-"));
   fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
 });
 
 afterEach(() => {
@@ -37,10 +38,10 @@ afterEach(() => {
 });
 
 function runVerdict(fid: string, jsonlContent: string): string {
-  fs.writeFileSync(path.join(tmpDir, "docs", "roadmap.jsonl"), jsonlContent, "utf-8");
+  fs.writeFileSync(path.join(tmpDir, ".bkit", "issues.jsonl"), jsonlContent, "utf-8");
   const snippet = extractVerdictSnippet();
   // BOOK_ROOT resolves to a DIFFERENT directory than CWD (a bare relative
-  // `docs/roadmap.jsonl` read would miss the fixture entirely) — proves the
+  // `.bkit/issues.jsonl` read would miss the fixture entirely) — proves the
   // shipped reader actually resolves via $BOOK_ROOT, not the working dir.
   const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-verdict-cwd-"));
   const script = `cd "${otherDir}" && BOOK_ROOT="${tmpDir}" FID="${fid}" ${snippet.replace(/\{FID\}/g, "$FID")}\necho "$DOCS_VERDICT"`;
@@ -51,7 +52,7 @@ function runVerdict(fid: string, jsonlContent: string): string {
   }
 }
 
-describe("DOCS_VERDICT — docs/roadmap.jsonl SHIPPED-row assertion (#380, matrix row 10)", () => {
+describe("DOCS_VERDICT — .bkit/issues.jsonl SHIPPED-row assertion (#380, matrix row 10)", () => {
   it("PASS when a SHIPPED row exists for the FID", () => {
     const jsonl = `${JSON.stringify({
       kind: "feature",
@@ -61,7 +62,7 @@ describe("DOCS_VERDICT — docs/roadmap.jsonl SHIPPED-row assertion (#380, matri
     expect(runVerdict("412-export-csv", jsonl)).toBe("PASS");
   });
 
-  it("FAIL when the FID is absent from docs/roadmap.jsonl", () => {
+  it("FAIL when the FID is absent from .bkit/issues.jsonl", () => {
     const jsonl = `${JSON.stringify({ kind: "feature", key: "other-fid", status: "SHIPPED" })}\n`;
     expect(runVerdict("412-export-csv", jsonl)).toBe("FAIL");
   });
@@ -82,7 +83,7 @@ describe("DOCS_VERDICT — docs/roadmap.jsonl SHIPPED-row assertion (#380, matri
     expect(runVerdict("412-export-csv", jsonl)).toBe("PASS");
   });
 
-  it("FAIL when docs/roadmap.jsonl is absent entirely (fresh/unmigrated repo)", () => {
+  it("FAIL when .bkit/issues.jsonl is absent entirely (fresh/unmigrated repo)", () => {
     const snippet = extractVerdictSnippet();
     const script = `cd "${tmpDir}" && BOOK_ROOT="${tmpDir}" FID="412-export-csv" ${snippet.replace(/\{FID\}/g, "$FID")}\necho "$DOCS_VERDICT"`;
     const out = execSync(script, { shell: "/bin/bash", encoding: "utf-8" }).trim();

@@ -270,12 +270,11 @@ describe("issue-scan call sites (#135)", () => {
     it(`${wf} wires a github scan that fetches each hit's comments`, () => {
       const out = substituteWorkflow(read(wf), "github").output;
       expect(out).toContain("mcp__github__search_issues");
-      // Body and comments come from raw `gh api`, never the MCP read — that read
-      // sanitises bodies and deletes every HTML comment, including both tracker
-      // markers the sweep filters on. See bkit-generated-marker.test.ts.
-      expect(out).toContain('gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100"');
-      expect(out).toContain("gh api \"repos/{OWNER}/{REPO}/issues/{number}\" --jq '.body'");
-      expect(out).not.toContain('method: "get_comments"');
+      expect(out).toContain('method: "get_comments"');
+      expect(out).toContain('method: "get"');
+      expect(out).not.toContain(
+        'gh api "repos/{OWNER}/{REPO}/issues/{number}/comments?per_page=100"',
+      );
     });
 
     it(`${wf} wires the linear scan with per-hit comment fetch`, () => {

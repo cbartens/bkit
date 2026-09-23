@@ -587,7 +587,7 @@ Usage:
                                  docs/pending.md + .bkit/friction.md + docs/completed.md
                                  (fifth pair, #380) to docs/knowledge.jsonl +
                                  docs/decisions.jsonl + docs/deferrals.jsonl +
-                                 .bkit/friction.jsonl + docs/roadmap.jsonl (kind:"knowledge",
+                                 .bkit/friction.jsonl + .bkit/issues.jsonl (kind:"knowledge",
                                  "decision", "deferral", "friction", and "feature" —
                                  status:"SHIPPED" — rows). Parity-gated + destructive: ports
                                  each entry with its KN-N/DE-N id + legacy Related:
@@ -598,7 +598,7 @@ Usage:
                                  is a no-op if migration already completed). A parity mismatch
                                  or absent .md.bak ABORTS with ZERO .md deleted. Same run also
                                  performs the #380 bootstrap seed: scans docs/plans/** for
-                                 in-flight FIDs and appends one docs/roadmap.jsonl row per FID
+                                 in-flight FIDs and appends one .bkit/issues.jsonl row per FID
                                  at its detected phase, skipping FIDs already in the ledger.
                                  NEVER called from bkit upgrade — only via this explicit invocation.
                                  --dry-run: show what would be migrated without writing.

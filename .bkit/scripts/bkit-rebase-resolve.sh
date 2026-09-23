@@ -37,7 +37,7 @@
 # oversight.
 #
 # `docs/roadmap.md` is the one entry that is NOT append-only — it is a full
-# regenerate of `docs/roadmap.jsonl`, so a union leaves a board with duplicated
+# regenerate of `.bkit/issues.jsonl`, so a union leaves a board with duplicated
 # sections rather than interleaved rows. It is listed anyway because both sides
 # of any rebase have almost certainly re-folded it (every workflow close does),
 # making a conflict there the common case rather than the exception. Refusing
@@ -54,7 +54,7 @@ BKIT_REBASE_LEDGERS='docs/knowledge.jsonl
 docs/decisions.jsonl
 docs/deferrals.jsonl
 docs/failures.jsonl
-docs/roadmap.jsonl
+.bkit/issues.jsonl
 docs/roadmap.md
 .bkit/stats.jsonl
 .bkit/friction.jsonl

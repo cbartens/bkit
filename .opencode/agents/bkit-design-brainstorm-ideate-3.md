@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-3
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/moonshotai/kimi-k3
 tools:
   read: true
   grep: true

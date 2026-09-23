@@ -10,7 +10,7 @@ ROADMAP_FOLD_SH="${BKIT_ROADMAP_FOLD_SH:-$REPO_ROOT/.bkit/templates/.bkit/script
 
 setup() {
   TMPD="$(mktemp -d)"
-  mkdir -p "$TMPD/docs"
+  mkdir -p "$TMPD/docs" "$TMPD/.bkit"
 }
 
 teardown() {
@@ -36,7 +36,7 @@ teardown() {
 # row 1 — projects the phase-sectioned board under tracker:none (no MCP call
 # attempted by the shell layer at all — this script never calls a tracker).
 @test "row 1: projects each FID under its folded latest status (tracker:none)" {
-  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+  cat > "$TMPD/.bkit/issues.jsonl" <<'EOF'
 {"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}
 EOF
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
@@ -49,7 +49,7 @@ EOF
 # over the SAME ledger produce byte-identical marker-block content, and a
 # BUILT row written by build is still projected after a later plan-close fold.
 @test "row 2: deterministic + idempotent regenerate; a BUILT row survives a later regenerate" {
-  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+  cat > "$TMPD/.bkit/issues.jsonl" <<'EOF'
 {"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}
 {"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"build","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"BUILT"}
 EOF
@@ -59,7 +59,7 @@ EOF
   diff "$TMPD/roadmap-1.md" "$TMPD/docs/roadmap.md"
 
   # append a plan-close row for a DIFFERENT FID; the earlier BUILT row must survive
-  echo '{"ts":3,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":3,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/.bkit/issues.jsonl"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   run grep -A5 '### Build' "$TMPD/docs/roadmap.md"
   [[ "$output" == *"412-export-csv"* ]]
@@ -68,7 +68,7 @@ EOF
 # row 3 — SHIPPED leaves active sections for ## Shipped; ABANDONED hidden from
 # every section; a same-key append moves a FID between sections.
 @test "row 3: SHIPPED projects to Shipped section; ABANDONED hidden everywhere; same-key append moves sections" {
-  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+  cat > "$TMPD/.bkit/issues.jsonl" <<'EOF'
 {"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"401-login","category":"security","summary":"login","description":"d","status":"DESIGNED"}
 {"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"ship","step":"s","key":"401-login","category":"security","summary":"login","description":"d","status":"SHIPPED"}
 {"ts":3,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"402-dropped","category":"other","summary":"dropped","description":"d","status":"DESIGNED"}
@@ -83,7 +83,7 @@ EOF
 
 # row 4 — fail-open: malformed/empty input + absent tracker -> exit 0 + [bkit-roadmap] stderr, board never blank.
 @test "row 4: fail-open on malformed ledger — exit 0, [bkit-roadmap] stderr, board never blank" {
-  printf 'not json at all\n' > "$TMPD/docs/roadmap.jsonl"
+  printf 'not json at all\n' > "$TMPD/.bkit/issues.jsonl"
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD' 2>&1"
   [ "$status" -eq 0 ]
   [ -f "$TMPD/docs/roadmap.md" ]
@@ -106,7 +106,7 @@ SCRATCH-ABOVE
 ' "$TMPD/docs/roadmap.md"
   printf '\nSCRATCH-BELOW\n' >> "$TMPD/docs/roadmap.md"
 
-  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/.bkit/issues.jsonl"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
 
   grep -qF 'SCRATCH-ABOVE' "$TMPD/docs/roadmap.md"
@@ -114,85 +114,64 @@ SCRATCH-ABOVE
   ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
 }
 
-# Three consumer-owned notes islands: above the bkit list, between bkit and
-# tracker, and below the tracker list. Seeded on bootstrap, carried through
-# every regenerate, never overwritten.
-@test "notes: bootstrap emits three notes blocks in order around bkit and tracker" {
+# Two consumer-owned notes islands bracket the generated region: above the bkit
+# list and below the analysis. Seeded on bootstrap, carried through every
+# regenerate, never overwritten. No tracker table is rendered at all.
+@test "notes: bootstrap emits two notes blocks bracketing bkit and analysis" {
+  run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
+  [ "$status" -eq 0 ]
+  PRE=$(grep -nF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  [ -n "$PRE" ] && [ -n "$STATUS" ] && [ -n "$POST" ] && [ -n "$ANALYSIS" ]
+  ! grep -qF 'roadmap-notes-mid' "$TMPD/docs/roadmap.md"
+  [ "$PRE" -lt "$STATUS" ]
+  [ "$STATUS" -lt "$ANALYSIS" ]
+  [ "$ANALYSIS" -lt "$POST" ]
+}
+
+# A tracker snapshot on disk must not resurrect a tracker table: the board
+# renders only what has no other home, and a wired tracker shows its own issues.
+@test "notes: a stray docs/tracker.jsonl renders no tracker block" {
   cat > "$TMPD/docs/tracker.jsonl" <<'EOF'
 {"ts":1,"kind":"tracker","key":"#1","title":"open issue","labels":[],"status":"Todo"}
 EOF
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   [ "$status" -eq 0 ]
-  PRE=$(grep -nF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  MID=$(grep -nF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  TRACKER=$(grep -nF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  [ -n "$PRE" ] && [ -n "$STATUS" ] && [ -n "$MID" ] && [ -n "$TRACKER" ] && [ -n "$POST" ] && [ -n "$ANALYSIS" ]
-  [ "$PRE" -lt "$STATUS" ]
-  [ "$STATUS" -lt "$MID" ]
-  [ "$MID" -lt "$TRACKER" ]
-  [ "$TRACKER" -lt "$ANALYSIS" ]
-  [ "$ANALYSIS" -lt "$POST" ]
-}
-
-@test "notes: notes-mid and notes-post still emit when the tracker block is omitted" {
-  run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
-  [ "$status" -eq 0 ]
-  PRE=$(grep -nF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  MID=$(grep -nF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  POST=$(grep -nF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  [ -n "$PRE" ] && [ -n "$STATUS" ] && [ -n "$MID" ] && [ -n "$POST" ] && [ -n "$ANALYSIS" ]
   ! grep -qF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md"
-  [ "$PRE" -lt "$STATUS" ]
-  [ "$STATUS" -lt "$MID" ]
-  [ "$MID" -lt "$ANALYSIS" ]
-  [ "$ANALYSIS" -lt "$POST" ]
+  ! grep -qF 'open issue' "$TMPD/docs/roadmap.md"
 }
 
-@test "notes: user text in all three notes blocks survives a regenerate" {
-  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+@test "notes: user text in both notes blocks survives a regenerate" {
+  cat > "$TMPD/.bkit/issues.jsonl" <<'EOF'
 {"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}
-EOF
-  cat > "$TMPD/docs/tracker.jsonl" <<'EOF'
-{"ts":1,"kind":"tracker","key":"#1","title":"open issue","labels":[],"status":"Todo"}
 EOF
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
 
   awk '
     /<!-- bkit:roadmap-notes-pre start -->/ { print; print "PRE-NOTE-KEEP"; skip=1; next }
     /<!-- bkit:roadmap-notes-pre end -->/ { skip=0 }
-    /<!-- bkit:roadmap-notes-mid start -->/ { print; print "MID-NOTE-KEEP"; skip=1; next }
-    /<!-- bkit:roadmap-notes-mid end -->/ { skip=0 }
     /<!-- bkit:roadmap-notes-post start -->/ { print; print "POST-NOTE-KEEP"; skip=1; next }
     /<!-- bkit:roadmap-notes-post end -->/ { skip=0 }
     skip { next }
     { print }
   ' "$TMPD/docs/roadmap.md" > "$TMPD/docs/roadmap.md.notes" && mv "$TMPD/docs/roadmap.md.notes" "$TMPD/docs/roadmap.md"
 
-  echo '{"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/.bkit/issues.jsonl"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
 
   grep -qF 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md"
-  grep -qF 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md"
   grep -qF 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md"
   grep -qF '418-rate-limit' "$TMPD/docs/roadmap.md"
   [ "$(grep -c 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
-  [ "$(grep -c 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
   [ "$(grep -c 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
   PRE=$(grep -nF 'PRE-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
   STATUS=$(grep -nF '<!-- bkit:roadmap-status start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  MID=$(grep -nF 'MID-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  TRACKER=$(grep -nF '<!-- bkit:tracker start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
+  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
   POST=$(grep -nF 'POST-NOTE-KEEP' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
   [ "$PRE" -lt "$STATUS" ]
-  [ "$STATUS" -lt "$MID" ]
-  [ "$MID" -lt "$TRACKER" ]
-  ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis start -->' "$TMPD/docs/roadmap.md" | head -1 | cut -d: -f1)
-  [ "$TRACKER" -lt "$ANALYSIS" ]
+  [ "$STATUS" -lt "$ANALYSIS" ]
   [ "$ANALYSIS" -lt "$POST" ]
 }
 
@@ -214,7 +193,7 @@ ANALYSIS-KEEP
 
 TAIL-KEEP
 EOF
-  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/.bkit/issues.jsonl"
 
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   [ "$status" -eq 0 ]
@@ -222,10 +201,10 @@ EOF
   grep -qF 'TAIL-KEEP' "$TMPD/docs/roadmap.md"
   grep -qF 'ANALYSIS-KEEP' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-notes-pre start -->' "$TMPD/docs/roadmap.md"
-  grep -qF '<!-- bkit:roadmap-notes-mid start -->' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md"
+  ! grep -qF 'roadmap-notes-mid' "$TMPD/docs/roadmap.md"
   grep -qF '412-export-csv' "$TMPD/docs/roadmap.md"
-  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
   [ "$(grep -c 'HEAD-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
   [ "$(grep -c 'TAIL-KEEP' "$TMPD/docs/roadmap.md")" -eq 1 ]
   ANALYSIS=$(grep -nF '<!-- bkit:roadmap-analysis end -->' "$TMPD/docs/roadmap.md" | tail -1 | cut -d: -f1)
@@ -238,7 +217,7 @@ EOF
 # row 19 — a merge=union collision duplicating ledger LINES still projects
 # exactly one board row per FID; a deleted roadmap.md is rebuilt byte-identically.
 @test "row 19: duplicate ledger lines fold to one board row; a deleted roadmap.md rebuilds identically" {
-  cat > "$TMPD/docs/roadmap.jsonl" <<'EOF'
+  cat > "$TMPD/.bkit/issues.jsonl" <<'EOF'
 {"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"build","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"BUILT"}
 {"ts":2,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"build","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"BUILT"}
 EOF
@@ -262,7 +241,7 @@ EOF
       printf '{"ts":%d,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"ship","step":"s","key":"fid-%02d","category":"other","description":"d","status":"SHIPPED"}\n' "$i" "$i"
     done
     echo '{"ts":100,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"build","step":"s","key":"still-building","category":"other","description":"d","status":"BUILT"}'
-  } > "$TMPD/docs/roadmap.jsonl"
+  } > "$TMPD/.bkit/issues.jsonl"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   run grep -c 'fid-' "$TMPD/docs/roadmap.md"
   [ "$output" -eq 10 ]
@@ -281,7 +260,7 @@ EOF
     done
     # A genuine recent ship: lower ts than the backfill, no shippedAt.
     echo '{"ts":50000,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"ship","step":"s","key":"really-recent","category":"other","description":"d","status":"SHIPPED"}'
-  } > "$TMPD/docs/roadmap.jsonl"
+  } > "$TMPD/.bkit/issues.jsonl"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   SHIPPED="$(sed -n '/### Shipped/,$p' "$TMPD/docs/roadmap.md")"
   # Survives the cap of 10 despite its ts being the lowest of the eleven.
@@ -305,7 +284,7 @@ CONSUMER PARAGRAPH THAT MUST SURVIVE
 <!-- bkit:roadmap-status start -->
 stale content, end marker missing (mangled)
 EOF
-  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/.bkit/issues.jsonl"
 
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD' 2>&1"
   [ "$status" -eq 0 ]
@@ -322,7 +301,7 @@ EOF
 - ship the billing rewrite
 - decide on the queue vendor
 EOF
-  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/.bkit/issues.jsonl"
 
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD' 2>&1"
   [ "$status" -eq 0 ]
@@ -351,7 +330,7 @@ old board
 
 consumer note
 EOF
-  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/docs/roadmap.jsonl"
+  echo '{"ts":1,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"design","step":"s","key":"412-export-csv","category":"correctness","summary":"CSV export","description":"d","status":"DESIGNED"}' > "$TMPD/.bkit/issues.jsonl"
 
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD' 2>&1"
   [ "$status" -eq 0 ]
@@ -359,5 +338,5 @@ EOF
   grep -qF 'consumer note' "$TMPD/docs/roadmap.md"
   grep -qF '412-export-csv' "$TMPD/docs/roadmap.md"
   grep -qF '<!-- bkit:roadmap-notes-post start -->' "$TMPD/docs/roadmap.md"
-  ! grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
+  grep -qF '## Backlog / Ideas' "$TMPD/docs/roadmap.md"
 }

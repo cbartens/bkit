@@ -124,7 +124,7 @@ export function detectPrettierignoreNoMarkers(cwd) {
 }
 /**
  * #380 rollout advisory: `docs/completed.md` still present — the consumer has
- * not yet run `bkit telemetry migrate` (which ports it to `docs/roadmap.jsonl`
+ * not yet run `bkit telemetry migrate` (which ports it to `.bkit/issues.jsonl`
  * as `kind:"feature"` rows and performs the § S bootstrap seed). Advisory
  * only, never a blocker — DE-39 forbids wiring the migrator to `bkit upgrade`,
  * so an unmigrated repo simply gets an empty `docs/roadmap.md` board (never a
@@ -137,8 +137,8 @@ export function detectCompletedMdUnmigrated(cwd) {
     return {
         id: "completed-md-unmigrated",
         severity: "advisory",
-        detect: "docs/completed.md still present — not yet migrated to docs/roadmap.jsonl (#380).",
-        action: 'Run `bkit telemetry migrate` to port docs/completed.md entries to docs/roadmap.jsonl (kind:"feature", status:"SHIPPED") and seed in-flight FIDs from docs/plans/**. Until then docs/roadmap.md\'s board is empty, not wrong.',
+        detect: "docs/completed.md still present — not yet migrated to .bkit/issues.jsonl (#380).",
+        action: 'Run `bkit telemetry migrate` to port docs/completed.md entries to .bkit/issues.jsonl (kind:"feature", status:"SHIPPED") and seed in-flight FIDs from docs/plans/**. Until then docs/roadmap.md\'s board is empty, not wrong.',
     };
 }
 export function detectLintProseF9Vulnerable(cwd) {

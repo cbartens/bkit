@@ -76,7 +76,7 @@ beforeEach(() => {
   sh(`git -c user.email=t@t.com -c user.name=t checkout -b dev`, repoDir);
   fs.mkdirSync(path.join(repoDir, "docs"), { recursive: true });
   fs.mkdirSync(path.join(repoDir, ".bkit", "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(repoDir, "docs", "roadmap.jsonl"), "", "utf-8");
+  fs.writeFileSync(path.join(repoDir, ".bkit", "issues.jsonl"), "", "utf-8");
   fs.copyFileSync(
     path.resolve(
       import.meta.dirname,
@@ -130,7 +130,7 @@ describe("dev-lock ledger mirror — behavioral (#380, matrix row 21)", () => {
     const branch = sh("git branch --show-current", repoDir).trim();
     expect(branch).toBe("feat/412-export-csv");
 
-    const devRoadmap = sh("git show dev:docs/roadmap.jsonl", repoDir);
+    const devRoadmap = sh("git show dev:.bkit/issues.jsonl", repoDir);
     expect(devRoadmap).toContain("412-export-csv");
     expect(devRoadmap).toContain("BUILT");
   });

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true

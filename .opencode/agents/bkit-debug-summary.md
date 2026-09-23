@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
-model: opencode-go/deepseek-v4-flash
+model: openrouter/z-ai/glm-5.3-flash
 tools:
   read: true
   write: true

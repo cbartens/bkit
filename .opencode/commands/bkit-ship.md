@@ -37,7 +37,7 @@ $ARGUMENTS
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `$BOOK_ROOT/.../status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash --match-head-commit` → `merge_pull_request` (explicit skip-token-free `commit_message`; pass validated head SHA); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_labels` — STRUCTURED FIELDS ONLY: `state`, `labels`, `milestone`; NEVER `body` or comment text, which the MCP sanitises — read those with `gh api`), `gh api` (raw issue body + comments), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
@@ -249,7 +249,7 @@ $ARGUMENTS
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:ship"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}" --jq '{state, title, body, html_url, labels: [.labels[].name]}'` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `gh api "repos/{OWNER}/{REPO}/issues/{ISSUE_ID}/comments?per_page=100" --paginate --jq '.[] | {created_at, user: .user.login, body}'` → sort oldest to newest → `COMMENTS`. RAW READ REQUIRED — NEVER `mcp__github__issue_read` for body / comment text: it sanitises bodies, deleting HTML comments (both bkit markers) and angle-bracket spans.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -264,7 +264,7 @@ $ARGUMENTS
      '{type:"step-done", workflow:"ship", step:"ship-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-input.md"]}' \
      >> "$STATUS"
    ```
-10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated` or `<!-- bkit:generated -->`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` or `<!-- bkit:ignore-earlier -->` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
@@ -449,7 +449,7 @@ $ARGUMENTS
       git push --force-with-lease origin "feat/{FID}"
       ```
       **Else** → **Failure Path** (non-mechanical conflict → handover).
-3. **Subagent:** Invoke `/bkit-ship-conflict-resolve` (non-mechanical handover — see step 2.1 above for the pattern; this sub-step covers the case where `mergeable` resolution fails unexpectedly). → **Failure Path**.
+3. **Else** → **Subagent:** Invoke `/bkit-ship-conflict-resolve` → **Failure Path**.
 4. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
@@ -556,7 +556,7 @@ $ARGUMENTS
    ```
 7. Route:
    - **If** `SWEEP_VERDICT` = PASS → Step 6.
-   - **If** `SWEEP_VERDICT` = FAIL → write `.deferred-blocked` sentinel under `BOOK_ROOT` (the Failure Path step 4 reader checks this to route to `@bkit-debug-abort-handover`), then **Failure Path**:
+   - **If** `SWEEP_VERDICT` = FAIL → write `.deferred-blocked` sentinel under `BOOK_ROOT`, then **Failure Path**:
      ```bash
      BOOK_ROOT="{BOOK_ROOT}"
      touch "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.deferred-blocked"
@@ -904,16 +904,7 @@ $ARGUMENTS
 
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
-3. Drift check — warn on any live `feat/*` branch with no ledger row. Best-effort, fail-open; NEVER gates this step. Reverse tracker-label sync does NOT run here: it is a full-ledger repair pass that writes labels on issues other than `{FID}`, so it belongs to `/bkit-roadmap`, the one command that updates everything.
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   ROADMAP_JSONL="$BOOK_ROOT/docs/roadmap.jsonl"
-   . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-reconcile.sh" 2>/dev/null || echo "[bkit-roadmap] missing bkit-roadmap-reconcile.sh — run 'bkit install'" >&2
-   if command -v bkit_roadmap_drift_check >/dev/null 2>&1; then
-     bkit_roadmap_drift_check "$BOOK_ROOT" "$ROADMAP_JSONL"
-   fi
-   ```
-4. Launch two subagents in parallel using `Task` tool:
+3. Launch two subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `/bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
@@ -923,46 +914,49 @@ $ARGUMENTS
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-5. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    Then re-render the mechanical `roadmap-status` board from the ledger:
 
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$BOOK_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$(git -C "$BOOK_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   ISSUES_JSONL="$BOOK_ROOT/.bkit/issues.jsonl"
+   jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "ship-update-docs" --arg key "{FID}" \
+     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="ship" | .step=$step | .key=$key | .category="agentic" | .description="Ship closed for {FID}" | .status="SHIPPED"' \
+     >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
    ( . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$BOOK_ROOT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-   ```
-
-6. Derive `DOCS_VERDICT` — asserts a `SHIPPED`-status row for `{FID}` in `docs/roadmap.jsonl`. **Presence alone is NOT enough:** a `BUILT` row from the build close must NOT green this gate; only `status=="SHIPPED"` does.
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$BOOK_ROOT/docs/roadmap.jsonl" 2>/dev/null | wc -l | tr -d ' ')
+   SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$BOOK_ROOT/.bkit/issues.jsonl" 2>/dev/null | wc -l | tr -d ' ')
    if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
    ```
-   Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-7. Update status (bookkeeping to `$BOOK_ROOT`):
+
+   **If** `DOCS_VERDICT` = FAIL → **Failure Path**.
+
+5. Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
+6. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    SUMMARY_VERDICT="{SUMMARY_VERDICT}"
-   DOCS_VERDICT="{DOCS_VERDICT}"
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg uv "$DOCS_VERDICT" \
-     '{type:"step-done", workflow:"ship", step:"ship-update-docs", status:"DONE", verdict:$uv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md"]}' \
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '{type:"step-done", workflow:"ship", step:"ship-update-docs", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md"]}' \
      >> "$STATUS"
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
      >> "$STATUS"
    ```
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {DOCS_VERDICT}
+   ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. Route:
-   - **If** `DOCS_VERDICT` = PASS **or** CONCERNS **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS) → Step 11.
-   - **If** `DOCS_VERDICT` = FAIL **or** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
+8. Route:
+   - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Update Docs & Summary
@@ -972,9 +966,8 @@ $ARGUMENTS
 - [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
 - [ ] Artifact written (`ship-update-docs.md`, non-empty)
 - [ ] Artifact written (`ship-summary.md`, non-empty)
-- [ ] `Verdict` extracted and valid (`DOCS_VERDICT` in `PASS|FAIL`)
 - [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Summary displayed verbatim before **Failure Path** (if `DOCS_VERDICT` = FAIL or `SUMMARY_VERDICT` = FAIL)
+- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
 - [ ] Mechanical `roadmap-status` board re-rendered from the ledger after the subagents (`bkit_roadmap_fold "$BOOK_ROOT"`, fail-open)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 
@@ -994,9 +987,6 @@ $ARGUMENTS
      jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
    } | sort -u | while read -r skill; do
      [ -n "$skill" ] || continue
-     # bkit-* skills are bkit render output (workflow entry points for the codex host),
-     # NOT third-party installs. They are deliberately absent from .agents/skills.md, so
-     # without this guard every ship would uninstall them. Never prune them here.
      case "$skill" in bkit-*) continue ;; esac
      grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
    done

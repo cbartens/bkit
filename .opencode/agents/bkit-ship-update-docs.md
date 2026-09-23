@@ -1,8 +1,8 @@
 ---
 mode: subagent
 name: bkit-ship-update-docs
-description: Senior tech writer syncing project docs with state shipped this cycle and appending the cycle entry.
-model: opencode-go/deepseek-v4-pro
+description: Senior tech writer syncing project docs with state shipped this cycle.
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true
@@ -14,7 +14,7 @@ reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
-**Role:** Senior tech writer syncing project docs with state shipped this cycle and appending the cycle entry.
+**Role:** Senior tech writer syncing project docs with state shipped this cycle.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
@@ -41,10 +41,9 @@ reasoningEffort: max
 3. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
 4. Per doc, ALWAYS follow its `Rules` headers when making edits.
 5. Per doc, four passes in order: Sync (gaps vs shipped code) → Reorganize (dedup, move misplaced) → Compress (token-efficient) → Cross-Reference (inline `docs/*.md` links).
-6. **If** cycle delivered shipped plan → append a `docs/roadmap.jsonl` row (`.bkit/jsonl.md` write idiom, `kind:"feature"`, `key:"{FID}"`, `status:"SHIPPED"`, `category` / `summary` / `description` / `references`).
-7. Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do NOT write `docs/deferrals.jsonl`).
-8. **If** no `docs/roadmap.jsonl` row written **and** no docs updated **and** no pending items surfaced → output "No updates needed.".
-9. Produce **Create** output.
+6. Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do NOT write `docs/deferrals.jsonl`).
+7. **If** no docs updated **and** no pending items surfaced → output "No updates needed.".
+8. Produce **Create** output.
 
 **Output format:**
 

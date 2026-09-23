@@ -372,8 +372,8 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts unaffected. |
 | `docs/audits/` | Audit reports from `bkit-utility-audit-*` agents. Created on the first audit run. |
-| `docs/roadmap.jsonl` | Issue-state ledger — appended at every phase close. Append-only. |
-| `docs/roadmap.md` | Phase-sectioned board + tracker list + analysis. Three consumer `## Notes` blocks (above bkit, between bkit and tracker, last after analysis) survive every regenerate. Consumer-owned — never seeded/overwritten by `bkit install` |
+| `.bkit/issues.jsonl` | Issue-state ledger — appended at every phase close. Append-only. |
+| `docs/roadmap.md` | Phase-sectioned board + analysis. No tracker list — a wired tracker shows its own issues. Two consumer `## Notes` blocks (above the bkit list, last after analysis) survive every regenerate. Consumer-owned — never seeded/overwritten by `bkit install` |
 | `docs/deferrals.jsonl` | Deferred items |
 
 ### In the installed package, not your repo

@@ -27,7 +27,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 
 <!-- bkit:tracker github start -->
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_labels` — STRUCTURED FIELDS ONLY: `state`, `labels`, `milestone`; NEVER `body` or comment text, which the MCP sanitises — read those with `gh api`), `gh api` (raw issue body + comments), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
@@ -150,7 +150,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
       *) FID="" ;;
     esac
     ```
-    **If** `BRANCH` does not start with `feat/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug — MUST resolve, step 11 keys every tracker call on it:
+    **If** `BRANCH` does not start with `feat/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug:
      <!-- bkit:tracker github start -->
     `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
      <!-- bkit:tracker github end -->
@@ -158,7 +158,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
     `ISSUE_ID` = first two dash-segments of `{FID}`, uppercased (`abc-123-slug` → `ABC-123`). Assert `[[ "{ISSUE_ID}" =~ ^[A-Z]+-[0-9]+$ ]]`. **Else** → **Failure Path**.
      <!-- bkit:tracker linear end -->
      <!-- bkit:tracker false start -->
-    No tracker wired — `ISSUE_ID` stays empty by design and step 11 is skipped.
+    No tracker wired — set `ISSUE_ID=""` and skip step 11.
      <!-- bkit:tracker false end -->
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.

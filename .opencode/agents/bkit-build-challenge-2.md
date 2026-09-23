@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/moonshotai/kimi-k3
 tools:
   read: true
   grep: true

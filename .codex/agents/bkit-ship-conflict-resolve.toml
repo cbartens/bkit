@@ -20,18 +20,6 @@ developer_instructions = """
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
-- **Allowed resolutions:**
-  - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/roadmap.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → union both sides. Do NOT hand-merge these; `bkit_rebase_resolve` already did, byte-identically to `merge=union`. Interleaved / duplicated rows are resolved by the reader's last-wins-by-`ts` fold and are NOT a reason to emit `FAIL`.
-  - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. The board is regenerated from `docs/roadmap.jsonl` later this cycle and is NEVER a reason to emit `FAIL`.
-  - Non-overlapping additive edits to same file → concatenate preserving both sides.
-  - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
-  - `package.json` dep-version bumped on one side only → take bump.
-  - Additive JSON array entries / object property additions with no key / position overlap → concatenate.
-- **Refused resolutions:**
-  - Same function / method body edited both sides.
-  - Same JSON key with different values (excluding one-sided bumps above).
-  - Same line edited both sides with different content.
-  - Any conflict where merged intent is not unambiguously mechanical.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -50,6 +38,18 @@ developer_instructions = """
    ```
    **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do NOT `git rebase --abort` here — the `FAIL` branch owns that.
 7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+   - `Allowed resolutions`:
+     - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit_rebase_resolve` unions both sides; do NOT hand-merge these. Interleaved / duplicated rows are resolved by last-`ts`-wins fold; NEVER reason to emit `FAIL`.
+     - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. Board regenerated from `.bkit/issues.jsonl` later this cycle; NEVER reason to emit `FAIL`.
+     - Non-overlapping additive edits to same file → concatenate preserving both sides.
+     - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
+     - `package.json` dep-version bumped on one side only → take bump.
+     - Additive JSON array entries / object property additions with no key / position overlap → concatenate.
+   - `Refused resolutions`:
+     - Same function / method body edited both sides.
+     - Same JSON key with different values (excluding one-sided bumps above).
+     - Same line edited both sides with different content.
+     - Any conflict where merged intent is not unambiguously mechanical.
 8. Resolve each `Allowed resolutions` file via `Edit` → replace conflict-marker hunk with merged result → `git add <file>` after each → append log entry → `git rebase --continue`. **If** `git rebase --continue` errors → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 9. **If** `Verdict` != `FAIL` → run `pnpm bkit:gate:install-static-unit-build`. MUST exit 0 → append log entry with exit code. **If** non-zero → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:

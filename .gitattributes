@@ -16,7 +16,7 @@ docs/knowledge.jsonl merge=union
 docs/decisions.jsonl merge=union
 docs/deferrals.jsonl merge=union
 docs/failures.jsonl  merge=union
-docs/roadmap.jsonl   merge=union
+.bkit/issues.jsonl   merge=union
 docs/roadmap.md      merge=union
 .bkit/stats.jsonl    merge=union
 

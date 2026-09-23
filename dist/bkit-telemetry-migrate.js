@@ -3,12 +3,12 @@
 //   docs/decisions.md  → docs/decisions.jsonl   (kind:"decision")
 //   docs/pending.md    → docs/deferrals.jsonl   (kind:"deferral")
 //   .bkit/friction.md  → .bkit/friction.jsonl   (kind:"friction")
-//   docs/completed.md  → docs/roadmap.jsonl     (kind:"feature", status:"SHIPPED") — #380 fifth pair
+//   docs/completed.md  → .bkit/issues.jsonl     (kind:"feature", status:"SHIPPED") — #380 fifth pair
 //
 // The fifth pair also performs the #380 Addendum 3 § S BOOTSTRAP SEED, same run:
 // scans docs/plans/{YYYYMM}/{FID}-{design,plan}.md + folded per-FID status.jsonl
 // and appends ONE `feature` row per in-flight FID at its detected phase, skipping
-// FIDs already present in docs/roadmap.jsonl. Without it the roadmap projection
+// FIDs already present in .bkit/issues.jsonl. Without it the roadmap projection
 // has no rows for work already in flight on day one.
 //
 // Safety contract (DE-39, KN-8 class):
@@ -671,16 +671,16 @@ function tryParseJsonLine(line) {
     return parsed;
 }
 /**
- * Read every `key` already present in `docs/roadmap.jsonl` (best-effort,
+ * Read every `key` already present in `.bkit/issues.jsonl` (best-effort,
  * tolerant of malformed lines) — the seed skips any FID already recorded,
  * regardless of its current folded status (Addendum 3 § S: "skipping FIDs
  * already present in the ledger").
  */
-function existingRoadmapKeys(roadmapJsonlPath) {
+function existingIssueKeys(issuesJsonlPath) {
     const keys = new Set();
-    if (!fs.existsSync(roadmapJsonlPath))
+    if (!fs.existsSync(issuesJsonlPath))
         return keys;
-    const raw = fs.readFileSync(roadmapJsonlPath, "utf-8");
+    const raw = fs.readFileSync(issuesJsonlPath, "utf-8");
     for (const line of raw.split("\n")) {
         const trimmed = line.trim();
         if (!trimmed)
@@ -689,7 +689,7 @@ function existingRoadmapKeys(roadmapJsonlPath) {
         if (obj === null) {
             // tolerant — malformed lines are ignored, never abort the seed, but
             // ALWAYS logged loudly (never a silent skip)
-            console.error(`[bkit-telemetry] seed: malformed docs/roadmap.jsonl line skipped`);
+            console.error(`[bkit-telemetry] seed: malformed .bkit/issues.jsonl line skipped`);
             continue;
         }
         if (obj.kind === "feature" && typeof obj.key === "string")
@@ -740,16 +740,16 @@ function detectInFlightStatus(planDir, fid, hasPlan) {
 /**
  * Scan `docs/plans/{YYYYMM}/` for `{FID}-design.md` / `{FID}-plan.md` and
  * append one `feature` seed row per in-flight FID not already present in
- * `docs/roadmap.jsonl`, at its detected status. Idempotent — re-running finds
- * every FID already present via `existingRoadmapKeys` and adds nothing.
+ * `.bkit/issues.jsonl`, at its detected status. Idempotent — re-running finds
+ * every FID already present via `existingIssueKeys` and adds nothing.
  * Best-effort: any read error is logged and skipped, never thrown.
  */
 export function seedInFlightFeatures(cwd, repo, bkitVersion, lines) {
     const plansRoot = path.join(cwd, "docs", "plans");
-    const roadmapJsonlPath = path.join(cwd, "docs", "roadmap.jsonl");
+    const issuesJsonlPath = path.join(cwd, ".bkit", "issues.jsonl");
     if (!fs.existsSync(plansRoot))
         return [];
-    const existing = existingRoadmapKeys(roadmapJsonlPath);
+    const existing = existingIssueKeys(issuesJsonlPath);
     const seedRows = [];
     const baseTs = Math.floor(Date.now()) + 50000;
     let idx = 0;
@@ -816,8 +816,8 @@ export function seedInFlightFeatures(cwd, repo, bkitVersion, lines) {
     }
     if (seedRows.length > 0) {
         const ndjson = seedRows.map((r) => JSON.stringify(r)).join("\n") + "\n";
-        fs.appendFileSync(roadmapJsonlPath, ndjson, "utf-8");
-        lines.push(`[bkit-telemetry] seed: appended ${seedRows.length} bootstrap feature row(s) to ${roadmapJsonlPath}`);
+        fs.appendFileSync(issuesJsonlPath, ndjson, "utf-8");
+        lines.push(`[bkit-telemetry] seed: appended ${seedRows.length} bootstrap feature row(s) to ${issuesJsonlPath}`);
     }
     else {
         lines.push("[bkit-telemetry] seed: no new in-flight FIDs to seed");
@@ -849,7 +849,7 @@ export async function runMigrate(opts) {
     // only ever authored docs/completed.md and never had docs/knowledge.md /
     // docs/decisions.md). Gating this on jsonl-non-empty (as a prior revision
     // did) wrongly ABORTED the whole run — including the unrelated
-    // completed.md -> roadmap.jsonl pair — for any consumer missing one of the
+    // completed.md -> issues.jsonl pair — for any consumer missing one of the
     // legacy pairs; every pair now shares the same absent-.md-means-skip rule
     // pending/friction/completed already used.
     const knMdExists = fs.existsSync(knMdPath);
@@ -862,7 +862,7 @@ export async function runMigrate(opts) {
     const pendingAlreadyDone = !pendingMdExists;
     const frictionAlreadyDone = !frictionMdExists;
     const completedMdPath = path.join(cwd, "docs", "completed.md");
-    const roadmapJsonlPath = path.join(cwd, "docs", "roadmap.jsonl");
+    const issuesJsonlPath = path.join(cwd, ".bkit", "issues.jsonl");
     const completedBakPath = completedMdPath + ".bak";
     const completedMdExists = fs.existsSync(completedMdPath);
     const completedAlreadyDone = !completedMdExists;
@@ -883,17 +883,17 @@ export async function runMigrate(opts) {
     // test keeps it.
     const knJsonlNonEmpty = fs.existsSync(knJsonlPath) && fs.readFileSync(knJsonlPath, "utf-8").trim().length > 0;
     const deJsonlNonEmpty = fs.existsSync(deJsonlPath) && fs.readFileSync(deJsonlPath, "utf-8").trim().length > 0;
-    // roadmap.jsonl joins the rows-exist signal because it is a migration TARGET:
+    // issues.jsonl joins the rows-exist signal because it is a migration TARGET:
     // a consumer whose only legacy ledger was `completed.md` has empty knowledge
     // and decisions ledgers even after a successful migrate, so testing those two
     // alone would report the second run as "nothing to migrate" on a repo that
     // has in fact already migrated.
-    const roadmapJsonlNonEmpty = fs.existsSync(roadmapJsonlPath) && fs.readFileSync(roadmapJsonlPath, "utf-8").trim().length > 0;
+    const issuesJsonlNonEmpty = fs.existsSync(issuesJsonlPath) && fs.readFileSync(issuesJsonlPath, "utf-8").trim().length > 0;
     //
     // `completed.md` counts as a legacy ledger here. Omitting it would send a
     // consumer who only ever authored `docs/completed.md` — the exact case the
     // idempotency comment above calls out — down the nothing-to-migrate return,
-    // stranding the one file that has rows to convert into `docs/roadmap.jsonl`.
+    // stranding the one file that has rows to convert into `.bkit/issues.jsonl`.
     const noLegacyLedgers = !knMdExists &&
         !deMdExists &&
         !pendingMdExists &&
@@ -901,7 +901,7 @@ export async function runMigrate(opts) {
         !completedMdExists &&
         !knJsonlNonEmpty &&
         !deJsonlNonEmpty &&
-        !roadmapJsonlNonEmpty;
+        !issuesJsonlNonEmpty;
     if (noLegacyLedgers) {
         lines.push("[bkit-telemetry] migrate: no legacy .md ledgers found — nothing to migrate");
         return {
@@ -1014,7 +1014,7 @@ export async function runMigrate(opts) {
         lines.push("[bkit-telemetry] migrate: friction.md absent — skipping");
     }
     // ---------------------------------------------------------------------------
-    // Parse docs/completed.md → docs/roadmap.jsonl `feature` rows (#380, fifth pair)
+    // Parse docs/completed.md → .bkit/issues.jsonl `feature` rows (#380, fifth pair)
     // ---------------------------------------------------------------------------
     let completedEntries = [];
     let featureRows = [];
@@ -1033,7 +1033,7 @@ export async function runMigrate(opts) {
         lines.push(`[bkit-telemetry] migrate: dry-run — would write ${deRows.length} decision rows to ${deJsonlPath}`);
         lines.push(`[bkit-telemetry] migrate: dry-run — would append ${pendingRows.length} deferral rows to ${deferralsJsonlPath}`);
         lines.push(`[bkit-telemetry] migrate: dry-run — would append ${frictionRows.length} friction rows to ${frictionJsonlPath}`);
-        lines.push(`[bkit-telemetry] migrate: dry-run — would append ${featureRows.length} feature rows to ${roadmapJsonlPath} (+ bootstrap seed)`);
+        lines.push(`[bkit-telemetry] migrate: dry-run — would append ${featureRows.length} feature rows to ${issuesJsonlPath} (+ bootstrap seed)`);
         lines.push("[bkit-telemetry] migrate: dry-run — no files written");
         return {
             ran: false,
@@ -1194,14 +1194,14 @@ export async function runMigrate(opts) {
         lines.push(`[bkit-telemetry] migrate: friction.md had 0 entries — deleted (no rows to append)`);
     }
     // ---------------------------------------------------------------------------
-    // Parity-gated append cycle for docs/completed.md → docs/roadmap.jsonl (#380)
+    // Parity-gated append cycle for docs/completed.md → .bkit/issues.jsonl (#380)
     // ---------------------------------------------------------------------------
     let completedMdDeleted = false;
     if (!completedAlreadyDone && featureRows.length > 0) {
         const completedContent = fs.readFileSync(completedMdPath, "utf-8");
         fs.writeFileSync(completedBakPath, completedContent, "utf-8");
         lines.push(`[bkit-telemetry] migrate: created ${completedBakPath}`);
-        const migratingPath = roadmapJsonlPath + ".migrating";
+        const migratingPath = issuesJsonlPath + ".migrating";
         const newNdjson = featureRows.map((r) => JSON.stringify(r)).join("\n") + "\n";
         fs.writeFileSync(migratingPath, newNdjson, "utf-8");
         if (!fs.existsSync(completedBakPath)) {
@@ -1214,9 +1214,9 @@ export async function runMigrate(opts) {
             return abort(`ABORT: completed parity mismatch — .bak has ${bakEntries.length} entries, wrote ${featureRows.length} rows; ZERO .md deleted`, lines);
         }
         lines.push(`[bkit-telemetry] migrate: completed parity confirmed (${featureRows.length} rows)`);
-        fs.appendFileSync(roadmapJsonlPath, fs.readFileSync(migratingPath, "utf-8"), "utf-8");
+        fs.appendFileSync(issuesJsonlPath, fs.readFileSync(migratingPath, "utf-8"), "utf-8");
         fs.unlinkSync(migratingPath);
-        lines.push(`[bkit-telemetry] migrate: appended ${featureRows.length} feature rows to ${roadmapJsonlPath}`);
+        lines.push(`[bkit-telemetry] migrate: appended ${featureRows.length} feature rows to ${issuesJsonlPath}`);
         fs.unlinkSync(completedMdPath);
         completedMdDeleted = true;
         lines.push(`[bkit-telemetry] migrate: deleted ${completedMdPath}`);
@@ -1231,7 +1231,7 @@ export async function runMigrate(opts) {
     // ---------------------------------------------------------------------------
     // #380 Addendum 3 § S — bootstrap seed: one `feature` row per in-flight FID
     // detected from docs/plans/** + folded status.jsonl, skipping FIDs already in
-    // docs/roadmap.jsonl (incl. the SHIPPED rows just ported above). Idempotent —
+    // .bkit/issues.jsonl (incl. the SHIPPED rows just ported above). Idempotent —
     // re-running adds no duplicate.
     // ---------------------------------------------------------------------------
     const seedRows = seedInFlightFeatures(cwd, repo, bkitVersion, lines);

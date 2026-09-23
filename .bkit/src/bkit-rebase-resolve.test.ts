@@ -192,7 +192,7 @@ describe("bkit-rebase-resolve.sh: classification", () => {
     "docs/decisions.jsonl",
     "docs/deferrals.jsonl",
     "docs/failures.jsonl",
-    "docs/roadmap.jsonl",
+    ".bkit/issues.jsonl",
     "docs/roadmap.md",
     ".bkit/stats.jsonl",
     ".bkit/friction.jsonl",

@@ -92,7 +92,7 @@
     "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "opencode-go",
+    "opencodeProvider": "openrouter",
     "opencodeProviders": [
       "opencode-go",
       "openrouter"

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-complexity-split
 description: Senior architect partitioning large plans into lossless, self-contained sub-plans.
-model: opencode-go/deepseek-v4-pro
+model: openrouter/deepseek/deepseek-v4.1-flash
 tools:
   read: true
   grep: true
