@@ -27,8 +27,7 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 ├── bkit-audit.md          # Workflow 6/6 — 7 steps; planned (not yet shipped)
 ├── bkit-auto.md          # Utility — phase-routed cloud dispatch (ship/debug by CI on a PR or post-merge `dev`; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
-├── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
-└── bkit-roadmap.md        # Utility — on-demand; 4 steps; regenerate docs/roadmap.md board + analysis
+└── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
 ```
 
 <!-- prettier-ignore -->
@@ -168,7 +167,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,deferrals,failures,roadmap}.jsonl`. Workflow reads agent outputs → decides tracker mirror.
+**Why:** agent runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` without live tracker issue). Inputs via filesystem paths from orchestrator. Outputs on disk: `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source, or `docs/{knowledge,decisions,deferrals,failures}.jsonl`, `.bkit/issues.jsonl`. Workflow reads agent outputs → decides tracker mirror.
 
 ## Common Workflow Anatomy
 
