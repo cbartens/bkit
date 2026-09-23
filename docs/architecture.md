@@ -59,7 +59,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-telemetry-lint.ts # Read-only alias-collision scan (#361) — flags one DE-<n>/KN-<n> claimed by >1 slug key (the retired scan-highest-and-increment race that merge=union appended silently) + minted keys written outside the one-shot migrate; `bkit telemetry validate` (exit 1 on collision); shared by the postinstall advisory + the normaliser
 │   └── bkit-telemetry-normalise.ts # One-shot idempotent normaliser (#361) — drops deprecated aliases[] into references[], keeps ts, re-keys ONLY colliding rows (strip the shared number, preserve it as a references[] pointer); parity-gated (.bak + row-count), original untouched on abort; `bkit telemetry normalise [--dry-run]`
 ├── dist/                   # Compiled output (committed; published in tarball)
-├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship, roadmap)
+├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship, auto, worktree-sync, worktree-prune)
 ├── .bkit/prompts/        # Subagent prompt files
 ├── .bkit/templates/        # Files templated into consumer repos on install
 ├── harvest/                # Central store for `bkit harvest` — consumer stats/friction rows (#343).

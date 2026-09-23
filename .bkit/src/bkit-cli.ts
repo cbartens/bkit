@@ -657,7 +657,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
 
       // Bare module flags. opencode/tooling are intercepted above; only claude/cursor
-      // reach here. Everything else (incl. the dropped --full/--core/--ci/--lint/
+      // reach here. Everything else (incl. the dropped --full/--core/--lint/
       // --git-hooks/--renovate/--dependabot/--cloud) hits the generic unknown-flag error.
       const moduleFlag = flag as ModuleFlag;
       if (!MODULE_FLAGS.has(moduleFlag)) {

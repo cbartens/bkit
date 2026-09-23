@@ -753,7 +753,3 @@ describe("telemetry data files — absent from manifest format entries", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Roadmap cadence — #380 bkit.roadmap.{buildCycles,stalenessDays} defaults
-// ---------------------------------------------------------------------------

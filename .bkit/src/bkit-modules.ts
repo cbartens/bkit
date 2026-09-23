@@ -1,5 +1,5 @@
 // bkit-modules.ts — Module registry and per-module install functions.
-// Each module function receives { dryRun, tokens, modelLookup, printSink, ws }
+// Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
 // Dispatch order: core → claude → cursor → ci → lint → git-hooks

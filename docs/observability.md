@@ -84,7 +84,6 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 
 `docs/roadmap.md`/`.bkit/issues.jsonl` fold + close-hook fail-open lines. Every branch exits 0 — the roadmap tier never gates a workflow close or a ship. Canonical grep patterns:
 
-- `[bkit-roadmap] upsert skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — close-hook upsert fail-open (script absent).
 - `[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'` — phase-close fold fail-open (script absent).
 - `[bkit-roadmap] append failed: {path}` — ledger row append to `.bkit/issues.jsonl` failed (best-effort; exit 0).
 - `[bkit-roadmap] {message}` — fold bootstrap/self-heal/hint lines, including the empty-ledger `bkit telemetry migrate` hint before the migration has run.

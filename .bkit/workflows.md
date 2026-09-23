@@ -1110,7 +1110,7 @@ NEW comment per workflow step via tracker MCP. Step 1 = first comment; later ste
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: body scan `Blocked by #N`). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Design Step 9 `Requires` edges via `set-blocked-by` → enforces workstream ordering.
+`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: `###### bkit:blocked-by start` … `end` block in the body). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Design Step 9 `Requires` edges via `set-blocked-by` → enforces workstream ordering.
 
 ## GitHub Integration
 
