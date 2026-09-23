@@ -41,7 +41,7 @@ BKIT_ROADMAP_NOTES_POST_END='<!-- bkit:roadmap-notes-post end -->'
 BKIT_ROADMAP_ANALYSIS_START='<!-- bkit:roadmap-analysis start -->'
 BKIT_ROADMAP_ANALYSIS_END='<!-- bkit:roadmap-analysis end -->'
 
-BKIT_ROADMAP_ANALYSIS_PLACEHOLDER='_(no analysis yet — run /bkit-utility-review-roadmap to populate)_'
+BKIT_ROADMAP_ANALYSIS_PLACEHOLDER='_(no analysis yet — run @bkit-utility-review-roadmap to populate)_'
 BKIT_ROADMAP_NOTES_PRE_PLACEHOLDER='## Notes
 
 _(above the bkit list — yours, never overwritten)_'

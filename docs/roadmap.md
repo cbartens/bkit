@@ -49,7 +49,7 @@ _(none)_
 
 <!-- bkit:roadmap-analysis start -->
 
-_(no analysis yet — run /bkit-utility-review-roadmap to populate)_
+_(no analysis yet — run @bkit-utility-review-roadmap to populate)_
 <!-- bkit:roadmap-analysis end -->
 
 <!-- bkit:roadmap-notes-post start -->
