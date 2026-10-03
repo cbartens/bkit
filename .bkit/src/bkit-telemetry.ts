@@ -217,7 +217,7 @@ export const VALID_KINDS: Set<string> = new Set([
  * Triage severity — carried by the three author-written kinds whose rows are
  * triaged by a human or a later agent (friction / deferral / failure).
  *
- * Deliberately the SAME vocabulary the challenge + audit prompts already assign
+ * Deliberately the SAME vocabulary the challenge prompts already assign
  * to their findings, so `@bkit-build-challenge-remediate` passes a blocked
  * finding's severity straight through to its deferral row instead of re-deriving
  * it. NOT the preflight `blocker`/`advisory` scale (that gates `bkit install`,

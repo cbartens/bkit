@@ -269,7 +269,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
 | Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard, Part 3). No output validators yet. |
-| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, audits, and a catalog-parity drift check (Part 3). No automated regression-fixture eval harness yet. |
+| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check (Part 3). No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
 | Prioritization | N/A by design | Single-feature-at-a-time via lock file; multi-task contention is out of scope. |

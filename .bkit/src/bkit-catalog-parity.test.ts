@@ -7,7 +7,7 @@
 //
 // Direction matters: file -> doc. Every catalog FILE must be documented, but the docs
 // MAY describe entries that have no dedicated file (e.g. `/bkit-audit` is a documented
-// workflow composed of utility subagents with no `.bkit/workflows/bkit-audit.md`).
+// planned workflow with no `.bkit/workflows/bkit-audit.md`).
 
 import * as fs from "node:fs";
 import * as path from "node:path";

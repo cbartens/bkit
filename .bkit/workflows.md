@@ -945,7 +945,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Goal:** read-only multi-lens audit. No code, no execution. Always hard-stops after summary for human review (do NOT invoke `/bkit-plan` or `/bkit-build`). Triggered ad-hoc by a human; NOT part of the design → plan → build → debug → ship auto-cycle.
 
-> **Planned prompt names** below (`@bkit-audit-*`) are stubs for the future audit workflow. They are **not** the shipped `@bkit-utility-audit-*` agents (ad-hoc utility audits). Do not rename one onto the other when implementing `bkit-audit.md`.
+> **Planned prompt names** below (`@bkit-audit-*`) are stubs for the future audit workflow.
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Read | Write | Notes |

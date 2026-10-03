@@ -254,7 +254,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `package.json#scripts.lint` | lint | hardcoded default (`npx eslint .` if an eslint config is present, else a skip line) | Managed-key (add-if-missing). bkit ships no linter, but without this key `bkit:gate:static`'s `pnpm lint` falls through to whatever `lint` binary is on PATH and the gate goes green through the wrong program. Your own `lint` always wins. |
 | `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults | Managed-key (add-if-missing) |
 | `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | lint | hardcoded defaults | Managed-key (add-if-missing). What hooks, workflows and prompts run; the name states which tiers. |
-| `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | lint | hardcoded defaults | Managed-key (add-if-missing). Read-only dependency inspection the audit / diagnose agents call. |
+| `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | lint | hardcoded defaults | Managed-key (add-if-missing). Read-only dependency inspection the remediate / diagnose agents call. |
 | `package.json#devDependencies.prettier` / `slop-scan` / `lint-staged` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`, `^15.2.10`) | Managed-key (add-if-missing) |
 | `.husky/pre-commit` | git-hooks | `.bkit/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
 | `.husky/pre-push` | git-hooks | `.bkit/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
@@ -371,7 +371,6 @@ Installed list: `.agents/skills.md`. Skills in `.agents/skills/` not listed → 
 | `.bkit/friction.jsonl` | Friction ledger — orchestrator-observed recovery moments. Created on first append by a phase workflow, not by install; drained by `bkit harvest` only. Row shape: `.bkit/jsonl.md`. |
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month at design start. Created by the design phase. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts unaffected. |
-| `docs/audits/` | Audit reports from `bkit-utility-audit-*` agents. Created on the first audit run. |
 | `.bkit/issues.jsonl` | Issue-state ledger — appended at every phase close. Append-only. |
 | `docs/roadmap.md` | Phase-sectioned board + analysis. No tracker list — a wired tracker shows its own issues. Two consumer `## Notes` blocks (above the bkit list, last after analysis) survive every regenerate. Consumer-owned — never seeded/overwritten by `bkit install` |
 | `docs/deferrals.jsonl` | Deferred items |

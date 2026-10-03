@@ -145,7 +145,7 @@ Kinds with BOTH (`friction` / `deferral` / `failure` / `knowledge` / `decision` 
 | `MEDIUM` | Degraded behaviour or a repeated cost; safe to schedule. |
 | `LOW` | Cosmetic, nit, or a speculative future idea. |
 
-- Same enum challenge + audit prompts assign. Finding → row (e.g. `@bkit-build-challenge-remediate` BLOCKED → `docs/deferrals.jsonl`): carry ITS severity unchanged.
+- Same enum the challenge prompts assign. Finding → row (e.g. `@bkit-build-challenge-remediate` BLOCKED → `docs/deferrals.jsonl`): carry ITS severity unchanged.
 - NOT `bkit install` preflight `blocker` / `advisory` — different axis.
 - Pick level the ROW earns. All-`LOW` ledger = useless as no severity.
 
