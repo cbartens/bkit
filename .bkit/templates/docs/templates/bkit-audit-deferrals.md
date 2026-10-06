@@ -98,7 +98,7 @@ Never set `unjustified` while repairing a missing or illegal `reason`. That repa
 Always verify.
 
 - [ ] **Ledger:** Steps 3–9 — `docs/deferrals.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
-- [ ] **Git History:** Steps 2, 7 — commits since the previous report, 90-day churn. Fallback: sample and churn `Not Checked`.
+- [ ] **Git History:** Steps 2, 7 — commits since the previous report, 90-day churn. Fallback: closures and churn `Not Checked`.
 - [ ] **Web:** Step 10 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
@@ -119,7 +119,7 @@ Verify only when applicable.
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count its findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Closures:** Re-verify a sample of the previous report's DONE and SUPERSEDED rows at `HEAD`: 10%, and at least 3. Each that no longer holds = finding, with what changed. **Done when:** `Closures` holds the sample, each failure, and the sample's failure rate, or run marked baseline.
+- [ ] **Step 2 — Closures:** Re-verify every DONE and SUPERSEDED row from the previous report at `HEAD`. Each that no longer holds = finding, with what changed. **Done when:** `Closures` holds every row, each failure, and the failure rate, or run marked baseline.
 - [ ] **Step 3 — Fold:** Last-row-wins per `key`, not per line. The file is append-only (`.gitattributes` `merge=union`); editing a line keeps the stale copy beside its replacement. Highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). A `key` whose `ts` is not a number → its last line in the file is latest. Open = every winning row with `status != "CLOSED"`, including `TRIAGED`, `RESOLVED`, `BLOCKED`, `SUPERSEDED`, `CANCELLED`, free text after the word, a missing `status`, and any value outside the enum. A word that looks finished is not done. Order: `CRITICAL`, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. No `severity` → assign one with the verdict. Trend against the previous report: open count; inflow = sum of `deferralsAdded` on `outcome` rows in `.bkit/stats.jsonl` since the previous run, where the field exists; outflow = rows that became `CLOSED` since; age histogram of open rows by `ts`; share of open rows with no `severity` or no `reason`. A large open set may be a partial pass → record rows verified / rows open. Invisible to this fold: a deferral with no `key`, or one recorded only in a PR description. **Done when:** `Trend` holds counts, histogram, inflow, outflow, missing-field share, verified / open, and those limits, or `N/A` and STOP.
 - [ ] **Step 4 — Defects:** Winning row of each `key`. Do not append. `Expected` is the row the writer appends: copy the latest row, change only the defective field, same `key`, `ts` minted at append, never a literal and never in the future.
 

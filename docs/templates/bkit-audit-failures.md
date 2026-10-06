@@ -86,7 +86,7 @@ A row whose text says it awaits confirmation is UNCONFIRMED until reproduced or 
 Always verify.
 
 - [ ] **Ledger:** Steps 3–7 — `docs/failures.jsonl` and `.bkit/jsonl.md`. Fallback: file absent → one `N/A` row after Step 3 and STOP.
-- [ ] **Git History:** Steps 2, 5 — commits since the previous report, fix commits. Fallback: sample and regression-by-commit `Not Checked`.
+- [ ] **Git History:** Steps 2, 5 — commits since the previous report, fix commits. Fallback: closures and regression-by-commit `Not Checked`.
 - [ ] **Web:** Step 8 — fetch anchor standards. Fallback: versions recorded as unread.
 
 #### Conditional
@@ -108,7 +108,7 @@ Verify only when applicable.
 ### Probe Steps
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count its findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Closures:** Re-verify a sample of the previous report's FIXED and MIS-FRAMED rows at `HEAD`: 10%, and at least 3. Each that no longer holds = finding, with what changed. **Done when:** `Closures` holds the sample, each failure, and the sample's failure rate, or run marked baseline.
+- [ ] **Step 2 — Closures:** Re-verify every FIXED and MIS-FRAMED row from the previous report at `HEAD`. Each that no longer holds = finding, with what changed. **Done when:** `Closures` holds every row, each failure, and the failure rate, or run marked baseline.
 - [ ] **Step 3 — Fold:** Last-row-wins per `key`, not per line. The file is append-only (`.gitattributes` `merge=union`); editing a line keeps the stale copy beside its replacement. Highest numeric `ts` wins (`.bkit/jsonl.md` § Updating a Row). A `key` whose `ts` is not a number → its last line in the file is latest. Open = every winning row with `status != "CLOSED"`, including `TRIAGED` (diagnosed is not fixed), `RESOLVED`, `FIXED`, `SUPERSEDED`, and rows with no `status`. A word that looks finished is not done. A `RESOLVED` or `FIXED` row that really is done gets a `CLOSED` row in `Expected`, with the `references` that closed it. It is not skipped because the word looks finished. Order: `CRITICAL`, then `HIGH`, then oldest `ts`. Compare `severity` case-insensitively. No `severity` → assign one with the verdict. Age from the row's first `ts`: list every `CRITICAL` older than 7 days and every `HIGH` older than 30 days. Where a CI check is installed to go red while any `CRITICAL` row has `status != "CLOSED"`, report whether it is installed. A green check beside such a row = finding (the gate is not reading this ledger). Absent → record in `Checked`. A large open set may be a partial pass → record rows verified / rows open. A winning future `ts` that would outrank a close → name the `key`. No later `ts` is invented. **Done when:** `Trend` holds open counts, age-target breaches, the gate result, and verified / open, or `N/A` and STOP.
 - [ ] **Step 4 — Source:** No verdict before this step. Under-reporting biases toward closing a live bug.
 
