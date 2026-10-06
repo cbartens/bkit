@@ -31,9 +31,18 @@ function countMatches(content: string, pattern: RegExp): number {
 }
 
 // ---------------------------------------------------------------------------
-// Group A — Full-ownership templates (12 files)
+// Group A — Full-ownership templates
 // Each must contain exactly ONE bkit:start and ONE bkit:end marker.
+// Audit templates are discovered from docs/templates/bkit-audit-*.md.
 // ---------------------------------------------------------------------------
+
+function listAuditTemplates(): string[] {
+  return fs
+    .readdirSync(templatePath("docs", "templates"))
+    .filter((name) => name.startsWith("bkit-audit-") && name.endsWith(".md"))
+    .sort()
+    .map((name) => path.posix.join("docs/templates", name));
+}
 
 const GROUP_A_MD_FILES = [
   "AGENTS.md",
@@ -44,6 +53,7 @@ const GROUP_A_MD_FILES = [
   // The template no longer exists; friction entries are appended to .bkit/friction.jsonl.
   ".agents/skills.md",
   "docs/plans/template.md",
+  ...listAuditTemplates(),
 ];
 
 const GROUP_A_MDC_FILES = [".cursor/rules/00-shared-rules.mdc"];
@@ -54,6 +64,35 @@ const GROUP_A_YAML_FILES = [
   ".vale/styles/House/LLMSlop.yml",
   ".vale/styles/House/Verbose.yml",
 ];
+
+describe("audit templates — managed block plus consumer stub", () => {
+  const audits = listAuditTemplates();
+
+  it("ships the finished audit set", () => {
+    expect(audits.length).toBeGreaterThan(0);
+    expect(audits).toContain("docs/templates/bkit-audit-repo.md");
+    expect(audits).toContain("docs/templates/bkit-audit-security.md");
+    expect(audits).not.toContain("docs/templates/bkit-audit-test.md");
+  });
+
+  it.each(audits)("%s keeps project instructions outside the managed block", (relPath) => {
+    const content = readTemplate(relPath);
+    expect(content).toContain("{{BKIT_MANAGED_MARKER}}");
+    expect(content).not.toContain("bkit:managed v");
+    const end = content.indexOf("<!-- bkit:end -->");
+    expect(content.slice(end + "<!-- bkit:end -->".length)).toBe("\n\n## Project Instructions\n");
+  });
+
+  it.each(audits)("%s dogfood copy differs only by the managed-version stamp", (relPath) => {
+    const template = readTemplate(relPath);
+    const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
+    const stamp = dogfood.match(
+      /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/m,
+    )?.[0];
+    expect(stamp, relPath).toBeTruthy();
+    expect(dogfood).toBe(template.replace("{{BKIT_MANAGED_MARKER}}", stamp!));
+  });
+});
 
 describe("Group A templates — html-comment markers (md/mdc files)", () => {
   for (const relPath of [...GROUP_A_MD_FILES, ...GROUP_A_MDC_FILES]) {

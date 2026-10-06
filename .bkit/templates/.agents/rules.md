@@ -59,6 +59,7 @@
 #### Workflows & Process
 
 - **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
+- **Audits:** Follow `docs/templates/bkit-audit-*.md`. Report path `docs/audits/{YYYYMM}/{slug}.md`. **If** that month already has this slug → `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Generator: `@bkit-audit-generate`. Writes the report and that template's `Project Instructions` below `bkit:end`. Nothing else.
 - **Check gates first:** ALWAYS verify EVERY gate item BEFORE proceeding; skipped gates = invalid work → close gap. Gates inside `/bkit-*` workflows are self-verification, NOT human gates; STOP only for explicit HARD STOPs.
 - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = NOT valid deferral → FINISH work.
 - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.

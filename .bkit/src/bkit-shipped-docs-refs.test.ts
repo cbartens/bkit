@@ -26,12 +26,22 @@ function manifestMarkdown(): string[] {
   return Array.from(src.matchAll(/\{\s*path:\s*"([^"]+\.md)"/g)).map((m) => m[1]);
 }
 
+/** Every `.md` under a directory, relative to the repo root. Nested templates ship too. */
+function walkMarkdown(dir: string): string[] {
+  const out: string[] = [];
+  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, ent.name);
+    if (ent.isDirectory()) out.push(...walkMarkdown(abs));
+    else if (ent.isFile() && ent.name.endsWith(".md")) {
+      out.push(path.relative(REPO_ROOT, abs));
+    }
+  }
+  return out;
+}
+
 /** The `docs/` payload templates + the canonical copies that seed them. */
 const PAYLOAD_DOCS = [
-  ...fs
-    .readdirSync(path.join(REPO_ROOT, ".bkit/templates/docs"))
-    .filter((f) => f.endsWith(".md"))
-    .map((f) => `.bkit/templates/docs/${f}`),
+  ...walkMarkdown(path.join(REPO_ROOT, ".bkit/templates/docs")),
   "docs/deployments.md",
   "docs/testing.md",
   "docs/security.md",
