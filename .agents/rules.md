@@ -10,7 +10,7 @@
 > - `Universal Rules` apply to ALL agents; `Orchestrator Rules` apply ONLY to workflows / commands.
 > - Use dense token-efficient phrasing; NO filler / hedging / restating; tables > prose, bullets > paragraphs.
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
-> - Local project rules / overrides → `Project Rules` below the bkit-managed block; universal rules stay in-block.
+> - Local project rules / overrides → `Project Rules` below bkit-managed block; universal rules stay in-block.
 
 ## bkit Rules
 
@@ -58,8 +58,8 @@
 
 #### Workflows & Process
 
-- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
-- **Audits:** Follow `docs/templates/bkit-audit-*.md`. Report path `docs/audits/{YYYYMM}/{slug}.md`. **If** that month already has this slug → `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Generator: `@bkit-audit-generate`. Writes the report and that template's `Project Instructions` below `bkit:end`. Nothing else.
+- **Plans:** Follow `docs/templates/bkit-plan.md` when writing plans.
+- **Audits:** Follow `docs/templates/bkit-audit-*.md` when running audits; use `@bkit-audit-generate` to generate reports.
 - **Check gates first:** ALWAYS verify EVERY gate item BEFORE proceeding; skipped gates = invalid work → close gap. Gates inside `/bkit-*` workflows are self-verification, NOT human gates; STOP only for explicit HARD STOPs.
 - **Deferred work:** NEVER silently drop deferred work, ALWAYS append rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. All rows MUST carry `reason` from closed enum; no valid justification = NOT valid deferral → FINISH work.
 - **Discovered bugs:** NEVER silently drop discovered bugs, ALWAYS append rows to `docs/failures.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
@@ -72,13 +72,14 @@
 
 > Full CI/CD matrix: `docs/deployments.md`.
 
-- **Commits:** ALWAYS commit early and often; NO human confirmation required; subagents do NOT commit. ONLY stage files touched by you; NEVER blanket-stage unrelated tree state; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`. ONLY use `git add -A` in dedicated worktrees, where the whole tree IS the task.
+- **Commits:** ALWAYS commit early and often; NO human confirmation required; subagents do NOT commit. ALWAYS assume other agents are editing the same working tree in parallel → ONLY commit files you touched, named explicitly (`git commit -- {paths}`); NEVER commit whatever is staged already; NEVER `git add -A` / `git add .` / `git commit -a` in shared worktrees only if whole tree is your task; files you touched that ALSO carry another agents edits → STOP and ask. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`.
 - **Commit format:** `{type}({FID}): {message}`.
 - **Docs commits:** Append `bkit [skip ci]` but ONLY on commits carrying no code; NEVER on commits carrying code.
 - **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
-- **Pushes:** NEVER push unprompted; ALWAYS requires specific human request OR `/bkit-*` workflow steps mandating push.
+- **Pushes:** ALWAYS ask before EVERY push; one approval covers ONE push, NEVER later ones. Before asking, show `git log origin/{branch}..HEAD`. Exception: `/bkit-*` workflow steps mandating push (see Orchestrator Rules).
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour). In-progress rebase resolution (`git checkout --theirs|--ours {conflicted}`, `git rebase --continue` / `--abort`) is NOT covered.
+- **Other parallel agents:** Unexpected changes in `git status` belong to other agent, NOT you; NEVER revert, reformat, stash, or "clean up" them; NEVER `git stash`, switch branches, or `git checkout` / `git restore` files you did not touch.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease` — the sole exception to `Destructive git PROHIBITED`.
 - **CI:** Pushes auto-trigger; NEVER manually. ANY push carrying code MUST have HEAD without `[skip ci]` so CI runs; batch doc commits into pushes OR add bare trigger commits. NEVER leave `[skip ci]` at HEAD of any PR pushes that require CI runs. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
@@ -95,7 +96,7 @@
 - **Reproduce first:** NEVER fix reported failures you cannot reproduce; ALWAYS add failing tests before touching code. Scope = failure remediation.
 - **No downgrades:** NEVER fix by downgrade; STOP if stuck.
 - **Fix code not gates:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Record the block per your own blocker contract, and continue; NEVER self-authorize the opt-out.
-- **Check gotchas first:** Search `docs/knowledge.jsonl` BEFORE touching code.
+- **Check gotchas first:** Search BEFORE touching code → fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → search ONLY winning rows where `status` is `ACTIVE` or absent; NEVER search any other rows.
 - **External context first:** ALWAYS read `.agents/context.md` BEFORE concluding anything about runtime behaviours, CI, or external / upstream causes.
 - **Local tests first:** ALWAYS exhaust local test suite and targeted repro BEFORE remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 - **Existing evidence first:** ALWAYS search / read existing reports / logs / artifacts BEFORE requesting new remote CI runs; request new runs ONLY when existing evidence insufficient, stale, or absent.
