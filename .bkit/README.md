@@ -37,8 +37,6 @@ Throughout: workflows hold `.lock`, write `status.jsonl` (resume SoT), own track
 | Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
-Plus utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch), `/bkit-worktree-prune` (remove worktree, optionally branch).
-
 **Per-step detail, verdict routing, retry / timeout constants, label flips, status.jsonl shape, comment lifecycle:** `.bkit/workflows.md`.
 
 **Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/prompts.md`.

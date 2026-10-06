@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # bkit-runtime.bats — Unit tests for bkit-runtime.sh (#341 T3/T7/T9/T15 / WS-6/WS-8/WS-10/WS-15).
 #
-# Covers Derived Test Matrix rows 1-5, 7-9, 16:
+# Covers Derived Test Matrix rows 1-5, 7-9:
 #   1. bkit_runtime_detect maps env inputs -> RUNTIME + 4 CAN_* per the
 #      4-row table; unknown (no primitive) -> least-capable, never mode-1.
 #   2. Sourced shim state does NOT survive a Bash-call boundary; env-only
@@ -21,11 +21,6 @@
 #   9. D23 double-guard: the local-checkout branch requires
 #      RUNTIME_WORKTREES=true AND RUNTIME_DEVPUSHES=true; trap restores the original
 #      branch on exit.
-#   16. bkit_worktree_helper_guard (bkit-worktree-{prune,sync} disposition)
-#       self-skips LOUDLY (rc=1, distinguishable message) when
-#       RUNTIME_WORKTREES=false, proceeds silently (rc=0) when true, and fails
-#       loud+distinct (rc=2) on a detect/assert error — a real behaviour
-#       assertion, not presence-only.
 #
 # Run: bats tests/bkit-runtime.bats
 # Requires: bats >= 1.0
@@ -646,42 +641,6 @@ EOF
 @test "close-guard: fails closed (exit 2) on an empty TARGET_BRANCH" {
   run env -i PATH="$PATH" RUNTIME_WORKTREES=true RUNTIME_DEVPUSHES=true bash -c ". '$RUNTIME_SH' && bkit_close_guard_checkout ''"
   [ "$status" -eq 2 ]
-}
-
-# ---------------------------------------------------------------------------
-# 16. bkit_worktree_helper_guard — the bkit-worktree-{prune,sync} self-skip
-#     path (#341 T15/WS-15, Flow 7). A real BEHAVIOUR assertion over the
-#     helper self-skip path (distinct from row 4, which only covers shim
-#     WORKTREE_PATH mint/adopt resolution).
-# ---------------------------------------------------------------------------
-
-@test "worktree-helper guard: RUNTIME_WORKTREES=false -> loud self-skip (rc=1), distinguishable message, never silent" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 CLAUDE_CODE_REMOTE=true bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-prune"
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"self-skip"* ]]
-  [[ "$output" == *"RUNTIME_WORKTREES=false"* ]]
-}
-
-@test "worktree-helper guard: RUNTIME_WORKTREES=true (local) -> proceeds (rc=0), no self-skip message printed" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-prune"
-  [ "$status" -eq 0 ]
-  [[ "$output" != *"self-skip"* ]]
-}
-
-@test "worktree-helper guard: RUNTIME_WORKTREES=true (actions runner) -> also proceeds (rc=0)" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 GITHUB_ACTIONS=true bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo worktree-sync"
-  [ "$status" -eq 0 ]
-}
-
-@test "worktree-helper guard: empty REPO_ROOT -> loud rc=2, distinguishable from a legitimate rc=1 self-skip" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard ''"
-  [ "$status" -eq 2 ]
-  [[ "$output" != *"self-skip"* ]]
-}
-
-@test "worktree-helper guard: defaults LABEL to worktree-util when omitted, still resolves" {
-  run env -i PATH="$FAKE_BIN:$PATH" FAKE_GH_AUTH_OK=1 bash -c ". '$RUNTIME_SH' && bkit_worktree_helper_guard /tmp/repo"
-  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------

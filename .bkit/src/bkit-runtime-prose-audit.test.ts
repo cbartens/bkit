@@ -31,8 +31,6 @@ const WORKFLOW_FILES = [
   "bkit-build.md",
   "bkit-debug.md",
   "bkit-ship.md",
-  "bkit-worktree-prune.md",
-  "bkit-worktree-sync.md",
 ] as const;
 
 function readWorkflow(name: string): string {
