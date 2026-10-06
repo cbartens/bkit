@@ -22,31 +22,64 @@ CI runs tiers through bkit scaffold — **one parallel lane (job) per tier**, no
 Graph **flat and wide** for static/unit/build/integration: scope fans out; capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane (ordering) — never gate live behind static/unit/build/e2e:
 
 ```
-  bkit-tests-scope ─┬─ bkit-tests-static       ─┬─ bkit-tests-check
-    always-on,       ├─ bkit-tests-unit         │    needs: [scope + ALL lanes]
-    never skips      ├─ bkit-tests-build        │    if: !cancelled()
-    (~15s)           ├─ bkit-tests-integration  │    asserts each lane succeeded
-                     ├─ bkit-tests-migration ───┼─→ bkit-tests-e2e ──┐
-                     │   always-on              └─→ bkit-tests-live ─┴─→ bkit-tests-reset
-                     │   (replay plan-/path-gated;                        if: always()
-                     │    remote push on every
-                     │    push to dev/main)
+  bkit-tests-scope ─┬─ bkit-tests-static
+    always-on        ├─ bkit-tests-unit
+    never skips      ├─ bkit-tests-build-web
+    (~15s)           ├─ bkit-tests-integration
+                     ├─ bkit-tests-build-ios
+                     ├─ bkit-tests-build-android
+                     └─ bkit-tests-migration ─→ bkit-tests-reset ─┬─→ bkit-tests-e2e-web
+                          always-on                   (lease)     ├─→ bkit-tests-live-web
+                                                                  ├─→ bkit-tests-e2e-ios
+                                                                  └─→ bkit-tests-e2e-android
+                                          │
+                                          ▼
+                               bkit-tests-cleanup (always(); releases the lease)
+                                          │
+                                          ▼
+                               bkit-tests-check (needs: scope + every lane you have)
+                                          │
+                                          ▼
+                               bkit-tests-deploy (default-branch push only; not required)
 
-  static/unit/build/integration: needs:[bkit-tests-scope]; if: run_level != 'none'
-  bkit-tests-migration:          needs:[bkit-tests-scope]; NO job-level if (always-on)
-  bkit-tests-e2e / -live:        needs:[scope, migration]; if: !cancelled() && scope==success
-                                 && <own gate> && migration != 'failure'
-  bkit-tests-reset:              needs:[every lane touching the resource]; if: always()
-                                 && <ref gate> && <any of those lanes != 'skipped'>
+  static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
+  bkit-tests-migration:            needs:[bkit-tests-scope]; NO job-level if (always-on)
+  bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
+  e2e-web / live-web / e2e-ios / e2e-android:
+                                   needs:[scope, migration, reset, <build>];
+                                   if: !cancelled() && scope==success && <own gate>
+                                   && migration != 'failure' && reset != 'failure'
 ```
 
-Adopt only lanes your repo has. Add lane the moment its tier exists — tier with no lane = tier nothing gates.
+Adopt only lanes your repo has. Add a lane the moment its tier exists — a tier with no lane is a tier nothing gates. The jobs above the reference in `ci.yml` are the starter. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
+
+Adopt in this order. Stop at the first tier this repo does not have. You write the step bodies; these files name the job, the `needs`, the `if`, and the rule.
+
+1. Keep `bkit-tests-static` and `bkit-tests-unit`.
+2. Add `bkit-tests-scope`. Every later `if:` reads `plan`. One marker parse. Push base = last green run (`deployments.md` § One run).
+3. Move integration out of unit into `bkit-tests-integration`.
+4. Add `bkit-tests-build-web`. Compile, or create this SHA's deployment and publish `deployment_url` + `deployment_id` un-promoted on the default branch. Do not also enable `bkit-stub:vercel-await`.
+5. Add `bkit-tests-migration` when you have migrations. Remote `db push` lives here, after the from-empty replay. Immutability and slop-delta use the planner base on every event.
+6. Add `bkit-tests-reset` / `-cleanup` only when two or more lanes share one long-lived resource. Otherwise provision fresh and drop both.
+7. Add `bkit-tests-e2e-web`. Full suite on a PR and on a push. Feature → `dev` PR hits a local stack. `TEST_URL` only. A pass on retry is a failure.
+8. Add device build and device E2E only for a platform you ship. Same rule on a PR, a push, and a dispatch. `bkit-tests-e2e-ios` needs `build-ios` and `build-web`; android the same with its build lane.
+9. Add `bkit-tests-live-web` for a push to `dev` or the default branch when `web_affected`. Not a PR. Not a dispatch. Do not `needs:` static, unit, integration, or e2e.
+10. `bkit-tests-check` `needs:` every lane you kept. Sole required check. The assert is a script (§ Validated means executed).
+11. `bkit-tests-deploy` on a default-branch push, after the capstone. Promotes that exact `deployment_id`. Not required (`deployments.md` § Promote after the capstone).
+12. Health is `health.yml`, `workflow_run` after that CI success. A logging probe is a step inside each runtime lane, not a job.
+
+Scripts these files do not ship, so the plan names them and you write them: last-green base, marker parser, capstone assert, lease acquire and release.
 
 - **`bkit-tests-scope`** (always-on) computes `run_level` (+ optional `run_migration`) + emits `bkit-test-plan` contract — _what should run_.
-- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate parallel jobs (shape bkit CI + consumers gether/fraser run, not monolithic `bkit-tests` steps). Integration / E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration`.
+- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e-web`** — one **lane per tier**, separate parallel jobs. A platform suffix (`-web` / `-ios` / `-android`) is required when that tier exists for more than one platform; `static` / `unit` / `integration` / `migration` stay bare. Integration / web E2E gate on `web_affected` / `run_e2e`; each lane emits executed-count for capstone and (coverage tiers) posts own coverage comment. Start `-static` + `-unit`, add lane per tier (`deployments.md` § Parallel test lanes). E2E: do **not** put remote `db push` here — that lives in `-migration`. Web E2E on a feature → `dev` PR hits a local stack with this PR's migrations; every other event hits the deployment. Same outcome rules everywhere (retries, traces, flake handling). A pass on retry is a failure. Target from `TEST_URL` alone. No spec filtered by tag.
 - **`bkit-tests-migration`** (optional; DB repos) — always-on ordering + provisioning lane: (1) fresh-DB replay + seed assert (plan-/path-gated per-step); (2) on every push to `dev`/`main`, remote `db push --linked --include-all` (un-gated by `run_migration` — self-heals a remote left behind). No job-level `if:` — e2e/live `needs:` it; a skip would cascade. Capstone asserts `success` whenever scope succeeded. See § Provision backing services fresh.
-- **`bkit-tests-live`** runs `@live` tier against deployed URL (`run_live`; drop job if no deploy). `needs:` planner + **migration** (when that lane owns remote push) — do **not** gate behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing: `@live` push-only, post-merge, PR-validated; non-compiling tree reds via own build).
-- **`bkit-tests-reset`** (optional; shared-resource repos) — teardown of ONE stateful resource that 2+ lanes write concurrently, by design (demo tenant, seeded account, fixture bucket), as a **join** rather than a per-lane step. Per-lane cleanup cannot do it: a purge asserting "only canonical rows remain" reds on rows a sibling wrote in the gap — consumer's iOS lane found 3 in a 41-second window and failed on a state its design calls normal. `needs:` every writer; `if: always()` (interrupted / red lane still gets cleanup); gated on the refs whose credentials the purge needs; **skips**, never fails, when no writer ran. NOT plan-gated — must run on a partial plan if the lanes did. Emits no `<tier>_ran`; capstone asserts `result` only, tolerating `skipped` / `cancelled`. DROP if one lane owns the resource, or it is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
+- **`bkit-tests-build-web`** — web compile, or the host deployment gate (e.g. Vercel: create this SHA's deployment, publish `deployment_url` + `deployment_id`, leave it un-promoted on the default branch). Emits no `*_ran`.
+- **`bkit-tests-build-ios` / `-e2e-ios` / `bkit-tests-build-android` / `-e2e-android`** (optional) — device build and device flows. Same rule on a PR, a push, and a dispatch: not a post-merge canary. `bkit-tests-e2e-ios` `needs:` scope, migration, reset, `bkit-tests-build-ios`, and `bkit-tests-build-web`. Android matches, with `bkit-tests-build-android`. A planned red reds the capstone. Drop any platform you do not ship. e.g. a hosted build service plus a device-flow runner.
+- **`bkit-tests-live-web`** runs `@live` against the deployed URL (`run_live`; drop the job if no deploy). Push to `dev` or the default branch only, when `web_affected`. Not a pull request. Not a dispatch. `needs:` planner + migration + reset + `bkit-tests-build-web`. Do **not** gate behind static/unit/integration/e2e. A planned failure reds the capstone. `/bkit-ship` still filters a job named `bkit-tests-live`; this name does not match, so the capstone is the gate.
+- **`bkit-tests-reset` / `bkit-tests-cleanup`** (optional; one shared long-lived resource) — reset takes the lease and puts the resource in its known state **before** any lane uses it; cleanup runs last, `if: always()`, and releases the lease. Planner names at most one target. Empty target skips both. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (§ Provision backing services fresh — the preferred answer).
+- **Logging probe** (optional step, not a lane) — inside each runtime lane, emit one marked event and ask the error tracker whether it arrived. e.g. Sentry. Skip when that lane did not run the probe.
+- **`bkit-tests-deploy`** (optional) — after the capstone, on a push to the default branch only. Promotes the exact `deployment_id` `bkit-tests-build-web` published. Not a required check. A red job means the previous deployment stays live.
+- **Health** (optional, separate workflow) — `workflow_run` after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. Copy the stub to `.github/workflows/health.yml`.
 - **`bkit-tests-check`** capstone — `needs:` **all** lanes; fails if any expected tier skipped or executed zero → green required check = **validated**, not merely "nothing failed". Sole branch-protection required check.
 
 ### Which resources may each lane touch?
@@ -58,13 +91,17 @@ Every lane must **declare** what it may reach; declaration enforced by lane env 
 | --- | --- | --- | --- |
 | `bkit-tests-static` | none | none | none |
 | `bkit-tests-unit` | none — **mocked** | none | none |
-| `bkit-tests-build` | none | none | none |
+| `bkit-tests-build-web` | none | none | creates this SHA's deployment; does not promote it |
+| `bkit-tests-build-ios` / `-android` | the build host (e.g. a device-build service) | none | none |
 | `bkit-tests-integration` | none — **mocked** | **ephemeral, CI-local, fresh each run** | none |
 | `bkit-tests-migration` | none | **ephemeral, replayed from EMPTY** (plan-/path-gated) + **shared remote push** on every `dev`/`main` push | none |
-| `bkit-tests-e2e` | none — **mocked** | ephemeral **local** (PR) / the migrated shared one (push) | preview / deployed URL |
-| `bkit-tests-live` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
+| `bkit-tests-reset` / `-cleanup` | none | the **one** shared long-lived resource this run named | none |
+| `bkit-tests-e2e-web` | none — **mocked** | ephemeral **local** (feature → `dev` PR) / the leased shared one (other events) | this SHA's deployment |
+| `bkit-tests-e2e-ios` / `-android` | the device host | the leased shared resource | the deployed backend |
+| `bkit-tests-live-web` | **REAL** | the deployed environment's **real** instance | **REAL** deployed URL |
+| `bkit-tests-deploy` | the host API | none | promotes the deployment the lanes tested |
 
-Read table as rule: **`bkit-tests-live` ONLY lane permitted to spend real external quota**; **ONLY `-live` and push-side `-e2e` may touch shared long-lived instance**. Everything else provisions own (§ Provision backing services fresh). Parallel-safe: lanes owning state cannot contend → fan out + raise internal parallelism freely.
+Read table as rule: **`bkit-tests-live-web` and the device E2E lanes are the lanes that may spend real external quota**; **only those, plus push-side `-e2e-web`, may touch the shared long-lived resource**, and only between reset and cleanup. Everything else provisions its own (§ Provision backing services fresh).
 
 > [!IMPORTANT]
 > **"Real external API" and "real remote backing service" are two INDEPENDENT axes — never one flag.**
@@ -84,7 +121,11 @@ Green capstone = planned tiers _ran tests and passed_ — not merely nothing vis
 
 A declared tier therefore emits an **executed count** (a runner's machine summary — e.g. vitest `numPassedTests + numFailedTests`); the capstone asserts `count > 0` for every declared-and-planned tier. The same rule at install time is "every tagged suite has a CI home": each `@live`-tagged test must live in a package whose `test:live` script the tier actually invokes, or the tag is dead code.
 
-**A per-tier count won't catch a file that stops running everywhere.** `count > 0` proves each _tier_ ran tests; it does not prove every _test file_ ran in _some_ lane. A file renamed out of its glob, moved to a lane whose filter excludes it, or left carrying a stale `skipIf` (the lane-move trap above) can quietly stop executing in **every** lane — each lane green, each count still plausible. The capstone is the only job that `needs:` every lane, so it is the only place to answer this, on the **union**: reconcile the on-disk test-file inventory against the set of files that executed across all lanes. Skipped in one lane but run in another is fine — only **dead in every lane** is the bug. Keep it a **non-blocking** diagnostic (it must never red the required check) and **full-runs-only** (a PR runs filtered / smoke subsets and any push-only lane is absent, so the PR delta is expected and large — a cry-wolf guard gets turned off); start report-only, then flip to an assert once the allowlist of legitimately-never-run files is seeded from a real inventory.
+**The assert is a script, not a heredoc in the workflow.** It is the only required check, and a shell heredoc inside YAML cannot be unit-tested. Move the decision into a script the normal test command already runs, with the environment as an argument. Four cases must red: a lane that failed; a gated lane that ran when its gate said skip; a tier reporting success with zero tests; a plan that will not parse. The checkout that fetches that script is ungated and not `continue-on-error`. A checkout gated on `run_level == 'full'` leaves every other run with no script, and the required check exits on "cannot find module" without reading the plan.
+
+**Namespace.** `bkit-tests-scope` is the planner. A loop over every `bkit-tests-*` job skips it, and a scope failure then leaves the capstone green. Exempt `bkit-tests-scope`, `bkit-tests-reset`, and `bkit-tests-cleanup` by name from any guard that treats every `bkit-tests-*` job as a counting lane. Point branch protection at `bkit-tests-check`.
+
+**A per-tier count won't catch a file that stops running everywhere.** `count > 0` proves each _tier_ ran tests; it does not prove every _test file_ ran in _some_ lane. A file renamed out of its glob, moved to a lane whose filter excludes it, or left carrying a stale `skipIf` (the lane-move trap above) can quietly stop executing in **every** lane — each lane green, each count still plausible. The capstone is the only job that `needs:` every lane, so it is the only place to answer this, on the **union**: reconcile the on-disk test-file inventory against the set of files that executed across all lanes. Skipped in one lane but run in another is fine — only **dead in every lane** is the bug. Its checkout stays `continue-on-error` and must not be the script checkout above. Keep it a **non-blocking** diagnostic (it must never red the required check) and **full-runs-only** (a PR's unit lane is affected-scoped, and `bkit-tests-live-web` is absent, so the PR delta is expected and large — a cry-wolf guard gets turned off); start report-only, then flip to an assert once the allowlist of legitimately-never-run files is seeded from a real inventory.
 
 **Executed is not the same as _exercised_.** `count > 0` proves a test ran; it does NOT prove the test reached the behaviour it claims to cover. A **hollow boundary test** — non-mock, owns a CI home, executes, passes — can still cover nothing if it short-circuits before the boundary. Worked example: a golden test for an external OCR lane called the extractor with the wrong argument shape, so the input field was `undefined`, the extractor returned `{ text: "", extractor: "none" }` in ~2ms, **no API call was ever made**, and the assertion (on a field that didn't exist) was never reached — green in CI, covering zero. A boundary test MUST therefore assert a **ground-truth signal only the real boundary can produce** — a specific returned value / shape / identity / latency floor (e.g. `extractor === "mistral-ocr"` AND `text.length > 50`), never "did not throw" or a value a degenerate / short-circuit path could also return. Two corollaries: (1) when a deploy / `@live` tier exists, route external / deployed-boundary behaviours (3rd-party API, model, payment, deployed schema, RLS/tenancy) to `@live` — a passing local fixture is not evidence prod is correct (§ Schema-invariant DB checks); (2) constructs that silence the type system at a boundary call-site are forbidden — `as unknown as` / `as any` casts and `@ts-ignore` / `@ts-nocheck` / `@ts-expect-error` directives alike — they suppress the contract drift (a renamed SDK field, a changed signature) the boundary test exists to catch, so the bug ships while the test passes against the wrong shape.
 
@@ -175,7 +216,7 @@ Assign every behaviour its **lowest sufficient tier(s)** — the lowest tier tha
 | New / changed migration or seed | **fresh-DB replay** (`bkit-tests-migration`) — replays from empty + the seed loads |
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
-A plan's `Derived Test Matrix` (`docs/plans/template.md`) is the per-feature application of this rubric: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above — reach the boundary; assert a signal only it can produce; no `as unknown as` at the call-site.
+A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) is the per-feature application of this rubric: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above — reach the boundary; assert a signal only it can produce; no `as unknown as` at the call-site.
 
 ## What each tier must do
 
@@ -214,13 +255,13 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 - Locally, run against a **production build**, not a dev server: a dev file-watcher remounts components mid-test and breaks stateful UI (dialogs, wizards).
 - Use **stable selectors** (test-ids) and **condition-based waits**; never a fixed-time or network-idle wait. Don't gate a response-wait on status — match URL + method, then assert success explicitly, or a non-2xx silently spins to timeout.
 - Clean up what you create (`afterAll`) and warn on accumulated `test_` / `e2e_` rows so leaked fixtures can't slowly corrupt a shared environment.
-- Keep E2E minimal and tier it by trigger (PR subset vs full) — § "E2E on PRs".
+- On a pull request and on a push, run the **same** spec set — § "E2E on PRs". Scale a slow suite by sharding, not by dropping specs.
 - **Not:** clicking by visible text and waiting on `networkidle` — the two classic flaky-E2E footguns.
 
 ### @live (golden)
 
 - Cross the **real external / deployed boundary** and assert a **ground-truth signal only it can produce** (§ Validated means executed). Two shapes: **in-process** (the test calls the real SDK / model / API directly) and **deployed-endpoint** (the test fetches the running app) — use whichever observes the boundary you're validating.
-- Run it **off the merge gate**: a push-only canary (and / or scheduled), concurrency-keyed so a release-candidate push is **never cancelled** by a later PR re-push — the candidate is @live-validated before promotion.
+- Push to `dev` or the default branch only, when `web_affected` (`run_live`). A planned failure reds the capstone. It does not run on a pull request or a dispatch. A newer run on the same ref cancels the older one (`deployments.md` § One run per branch or pull request).
 - **Honest skip vs hollow:** when there is genuinely nothing deployed to validate, **skip with a recorded reason** (the capstone then asserts nothing about its count) — distinct from a tier that ran 0 tests. But a **missing credential with the tier enabled must fail loudly at connect**, never skip — a vacuous skip hides infra rot.
 - Never blast a production system with test traffic: use a **synthetic-identity namespace** + a guarded teardown that refuses to delete anything outside it.
 - **Not:** a non-mock @live test that short-circuits before the boundary (the hollow case), or one that asserts only "did not throw".
@@ -237,7 +278,7 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 ### Smoke
 
 - After deploy, run a **fast, dependency-light** probe of the live surface (a handful of health / route / contract checks, or a tiny tagged browser subset) — breadth ("is the app fundamentally up?"), not depth.
-- It is an **observability gate, not a merge gate**: own workflow, never in branch protection. Trigger plumbing (post-CI vs post-deploy) → `deployments.md` § Smoke trigger plumbing.
+- It is an **observability gate, not a merge gate**: own workflow, never in branch protection. When `bkit-tests-deploy` promotes inside CI, this probe is the health workflow, not a second file (`deployments.md` § Smoke trigger plumbing, § Promote after the capstone).
 - **Not:** a smoke suite wired into branch protection, or one so heavy it can't run on every deploy.
 
 ## Design assertions are a dimension, not a lane
@@ -251,8 +292,8 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 | Static guards — no raw hex, no arbitrary-value utility classes | `bkit-tests-static` (lint rule, anchored on the **class boundary** so `p-[3px]` reds but a legitimate substring does not) |
 | Repo-wide raw-hex contract (scans the source tree off disk, no I/O beyond the filesystem) | `bkit-tests-unit` |
 | Contract depth — component-level token / test-id / behaviour assertions | `bkit-tests-unit` |
-| Computed style + measured geometry (resolved pixels, touch-target size) | `bkit-tests-e2e` — ordinary specs in the **existing** browser project, selected by path |
-| Accessibility scan (contrast, target size) | `bkit-tests-e2e` — the scanner is an imported helper, not a project fixture |
+| Computed style + measured geometry (resolved pixels, touch-target size) | `bkit-tests-e2e-web` — ordinary specs in the **existing** browser project, selected by path |
+| Accessibility scan (contrast, target size) | `bkit-tests-e2e-web` — the scanner is an imported helper, not a project fixture |
 | Design-source parity (a rendered style guide vs the reference doc) | `bkit-tests-unit` |
 | Visual regression (screenshot baselines) | **opt-in, not baseline** (§ Optional hardening) — highest maintenance cost of the set |
 
@@ -267,10 +308,10 @@ Tier-by-tier rules: **do** the rule, avoid the **Not** (the failure it prevents)
 Assert DB-level invariants ("every public table has RLS enabled", no hardcoded list) one of two co-equal ways. Pick by **deploy topology**, not by whether you can run pgTAP locally:
 
 - **pgTAP** — `supabase/tests/*.sql` run by `supabase db test` in the `bkit-stub:test-db` step against a CI-local fixture built from `supabase/migrations`. Fast, hermetic, offline; keeps the invariant out of app code. Caveat: the fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this green while prod RLS is actually broken. Best when there is **no** deploy/`@live` tier, or for pure-logic DB unit tests.
-- **@live catalog-RPC** — a `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier, validating the **real deployed schema** in `bkit-tests-live`. Needs a deploy + the RPC. **Recommended default once you have a deploy/`@live` tier** — for RLS/tenancy invariants especially, a passing local-fixture check is not evidence that prod is locked down. (Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.)
+- **@live catalog-RPC** — a `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier, validating the **real deployed schema** in `bkit-tests-live-web`. Needs a deploy + the RPC. **Recommended default once you have a deploy/`@live` tier** — for RLS/tenancy invariants especially, a passing local-fixture check is not evidence that prod is locked down. (Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.)
 - **PostgREST gotcha** — `GET /rest/v1/` (OpenAPI) is service_role-only by default: fetch the exposed surface with the service-role key, then probe each table with the ANON key (only the leak assertion must be anon).
 
-An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-denial, no hardcoded table list — so it catches the _next_ table too) belongs in `bkit-tests-live`. The scaffold reference in `.github/workflows/ci.yml` § JOB 3 carries the pattern (Supabase/PostgREST as the worked example). RLS coverage is stack-specific, so bkit ships the **pattern**, not a drop-in test — implement it for your backing store (swap the catalog source + anon-probe for your stack's equivalent).
+An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-denial, no hardcoded table list — so it catches the _next_ table too) belongs in `bkit-tests-live-web`. RLS coverage is stack-specific, so bkit ships the **pattern** in the two routes above, not a drop-in test — implement it for your backing store (swap the catalog source + anon-probe for your stack's equivalent). Supabase/PostgREST is the worked example.
 
 ## Provision backing services fresh
 
@@ -288,7 +329,7 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 
 Beyond the gates above, three practices raise confidence further — opt-in, not baseline:
 
-- **Mutation testing** (e.g. StrykerJS over a Vitest suite) automates the "executed ≠ exercised" intent: it injects bugs into production code and fails when no test catches them, surfacing assertion-free / hollow tests the executed-count gate can't see. Run it as a **nightly full pass** gated on a survival-score threshold (start unset to baseline, then ratchet) plus a per-PR **incremental / `--since`** pass for fast affected-only signal. Gate on a threshold, never 100% (equivalent mutants make perfection unreachable). It complements the capstone — capstone asks "did tests run?", mutation asks "do they catch injected bugs?".
+- **Mutation testing** (e.g. StrykerJS over a Vitest suite) automates the "executed ≠ exercised" intent: it injects bugs into production code and fails when no test catches them. Run it locally, on demand. It is not a CI lane and not a nightly workflow. Gate a local run on a survival-score threshold, never 100% (equivalent mutants make perfection unreachable). Capstone asks "did tests run?"; mutation asks "do they catch injected bugs?".
 - **E2E sharding** (`--shard` matrix + report merge) cuts wall-clock on a large browser suite — but it is **gated on per-shard data isolation** (the unique-ID independence above). A single shared seed pins `workers: 1` and blocks sharding until the data is isolated. Isolated data is still not enough once several invocations share one job — § Concurrent invocations collide on disk, not just in the database.
 - **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk **only** when paired with explicit flake **tracking** — an auto-retry that silently passes hides a real regression, the inverse of "validated ≠ didn't fail".
 
@@ -317,7 +358,7 @@ The **E2E tier** (`bkit-stub:e2e-coverage`) reports Playwright coverage the same
 - **Report with Monocart.** `monocart-coverage-reports` (wired via the `monocart-reporter` Playwright reporter) ingests **either** V8 or Istanbul input and emits Istanbul-format `coverage/e2e/coverage-summary.json` + `coverage-final.json` — the **same two files** the vitest action reads (`reports: ['json-summary', 'json', 'lcov']`), so no new commenter is needed.
 - **Comment by reuse.** Point `davelosert/vitest-coverage-report-action@v2` at `coverage/e2e` with `name: e2e`. If Monocart's `coverage-final.json` isn't accepted for `file-coverage-mode: changes`, drop to `file-coverage-mode: all`, or comment via a cobertura action (`irongut/CodeCoverageSummary`) on Monocart's `cobertura` report.
 - **Report-only — no threshold by default.** A whole-app E2E % is denominator-noise (E2E exercises user **flows**, not every branch), so gate the tier on the **E2E step succeeding**, not a number. For a real E2E %, scope Monocart's `entryFilter`/`sourceFilter` to the surface E2E is meant to cover, **then** ratchet from current — never a picked number.
-- **Permissions/forks.** The E2E coverage report runs in the **`bkit-tests-e2e` lane** (or, with the combined starter, in `bkit-tests-unit`), and needs that lane's job-level `pull-requests: write` + `actions: read` + `contents: read` block, or the comment can't post. The `head.repo == repo` guard skips fork PRs; a `hashFiles('coverage/e2e/coverage-summary.json')` guard skips repos with no E2E coverage.
+- **Permissions/forks.** The E2E coverage report runs in the **`bkit-tests-e2e-web` lane** (or, with the combined starter, in `bkit-tests-unit`), and needs that lane's job-level `pull-requests: write` + `actions: read` + `contents: read` block, or the comment can't post. The `head.repo == repo` guard skips fork PRs; a `hashFiles('coverage/e2e/coverage-summary.json')` guard skips repos with no E2E coverage.
 
 ## CI verbosity (`[verbose ci]`)
 

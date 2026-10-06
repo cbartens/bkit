@@ -3,7 +3,7 @@
 # Document Index
 
 > [!CAUTION]
-> **Purpose:** Index of repo docs (`docs/` and `.agents/`) for agents. Phase columns tell agents what to read per workflow.
+> **Purpose:** Index of repo docs (`docs/`, `.agents/`, and `.bkit/` catalogs) for agents. Phase columns tell agents what to read per workflow.
 >
 > **Rules:**
 >
@@ -11,6 +11,7 @@
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.
 > - Read only docs relevant to current workflow / step / task.
 > - Follow workflow based reading suggestions first, then read more docs as step / task warrants.
+> - Phase columns cover workflows only; audits and utilities pick docs as step / task warrants.
 > - One row per doc — phase columns and one-line scope. Pointers only — do NOT duplicate text from indexed docs.
 > - Local project docs → `Project Documents` below the bkit-managed block; universal docs stay in-block.
 > - When two docs cover the same topic, that's a bug — pick a canonical home, link from the other.
@@ -22,23 +23,29 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
+| `.bkit/workflows.md` | ● | ● | ● | ● | ● | Workflow catalog — when to run and when not to run each command (§ When to Run). |
+| `.bkit/prompts.md` | ● | ● | ● | ● | ● | Subagent catalog — name, scope, effort, model, `maxTurns`. |
 | `.agents/skills.md` | — | — | ● | — | — | Registry of installed agent skills and install/update commands. |
+| `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
 | `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
 | `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`. |
-| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — tables, columns, RLS, indices, triggers. |
+| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — tables, columns, RLS, indices, functions, triggers. |
 | `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling, untrusted-content threat model. |
 | `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
-| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI execution. |
-| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / environment config / CI/CD pipeline rules — secrets sync, branch protection, run-level tiers. |
+| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI lane graph (names, needs, when a lane runs). |
+| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / CI/CD — secrets, branch protection, one-run concurrency, push base, promote after the capstone. |
 | `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
 | `docs/noise.md` | — | — | ○ | ● | ○ | Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds. |
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
-| `docs/plans/template.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
-| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Phase board and best-next-step analysis. |
-| `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
+| `docs/deferrals.jsonl` | ○ | ○ | ○ | ○ | — | Ledger of deferred issues and future feature ideas. Append-only. |
+| `docs/plans/{YYYYMM}/*.md` | ○ | ● | ● | ○ | ○ | Feature designs and plans. |
+| `docs/audits/{YYYYMM}/*.md` | — | ○ | ○ | — | — | Audit reports. `/bkit-plan` reads a design, these reports, or both. |
+| `docs/roadmap.md` | ○ | ○ | ○ | ○ | ○ | Phase board and best-next-step analysis. |
+| `.bkit/issues.jsonl` | ○ | ○ | ○ | ○ | ○ | Feature-state ledger. Folded into `docs/roadmap.md`. Append-only. |
+| `docs/templates/bkit-plan.md` | — | ● | — | — | — | Plan template — pre-flight, gates, runbook, verification, rollback. |
+| `docs/templates/bkit-audit-*.md` | — | ○ | — | — | — | Audit templates. Use with `@bkit-audit-generate` to generate reports. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
 | `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
 
@@ -51,3 +58,13 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
+| `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI. |
+| `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
+| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
+| `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `none` blocks in workflow sources. |
+| `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `bkit harvest`. |
+| `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
+| `README.md` | — | — | — | — | ○ | Package page — pitch, first-time install / upgrade paste, token setup. |
+| `.bkit/comparison.md` | — | — | — | — | — | Pipeline in execution order, plus peer comparison. Humans only. |
+| `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
+| `docs/consumers.md` | — | — | — | — | — | Maintainer-local dogfood checkout paths. `bkit harvest` reads it. Not shipped. |

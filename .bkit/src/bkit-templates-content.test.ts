@@ -190,11 +190,24 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
   });
 
-  it("ships bkit-stub:bkit-tests-integration + bkit-tests-e2e lane stubs (separate-lane scaffold)", () => {
-    // Every tier lane gets the SAME stub treatment as migrate/live/check, so `bkit install`/check
-    // advise consumers to bring the integration + E2E lanes to life as their own parallel jobs.
-    expect(content).toContain("# bkit-stub:bkit-tests-integration");
-    expect(content).toContain("# bkit-stub:bkit-tests-e2e");
+  it("ships the gether lane-name stubs (web, device, reset, deploy, health)", () => {
+    for (const sentinel of [
+      "# bkit-stub:bkit-tests-integration —",
+      "# bkit-stub:bkit-tests-e2e-web —",
+      "# bkit-stub:bkit-tests-build-web —",
+      "# bkit-stub:bkit-tests-live-web —",
+      "# bkit-stub:bkit-tests-build-ios —",
+      "# bkit-stub:bkit-tests-e2e-ios —",
+      "# bkit-stub:bkit-tests-build-android —",
+      "# bkit-stub:bkit-tests-e2e-android —",
+      "# bkit-stub:bkit-tests-reset —",
+      "# bkit-stub:bkit-tests-cleanup —",
+      "# bkit-stub:logging-probe —",
+      "# bkit-stub:bkit-tests-deploy —",
+      "# bkit-stub:health —",
+    ]) {
+      expect(content).toContain(sentinel);
+    }
   });
 
   it("never inlines a PR title into a run: body (GitHub Actions script injection)", () => {

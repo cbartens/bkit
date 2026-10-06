@@ -499,10 +499,13 @@ export function detectCiYmlCapstoneContractDrift(cwd) {
     if (!content.includes("!cancelled()")) {
         missing.push("the capstone `if: ${{ !cancelled() }}` guard — without it a concurrency-cancel stamps a bogus failure on the required check (use `!cancelled()`, never `always()`).");
     }
-    // 2. Concurrency must cancel PR runs ONLY — never push/main runs (those carry the
-    //    push-only @live canary and are observed by downstream workflow_run triggers).
-    if (/concurrency:/.test(content) && /cancel-in-progress:\s*true\b/.test(content)) {
-        missing.push("PR-only concurrency cancellation — `cancel-in-progress: true` cancels push/main runs too (kills the push-only @live canary / release CI). Gate it: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`.");
+    // 2. One run per branch or pull request. A newer run cancels the older one on every
+    //    event. The group keys a PR on its number and a push on the ref — not github.run_id,
+    //    which never collides and so never cancels. A push then plans from the last green run.
+    const prOnlyCancel = /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(content);
+    const runIdGroup = /group:[^\n]*github\.run_id/.test(content);
+    if (/concurrency:/.test(content) && (prOnlyCancel || runIdGroup)) {
+        missing.push("one run per branch or pull request — `cancel-in-progress: true`, group `ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}`. A PR-only cancel, or a group keyed on `github.run_id`, lets a superseded push keep running. A push plans from the last green run on the branch, so a cancelled run's changes stay in scope.");
     }
     // 3. Non-hollow capstone: it must assert tiers actually executed >0 tests, not just
     //    that the job exited 0 (passWithNoTests / no-CI-home / all-skipIf are green-with-zero).
@@ -817,12 +820,12 @@ const BKIT_STUBS = [
     {
         id: "supabase-migrate",
         file: ".github/workflows/ci.yml",
-        description: "REMOTE `db push` belongs in `bkit-tests-migration` (#385), not in the monolithic tests job and not in `bkit-tests-e2e`. Prefer the migration-lane stub (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live `needs:` it). Legacy single-job shape still documented under this stub for repos without a migration lane yet — migrate into bkit-tests-migration ASAP. Requires SUPABASE_ACCESS_TOKEN + project ref (or vercel env pull).",
+        description: "REMOTE `db push` belongs in `bkit-tests-migration`, not in the monolithic tests job and not in `bkit-tests-e2e-web`. Prefer the migration-lane stub (always-on; replay plan-/path-gated; push on every push to dev/main; e2e/live `needs:` it). Legacy single-job shape still documented under this stub for repos without a migration lane yet — migrate into bkit-tests-migration ASAP. Requires the host access token + project ref (e.g. SUPABASE_ACCESS_TOKEN, or the host's env pull).",
     },
     {
         id: "test-db",
         file: ".github/workflows/ci.yml",
-        description: "Assert schema-invariant DB checks (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Two co-equal routes — pick by deploy topology, not by whether you can run pgTAP locally: (1) pgTAP (`supabase db test` over `supabase/tests/*.sql`) against a CI-local fixture built from `supabase/migrations` — fast, hermetic, offline, but the fixture can differ from prod, so it can stay green while prod RLS is broken; best when there is no deploy/`@live` tier, or for pure-logic DB unit tests. (2) a `@live` catalog-RPC (SECURITY DEFINER, service_role-only, called over REST; direct port-5432 from CI runners is IPv4-flaky) that validates the real deployed schema in `bkit-tests-live` — the recommended default once you have a deploy + `@live` tier (RLS/tenancy especially: a passing local-fixture check is not evidence that prod is locked down). See docs/testing.md § Schema-invariant DB checks.",
+        description: "Assert schema-invariant DB checks (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Two co-equal routes — pick by deploy topology, not by whether you can run pgTAP locally: (1) pgTAP (`supabase db test` over `supabase/tests/*.sql`) against a CI-local fixture built from `supabase/migrations` — fast, hermetic, offline, but the fixture can differ from prod, so it can stay green while prod RLS is broken; best when there is no deploy/`@live` tier, or for pure-logic DB unit tests. (2) a `@live` catalog-RPC (SECURITY DEFINER, service_role-only, called over REST; direct port-5432 from CI runners is IPv4-flaky) that validates the real deployed schema in `bkit-tests-live-web` — the recommended default once you have a deploy + `@live` tier (RLS/tenancy especially: a passing local-fixture check is not evidence that prod is locked down). See docs/testing.md § Schema-invariant DB checks.",
     },
     {
         id: "vercel-await",
@@ -847,7 +850,7 @@ const BKIT_STUBS = [
     {
         id: "e2e-coverage",
         file: ".github/workflows/ci.yml",
-        description: "Report Playwright E2E code-coverage on PRs — the third coverage tier, sibling of `coverage` (unit/integration). Free, entirely inside Actions with GITHUB_TOKEN (no third-party service, private-repo safe). Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so enabling is a 3-part pipeline documented in the stub header: (1) COLLECT during the E2E run — either an Istanbul instrumented build (`vite-plugin-istanbul` → window.__coverage__, cross-browser, scraped in a Playwright fixture) or the V8 API (`page.coverage`, Chromium-only, needs source maps); (2) REPORT with Monocart (`monocart-coverage-reports`, via the `monocart-reporter` Playwright reporter) which ingests EITHER V8 or Istanbul input and emits Istanbul-format coverage/e2e/coverage-summary.json + coverage-final.json — the SAME two files davelosert reads, so no new commenter is needed; (3) COMMENT by reusing davelosert/vitest-coverage-report-action@v2 pointed at coverage/e2e with a DISTINCT `name: e2e` so its sticky comment does not collide with the unit/integration ones. This step posts from the bkit-tests-e2e lane (or, with the combined starter, the bkit-tests-unit job as `coverage`), and needs that lane's job-level permissions block (pull-requests: write + actions: read + contents: read) or the comment cannot post. Ship NO threshold: a whole-app E2E % is denominator-noise (E2E exercises flows, not every branch) — gate the tier on the E2E step succeeding, not a %; for a real E2E % scope Monocart's entryFilter/sourceFilter then ratchet from current. The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); the hashFiles('coverage/e2e/coverage-summary.json') guard skips repos with no E2E coverage. See docs/testing.md § E2E coverage on PRs.",
+        description: "Report Playwright E2E code-coverage on PRs — the third coverage tier, sibling of `coverage` (unit/integration). Free, entirely inside Actions with GITHUB_TOKEN (no third-party service, private-repo safe). Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so enabling is a 3-part pipeline documented in the stub header: (1) COLLECT during the E2E run — either an Istanbul instrumented build (`vite-plugin-istanbul` → window.__coverage__, cross-browser, scraped in a Playwright fixture) or the V8 API (`page.coverage`, Chromium-only, needs source maps); (2) REPORT with Monocart (`monocart-coverage-reports`, via the `monocart-reporter` Playwright reporter) which ingests EITHER V8 or Istanbul input and emits Istanbul-format coverage/e2e/coverage-summary.json + coverage-final.json — the SAME two files davelosert reads, so no new commenter is needed; (3) COMMENT by reusing davelosert/vitest-coverage-report-action@v2 pointed at coverage/e2e with a DISTINCT `name: e2e` so its sticky comment does not collide with the unit/integration ones. This step posts from the bkit-tests-e2e-web lane (or, with the combined starter, the bkit-tests-unit job as `coverage`), and needs that lane's job-level permissions block (pull-requests: write + actions: read + contents: read) or the comment cannot post. Ship NO threshold: a whole-app E2E % is denominator-noise (E2E exercises flows, not every branch) — gate the tier on the E2E step succeeding, not a %; for a real E2E % scope Monocart's entryFilter/sourceFilter then ratchet from current. The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); the hashFiles('coverage/e2e/coverage-summary.json') guard skips repos with no E2E coverage. See docs/testing.md § E2E coverage on PRs.",
     },
     // --- The 4-job "green == validated" scaffold (bkit #203 / gether reference). ---
     // These ship commented in the FULL CI SCAFFOLD REFERENCE block at the end of the
@@ -863,9 +866,9 @@ const BKIT_STUBS = [
         description: "Inside bkit-tests-scope, replace any frozen path-allowlist with `turbo query affected --packages` so run_level / web_affected track the real dependency blast radius. Monorepo-only — drop for single-package repos. Capture turbo stdout/stderr SEPARATELY: `2>&1` merges turbo's banner into the JSON and jq silently falls back to [] (a ghost-green run).",
     },
     {
-        id: "bkit-tests-live",
+        id: "bkit-tests-live-web",
         file: ".github/workflows/ci.yml",
-        description: "Add a push-only @live canary job running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design). DO NOT gate this lane behind static/unit/build/e2e: that `needs:` edge is measured as the single most expensive edge in the whole graph (~10 min / ~35% wall-clock on a real consumer) and buys almost nothing (@live is push-only / post-merge / PR-validated). The ONE permitted extra edge is `bkit-tests-migration` when that lane owns the shared-remote `db push` (#385): `needs: [bkit-tests-scope, bkit-tests-migration]` with `migration.result != 'failure'` so @live cannot hit a schema the push has not applied. If your @live spend is expensive enough that gating behind other lanes flips the trade, add those gates deliberately — but measure first.",
+        description: "Add push-only `bkit-tests-live-web` running the @live tier against the deployed URL. Omit the job if you have no deploy. needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-web], each with result != 'failure' except scope (success) and the lane's own run_live gate. Do NOT also needs: static/unit/integration/e2e. A planned failure reds the capstone. /bkit-ship still filters a job named bkit-tests-live; this name does not match.",
     },
     {
         id: "bkit-tests-check",
@@ -883,19 +886,59 @@ const BKIT_STUBS = [
         description: "Add the integration tier as its OWN parallel lane (job) — `bkit-tests-integration`, NOT a step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra boundaries). This is the shape bkit's own CI and consumers gether/fraser run — separate lanes give each tier its own honest coverage number, executed-count, and permissions. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install); gate the heavy steps on web_affected; emit `integration_ran` (vitest --reporter=json) so bkit-tests-check can assert it ran > 0. The bkit-stub:coverage integration report (davelosert, name: integration, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`.",
     },
     {
-        id: "bkit-tests-e2e",
+        id: "bkit-tests-e2e-web",
         file: ".github/workflows/ci.yml",
-        description: "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: `needs: [bkit-tests-scope, bkit-tests-migration]` with `migration.result != 'failure'` (#385 — remote push lives in migration, not here); if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
+        description: "Add browser E2E as its own lane — `bkit-tests-e2e-web` (e.g. Playwright). WHEN: you have a browser suite and a deploy or a local stack to hit. needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-web], migration/reset/build result != 'failure'. A feature→dev PR hits a local stack with this PR's migrations; every other event hits the deployment. Same outcome rules everywhere; a pass on retry is a failure; target from TEST_URL alone. Emit e2e_ran. Fold into bkit-tests-check's needs:. DROP if you have no browser E2E.",
     },
     {
-        id: "bkit-tests-build",
+        id: "bkit-tests-build-web",
         file: ".github/workflows/ci.yml",
-        description: "Split the workspace compile into its OWN lane (job) — `bkit-tests-build` — instead of a `Build All Packages` step inside another lane. WHEN: the build is slow enough that lanes needing it are waiting on it, or a compile break should report on its own. Wiring: needs:[bkit-tests-scope]; if run_level != 'none'; self-contained (own checkout/setup/install). Fold it into bkit-tests-check's `needs:`. This buys ~0 wall-clock on its own — it runs parallel to lanes that do not need it — so adopt it for TIME-TO-SIGNAL (a compile break reds in its own lane rather than hiding as a late step in a longer one), not as a speed lever. NOT a test tier: it emits no `<tier>_ran` count, so the capstone asserts its `result` only.",
+        description: "Add `bkit-tests-build-web`. WHEN: a later lane tests this commit's deployment, or a compile break should report on its own. Either compile the workspace, or create the host deployment and publish deployment_url + deployment_id un-promoted (e.g. Vercel). needs:[bkit-tests-scope]. Emits no *_ran count. Fold into bkit-tests-check's needs:.",
     },
     {
         id: "bkit-tests-reset",
         file: ".github/workflows/ci.yml",
-        description: "Own the teardown of ONE shared stateful resource (demo tenant, seeded account, fixture bucket) as a JOIN — `bkit-tests-reset` — instead of a cleanup step inside each lane. WHEN: two or more lanes write that resource concurrently, BY DESIGN. Per-lane cleanup CANNOT do the job: a purge that asserts `only canonical rows remain` reds on rows a sibling lane wrote in the gap between them, failing on a state the design calls normal. Wiring: needs:[every lane touching the resource]; `if: always()` so an interrupted or red lane still gets its cleanup; gate on the refs whose credentials the purge needs; SKIP (never fail) when none of those lanes ran, so a PR or docs-only run adds nothing. Deliberately NOT plan-gated — it must run on a partial plan too if the lanes did. NOT a test tier: emits no `<tier>_ran` count, so the capstone asserts its `result` only and tolerates `skipped` / `cancelled`. Fold into bkit-tests-check's `needs:`. DROP if one lane owns the resource, or it is provisioned fresh per run (docs/testing.md § Provision backing services fresh — the preferred answer).",
+        description: "Add `bkit-tests-reset`. WHEN: two or more lanes use ONE long-lived resource (demo tenant, seeded account). Runs after scope + migration, takes a lease, and puts the resource in its known state BEFORE those lanes start. needs: [bkit-tests-scope, bkit-tests-migration]; if tenant_target != ''. Pair with bkit-tests-cleanup. DROP both when the resource is provisioned fresh per run.",
+    },
+    {
+        id: "bkit-tests-cleanup",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-cleanup`, the other half of bkit-tests-reset. Runs last, if: always(), after every lane that used the shared resource. Puts it back and releases the lease, including when a lane failed or the run was cancelled. Capstone reds if a planned reset skipped or cleanup failed.",
+    },
+    {
+        id: "bkit-tests-build-ios",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-build-ios`. WHEN: you ship an iOS app. Same rule on a PR, a push, and a dispatch — not a post-merge canary. needs:[bkit-tests-scope]; if: plan.run_native_ios. Pair with bkit-tests-e2e-ios. DROP if you have no iOS app. e.g. a hosted device-build service.",
+    },
+    {
+        id: "bkit-tests-e2e-ios",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-e2e-ios`. needs: [bkit-tests-scope, bkit-tests-migration, bkit-tests-reset, bkit-tests-build-ios, bkit-tests-build-web]. The if: must name each needs.result because !cancelled() disables GitHub's skip-on-failed-needs. Emit native_e2e_ran. Fold into bkit-tests-check. DROP if you have no iOS app.",
+    },
+    {
+        id: "bkit-tests-build-android",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-build-android`. Same contract as bkit-tests-build-ios, android tokens. DROP if you have no Android app.",
+    },
+    {
+        id: "bkit-tests-e2e-android",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-e2e-android`. Same contract as bkit-tests-e2e-ios, android tokens. DROP if you have no Android app.",
+    },
+    {
+        id: "logging-probe",
+        file: ".github/workflows/ci.yml",
+        description: "Inside each runtime lane (bkit-tests-e2e-web, bkit-tests-live-web, bkit-tests-e2e-ios, bkit-tests-e2e-android), emit one marked event and ask the error tracker whether it arrived. e.g. Sentry. Skip when that lane did not run the probe. A missing marker reds the lane. DROP if you have no error tracker. This is a step, not a job.",
+    },
+    {
+        id: "bkit-tests-deploy",
+        file: ".github/workflows/ci.yml",
+        description: "Add `bkit-tests-deploy`. needs: [bkit-tests-check, bkit-tests-build-web]. Push to the default branch only. Not a required check. Promotes the exact deployment_id the build lane published. A red job means the previous deployment stays live. The host must not auto-build the default branch, and any hold-promotion-until-check setting stays empty.",
+    },
+    {
+        id: "health",
+        file: ".github/workflows/ci.yml",
+        description: "Copy the commented workflow to .github/workflows/health.yml. workflow_run after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. DROP if you have no deployed health URL.",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -940,6 +983,7 @@ export function detectBkitStubs(cwd) {
             severity: "advisory",
             detect: `${stub.file} contains the bkit-stub:${stub.id} sentinel — a commented-in block shipped disabled by default.`,
             action: `${stub.description}\n\n` +
+                `Before enabling a CI lane, read docs/testing.md § CI test tiers and docs/deployments.md (one run per branch, push base, promote after the capstone). The FULL CI SCAFFOLD REFERENCE in ci.yml is the job graph: needs, if, step names. Write the job from that graph and from those docs. Uncomment only a block that is already commented YAML or shell.\n\n` +
                 `Decide with the user: (a) enable — uncomment the YAML/shell block AND delete the \`# bkit-stub:${stub.id} — ...\` header line; (b) customise — adjust paths/secrets/conditions before uncommenting; (c) dismiss — delete the entire stub block (header + commented body).\n\n` +
                 `Until the sentinel is removed, this advisory fires every install / check.`,
         });
@@ -2292,7 +2336,7 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * `<!-- bkit:start -->` block) embeds a managed-version marker that differs from
  * the installing bkit version — i.e. the consumer bumped the bkit package but did
  * not re-render, so agents read STALE doctrine (testing.md / deployments.md /
- * plans/template.md, etc.) even though the prompts that point at them are fresh.
+ * templates/bkit-plan.md, etc.) even though the prompts that point at them are fresh.
  *
  * Mirrors detectRenderedPromptsStale (#256): the marker is stamped into the first
  * line of each managed block at render (via the {{BKIT_MANAGED_MARKER}} token), so
@@ -2308,7 +2352,7 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * The managed-doc SET is enumerated from the package's template tree
  * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
  * `docs/plans/{YYYYMM}/…` plans + logs are user-authored instances of
- * plans/template.md and inherit its `bkit:start` block, so a glob would
+ * `docs/templates/bkit-plan.md` and inherit its `bkit:start` block, so a glob would
  * false-positive on every plan ever written. Only the canonical docs bkit ships
  * carry (and are checked for) the marker.
  *
@@ -2346,7 +2390,7 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
         id: "bkit-managed-docs-stale",
         severity: onProtectedBranch ? "blocker" : "advisory",
         detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
-        action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The docs/*.md managed blocks (testing.md, deployments.md, plans/template.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
+        action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The docs/*.md managed blocks (testing.md, deployments.md, templates/bkit-plan.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
     };
 }
 // ---------------------------------------------------------------------------

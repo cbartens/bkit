@@ -2360,7 +2360,8 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     "name: CI\n" +
     "# bkit:start\n" +
     "concurrency:\n" +
-    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n" +
+    "  group: ci-${{ github.workflow }}-${{ github.ref }}\n" +
+    "  cancel-in-progress: true\n" +
     "jobs:\n" +
     "  bkit-tests-check:\n" +
     "    if: ${{ !cancelled() }}\n" +
@@ -2389,14 +2390,19 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     expect(f?.severity).toBe("advisory");
     expect(f?.action).toContain("!cancelled()");
   });
-  it("fires when concurrency cancels push runs (cancel-in-progress: true)", () => {
+  it("fires when concurrency cancels pull requests only", () => {
     writeCi(
       GOOD.replace(
-        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
         "cancel-in-progress: true",
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
       ),
     );
-    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("PR-only");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("one run per branch");
+  });
+
+  it("fires when the concurrency group is keyed on github.run_id", () => {
+    writeCi(GOOD.replace("github.ref", "github.run_id"));
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("github.run_id");
   });
   it("fires when the capstone has no executed-count assertion", () => {
     writeCi(GOOD.replace('      - run: test "$unit_ran" -gt 0\n', "      - run: echo ok\n"));

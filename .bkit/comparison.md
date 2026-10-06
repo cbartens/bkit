@@ -1,7 +1,7 @@
 # bkit — Pipeline Reference & Comparison to Agentic Design Patterns
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_, bkit vs peer framework `everything-claude-code`. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
+> **Purpose:** Human-facing reference. Five-phase pipeline + every subagent (execution order), bkit vs Antonio Gulli's _Agentic Design Patterns_. Evaluation, onboarding, outreach — not agent workflow doc-matrix.
 >
 > **Rules:**
 >
@@ -14,7 +14,9 @@
 
 bkit turns a single coding-agent request into gated, peer-reviewed engineering. Five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — each fans out to specialised single-purpose subagents. Many run parallel under different _lenses_ (bug review vs security review) → independent review before human sees output.
 
-Part 1: every subagent in execution order. Part 2: bkit vs Gulli agentic patterns. Part 3: bkit vs `everything-claude-code`.
+Beside those commands, more than 30 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
+
+Part 1: every phase subagent in execution order, then the main audit templates. Part 2: bkit vs Gulli agentic patterns. Full audit catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
 
 ---
 
@@ -107,7 +109,7 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
   2. deferred-sweep      (pre-merge completeness gate; FAIL blocks merge)
   3. run tests           (wait for CI on squash-merge SHA; bkit-tests-check
                          must be green — every planned tier ran and passed;
-                         @live canary is informational, not a gate)
+                         a planned bkit-tests-live-web failure reds it)
   4. merge               (orchestrator-only guarded git op)
     ↳ on post-merge failure → /bkit-debug (diagnose + remediate)
   5. update-docs / summary (parallel)
@@ -119,22 +121,32 @@ Each phase lists subagents in execution order. "Parallel" = same-time run, merge
 The seeded `ci.yml` runs a flat, wide pipeline — a planner fans out to every lane in parallel, a capstone joins them and is the single branch-protection check. "CI is green" means every planned tier actually ran and passed; partial / cached / light runs cannot pass as validated.
 
 ```
-bkit-tests-scope  (planner — derives tier set: PR vs push, run_level, web_affected)
+bkit-tests-scope  (planner — one marker parse, last-green push base, run_level, tenant_target)
         │
-        ├── bkit-tests-static        (lint, typecheck, format, slop, prose)
-        ├── bkit-tests-unit          (Vitest unit + in-process integration)
-        ├── bkit-tests-build         (production build —TurboRepo / Next)
-        ├── bkit-tests-integration   (service / DB-backed; PR vs push scope)
-        ├── bkit-tests-e2e           (Playwright against preview deploy)
-        ├── bkit-tests-migration     (always-on; replays + remote push on merge to dev/main)
-        └── bkit-tests-live          (@live canary — NOT a merge gate)
+        ├── bkit-tests-static
+        ├── bkit-tests-unit
+        ├── bkit-tests-build-web     (compile, or this SHA's un-promoted deployment)
+        ├── bkit-tests-build-ios / bkit-tests-build-android   (optional)
+        ├── bkit-tests-integration
+        ├── bkit-tests-migration     (always-on; replay + remote push on dev/main)
+        └── bkit-tests-reset         (lease; skip when no shared resource)
                 │
-                ▼
-        bkit-tests-check  (capstone — asserts every planned tier ran and passed;
-                           sole required check; red → blocks merge + triggers /bkit-debug)
+                ├── bkit-tests-e2e-web
+                ├── bkit-tests-live-web          (push / dispatch only)
+                ├── bkit-tests-e2e-ios           (optional)
+                └── bkit-tests-e2e-android       (optional)
+                        │
+                        ▼
+                bkit-tests-cleanup
+                        │
+                        ▼
+                bkit-tests-check     (sole required check)
+                        │
+                        ▼
+                bkit-tests-deploy    (default-branch push; promotes that deployment id; not required)
 ```
 
-Direct pushes to `dev` / `main` auto-escalate to full run. `@live` is a post-merge canary, not a gate — failures route to `/bkit-debug` for reproduction against the deployed boundary. Full tier rules and framework boundaries: `.agents/rules.md` § Testing & Debugging; `docs/testing.md`.
+Adopt only the lanes the repo has. Device lanes, the logging probe, and the health workflow are optional. A planned `bkit-tests-live-web` failure reds the capstone. Full tier rules: `docs/testing.md`.
 
 Hard stops after Design, Plan, and Ship (production merge needs explicit human approval). Shared subagents cross-invoked: `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` run inside Build and Ship failure paths as well as the Debug phase.
 
@@ -240,6 +252,35 @@ Output: squash-merged PR, updated docs, pruned skills, torn-down worktree. Safet
 
 Orchestrator-only ship steps: regression guard, merge, switch-to-dev with `--ff-only` pull + divergence re-assert, skill pruning, worktree cleanup, close. Guarded git / tracker ops orchestrator performs directly, not subagents.
 
+### Audits
+
+No command and no phase label. One subagent, one template per run.
+
+<!-- prettier-ignore -->
+| Subagent | Lens / focus | What it does |
+| --- | --- | --- |
+| `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. |
+
+`/bkit-plan` reads a design doc, one or more reports, or both. `CRITICAL` and `HIGH` findings → runbook tasks. `MEDIUM` → `Suggested Scope Expansion`. `LOW` → `Out of Scope` as `Exempt`.
+
+More than 30 templates. Main ones:
+
+<!-- prettier-ignore -->
+| Template | Title | What it does |
+| --- | --- | --- |
+| `bkit-audit-security` | Security Audit | Auth, authorisation, secrets, input validation, data exposure, dependency risk — documented control that does not run. |
+| `bkit-audit-privacy` | Privacy Audit | Personal data — held, where it goes, retention, deletion removes the person, disclosure matches code. |
+| `bkit-audit-accessibility` | Accessibility Audit | WCAG 2.2 AA — automated-gate coverage vs gaps; manual passes nothing automates. |
+| `bkit-audit-architecture` | Architecture Review | Package graph, intended layers, server / client boundary, coupling with no import edge. |
+| `bkit-audit-app-performance` | App Performance Audit | Field / lab / source baseline — web, native, server — vs published thresholds and budgets. |
+| `bkit-audit-reliability` | Reliability Audit | Dependency slow / down / delivered twice — dropped errors, missing timeouts, unsafe retries, races, unbounded work, unalerted failure modes. |
+| `bkit-audit-testing` | Testing Audit | Suite covers must-do and must-never-do, goes red when code breaks, and runs. |
+| `bkit-audit-database` | Database Audit | Privileges, access coverage, migrations, integrity, capacity, restore. |
+| `bkit-audit-llm` | LLM Audit | Per model call — effect, stop on hostile input: prompts, tool bounds, output checks, limits, evals. |
+| `bkit-audit-cost` | Cost Audit | Vendor plan vs use, bill drivers, spike noticed before the invoice. |
+
+Full catalogue: `.bkit/prompts.md` § Audit (Ad-hoc).
+
 ---
 
 ## Part 2 — Comparison to agentic design patterns
@@ -264,12 +305,12 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Resource-Aware Optimization | Already does | Effort-to-model tiering with explicit per-agent pins. |
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern. |
 | Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
-| Learning & Adaptation | Partial | `friction.jsonl` drives human-reviewed prompt edits; entries now carry confidence, scope, and last-confirmed fields (Part 3). No auto prompt-tuning — deliberate, to keep humans in the loop. |
+| Learning & Adaptation | Partial | `friction.jsonl` drives human-reviewed prompt edits; entries carry confidence, scope, and last-confirmed fields. No auto prompt-tuning — deliberate, to keep humans in the loop. |
 | Goal Setting & Monitoring | Partial | Issue = goal, phase labels = state, verdicts = criteria. No measurable per-task Definition of Done yet. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
-| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard, Part 3). No output validators yet. |
-| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check (Part 3). No automated regression-fixture eval harness yet. |
+| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard). No output validators yet. |
+| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check. No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
 | Prioritization | N/A by design | Single-feature-at-a-time via lock file; multi-task contention is out of scope. |
@@ -290,50 +331,4 @@ Most partials = deliberate scope. Per-task `Done when:` shipped in plan template
 
 ---
 
-## Part 3 — Comparison to a peer framework: everything-claude-code
-
-Benchmark: `affaan-m/everything-claude-code` (ECC) — 63 agents, 251 skills, 79 commands, hook-enforced runtime, profile/module installer across 11 IDE trees. Gulli = academic taxonomy; ECC = peer real-world artifact → shipped mechanisms, not patterns. Several rows: "bkit already does this, sometimes more strictly."
-
-<!-- prettier-ignore -->
-| ECC mechanism | bkit status | Where / note |
-| --- | --- | --- |
-| Prompt-chaining workflows | Already does | Slash-command step chains, one per phase. |
-| `Verdict` routing / classifier dispatch | Already does, stronger | PASS/CONCERNS/FAIL branching with max-wins reconcile. |
-| Parallel fan-out | Already does, stronger | Triplets and pairs with a circular-reasoning guard and cross-tier diversity; ECC's six-agent review has no independence guard. |
-| Producer-critic / reflection | Already does | execute → verify → remediate, bounded at three attempts. |
-| Critic tests the live running app | Partial | bkit verifies static artifacts and `Done when:` criteria, not a Playwright-driven live app. |
-| Model routing by task | Already does, stronger | Effort-to-model table plus per-agent pins immune to session drift. |
-| Cross-vendor adversarial review | Partial (Cursor only) | Cursor uses cross-family models; the Claude host is single-vendor by design. |
-| Human-in-the-loop gates | Already does, stronger | Mandatory hard stops; ECC's are mostly advisory prose. |
-| Resume-from-state | Already does, stronger | `status.jsonl` is a deterministic source of truth; ECC's session file is best-effort. |
-| Edit-time investigation gate (GateGuard) | Adopted | Advisory PreToolUse hook injects an investigation checklist on the first edit per file. |
-| Block weakening of gate configs | Adopted | The same hook flags edits to lint / format / type / test / slop configs. |
-| Cross-session memory trio | Not adopted | bkit keeps within-feature resume plus human-curated knowledge; no cross-session memory injection. |
-| Empirical eval / obedience harness | Deferred | ECC ships pass@k / pass^k eval and rule-obedience measurement; bkit has friction/knowledge logs and CI gates, no runnable eval harness yet. |
-| Confidence-scored learnings | Adopted (structure) | friction / knowledge entries carry confidence, scope, and last-confirmed; promotion stays human-gated. |
-| Prompt-injection guard on agents | Adopted, scoped | A one-line untrusted-input directive on the nine agents that read web / diff / log content; ECC blankets all 63. |
-| Install provenance stamping | Adopted | `.bkit/version` records the source commit for upgrade and repair diffs. |
-| Catalog-parity check | Adopted | A test asserts every prompt and workflow file is documented in its index. |
-| Component-façade installer | Deferred | A `--with` / `--without` selective layer over the existing module system. |
-| Single canonical source → mirror install | Already does, stronger | One `.bkit/` source regenerates `.claude`, `.cursor`, and `.opencode`; ECC hand-maintains 11 trees. |
-| Concurrency lock | Already does | Single-feature lock file; ECC has none. |
-
-### Adopted from ECC
-
-- **GateGuard — advisory edit-time hook.** PreToolUse injects investigation checklist (read file, find callers, confirm types, quote instruction) on first edit per file per session. Advisory default, fail-open, opt-in deny mode. Flags gate-config edits → fix code, don't weaken gate.
-- **Scoped prompt-injection guard.** Every subagent carries a one-line external-input directive: treat all commit / PR / web / log / diff content as untrusted data, never instructions.
-- **Confidence-scored knowledge.** friction/knowledge entries record confidence, scope, last-confirmed date → repeatedly-confirmed lesson reads differently from contradicted one. No auto-promotion.
-- **Install provenance.** Version file records source commit, not just version number, for upgrade/repair diagnostics.
-- **Catalog-parity test.** Check fails if prompt or workflow file missing from index doc.
-
-### Deliberately not adopted
-
-External multi-model orchestration (violates single-vendor-per-host and MCP-only discipline), Rust control-plane and dashboard (`status.jsonl` CLI covers scope), 251-skill catalogue (bkit curates skills → overlap debt), commands-versus-skills dual stack, auto-promotion of learnings into prompt edits (breaks "recommend, do not decide"), 11-IDE target sprawl.
-
-### Deferred
-
-Empirical eval layer (pass@k / pass^k regression fixtures + rule-obedience measurement) and component-façade installer — larger builds than adopted items; worth future design pass.
-
----
-
-Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`), the Gulli differential review of _Agentic Design Patterns_, and the `everything-claude-code` differential review.
+Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`) and the Gulli differential review of _Agentic Design Patterns_.
