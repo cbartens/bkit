@@ -26,7 +26,7 @@
 
 ### Context & Goals
 
-An error tracker does not distinguish a bug from a handled outcome logged at error. Both arrive unresolved, and the second kind is usually most of the stream. Left alone, the noise trains people to ignore the board, and the one real defect in it goes unread. The level belongs at the call site, not in a tracker-side filter (e.g. a `beforeSend` denylist). The report recommends a one-line level change and a warnings-doc row; making that change is the next step. Some failures never raise in app code, so they exist only in a platform log: a function killed at its time limit reports nothing, and a database that refuses a connection or a grant may log it only there. One incident usually shows in several logs at once, so they are read in one sweep. A platform-only failure normally needs a new tracker signal, so the next one arrives by itself. Adding the signal is the next step.
+An error tracker does not distinguish a bug from a handled outcome logged at error. Both arrive unresolved, and the second kind is usually most of the stream. Target failure: **noise that trains people to ignore the board, so the one real defect goes unread.**
 
 **Applies when:** an error tracker, runtime logs, or both. None → one `N/A` row with evidence, never "clean".
 

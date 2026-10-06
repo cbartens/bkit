@@ -26,7 +26,7 @@
 
 ### Context & Goals
 
-An annotation costs nothing to ignore: the job is green, the change merges, and the warning is emitted again next run. Two failures hide there. A step reports success while the operation was refused, skipped, or ignored — the annotation was the only signal. A deprecation with a deadline stays green until the runtime or API disappears, and CI goes red on a date nobody chose. Lint warnings are the third population, and the expensive one is a suppression on the wrong node: a dead disable on one line, while the node that trips the rule sits further down with only a comment. Reading the annotation's line and assuming the directive above it is the relevant one is how that survives.
+An annotation costs nothing to ignore: the job is green, the change merges, and the warning is emitted again next run. Two failures hide there. A step reports success while the operation was refused, skipped, or ignored — the annotation was the only signal. A deprecation with a deadline stays green until the runtime or API disappears, and CI goes red on a date nobody chose.
 
 **Applies when:** CI emits annotations, warnings, or notices (e.g. GitHub Actions check-run annotations, GitLab code-quality reports, Buildkite annotations). None → one `N/A` row with evidence, never "clean".
 

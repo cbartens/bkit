@@ -26,7 +26,7 @@
 
 ### Context & Goals
 
-Dead code here is a control that looks live and is not: a limiter gated on an env var nobody sets, an end-to-end assertion against a test id no component renders, a config key calling an API its pinned dependency removed. Lint, typecheck, and an unused-export scan all pass on those — an unused export is valid, an unmatched locator can be a passing assertion, and an unset var looks optional. Nothing in the default toolchain asks whether the control runs. Every available tool can prove a symbol is used. None can prove it is not. Cheap detectors produce candidates; the sweep spends its effort eliminating them. Target failure: **a control that reads as live in review and never executes**.
+Dead code here is a control that looks live and is not: a limiter gated on an env var nobody sets, an end-to-end assertion against a test id no component renders, a config key calling an API its pinned dependency removed. Target failure: **a control that reads as live in review and never executes**.
 
 **Applies when:** application source, config, or a package manifest. None → one `N/A` row with evidence, never "clean".
 

@@ -30,7 +30,7 @@ A board with no stated rule is the order issues happened to be filed in. A searc
 
 **Applies when:** a tracker holds open issues. None → one `N/A` row with evidence, never "clean".
 
-**Cadence:** monthly for the clocks. Run Steps 1, 10, and 11. Step 3 stale only. Step 4 in-flight age and the launch target. Step 5 only for the eight-week launch move and stuck-item lifts. Carry the previous proposal forward for every other issue. The full rank (Steps 2–9) runs when a milestone opens or closes, a ship cycle lands a cluster, a lane's contents turn over, or an audit files a batch of follow-ups. An issue filed since the previous report that has gone a week with no size or priority triggers a mini-pass: Steps 3–7 and 9 on those issues only, same two rules. That week is the anchor standard's triage of new issues. The mini-pass still runs Steps 1, 10, and 11.
+**Cadence:** monthly for the clocks. Steps 1, 10, 11 always; 3 stale only; 4 in-flight age and the launch target; 5 only the eight-week launch move and stuck-item lifts. Other issues carry the previous proposal forward. Full rank (Steps 2–9) when a milestone opens or closes, a ship cycle lands a cluster, a lane's contents turn over, or an audit files a batch of follow-ups. Mini-pass when an issue filed since the previous report has gone a week with no size or priority (anchor-standard triage of new issues): Steps 3–7 and 9, plus 1, 10, 11; same two rules.
 
 **Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
 
