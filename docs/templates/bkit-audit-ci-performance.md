@@ -26,11 +26,15 @@
 
 ### Context & Goals
 
-CI time gets re-argued from impressions. Two mistakes recur. A lane's own duration says nothing: only its finish time relative to the run's shows whether trimming it saves wall clock. Cost and latency are different purchases: state which a change buys, every time. Target failure: effort spent on a lane that does not hold the run open, or a latency change reported as money saved.
+CI time gets re-argued from impressions. Two mistakes recur:
+
+- Lane duration alone ≠ wall-clock savings — only finish time relative to the run shows whether trimming it helps.
+- Cost and latency are different purchases: state which a change buys, every time.
+- Target failure: effort on a lane that does not hold the run open, or a latency change reported as money saved.
 
 **Applies when:** a CI workflow. None → one `N/A` row with evidence, never "clean".
 
-**Cadence:** quarterly. Extra pass when workflow topology changes: a new lane, a runner class, or a cache.
+**Cadence:** quarterly; extra pass when workflow topology changes (new lane, runner class, or cache).
 
 **Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
 
@@ -44,15 +48,15 @@ CI time gets re-argued from impressions. Two mistakes recur. A lane's own durati
 
 ### Scope
 
-- Per-lane duration, queue, and finish time, and whether the lane holds the run open.
+- Per-lane duration, queue, finish time, and whether the lane holds the run open.
 - Distributions (p50 and p90), not a single run, and job timeouts.
-- Change lead time from push to green to deployed, split by segment.
-- Step timings, cache hit rate, shard balance, per-job setup cost, and artifacts, on the lanes that matter.
-- Every cache: hit or miss, restore time against a cold rebuild, usage against the eviction limit.
-- What a change actually runs, including path filters and required checks.
-- The local gate, timed separately, with cache forced off.
-- Re-runs, failures that passed later, and duplicate runs, as minutes.
-- Billable minutes and cost per successful merge. Latency or cost, stated on every finding.
+- Change lead time push → green → deployed, split by segment.
+- Step timings, cache hit rate, shard balance, per-job setup cost, artifacts — on lanes that matter.
+- Every cache: hit or miss, restore time vs cold rebuild, usage vs eviction limit.
+- What a change actually runs: path filters and required checks.
+- Local gate, timed separately, cache forced off.
+- Re-runs, failures that passed later, duplicate runs — as minutes.
+- Billable minutes and cost per successful merge; latency or cost on every finding.
 
 ### Out of Scope
 
@@ -74,17 +78,17 @@ CI time gets re-argued from impressions. Two mistakes recur. A lane's own durati
 Always verify.
 
 - [ ] **CI API:** Steps 2–6, 10–11 — read-only run and job metadata, e.g. `gh run view`, `gh api`. Fallback: workflow files only; timings `Not Checked`.
-- [ ] **Workflow Files:** Steps 3, 7–10 — workflows, task graph, and cache config readable. Fallback: none; those steps `Not Checked`.
-- [ ] **Web:** Step 12 — fetch anchor standards and current runner prices. Fallback: versions and prices recorded as unread. NEVER reuse a previous report's prices.
+- [ ] **Workflow Files:** Steps 3, 7–10 — workflows, task graph, cache config readable. Fallback: none; those steps `Not Checked`.
+- [ ] **Web:** Step 12 — fetch anchor standards and current runner prices. Fallback: versions and prices unread. NEVER reuse a previous report's prices.
 
 #### Conditional
 
 Verify only when applicable.
 
-- [ ] **Host Metrics:** The host publishes queue time → Step 3 — e.g. the Actions performance page. Fallback: queue computed from timestamps only.
-- [ ] **Cache API:** A cache listing exists → Step 7 — e.g. `gh cache list`. Fallback: log lines only; eviction `Not Checked`.
-- [ ] **Remote Builders:** A job only waits on an external builder → Step 6 — builder API or log, e.g. EAS GraphQL. Fallback: wrapper-job duration only; worker time `Not Checked`.
-- [ ] **Local Gate:** A pre-push or local CI command exists → Step 9. Fallback: skip with evidence.
+- [ ] **Host Metrics:** Host publishes queue time → Step 3 — e.g. Actions performance page. Fallback: queue from timestamps only.
+- [ ] **Cache API:** Cache listing exists → Step 7 — e.g. `gh cache list`. Fallback: log lines only; eviction `Not Checked`.
+- [ ] **Remote Builders:** Job only waits on external builder → Step 6 — builder API or log, e.g. EAS GraphQL. Fallback: wrapper-job duration only; worker time `Not Checked`.
+- [ ] **Local Gate:** Pre-push or local CI command exists → Step 9. Fallback: skip with evidence.
 
 ### 🔒 Gate 1: Prerequisites Check
 
@@ -95,9 +99,9 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count its findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Reference:** Name the reference run ids, their event type, and the date. A push to the integration branch and a pull request are different pipelines (some lanes are push-only). Never compare them as one number without saying so. Record whether each run was green. A red lane exits early and under-reports its own duration. Runner classes and external queues drift, so the date matters. **Done when:** `Reference` holds ids, event types, conclusions, and the date.
-- [ ] **Step 3 — Lanes:** Per job: conclusion, duration, start, and a column for whether it holds the run open. Duration alone is not that column. Add queue time. Duration from start to completion hides time waiting for a runner. Queue = run created → job started; a job with `needs:` also waits on those jobs, so subtract their finish to get runner wait, and keep the `needs:` wait for Step 5. Cross-check the host's average queue time per job. e.g. GitHub Actions:
+- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Reference:** Name reference run ids, event type, date. Push to integration branch vs pull request = different pipelines (some lanes push-only); never compare as one number without saying so. Record green/red per run — red lanes exit early and under-report duration. Runner classes and external queues drift; date matters. **Done when:** `Reference` holds ids, event types, conclusions, date.
+- [ ] **Step 3 — Lanes:** Per job: conclusion, duration, start, column for holds-the-run-open (duration alone is not that column). Add queue time — duration start→completion hides runner wait. Queue = run created → job started; with `needs:` subtract upstream finish for runner wait; keep `needs:` wait for Step 5. Cross-check host average queue per job. e.g. GitHub Actions:
 
   ```
   gh run view <id> --json jobs \
@@ -107,18 +111,18 @@ Verify only when applicable.
     --jq '.jobs[] | "\(.name)\t\(.created_at)\t\(.started_at)"'
   ```
 
-  **Done when:** `Lanes` has duration, queue, finish, and holding-the-run-open per job.
+  **Done when:** `Lanes` has duration, queue, finish, holding-the-run-open per job.
 
-- [ ] **Step 4 — Distributions:** One run cannot tell a regression from noise. Pull at least 20 recent runs of the CI workflow per event type. Keep green and red runs apart. Report p50 and p90 for total wall clock and for the finish time of the critical-path lane, per event type. Say how typical the Step 2 runs are. Every job sets a timeout at roughly 1.5× its p99 (in a sample this size, its slowest run). A job with no timeout runs until the host default (e.g. GitHub Actions, 360 minutes) and bills for all of it. e.g. `gh api "repos/{owner}/{repo}/actions/workflows/<workflow>/runs?event=push&branch=<branch>&per_page=30"`. **Done when:** p50 and p90 in `Distributions`, and each job is within its timeout rule or is a finding.
-- [ ] **Step 5 — Lead Time:** Lane finish times are one segment. Report DORA change lead time for a push to the integration branch: from the push, to all lanes green, to deployed. Split into queue (Step 3), critical-path execution, `needs:` waits, and re-run time (Step 10). Name the segment that dominates. That is the one worth buying down. **Done when:** `Lead Time` names the split and the dominating segment.
-- [ ] **Step 6 — Timings:** Inside the lanes that hold the run open, or that a proposal would trim. Step timings. Task-runner cache hit rate: zero cached on a lane that should cache = finding. Test counts executed: wall clock per test compares across runs better than wall clock alone. A job that only wraps a remote builder hides the real work; record builder queue and build time separately from the wrapper. Shard balance: slowest shard over fastest, above about 1.3× means one shard holds the lane open. Fixed cost per job: checkout, toolchain setup, and install, multiplied by the number of parallel jobs. Splitting a lane buys wall clock and pays that setup again. Artifact upload and download time, and stored size. Large reports uploaded on every green run cost time and storage. e.g. `gh run view <id> --log --job=<jobId>` and grep cache and executed-count lines. **Done when:** `Timings` holds hit rate, counts, shard ratio or "not sharded", setup cost, and artifact size for each lane that matters.
-- [ ] **Step 7 — Caches:** Every cache, not only the task runner. Record hit or miss and restore time: package-manager store, framework build cache, browser binaries, native build caches (e.g. Gradle, CocoaPods, hosted mobile builds), and image layer caches. Compare restore time with a cold install. A cache slower to restore than to rebuild = finding. Check cache usage against the eviction limit. A full cache evicts entries that matter. **Done when:** `Caches` row per cache: hit or miss · restore vs cold · over the limit, or absent with evidence.
-- [ ] **Step 8 — Affected:** Do pull-request lanes run only what changed (affected graph, or a path filter)? For a docs-only change and for a change scoped to one app, read `on:` triggers, `paths` filters, and job-level `if:` conditions, and say which lanes each would start. Where a `paths` filter is safe, propose it, and say how it interacts with required checks. A workflow skipped by a path filter leaves its required checks pending. A job skipped by `if` reports success. **Done when:** `Affected` says what each sample change starts, and names any required-check trap.
-- [ ] **Step 9 — Local:** Time the local gate against the whole tree with cache forced off. A warm or affected-only number is meaningless. Record that time beside the CI critical path. **Done when:** `Local` holds the forced whole-tree time, the command, and whether it is on the critical path.
-- [ ] **Step 10 — Reruns:** A red lane costs a full re-run. Read the concurrency block before counting. If in-progress runs are not cancelled on the integration branch, a fix-and-repush is two complete runs. If they are cancelled, count cancelled minutes separately from re-runs, and do not treat either as zero. The flakiest lane being the slowest lane compounds wall clock; the minutes belong in this ranking, and the cause belongs to `bkit-audit-flakes`. Over the Step 4 window: runs with attempt above 1, and jobs that failed then passed on the same commit, per lane. Turn both into minutes. Also count commits that ran under both push and pull request, and runs that went to completion after a newer run had started. **Done when:** `Reruns` holds those minutes and what the concurrency block actually does.
-- [ ] **Step 11 — Cost:** For the Step 4 window, billable minutes per lane times that runner class's current per-minute price, remote-builder minutes, and mobile-build credits. Read the prices this run. Derive the cost per successful merge to the integration branch, re-runs included. Spend outside CI minutes → `bkit-audit-cost`. Before recommending a runner class change for a CPU-bound lane, name the one-run experiment on a larger or different-architecture runner that would compare cost and duration. Running it is the next step, because it changes a workflow. Every finding states whether it buys latency or cost. **Done when:** `Cost` holds minutes, current prices, cost per merge, and the experiment name or "none".
-- [ ] **Step 12 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per DORA metric, host performance metric, and caching, sharding, concurrency, or billing practice in the anchor list → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 13 — Anything Else:** (a) Everything changed since previous report's commit touching the pipeline (workflows and composite actions, jobs, and their `needs:`, runner classes, task-runner config and cache keys, shard settings, remote-build profiles, the local pre-push gate) → one-line verdict each. (b) Bounded ~30 min pass: what a senior CI engineer flags that no step asks; read what happened since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 4 — Distributions:** One run cannot separate regression from noise. Pull ≥20 recent CI workflow runs per event type; keep green and red apart. Report p50 and p90 for total wall clock and critical-path lane finish, per event type. Say how typical Step 2 runs are. Every job timeout ≈1.5× its p99 (in this sample size, slowest run). No timeout → host default (e.g. GitHub Actions 360 minutes) and bills all of it. e.g. `gh api "repos/{owner}/{repo}/actions/workflows/<workflow>/runs?event=push&branch=<branch>&per_page=30"`. **Done when:** p50 and p90 in `Distributions`; each job within timeout rule or finding.
+- [ ] **Step 5 — Lead Time:** Lane finish times = one segment. Report DORA change lead time for push to integration branch: push → all lanes green → deployed. Split queue (Step 3), critical-path execution, `needs:` waits, re-run time (Step 10). Name dominating segment — that is the one worth buying down. **Done when:** `Lead Time` names split and dominating segment.
+- [ ] **Step 6 — Timings:** Inside lanes that hold the run open or that a proposal would trim: step timings; task-runner cache hit rate (zero cached on a lane that should cache = finding); test counts executed (wall clock per test compares runs better than wall clock alone); remote-builder jobs — record builder queue and build time separately from wrapper; shard balance — slowest/fastest >~1.3× means one shard holds the lane; fixed cost per job (checkout, toolchain setup, install) × parallel jobs (splitting buys wall clock, pays setup again); artifact upload/download time and stored size (large reports every green run cost time and storage). e.g. `gh run view <id> --log --job=<jobId>` and grep cache and executed-count lines. **Done when:** `Timings` holds hit rate, counts, shard ratio or "not sharded", setup cost, artifact size per lane that matters.
+- [ ] **Step 7 — Caches:** Every cache, not only task runner. Hit or miss and restore time: package-manager store, framework build cache, browser binaries, native build caches (e.g. Gradle, CocoaPods, hosted mobile builds), image layer caches. Compare restore vs cold install — restore slower than rebuild = finding. Cache usage vs eviction limit — full cache evicts entries that matter. **Done when:** `Caches` row per cache: hit or miss · restore vs cold · over limit, or absent with evidence.
+- [ ] **Step 8 — Affected:** Do PR lanes run only what changed (affected graph or path filter)? For docs-only change and one-app-scoped change, read `on:` triggers, `paths` filters, job-level `if:` — which lanes each starts. Where `paths` filter is safe, propose it and say required-check interaction: workflow skipped by path filter leaves required checks pending; job skipped by `if` reports success. **Done when:** `Affected` says what each sample change starts and names any required-check trap.
+- [ ] **Step 9 — Local:** Time local gate on whole tree, cache forced off — warm or affected-only numbers are meaningless. Record beside CI critical path. **Done when:** `Local` holds forced whole-tree time, command, whether on critical path.
+- [ ] **Step 10 — Reruns:** Red lane costs full re-run. Read concurrency block before counting. If in-progress runs not cancelled on integration branch, fix-and-repush = two complete runs; if cancelled, count cancelled minutes separately from re-runs — neither is zero. Flakiest lane slowest lane compounds wall clock; minutes here, cause → `bkit-audit-flakes`. Over Step 4 window: runs attempt >1; jobs failed then passed same commit, per lane — both → minutes. Also commits under both push and PR; runs completing after newer run started. **Done when:** `Reruns` holds those minutes and what concurrency block does.
+- [ ] **Step 11 — Cost:** For Step 4 window: billable minutes per lane × runner class current per-minute price, remote-builder minutes, mobile-build credits — read prices this run. Derive cost per successful merge to integration branch, re-runs included. Spend outside CI minutes → `bkit-audit-cost`. Before recommending runner class change for CPU-bound lane, name one-run experiment on larger/different-architecture runner comparing cost and duration (running it is next step — changes workflow). Every finding states whether it buys latency or cost. **Done when:** `Cost` holds minutes, current prices, cost per merge, experiment name or "none".
+- [ ] **Step 12 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per DORA metric, host performance metric, caching/sharding/concurrency/billing practice in anchor list → checked (name step) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 13 — Anything Else:** (a) Everything changed since previous report's commit touching pipeline (workflows and composite actions, jobs and `needs:`, runner classes, task-runner config and cache keys, shard settings, remote-build profiles, local pre-push gate) → one-line verdict each. (b) Bounded ~30 min pass: what senior CI engineer flags that no step asks; read since previous run (incidents, new `docs/failures.jsonl` rows) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
