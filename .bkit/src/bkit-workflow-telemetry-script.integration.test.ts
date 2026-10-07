@@ -91,6 +91,27 @@ describe.skipIf(!hasTools)("bkit-workflow-telemetry.sh — per-workflow run row"
     expect(row.prNumber).toBeUndefined(); // non-ship run rows carry no PR number
   });
 
+  it("carries planSource brief from this run's workflow-meta row; absent when the run had a plan", () => {
+    const status = path.join(dir, "docs/plans/202607/logs/fid/status.jsonl");
+    spawnSync("bash", [SCRIPT, "build", "202607", "fid"], { cwd: dir, encoding: "utf8" });
+    fs.appendFileSync(
+      status,
+      JSON.stringify({
+        type: "workflow-meta",
+        workflow: "build",
+        at: "2020-01-01T00:00:01Z",
+        planSource: "brief",
+      }) + "\n",
+    );
+    spawnSync("bash", [SCRIPT, "build", "202607", "fid"], { cwd: dir, encoding: "utf8" });
+    const stats = fs.readFileSync(path.join(dir, ".bkit/stats.jsonl"), "utf8").trim().split("\n");
+    const planned = JSON.parse(stats[stats.length - 2]);
+    const brief = JSON.parse(stats[stats.length - 1]);
+    expect(planned.planSource).toBeUndefined();
+    expect(brief.planSource).toBe("brief");
+    expect(validate(brief).ok).toBe(true);
+  });
+
   it("never leaves a malformed row even when ledgers are absent", () => {
     fs.rmSync(path.join(dir, ".bkit/friction.jsonl"));
     spawnSync("bash", [SCRIPT, "design", "202607", "fid"], { cwd: dir, encoding: "utf8" });

@@ -132,7 +132,7 @@ export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
  */
 export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
-/** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
+/** The decision lifecycle — a separate axis from the triage ladder. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
 export const FEATURE_STATUSES = new Set([
     "DESIGNED",
@@ -262,7 +262,7 @@ export function validate(event) {
         return { ok: false, reason: `${kind} rows do not carry severity` };
     }
     // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
-    // decision and knowledge, absent elsewhere. Optional: absent = ACTIVE on that lifecycle.
+    // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
     // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
     if (SEVERITY_KINDS.has(kind)) {
         if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"])) {
@@ -272,11 +272,11 @@ export function validate(event) {
             };
         }
     }
-    else if (kind === "decision" || kind === "knowledge") {
+    else if (kind === "decision") {
         if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"])) {
             return {
                 ok: false,
-                reason: `${kind} status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+                reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
             };
         }
     }
@@ -353,6 +353,9 @@ export function validate(event) {
             if (e[f] !== undefined && typeof e[f] !== "number") {
                 return { ok: false, reason: `outcome ${f} must be a number when present` };
             }
+        }
+        if (e["planSource"] !== undefined && e["planSource"] !== "brief") {
+            return { ok: false, reason: 'outcome planSource must be "brief" when present' };
         }
         // coverage is optional + per-tier; validate structure only when present.
         if (e["coverage"] !== undefined) {
@@ -586,7 +589,12 @@ export function workflowTelemetry(result, workflow) {
         .filter((e) => e.kind === "outcome" && e.workflow === workflow)
         .sort((a, b) => a.ts - b.ts);
     const cur = runs.at(-1);
-    const prev = runs.slice(0, -1).slice(-RUN_BASELINE_WINDOW);
+    // Baseline only against runs of the same plan source — a brief run (no plan)
+    // has no tasks and a different shape, so mixing them skews every median.
+    const prev = runs
+        .slice(0, -1)
+        .filter((r) => r.planSource === cur?.planSource)
+        .slice(-RUN_BASELINE_WINDOW);
     const repo = cur?.repo ?? events[0]?.repo ?? "unknown/repo";
     // Rendered as a Markdown table so it drops straight into the tracker comment
     // (no code fence needed) — GitHub/Linear render it natively.
@@ -610,6 +618,8 @@ export function workflowTelemetry(result, workflow) {
         row("linesChanged", `${cur.linesChanged} (+${cur.linesAdded}/-${cur.linesDeleted})`, medCell("linesChanged"));
         row("filesChanged", `${cur.filesChanged}`, medCell("filesChanged"));
         // Conditional metrics — shown only when this run carries them.
+        if (cur.planSource)
+            row("planSource", cur.planSource, "—");
         if (cur.taskCount > 0)
             row("taskCount", `${cur.taskCount}`, medCell("taskCount"));
         if (typeof cur.reviewIterations === "number")
@@ -650,7 +660,7 @@ export function workflowTelemetry(result, workflow) {
     if (tableRows.length > 0) {
         lines.push(`| metric | this run | med·${RUN_BASELINE_WINDOW} |`, "| --- | --- | --- |", ...tableRows, "");
     }
-    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
+    lines.push(`\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${cur?.planSource ? ` ${cur.planSource}` : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`);
     lines.push(...maxRowsLines);
     return { ...base, lines };
 }

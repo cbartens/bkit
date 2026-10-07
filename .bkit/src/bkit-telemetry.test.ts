@@ -951,6 +951,16 @@ describe("outcome — shape and inline-jq parity", () => {
     expect(validate(e).ok).toBe(true);
   });
 
+  it("planSource: brief validates; any other value is rejected", () => {
+    expect(validate(outcomeEvent({ planSource: "brief" } as Partial<TelemetryEvent>)).ok).toBe(
+      true,
+    );
+    const bad = validate(
+      outcomeEvent({ planSource: "plan" } as unknown as Partial<TelemetryEvent>),
+    );
+    expect(bad.ok).toBe(false);
+  });
+
   it("folds outcome by (repo, prNumber)", () => {
     const e = outcomeEvent();
     const state = fold([e]);
@@ -1184,6 +1194,34 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
     const fline = s.lines.find((l) => l.startsWith("| frictionAdded "));
     expect(fline).toContain("5"); // this run frictionAdded
     expect(fline).toMatch(/\b2\b/); // med·5 of [0,1,2,3,4]
+  });
+
+  it("baselines a brief run only against prior brief runs, and shows planSource", () => {
+    // Five planned runs at 600s, then three brief runs at 60s; this run is brief.
+    const durs: [number, boolean][] = [
+      [600, false],
+      [600, false],
+      [600, false],
+      [600, false],
+      [600, false],
+      [60, true],
+      [60, true],
+      [60, true],
+      [90, true],
+    ];
+    const runs = durs.map(([dur, brief], i) =>
+      outcomeEvent({
+        ts: 2000 + i,
+        parentSha: `b${i}`,
+        durationSeconds: dur,
+        ...(brief ? { planSource: "brief" } : {}),
+      } as Partial<TelemetryEvent>),
+    );
+    const s = workflowTelemetry(foldFrom([writeStats(runs)]), "build");
+    const dline = s.lines.find((l) => l.startsWith("| durationSeconds "));
+    expect(dline).toContain("60 (1m)"); // med of prior brief runs, not the 600s planned ones
+    expect(dline).not.toContain("600");
+    expect(s.lines.some((l) => l.startsWith("| planSource | brief "))).toBe(true);
   });
 
   it("prints — for the baseline until at least 3 prior runs exist", () => {

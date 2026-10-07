@@ -578,7 +578,7 @@ description: "Ship Feature — Autonomous merge and archive"
 2. **If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
    1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Agent` tool:
       Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-      Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
+      Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
    2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
@@ -684,9 +684,17 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    **If** exit non-zero → **Failure Path**.
    **If** `{REVALIDATE_REASON}` = `gate-refusal` → Step 6.
-2. `PLAN_SOURCE` = plan. **If** no `docs/plans/{YYYYMM}/{FID}-plan*.md` in `{WORKTREE_PATH}` → `PLAN_SOURCE` = brief → emit `[bkit-ship] WARNING no plan — deferred sweep judges against ship-input.md` → append `{type:"workflow-meta", workflow:"ship", at, planSource:"brief"}` to `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. `Plan source: {PLAN_SOURCE}.` Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+2. Plan check (bookkeeping to `$BOOK_ROOT`):
+   ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
+   if ! ls "{WORKTREE_PATH}"/docs/plans/{YYYYMM}/{FID}-plan*.md >/dev/null 2>&1; then
+     echo "[bkit-ship] WARNING no plan at docs/plans/{YYYYMM}/{FID}-plan*.md — sweeping best-effort against ship-input.md"
+     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"ship", at:$t, planSource:"brief"}' >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   fi
+   ```
+   **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/{FID}-plan*.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Assert subagent Create file exists and is non-empty. **If** file empty → **Failure Path**.
 4. Read `ship-deferred-sweep.md` until `<!-- verdict:end -->` → extract `Verdict` as `SWEEP_VERDICT`.
@@ -897,7 +905,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -1104,12 +1112,12 @@ description: "Ship Feature — Autonomous merge and archive"
 3. Launch two subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
+     Read: `docs/plans/{YYYYMM}/{FID}-plan*.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
      Update: Doc files.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `@bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
 4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    Then re-render the mechanical `roadmap-status` board from the ledger:

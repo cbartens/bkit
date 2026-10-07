@@ -53,10 +53,9 @@ maxTurns: 100
 8. **If** a spike input is supplied → revise every design element its `Design Impact` names as invalidated, to what the recorded evidence supports; record `Unsettled` claims as open questions under `Risks & Open Questions`.
 9. **If** applied findings add / reword open questions under `Risks & Open Questions` → each MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output. Questions in regions no finding touches stay verbatim.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
-
-- `PASS` = all `CRITICAL` items applied; OPTIONAL items applied on merit.
-- `CONCERNS` = some OPTIONAL items skipped.
-- `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
+    - `PASS` = all `CRITICAL` items applied; OPTIONAL items applied on merit.
+    - `CONCERNS` = some OPTIONAL items skipped.
+    - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
 
 11. Re-read **Create** output → assert design structure intact. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
 

@@ -443,6 +443,12 @@ export interface OutcomePayload {
   /** Sweep verdict from ship deferred-sweep step. */
   sweepVerdict?: string;
   /**
+   * `"brief"` = the run had no `{FID}-plan*.md` and worked from its input file
+   * (build / ship `workflow-meta` row). Absent = the run had a plan. Brief runs
+   * report `taskCount` 0 and are baselined only against other brief runs.
+   */
+  planSource?: "brief";
+  /**
    * Per-tier code-coverage % — each tier's coverage-summary.json `total.*.pct`.
    * Best-effort: a tier is absent when its coverage report is not produced
    * (coverage is opt-in per #312 unit/integration, #313 e2e). Additive-optional —
@@ -793,6 +799,9 @@ export function validate(event: unknown): ValidationResult {
         return { ok: false, reason: `outcome ${f} must be a number when present` };
       }
     }
+    if (e["planSource"] !== undefined && e["planSource"] !== "brief") {
+      return { ok: false, reason: 'outcome planSource must be "brief" when present' };
+    }
     // coverage is optional + per-tier; validate structure only when present.
     if (e["coverage"] !== undefined) {
       const cov = e["coverage"];
@@ -1092,7 +1101,12 @@ export function workflowTelemetry(result: FoldFromResult, workflow?: string): Te
     .filter((e): e is OutcomeEvent => e.kind === "outcome" && e.workflow === workflow)
     .sort((a, b) => a.ts - b.ts);
   const cur = runs.at(-1);
-  const prev = runs.slice(0, -1).slice(-RUN_BASELINE_WINDOW);
+  // Baseline only against runs of the same plan source — a brief run (no plan)
+  // has no tasks and a different shape, so mixing them skews every median.
+  const prev = runs
+    .slice(0, -1)
+    .filter((r) => r.planSource === cur?.planSource)
+    .slice(-RUN_BASELINE_WINDOW);
 
   const repo = cur?.repo ?? events[0]?.repo ?? "unknown/repo";
   // Rendered as a Markdown table so it drops straight into the tracker comment
@@ -1128,6 +1142,7 @@ export function workflowTelemetry(result: FoldFromResult, workflow?: string): Te
     row("filesChanged", `${cur.filesChanged}`, medCell("filesChanged"));
 
     // Conditional metrics — shown only when this run carries them.
+    if (cur.planSource) row("planSource", cur.planSource, "—");
     if (cur.taskCount > 0) row("taskCount", `${cur.taskCount}`, medCell("taskCount"));
     if (typeof cur.reviewIterations === "number")
       row("reviewIterations", `${cur.reviewIterations}`, medCell("reviewIterations"));
@@ -1184,7 +1199,7 @@ export function workflowTelemetry(result: FoldFromResult, workflow?: string): Te
     );
   }
   lines.push(
-    `\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`,
+    `\`med·${RUN_BASELINE_WINDOW}\` = median of the previous ${RUN_BASELINE_WINDOW} ${workflow}${cur?.planSource ? ` ${cur.planSource}` : ""} runs (— if < ${RUN_BASELINE_MIN}) · ledger ${result.rowCount} rows, ${result.malformedLineCount} malformed`,
   );
   lines.push(...maxRowsLines);
 

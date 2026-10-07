@@ -28,7 +28,7 @@
 // copy -> fsync -> verify -> prune ordering: a crash at any point re-copies
 // idempotently on the next run rather than losing rows.
 //
-// Consumers are listed in `docs/consumers.md` (one absolute path per line).
+// Consumers are listed in `.bkit/consumers.md` (one absolute path per line).
 // See DE-34 for the shared-entrypoint + crash-isolation contract.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -49,7 +49,7 @@ export const HARVEST_COUNT_FILES = ["deferrals.jsonl", "failures.jsonl"];
 /** Per-consumer read timeout in milliseconds. */
 export const HARVEST_TIMEOUT_MS = 10_000;
 /** Path (relative to bkit repo root) for the consumers list. */
-export const CONSUMERS_FILE = "docs/consumers.md";
+export const CONSUMERS_FILE = ".bkit/consumers.md";
 /**
  * Destination directory in bkit for harvested data. Repo root, NOT under `.bkit/` —
  * `.bkit/` is bkit's managed/installed surface and harvested consumer data is neither
@@ -57,10 +57,10 @@ export const CONSUMERS_FILE = "docs/consumers.md";
  */
 export const HARVEST_DEST_DIR = "harvest";
 // ---------------------------------------------------------------------------
-// Read consumer list from `docs/consumers.md`
+// Read consumer list from `.bkit/consumers.md`
 // ---------------------------------------------------------------------------
 /**
- * Read the list of consumer repo root paths from `docs/consumers.md`.
+ * Read the list of consumer repo root paths from `.bkit/consumers.md`.
  * Returns an array of absolute paths (non-empty lines, comments stripped).
  */
 export function readConsumerPaths(bkitRoot) {
@@ -260,7 +260,7 @@ function fsyncFile(filePath) {
 // Run harvest across all consumers
 // ---------------------------------------------------------------------------
 /**
- * Run harvest across all consumers listed in `docs/consumers.md`.
+ * Run harvest across all consumers listed in `.bkit/consumers.md`.
  * Deduplicates by per-kind composite identity after collecting all rows.
  */
 export function runHarvest(bkitRoot) {

@@ -26,6 +26,7 @@ pnpm bkit comply --phase="$WF" >&2 || echo "[bkit-comply] grader unavailable, sk
 
 BASE_SHA=$(jq -rs --arg w "$WF" '[.[]|select(.type=="workflow-started" and .workflow==$w)]|last|.parentSha // ""' "$STATUS" 2>/dev/null || echo "")
 START_AT=$(jq -rs --arg w "$WF" '[.[]|select(.type=="workflow-started" and .workflow==$w)]|last|.at // ""' "$STATUS" 2>/dev/null || echo "")
+PLAN_SOURCE=$(jq -rs --arg w "$WF" --arg s "$START_AT" '[.[]|select(.type=="workflow-meta" and .workflow==$w and .at>=$s and .planSource)]|last|.planSource // ""' "$STATUS" 2>/dev/null || echo "")
 if [ -n "$START_AT" ]; then START_S=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$START_AT" +%s 2>/dev/null || date -d "$START_AT" +%s 2>/dev/null || echo 0); else START_S=0; fi
 DURATION_S=$(( $(date +%s) - START_S )); { [ "$DURATION_S" -lt 0 ] || [ "$START_S" -eq 0 ]; } && DURATION_S=0
 START_MS=$(( START_S * 1000 ))
@@ -47,8 +48,8 @@ FAILURES_ADDED=$(_keys "$WT/docs/failures.jsonl" "[.[]|select((.workflow==\"$WF\
 jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg workflow "$WF" --arg step "$WF-close-workflow" --arg parentSha "$(git rev-parse HEAD)" \
   --argjson linesAdded "$LINES_ADDED" --argjson linesDeleted "$LINES_DELETED" --argjson linesChanged "$LINES_CHANGED" --argjson filesChanged "$FILES_CHANGED" \
   --argjson taskCount "$TASK_COUNT" --argjson durationSeconds "$DURATION_S" --argjson deferrals "$DEFERRALS_COUNT" --argjson failures "$FAILURES_COUNT" \
-  --argjson frictionAdded "$FRICTION_ADDED" --argjson deferralsAdded "$DEFERRALS_ADDED" --argjson failuresAdded "$FAILURES_ADDED" \
-  '.ts=(now*1000|floor)|.kind="outcome"|.workflow=$workflow|.repo=$repo|.bkitVersion=$bkitVersion|.step=$step|.parentSha=$parentSha|.linesAdded=$linesAdded|.linesDeleted=$linesDeleted|.linesChanged=$linesChanged|.filesChanged=$filesChanged|.taskCount=$taskCount|.durationSeconds=$durationSeconds|.deferrals=$deferrals|.failures=$failures|.frictionAdded=$frictionAdded|.deferralsAdded=$deferralsAdded|.failuresAdded=$failuresAdded' \
+  --argjson frictionAdded "$FRICTION_ADDED" --argjson deferralsAdded "$DEFERRALS_ADDED" --argjson failuresAdded "$FAILURES_ADDED" --arg planSource "$PLAN_SOURCE" \
+  '.ts=(now*1000|floor)|.kind="outcome"|.workflow=$workflow|.repo=$repo|.bkitVersion=$bkitVersion|.step=$step|.parentSha=$parentSha|.linesAdded=$linesAdded|.linesDeleted=$linesDeleted|.linesChanged=$linesChanged|.filesChanged=$filesChanged|.taskCount=$taskCount|.durationSeconds=$durationSeconds|.deferrals=$deferrals|.failures=$failures|.frictionAdded=$frictionAdded|.deferralsAdded=$deferralsAdded|.failuresAdded=$failuresAdded|(if $planSource=="" then . else .planSource=$planSource end)' \
   >> "$STATS" 2>/dev/null || echo "[bkit-telemetry] append failed: $STATS" >&2
 
 (cd "$REPO_ROOT" && pnpm bkit telemetry summary --phase="$WF") 2>/dev/null || echo "[bkit-telemetry] summary unavailable"

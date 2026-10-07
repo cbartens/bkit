@@ -30,7 +30,7 @@ reasoningEffort: max
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Verify plan implementation only; do NOT build, install, or write code.
+- **Mandate:** Verify plan implementation; do NOT build, install, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -42,11 +42,7 @@ reasoningEffort: max
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
 6. **If** `Single` → every checklist item and gate maps to real codebase changes. Find missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks vs all `DONE` log entries.
 7. **If** `Holistic` → same checklist / gate / `DONE` log cross-reference across all sub-plans, PLUS integration: sub-plan components work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? Run `pnpm bkit:gate:static-unit`.
-8. For each pending plan task read `Done when`:
-   - **If** missing → set `Verdict` = `FAIL` via `Edit`.
-   - **Else** assert codebase satisfies criteria (file exists, signature matches, test passes, observable behaviour). ONLY codebase satisfies `Done when` — `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and notes calling the task out of scope do NOT satisfy `Done when`; deferrals NEVER discharge plan tasks:
-     - **If** satisfied → tick `[ ]` → `[x]` → continue.
-     - **Else** → leave `[ ]`, append log, set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
+8. For each task → assert codebase satisfies `Done when` (file exists, signature matches, test passes, observable behaviour); `BLOCKED` log lines, `docs/deferrals.jsonl` rows, and out-of-scope notes NEVER satisfy it. **If** satisfied → tick `[x]`. **If** NOT satisfied or missing → leave `[ ]`, append log, set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass. **If** no plan file exists → `build-input.md` is the plan; tasks = its requested outcomes; outcome as worded is the bar; missing `Done when` alone is NOT a `FAIL`; NEVER create or tick plan file.
 9. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = no gaps.
    - `FAIL` = blocking gaps requiring remediation loop.
