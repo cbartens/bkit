@@ -261,7 +261,7 @@ No command and no phase label. One subagent, one template per run.
 | --- | --- | --- |
 | `bkit-audit-generate` | One template | Runs `docs/templates/bkit-audit-*.md`. Writes `docs/audits/{YYYYMM}/{slug}.md` (`{slug}` = basename without `bkit-audit-`; same slug already in that month → `{slug}-{TIMESTAMP}.md`). Report is the template through `bkit:end`. Refines that template's `Project Instructions` below `bkit:end`. |
 
-`/bkit-plan` reads a design doc, one or more reports, or both. `CRITICAL` and `HIGH` findings → runbook tasks. `MEDIUM` → `Suggested Scope Expansion`. `LOW` → `Out of Scope` as `Exempt`.
+`/bkit-plan` reads a design doc, one or more reports, or both. The invocation names which findings are in scope. The rest of each report stays context.
 
 More than 30 templates. Main ones:
 
