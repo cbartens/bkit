@@ -42,7 +42,7 @@
 > [!IMPORTANT]
 > What good looks like; canonical for the plan phase. Subagents (plan generate, plan review, plan summary) MUST follow this spec. No plan subagent restates rules; this section = single source of truth for the plan.
 
-- **Narrative:** 1–2 sentences, user POV (not system POV). User action + what they get back. Design → verbatim. Audits only (`docs/audits/`) → user/operator impact from in-scope (`CRITICAL` / `HIGH`) findings. Neither, or design lacks `## Acceptance Scenario` → both fields = `⚠️ MISSING: no design doc and no audit report — human must provide before plan proceeds`; NEVER fabricate; Gate 1 blocked until human fills.
+- **Narrative:** 1–2 sentences, user POV (not system POV). User action + what they get back. Design → verbatim. Audits only (`docs/audits/`) → user/operator impact from in-scope findings. Neither, or design lacks `## Acceptance Scenario` → both fields = `⚠️ MISSING: no design doc and no audit report — human must provide before plan proceeds`; NEVER fabricate; Gate 1 blocked until human fills.
 - **Success Criteria:** <=5 bullets, measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT steps (e.g. "call API, render component"). Design count ≠ 5 → smallest set proving feature. Design → verbatim. Audits only → one bullet per in-scope finding id from `Expected`; no 5-bullet cap.
 - **Process Sketch:** Design → plan inherits/refines. SAME happy-path (`Concrete Example`) + branches (`Edge Cases`) as `WHEN X → THEN Y` (3–7 lines); reuse exact examples, do NOT invent. Outcomes, NOT steps.
 - **Key Edge Cases:** Design → plan inherits. Concurrency, conflicts, failures, cross-feature — NOT trivial validation (plan adds that).
@@ -194,7 +194,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Suggested Scope Expansion
 
-[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures, audit `MEDIUM` findings — surfaced as candidate expansions for the human. If none, write "None"; initially set to `PENDING`.]
+[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures, audit findings the input did not name — surfaced as candidate expansions for the human. Fold `docs/deferrals.jsonl` and `docs/failures.jsonl` ledgers by `key`, highest `ts` wins → read ONLY winning rows where `status` is NOT `CLOSED`; NEVER read any other rows. If none, write "None"; initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
