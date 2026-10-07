@@ -2,7 +2,7 @@
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
 effort: medium
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 100
+maxTurns: 150
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -31,7 +31,7 @@ maxTurns: 100
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Apply diagnosis fixes (edit / create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
+- **Mandate:** Apply diagnosis fixes (edit / create source files); ONLY identified gaps, no new scope; do NOT just analyse.
 - **Blockers:** Append `BLOCKED` log line per blocked remediation; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).

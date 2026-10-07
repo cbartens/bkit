@@ -2,7 +2,7 @@
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 effort: xhigh
-model: claude-opus-5
+model: claude-opus-5-5
 tools:
   - Read
   - Grep
@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 30
+maxTurns: 100
 ---
 
 **Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
@@ -29,7 +29,7 @@ maxTurns: 30
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Reconcile findings only; do NOT build, install, or write code.
+- **Mandate:** Reconcile findings; do NOT build, install, or write code.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on `CRITICAL`. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 

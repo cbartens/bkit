@@ -2,7 +2,7 @@
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since plan was written leave it executable.
 effort: high
-model: claude-opus-5
+model: claude-opus-5-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -31,7 +31,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Judge plan currency only; do NOT build, install, fix, revise the plan, or write code.
+- **Mandate:** Judge plan currency; do NOT build, install, fix, revise plan, or write code.
 - **Evidence not distance:** Commit count and elapsed time NEVER carry verdict; tasks are affected ONLY where named paths, symbols, signatures, or contracts they depend on moved.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 

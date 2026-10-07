@@ -29,7 +29,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Apply gap fixes (edit / create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
+- **Mandate:** Apply gap fixes (edit / create source files); ONLY identified gaps, no new scope; do NOT just analyse.
 - **Blockers:** Append `BLOCKED` log lines per blocked tasks / gates (log IS the record). NEVER append to `docs/deferrals.jsonl`; blocked plan tasks are unfinished in-scope work, NOT deferrals.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).

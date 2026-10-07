@@ -2,7 +2,7 @@
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 effort: high
-model: claude-opus-5
+model: claude-opus-5-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -31,7 +31,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Challenge diff only; do NOT build, install, or write code.
+- **Mandate:** Challenge diff; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.

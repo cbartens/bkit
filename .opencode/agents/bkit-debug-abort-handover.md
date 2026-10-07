@@ -27,7 +27,7 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Write handover only; do NOT fix or change code.
+- **Mandate:** Write handover; do NOT fix or write code.
 - **When:** Invoked when max remediation retries exceeded or agent irrecoverably blocked.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 

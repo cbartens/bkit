@@ -28,7 +28,7 @@ reasoningEffort: max
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Brainstorm design approaches only; do NOT write design doc, plans, or code.
+- **Mandate:** Brainstorm design approaches; do NOT write design doc, plans, or code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 

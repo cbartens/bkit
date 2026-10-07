@@ -30,7 +30,7 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Resolve mechanical conflicts only. On any ambiguity → abort cleanly, emit `FAIL`.
+- **Mandate:** Resolve mechanical conflicts; do NOT just analyse; on any ambiguity → abort cleanly, emit `FAIL`.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 

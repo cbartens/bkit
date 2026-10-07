@@ -2,7 +2,7 @@
 name: bkit-design-review-2
 description: Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics.
 effort: medium
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Grep
@@ -13,7 +13,7 @@ tools:
   - WebFetch
   - WebSearch
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -33,7 +33,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Investigate only; do NOT build, install, or write code.
+- **Mandate:** Investigate; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.

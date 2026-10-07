@@ -8,7 +8,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 25
+maxTurns: 50
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -28,7 +28,7 @@ maxTurns: 25
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Summarise only; do NOT build, install, or write code.
+- **Mandate:** Summarise; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 

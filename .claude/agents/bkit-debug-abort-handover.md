@@ -2,13 +2,13 @@
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
 effort: medium
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 25
+maxTurns: 50
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -28,7 +28,7 @@ maxTurns: 25
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Write handover only; do NOT fix or change code.
+- **Mandate:** Write handover; do NOT fix or write code.
 - **When:** Invoked when max remediation retries exceeded or agent irrecoverably blocked.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 

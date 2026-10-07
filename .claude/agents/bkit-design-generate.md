@@ -2,7 +2,7 @@
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
 effort: xhigh
-model: claude-opus-5
+model: claude-opus-5-5
 tools:
   - Read
   - Grep
@@ -10,7 +10,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -30,7 +30,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Generate design only; do NOT build, install, or write code.
+- **Mandate:** Generate design; do NOT just analyse; do NOT build, install, or write code.
 - **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate strongest 2-3 approaches, NOT a watered-down union; single-input approaches are normal, not outvoted.
 - **No anchor authoring:** Do NOT author `<!-- bkit:anchor` block.
 

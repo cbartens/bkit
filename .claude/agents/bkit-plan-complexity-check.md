@@ -2,14 +2,14 @@
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether plans fit a single high-quality execution session.
 effort: medium
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Grep
   - Glob
   - Write
 permissionMode: acceptEdits
-maxTurns: 25
+maxTurns: 50
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -29,7 +29,7 @@ maxTurns: 25
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Assess complexity only; do NOT split, code, or write the plan.
+- **Mandate:** Assess complexity; do NOT split, write plan, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
