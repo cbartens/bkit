@@ -48,6 +48,49 @@ function readBookScript(): string {
   return fs.readFileSync(BOOK_SCRIPT, "utf-8");
 }
 
+/** Inclusive range: first line matching `start`, through the next line matching `end`. */
+function section(content: string, start: RegExp, end: RegExp): string {
+  const lines = content.split("\n");
+  const startIdx = lines.findIndex((line) => start.test(line));
+  if (startIdx < 0) return "";
+  let endIdx = lines.length - 1;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (end.test(lines[i])) {
+      endIdx = i;
+      break;
+    }
+  }
+  return lines.slice(startIdx, endIdx + 1).join("\n");
+}
+
+function failurePathBlock(ship: string): string {
+  return section(ship, /^## .*Failure Path/, /^---$/);
+}
+
+function countLines(block: string, pattern: RegExp): number {
+  return block.split("\n").filter((line) => pattern.test(line)).length;
+}
+
+/**
+ * Fenced bash regions that invoke bkit-book-commit.sh. A region runs from
+ * its opening ```bash through the line before the next ```bash, so a guard
+ * on a continuation line still counts.
+ */
+function bookCommitBlocks(ship: string): string[] {
+  const blocks: string[][] = [];
+  let current: string[] | null = null;
+  for (const line of ship.split("\n")) {
+    if (line.includes("```bash")) {
+      current = [];
+      blocks.push(current);
+    }
+    if (current) current.push(line);
+  }
+  return blocks
+    .map((block) => block.join("\n"))
+    .filter((block) => block.includes("bkit-book-commit.sh"));
+}
+
 // ---------------------------------------------------------------------------
 // FROZEN — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
@@ -138,14 +181,14 @@ describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// NEGATIVE — no feat/{FID} commit/push outside the B2 (conflict-resolve) block
+// NEGATIVE — no {SHIP_BRANCH} commit/push outside the B2 (conflict-resolve) block
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — push-timing invariant (no feat/{FID} push before merge)", () => {
-  it("has no `git commit` / `git push` to feat/{FID} outside the B2 conflict-resolve block", () => {
+describe("bkit-ship.md — push-timing invariant (no {SHIP_BRANCH} push before merge)", () => {
+  it("has no `git commit` / `git push` to {SHIP_BRANCH} outside the B2 conflict-resolve block", () => {
     const ship = readShip();
     // The push-timing invariant (design's sharpest departure): no ship
-    // bookkeeping commit reaches origin/feat/{FID} before the merge.
+    // bookkeeping commit reaches origin/{SHIP_BRANCH} before the merge.
     // Permitted ONLY inside the B2 conflict-resolve step's fenced block.
     // RED on current prose because Step 2/3/4/5/8/8b all commit on {BRANCH}.
     const lines = ship.split("\n");
@@ -164,11 +207,25 @@ describe("bkit-ship.md — push-timing invariant (no feat/{FID} push before merg
         // A new step header ends the B2 step scope.
         if (!/conflict-resolve/.test(line)) inB2Block = false;
       }
-      if (inFence && /git\s+(commit|push)\b.*feat\/\{FID\}/.test(line) && !inB2Block) {
+      if (inFence && /git\s+(commit|push)\b.*\{SHIP_BRANCH\}/.test(line) && !inB2Block) {
         violations.push(line.trim());
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("pushes the branch outside B2 only to open a missing PR — non-force, and only when ahead of dev", () => {
+    // Ship ships a branch that has no PR yet by opening one (Step 2). That is
+    // the one non-B2 push: the user's own commits, never ship bookkeeping, and
+    // never forced. A branch with nothing ahead of dev is "nothing to ship".
+    const lines = readShip().split("\n");
+    const createIdx = lines.findIndex((l) => /gh pr create --base dev --head "\$B"/.test(l));
+    expect(createIdx, "Step 2 open-PR `gh pr create` not found").toBeGreaterThan(-1);
+    const block = lines.slice(Math.max(0, createIdx - 8), createIdx + 1).join("\n");
+    expect(block).toMatch(/git push -u origin "\$B"/);
+    expect(block).not.toMatch(/--force/);
+    expect(block).toMatch(/rev-list --count origin\/dev\.\.HEAD/);
+    expect(block).toMatch(/Nothing to ship/);
   });
 });
 
@@ -410,11 +467,11 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
   it("F1: B2 conflict-resolve stages tracked source modifications before bookkeeping", () => {
     const ship = readShip();
     const lines = ship.split("\n");
-    // The B2 block is the ONLY fenced block that force-pushes feat/{FID}.
-    // Match the shell command form (`... origin "feat/{FID}"`) — the prose
+    // The B2 block is the ONLY fenced block that force-pushes {SHIP_BRANCH}.
+    // Match the shell command form (`... origin "{SHIP_BRANCH}"`) — the prose
     // blockquote also mentions the flag but without `origin`.
     const forcePushIdx = lines.findIndex((l) =>
-      /git\s+push\s+--force-with-lease\s+origin\b.*feat\/\{FID\}/.test(l),
+      /git\s+push\s+--force-with-lease\s+origin\b.*\{SHIP_BRANCH\}/.test(l),
     );
     expect(forcePushIdx, "B2 conflict-resolve force-push line not found").toBeGreaterThan(-1);
     // The staging + commit lines are within a few lines above the force-push.
@@ -604,5 +661,145 @@ describe("bkit-ship.md — #363 build-challenge H2 regression: the auto-route ma
     expect(block).toMatch(/grep -qxF 'bkit:auto'/);
     // ...and the suffix actually reaches the squash subject.
     expect(block).toContain("${AUTO_ROUTE_SUFFIX}");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Failure Path — markdown contract
+// ---------------------------------------------------------------------------
+
+describe("bkit-ship.md — Failure Path single-write contract", () => {
+  it("orders rebase --abort before the workflow-failed status append", () => {
+    const lines = failurePathBlock(readShip()).split("\n");
+    const abort = lines.findIndex((line) => line.includes("git rebase --abort"));
+    const append = lines.findIndex((line) => line.includes("workflow-failed"));
+    expect(abort, "no 'git rebase --abort' in Failure Path").toBeGreaterThanOrEqual(0);
+    expect(append, "no 'workflow-failed' append in Failure Path").toBeGreaterThanOrEqual(0);
+    expect(abort).toBeLessThan(append);
+  });
+
+  it("resolves STATUS via BOOK_ROOT, not a bare --git-common-dir", () => {
+    expect(failurePathBlock(readShip())).toMatch(/STATUS=.*BOOK_ROOT/);
+  });
+
+  it("resolves BOOK_ROOT from RUNTIME_DEVPUSHES inside the Failure Path", () => {
+    const block = failurePathBlock(readShip());
+    expect(block).toContain("BOOK_ROOT");
+    expect(block).toContain("RUNTIME_DEVPUSHES");
+  });
+
+  it("has no '2>/dev/null || true' silencing inside the Failure Path", () => {
+    expect(countLines(failurePathBlock(readShip()), /2>\/dev\/null \|\| true/)).toBe(0);
+  });
+
+  it("writes .deferred-blocked with touch under BOOK_ROOT", () => {
+    const writer = readShip()
+      .split("\n")
+      .find((line) => /touch.*\.deferred-blocked/.test(line));
+    expect(writer, "no 'touch ... .deferred-blocked' writer").toBeTruthy();
+    expect(writer).toContain("BOOK_ROOT");
+  });
+
+  it("does not rm -f .deferred-blocked in the Failure Path state block", () => {
+    const block = failurePathBlock(readShip());
+    const fence = block.match(/```bash[\s\S]*?```/)?.[0] ?? "";
+    expect(fence).not.toMatch(/rm -f.*\.deferred-blocked/);
+  });
+
+  it("contains exactly one git push", () => {
+    expect(countLines(failurePathBlock(readShip()), /git (-C "[^"]+" )?push/)).toBe(1);
+  });
+
+  it("contains exactly one bookkeeping commit (--mode=commit --message)", () => {
+    expect(countLines(failurePathBlock(readShip()), /--mode=commit --message/)).toBe(1);
+  });
+
+  it("does not keep the retired 'ship aborted' second commit", () => {
+    expect(countLines(failurePathBlock(readShip()), /ship aborted/)).toBe(0);
+  });
+
+  it("makes the push target RUNTIME_DEVPUSHES-conditional", () => {
+    const block = failurePathBlock(readShip());
+    expect(block).toContain('if [ "$RUNTIME_DEVPUSHES" = "true" ]');
+    expect(block).toContain('push origin "$TARGET"');
+  });
+
+  it("refuses an empty push target", () => {
+    expect(failurePathBlock(readShip())).toContain('[ -n "$TARGET" ]');
+  });
+
+  it("detects runtime inside the Failure Path, at least twice", () => {
+    expect(countLines(failurePathBlock(readShip()), /bkit_runtime_detect/)).toBeGreaterThanOrEqual(
+      2,
+    );
+  });
+
+  it("asserts the checkout is actually on dev before dev ops", () => {
+    const block = failurePathBlock(readShip());
+    expect(block).toContain("checkout dev");
+    expect(block).toContain('branch --show-current)" = "dev"');
+  });
+
+  it("does not route any step back into the Failure Path", () => {
+    expect(countLines(failurePathBlock(readShip()), /→ \*\*Failure Path\*\*/)).toBe(0);
+  });
+
+  it("reconciles branch-side artifacts into BOOK_ROOT before staging", () => {
+    const block = failurePathBlock(readShip());
+    expect(block).toContain("SRC_WT");
+    expect(block).toContain("LOGDIR_REL");
+  });
+
+  it("gitignores routing sentinels in the rendered file and the template source", () => {
+    for (const rel of [".gitignore", ".bkit/templates/gitignore"]) {
+      const text = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+      expect(text).toContain("docs/plans/*/logs/**/.deferred-blocked");
+      expect(text).toContain("docs/plans/*/logs/**/.rebase-failed");
+    }
+  });
+
+  it("has no fenced bash block that stages via raw 'git add $BOOK_PATHS'", () => {
+    expect(countLines(readShip(), /git .*add \$\{?BOOK_PATHS\}?/)).toBe(0);
+  });
+
+  it("wires bkit-book-commit.sh into exactly 3 bash regions", () => {
+    expect(bookCommitBlocks(readShip())).toHaveLength(3);
+  });
+
+  it("guards every bkit-book-commit.sh region so a non-zero exit stops the step", () => {
+    const unguarded = bookCommitBlocks(readShip()).filter(
+      (block) =>
+        !block
+          .split("\n")
+          .some((line) => /\|\|.*exit 1/.test(line) || /if bash .*bkit-book-commit\.sh/.test(line)),
+    );
+    expect(unguarded).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Step 12 ownership — markdown contract. The fence itself runs in
+// bkit-ship-worktree-ownership.integration.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("bkit-ship.md — Step 12 worktree ownership prose", () => {
+  it("gates worktree remove --force on the ownership marker", () => {
+    const step12 = section(readShip(), /^## .*Step 12/, /^---$/);
+    expect(step12, "Step 12 section not found").not.toBe("");
+    expect(step12).toContain("worktree-owned");
+    expect(step12).toContain("worktree remove");
+    expect(step12).toMatch(/if.*worktree-owned|-f.*worktree-owned/);
+  });
+
+  it("writes the ownership marker into the outbox when the worktree is created", () => {
+    const step2 = section(readShip(), /^## .*Step 2/, /^###.*Gate/);
+    expect(step2, "Step 2 section not found").not.toBe("");
+    expect(step2).toContain("worktree-owned");
+    expect(step2).toContain("bkit-outbox");
+  });
+
+  it("treats a missing marker as not mine and skips removal", () => {
+    const step12 = section(readShip(), /^## .*Step 12/, /^---$/);
+    expect(step12).toMatch(/not mine|ownership.*absent|skipping removal/i);
   });
 });
