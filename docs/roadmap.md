@@ -7,7 +7,7 @@ _(above the bkit list — yours, never overwritten)_
 <!-- bkit:roadmap-notes-pre end -->
 
 <!-- bkit:roadmap-status start -->
-> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last.
+> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).
 
 ## bkit
 
@@ -49,7 +49,7 @@ _(none)_
 
 <!-- bkit:roadmap-analysis start -->
 
-_(no analysis yet — run @bkit-utility-review-roadmap to populate)_
+_(no analysis yet — run @bkit-utility-update-roadmap to populate)_
 <!-- bkit:roadmap-analysis end -->
 
 <!-- bkit:roadmap-notes-post start -->

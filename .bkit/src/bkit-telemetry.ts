@@ -359,6 +359,7 @@ export const DEFERRAL_WRITERS: Set<string> = new Set([
   "bkit-build-challenge-remediate",
   "bkit-debug-abort-handover",
   "bkit-ship-deferred-sweep",
+  "bkit-utility-update-deferrals",
 ]);
 
 // compliance — one row per run x rule (kind:"compliance")

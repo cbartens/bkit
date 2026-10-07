@@ -57,7 +57,7 @@ Deferred work appends rows; nothing re-reads them. Three drifts: silently done (
 | --- | --- | --- |
 | Reckless and inadvertent debt | Not in this register | `bkit-audit-slop`, `bkit-audit-architecture`, `bkit-audit-dead-code` |
 | Known bugs | Failure ledger | `bkit-audit-failures` |
-| Closing rows the code already finished; locator fixes; `TRIAGED` when an issue already exists | Ledger writes. Utility reads only winning `OPEN` / `TRIAGED` | `@bkit-utility-update-deferrals` |
+| Closing rows the code already finished; locator fixes; `TRIAGED` when an issue already exists | Ledger writes. Utility reads every winning row not `CLOSED` | `@bkit-utility-update-deferrals` |
 | Doing the deferred work; opening tracker issues | Audit reports only | Plan from this report |
 
 ### Verdicts

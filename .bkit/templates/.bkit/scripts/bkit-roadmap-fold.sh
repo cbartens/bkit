@@ -41,7 +41,7 @@ BKIT_ROADMAP_NOTES_POST_END='<!-- bkit:roadmap-notes-post end -->'
 BKIT_ROADMAP_ANALYSIS_START='<!-- bkit:roadmap-analysis start -->'
 BKIT_ROADMAP_ANALYSIS_END='<!-- bkit:roadmap-analysis end -->'
 
-BKIT_ROADMAP_ANALYSIS_PLACEHOLDER='_(no analysis yet — run @bkit-utility-review-roadmap to populate)_'
+BKIT_ROADMAP_ANALYSIS_PLACEHOLDER='_(no analysis yet — run @bkit-utility-update-roadmap to populate)_'
 BKIT_ROADMAP_NOTES_PRE_PLACEHOLDER='## Notes
 
 _(above the bkit list — yours, never overwritten)_'
@@ -219,7 +219,7 @@ bkit_roadmap_fold() {
   fi
 
   _rf_status_content="$(
-    printf '> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last.\n\n'
+    printf '> Generated tables — do NOT hand-edit the `bkit` tables; append to `.bkit/issues.jsonl` instead (an `ABANDONED` row hides a FID from every section). `## Notes` blocks are yours and are never overwritten. Everything above the first marker is also yours. notes-post is last. Analysis list length: `package.json` key `bkit.roadmapNext` (positive integer; absent or invalid → 25).\n\n'
     printf '## bkit\n\n'
     printf '_(refreshed %s)_\n\n' "$_rf_now"
     printf '### Design\n\n'

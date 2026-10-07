@@ -182,6 +182,7 @@ export const DEFERRAL_WRITERS = new Set([
     "bkit-build-challenge-remediate",
     "bkit-debug-abort-handover",
     "bkit-ship-deferred-sweep",
+    "bkit-utility-update-deferrals",
 ]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
