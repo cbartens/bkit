@@ -163,12 +163,12 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 
 ## Two-Layer Separation Rules
 
-> **Agents NEVER call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation.
+> **Agents NEVER call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation. Sole exception: `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`) and never writes.
 
 <!-- prettier-ignore -->
 | Capability | Workflow (`.bkit/workflows/`) | Agent (`.bkit/prompts/`) |
 | --- | --- | --- |
-| Invoke tracker MCP | ✅ | ❌ |
+| Invoke tracker MCP | ✅ | ❌ (read-only exception: `bkit-utility-update-roadmap`) |
 | Read/write `docs/` | ✅ | ✅ |
 | Read/write source | via subagent delegation | ✅ (gated by tool surface) |
 | Run `git` | ✅ (`add`, `commit`, `push`, worktree ops) | read-only checks (`status`, `branch`, `log`) only |

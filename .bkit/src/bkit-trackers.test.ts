@@ -257,6 +257,55 @@ describe("real workflow sources", () => {
 });
 
 // ---------------------------------------------------------------------------
+// real prompt sources — agents get the same resolution as workflows
+// ---------------------------------------------------------------------------
+
+describe("real prompt sources", () => {
+  const PROMPTS_DIR = path.join(REPO_ROOT, ".bkit", "prompts");
+  const prompts = fs.readdirSync(PROMPTS_DIR).filter((f) => f.endsWith(".md"));
+
+  for (const tracker of ["github", "linear", "none"] as const) {
+    it(`every prompt resolves cleanly for ${tracker}`, () => {
+      for (const f of prompts) {
+        const r = substituteWorkflow(fs.readFileSync(path.join(PROMPTS_DIR, f), "utf-8"), tracker);
+        expect(r.orphans, `orphans in ${f}/${tracker}`).toEqual([]);
+        expect(r.output, `leftover markers in ${f}/${tracker}`).not.toMatch(
+          /<!--\s*bkit:tracker\b/,
+        );
+      }
+    });
+  }
+
+  const roadmapTools = (tracker: "github" | "linear" | "none"): string[] => {
+    const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-utility-update-roadmap.md"), "utf-8");
+    const fm = substituteWorkflow(src, tracker).output.split(/^---$/m)[1];
+    const block = fm.match(/^tools:\n((?:.*\n)*?)(?=^\S)/m)?.[1] ?? "";
+    for (const line of block.split("\n").filter(Boolean)) {
+      expect(line, `non-list line in ${tracker} tools block`).toMatch(/^ {2}- [\w]+$/);
+    }
+    return block
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => l.replace(/^ {2}- /, ""));
+  };
+
+  it("roadmap agent gets only the chosen tracker's read tools", () => {
+    const base = ["Read", "Grep", "Glob", "Write", "Edit", "Bash"];
+    expect(roadmapTools("github")).toEqual([
+      ...base,
+      "mcp__github__list_issues",
+      "mcp__github__issue_read",
+    ]);
+    expect(roadmapTools("linear")).toEqual([
+      ...base,
+      "mcp__linear__list_issues",
+      "mcp__linear__get_issue",
+    ]);
+    expect(roadmapTools("none")).toEqual(base);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // issue-scan call sites (#135) — bounded related-issue scan wired into
 // design/plan/debug entry; advisory, capped, degrades to a no-op under none.
 // ---------------------------------------------------------------------------

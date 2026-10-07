@@ -10,6 +10,8 @@ tools:
   - Write
   - Edit
   - Bash
+  - mcp__github__list_issues
+  - mcp__github__issue_read
 permissionMode: acceptEdits
 maxTurns: 100
 ---

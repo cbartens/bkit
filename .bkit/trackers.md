@@ -1,7 +1,7 @@
 # Trackers
 
 > [!CAUTION]
-> **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for inline tracker-block model in `.bkit/workflows/bkit-*.md` and `.bkit/prompts/bkit-*.md`. **Not consumed by installer** — no `trackers.md` substitution. Per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents marker contract + cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
@@ -14,7 +14,9 @@
 
 ## Marker contract
 
-Workflow sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (`.bkit/src/bkit-trackers.ts`). Mirrors clean — no markers survive.
+Workflow and prompt sources carry wired tracker variants inline. Installer reads `bkit.issueTracker` from consumer manifest, resolves markers when mirroring `.bkit/workflows/bkit-*.md` to every host's commands / skills and `.bkit/prompts/bkit-*.md` to every host's agents (`.bkit/src/bkit-trackers.ts`). Mirrors clean — no markers survive.
+
+Prompt frontmatter `tools:` lists: a pair inside the YAML list MUST end with a `false` block, and every block (incl. `false`) MUST hold at least one list item — the `none` stub and an empty block both break the YAML. `bkit-utility-update-roadmap` carries `- Bash` in all three blocks for this.
 
 ### Per-tracker pair (`github` / `linear`)
 

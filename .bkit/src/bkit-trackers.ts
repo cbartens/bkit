@@ -1,6 +1,7 @@
-// bkit-trackers.ts — resolve tracker-specific blocks in workflow source files at
-// install time. Consumed by bkit-modules.ts when the host-pass mirrors
-// `.bkit/workflows/bkit-*.md` to `.claude/commands/` and `.cursor/commands/`.
+// bkit-trackers.ts — resolve tracker-specific blocks in workflow and prompt source
+// files at install time. Consumed by bkit-modules.ts when the host-pass mirrors
+// `.bkit/workflows/bkit-*.md` to host commands and `.bkit/prompts/bkit-*.md` to
+// host agents.
 //
 // Inline model (no trackers.md substitution): every tracker call site carries the
 // `github` and `linear` variants inline as a consecutive pair. The installer keeps

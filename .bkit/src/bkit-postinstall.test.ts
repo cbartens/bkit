@@ -2276,10 +2276,23 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     "  group: ci-${{ github.workflow }}-${{ github.ref }}\n" +
     "  cancel-in-progress: true\n" +
     "jobs:\n" +
+    "  bkit-tests-unit:\n" +
+    "    outputs:\n" +
+    "      unit_ran: ${{ steps.count.outputs.unit_ran }}\n" +
     "  bkit-tests-check:\n" +
     "    if: ${{ !cancelled() }}\n" +
     "    steps:\n" +
-    '      - run: test "$unit_ran" -gt 0\n';
+    "      - env:\n" +
+    "          UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.unit_ran }}\n" +
+    '        run: test "$UNIT_RAN" -gt 0\n';
+  const LIVE_LANE =
+    "  bkit-tests-live-web:\n" +
+    "    outputs:\n" +
+    "      live_ran: ${{ steps.live_count.outputs.live_ran }}\n";
+  const TEMPLATE = fs.readFileSync(
+    path.resolve(import.meta.dirname, "..", "templates", ".github", "workflows", "ci.yml"),
+    "utf-8",
+  );
 
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
@@ -2318,8 +2331,39 @@ describe("detectCiYmlCapstoneContractDrift", () => {
     expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("github.run_id");
   });
   it("fires when the capstone has no executed-count assertion", () => {
-    writeCi(GOOD.replace('      - run: test "$unit_ran" -gt 0\n', "      - run: echo ok\n"));
-    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("executed-count");
+    writeCi(
+      GOOD.replace("          UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.unit_ran }}\n", ""),
+    );
+    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action;
+    expect(action).toContain("executed-count");
+    expect(action).toContain("`bkit-tests-unit`");
+  });
+  it("fires naming only the lane whose count the capstone never reads", () => {
+    writeCi(GOOD.replace("  bkit-tests-check:\n", LIVE_LANE + "  bkit-tests-check:\n"));
+    const action = detectCiYmlCapstoneContractDrift(tmpDir)?.action ?? "";
+    expect(action).toContain("`bkit-tests-live-web`");
+    expect(action).not.toContain("`bkit-tests-unit`");
+  });
+  it("does not count a lane output named only in a comment", () => {
+    writeCi(
+      GOOD.replace("  bkit-tests-check:\n", LIVE_LANE + "  bkit-tests-check:\n") +
+        "      # LIVE_RAN: ${{ needs.bkit-tests-live-web.outputs.live_ran }}\n",
+    );
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("`bkit-tests-live-web`");
+  });
+  it("does not count a commented-out !cancelled() guard", () => {
+    writeCi(
+      GOOD.replace("${{ !cancelled() }}", "${{ always() }}") + "#   if: ${{ !cancelled() }}\n",
+    );
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("!cancelled()");
+  });
+  it("returns null on the shipped template, whose capstone is a commented-out stub", () => {
+    writeCi(TEMPLATE);
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("fires on the shipped template once a capstone is enabled without reading lane counts", () => {
+    writeCi(TEMPLATE + "  bkit-tests-check:\n    if: ${{ !cancelled() }}\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("`bkit-tests-unit`");
   });
 });
 

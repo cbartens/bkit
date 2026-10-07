@@ -483,6 +483,10 @@ export function detectCiYmlRunInjection(cwd) {
  * fragment, never "differs from canonical" (which would be all false-positives — the file
  * is meant to be edited). Fires only when the consumer opted into the capstone scaffold
  * (bkit-managed markers + a bkit-tests-check job).
+ *
+ * Every check after the marker reads `code` (full-line comments stripped): the template's
+ * commented-out stubs name `bkit-tests-check`, `!cancelled()` and `live_ran`, so matching
+ * on raw text passes any ci.yml seeded from the template whatever its real jobs do.
  */
 export function detectCiYmlCapstoneContractDrift(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -491,28 +495,35 @@ export function detectCiYmlCapstoneContractDrift(cwd) {
     const content = fs.readFileSync(ciPath, "utf-8");
     if (!/^\s*# bkit:start\b/m.test(content))
         return null; // consumer-owned, not bkit-managed
-    if (!content.includes("bkit-tests-check"))
+    const code = content
+        .split("\n")
+        .filter((line) => !/^\s*#/.test(line))
+        .join("\n");
+    if (!/^\s+bkit-tests-check:/m.test(code))
         return null; // capstone scaffold not in use
     const missing = [];
     // 1. Capstone must run on !cancelled() (NOT always()) — else a concurrency-cancel
     //    stamps a bogus failure on the required check and blocks release PRs.
-    if (!content.includes("!cancelled()")) {
+    if (!code.includes("!cancelled()")) {
         missing.push("the capstone `if: ${{ !cancelled() }}` guard — without it a concurrency-cancel stamps a bogus failure on the required check (use `!cancelled()`, never `always()`).");
     }
     // 2. One run per branch or pull request. A newer run cancels the older one on every
     //    event. The group keys a PR on its number and a push on the ref — not github.run_id,
     //    which never collides and so never cancels. A push then plans from the last green run.
-    const prOnlyCancel = /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(content);
-    const runIdGroup = /group:[^\n]*github\.run_id/.test(content);
-    if (/concurrency:/.test(content) && (prOnlyCancel || runIdGroup)) {
+    const prOnlyCancel = /cancel-in-progress:\s*\$\{\{\s*github\.event_name\s*==\s*'pull_request'\s*\}\}/.test(code);
+    const runIdGroup = /group:[^\n]*github\.run_id/.test(code);
+    if (/concurrency:/.test(code) && (prOnlyCancel || runIdGroup)) {
         missing.push("one run per branch or pull request — `cancel-in-progress: true`, group `ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}`. A PR-only cancel, or a group keyed on `github.run_id`, lets a superseded push keep running. A push plans from the last green run on the branch, so a cancelled run's changes stay in scope.");
     }
-    // 3. Non-hollow capstone: it must assert tiers actually executed >0 tests, not just
-    //    that the job exited 0 (passWithNoTests / no-CI-home / all-skipIf are green-with-zero).
-    if (!/_ran\b/.test(content) &&
-        !/_count\b/.test(content) &&
-        !/executed\s*\d*\s*tests?/i.test(content)) {
-        missing.push('an executed-count assertion (non-hollow gate) — the capstone should assert each planned tier ran >0 tests (e.g. a `*_ran` job output), else passWithNoTests / a tagged suite with no CI home / all-skipIf tests pass vacuously. See docs/testing.md § "Validated means executed".');
+    // 3. Non-hollow capstone: every test lane's executed count must be read downstream, not
+    //    just its result (passWithNoTests / no-CI-home / all-skipIf are green-with-zero).
+    //    Checked per lane: one lane's count says nothing about another's.
+    const lanes = [
+        ...code.matchAll(/^\s+(bkit-tests-(?:unit|integration|e2e|live)(?:-[a-z0-9]+)*):\s*$/gm),
+    ].map((m) => m[1]);
+    const uncounted = lanes.filter((lane) => !new RegExp(`needs\\.${lane}\\.outputs\\.\\w+_(?:ran|count)\\b`).test(code));
+    if (uncounted.length > 0) {
+        missing.push(`an executed-count assertion (non-hollow gate) for ${uncounted.map((l) => "`" + l + "`").join(", ")} — the capstone should read each lane's count output (e.g. \`needs.bkit-tests-live-web.outputs.live_ran\`) and assert >0 when that tier is planned, else passWithNoTests / a tagged suite with no CI home / all-skipIf tests pass vacuously. See docs/testing.md § "Validated means executed".`);
     }
     if (missing.length === 0)
         return null;

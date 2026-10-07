@@ -305,7 +305,7 @@
     "docs/templates/bkit-audit-test.md": "239ee79c171bc9dbd7279b4a0d3c3181f79353295ec4e064bed0546c74531bb0",
     "docs/templates/bkit-audit-usability.md": "6996c08ddec7c8c646442e08e00fe0b2a7f75a56edf6f6544302ba0d318dac17",
     "docs/templates/bkit-audit-testing.md": "76f6afdd3bfb571a8da9d1e7a9414d6d148894d9e2c078f4ac9d673ac2732eeb",
-    ".opencode/agents/bkit-utility-update-roadmap.md": "d06accfc58ca3bf058a57e013c44a52e29f749f4cc52d58fd63df50922b508ec",
+    ".opencode/agents/bkit-utility-update-roadmap.md": "f53e6ee30c11ed11f622d32f099f1dc2db3de30dea7618eb59ba4828b25dc83d",
     ".codex/agents/bkit-utility-update-roadmap.toml": "0c0533fcb3cf1fa93e43a86a92a54ad31e464c9b63f53b19086468001e779906",
     "docs/templates/bkit-audit-aio-seo.md": "16f2ce20cb40440e870a30584e2ef02becfac62657976af75717d02ec8fed78a",
     "docs/templates/bkit-audit-analytics.md": "6ac1ffe512ef6cab32bfb69ba81042e0ec4ebdc1f1bf8ca33c7fd4d756fe0915",
@@ -323,7 +323,7 @@
     "docs/templates/bkit-audit-logs.md": "d5619ae7277a1706d903604dc5046ed8778da70a455e78b303252f0e62631523",
     "docs/templates/bkit-audit-models.md": "8cff5ef829f4851310d95992ef08daab182c448e05c77de0df4855334dc2f2d4",
     "docs/templates/bkit-audit-reliability.md": "3f9ef4abc9bcf93b16db46aa8786451d4b239de55307c5b5c40ea00110e1b892",
-    ".claude/agents/bkit-utility-update-roadmap.md": "de507f22befc65da4ae028134c344ae5990fe86d0235f8b1e58c7e3575b1dfaa",
+    ".claude/agents/bkit-utility-update-roadmap.md": "3111398c3288daaa70e28edcb84a8978cc05bcada890fef4c61035ab49ef0e5e",
     "scripts/graphify/bkit-graph-drift.py": "266264ff88e8aec282e3b46a485abcb139c7f338b5a4612aa94712ab9c5daeee",
     "scripts/graphify/bkit-graph-eager.py": "9880ca0ebb663a3aa92e41205efa56d3882a79daba818e628d491b89f5d8e445",
     "scripts/graphify/bkit-graph-imports.py": "38fb07d1e6f6b044d0c42c30909d0820234775372ed7195ef1cdfed271811ea0",
@@ -337,7 +337,8 @@
     "scripts/graphify/graph-eager-rules.json": "7095e2f10212c5df845636d29890e334db71d248d17341edddde848a902174a2",
     "scripts/graphify/graph-external-rules.json": "53e26b3817ab82a56faa8ff43bc8a5d516428374a7b4bbf03c1c5268c1067dc1",
     "scripts/serena/bkit-serena-mcp.sh": "3cb5a31ad81ed088739a971bd345e6ea50c577801bcd6ed8ceb234d62c489ed3",
-    "scripts/serena/serena.mcp.json": "bbfd9f341aff44863f949b26e0a1fb96f7f259ad3a4d0a2630862341a6611a3f"
+    "scripts/serena/serena.mcp.json": "bbfd9f341aff44863f949b26e0a1fb96f7f259ad3a4d0a2630862341a6611a3f",
+    ".cursor/agents/bkit-utility-update-roadmap.md": "d4d858c404656d3dbb78f41aa97cdc849600e6d6479b8dfb9fc55388e23d5cfe"
   },
   "webFetchDerived": [
     "WebFetch(domain:anthropic.com)",

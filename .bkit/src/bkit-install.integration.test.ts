@@ -896,6 +896,18 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
       expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
       expect(content).toContain("mcp__github__");
     }
+
+    // agent mirrors resolve tracker blocks too: github read tools only, no markers
+    for (const host of [".claude", ".cursor"]) {
+      const agent = fs.readFileSync(
+        path.join(tmpDir, host, "agents", "bkit-utility-update-roadmap.md"),
+        "utf-8",
+      );
+      expect(agent, `${host} agent markers`).not.toMatch(/<!--\s*bkit:tracker\b/);
+      expect(agent, `${host} agent github tools`).toContain("  - mcp__github__list_issues\n");
+      expect(agent, `${host} agent linear tools`).not.toContain("mcp__linear__");
+      expect(agent.match(/^ {2}- Bash$/gm), `${host} agent Bash once`).toHaveLength(1);
+    }
   });
 
   it("re-install over a consumer-modified .mcp.json leaves the file byte-for-byte unchanged", () => {

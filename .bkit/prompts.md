@@ -119,6 +119,7 @@ Pinning `model:` locks agent model regardless of orchestrator session. Without p
 | Doc writer (with shell) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-design-organise`, `bkit-ship-update-docs` |
 | Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve` |
 | Skill-installer / Bash-only utility | `Read, Grep, Glob, Bash` | `bkit-build-install-skills` |
+| Tracker reader (read-only MCP) | `Read, Grep, Glob, Write, Edit, Bash` + per tracker: github `mcp__github__list_issues, mcp__github__issue_read`; linear `mcp__linear__list_issues, mcp__linear__get_issue`; none — | `bkit-utility-update-roadmap` |
 | Investigator (web access) | `Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch` | `bkit-design-review-1`, `bkit-design-review-2`, `bkit-design-spike`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`, `bkit-audit-generate` |
 
 ### `maxTurns` calibration

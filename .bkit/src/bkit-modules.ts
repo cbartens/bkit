@@ -591,13 +591,12 @@ export function renderClaudeAgentsCommands(ctx: ModuleContext): string[] {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      // Resolve tracker blocks for workflow files; agents remap effort via prompts.md
+      // Resolve tracker blocks for both; agents also remap effort via prompts.md
       // Claude column. Managed-version marker stamped LAST (#256).
       const transform = (c: string) => {
+        const resolved = substituteWorkflow(c, issueTracker).output;
         const body =
-          dest === ".claude/commands"
-            ? substituteWorkflow(c, issueTracker).output
-            : applyEffortRemap(c, effortMap, "claude");
+          dest === ".claude/commands" ? resolved : applyEffortRemap(resolved, effortMap, "claude");
         return stampManagedVersion(body, version);
       };
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
@@ -648,7 +647,7 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
     }
   }
 
-  // Agents: T3
+  // Agents: tracker block resolution → T3
   {
     const src = getPromptsRoot();
     const dest = ".cursor/agents";
@@ -658,7 +657,10 @@ export function renderCursorAgentsCommands(ctx: ModuleContext): string[] {
 
     for (const f of files) {
       const transform = (c: string) =>
-        stampManagedVersion(applyT3(c, modelLookup, effortMap), version);
+        stampManagedVersion(
+          applyT3(substituteWorkflow(c, issueTracker).output, modelLookup, effortMap),
+          version,
+        );
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         const rel = path.join(dest, f);
         console.log(`${logPrefix} ${tag}write: ${rel}`);
@@ -688,7 +690,7 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
   }
   const provider = opencodeProvider;
 
-  // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
+  // --- Agents: tracker substitution → applyOpencodeAgent → managed-version stamp (last, #256) ---
   {
     const src = getPromptsRoot();
     const dest = ".opencode/agents";
@@ -701,7 +703,12 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
     for (const f of files) {
       const transform = (c: string) =>
         stampManagedVersion(
-          applyOpencodeAgent(c, opencodeModelLookup, effortMap, provider),
+          applyOpencodeAgent(
+            substituteWorkflow(c, issueTracker).output,
+            opencodeModelLookup,
+            effortMap,
+            provider,
+          ),
           version,
         );
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
@@ -3411,7 +3418,8 @@ export function renderCodexAgentsSkills(ctx: ModuleContext): string[] {
 
     for (const f of files) {
       const stem = f.replace(/\.md$/, "");
-      const transform = (c: string) => applyCodexAgent(c, codexModelLookup, effortMap);
+      const transform = (c: string) =>
+        applyCodexAgent(substituteWorkflow(c, issueTracker).output, codexModelLookup, effortMap);
       if (installFile(path.join(src, f), path.join(dest, `${stem}.toml`), transform, dryRun)) {
         const rel = path.join(dest, `${stem}.toml`);
         console.log(`${logPrefix} ${tag}write: ${rel}`);

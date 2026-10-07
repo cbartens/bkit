@@ -420,12 +420,11 @@ export function renderClaudeAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            // Resolve tracker blocks for workflow files; agents remap effort via prompts.md
+            // Resolve tracker blocks for both; agents also remap effort via prompts.md
             // Claude column. Managed-version marker stamped LAST (#256).
             const transform = (c) => {
-                const body = dest === ".claude/commands"
-                    ? substituteWorkflow(c, issueTracker).output
-                    : applyEffortRemap(c, effortMap, "claude");
+                const resolved = substituteWorkflow(c, issueTracker).output;
+                const body = dest === ".claude/commands" ? resolved : applyEffortRemap(resolved, effortMap, "claude");
                 return stampManagedVersion(body, version);
             };
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
@@ -469,7 +468,7 @@ export function renderCursorAgentsCommands(ctx) {
             trackMirrorWrite(ctx, rel, written);
         }
     }
-    // Agents: T3
+    // Agents: tracker block resolution → T3
     {
         const src = getPromptsRoot();
         const dest = ".cursor/agents";
@@ -477,7 +476,7 @@ export function renderCursorAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => stampManagedVersion(applyT3(c, modelLookup, effortMap), version);
+            const transform = (c) => stampManagedVersion(applyT3(substituteWorkflow(c, issueTracker).output, modelLookup, effortMap), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 const rel = path.join(dest, f);
                 console.log(`${logPrefix} ${tag}write: ${rel}`);
@@ -504,7 +503,7 @@ export function renderOpencodeAgentsCommands(ctx) {
         throw new Error("renderOpencodeAgentsCommands: ctx.opencodeProvider is required");
     }
     const provider = opencodeProvider;
-    // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
+    // --- Agents: tracker substitution → applyOpencodeAgent → managed-version stamp (last, #256) ---
     {
         const src = getPromptsRoot();
         const dest = ".opencode/agents";
@@ -515,7 +514,7 @@ export function renderOpencodeAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup, effortMap, provider), version);
+            const transform = (c) => stampManagedVersion(applyOpencodeAgent(substituteWorkflow(c, issueTracker).output, opencodeModelLookup, effortMap, provider), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 const rel = path.join(dest, f);
                 console.log(`${logPrefix} ${tag}write: ${rel}`);
@@ -2896,7 +2895,7 @@ export function renderCodexAgentsSkills(ctx) {
         const sourceStems = new Set(files.map((f) => f.replace(/\.md$/, "")));
         for (const f of files) {
             const stem = f.replace(/\.md$/, "");
-            const transform = (c) => applyCodexAgent(c, codexModelLookup, effortMap);
+            const transform = (c) => applyCodexAgent(substituteWorkflow(c, issueTracker).output, codexModelLookup, effortMap);
             if (installFile(path.join(src, f), path.join(dest, `${stem}.toml`), transform, dryRun)) {
                 const rel = path.join(dest, `${stem}.toml`);
                 console.log(`${logPrefix} ${tag}write: ${rel}`);
