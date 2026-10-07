@@ -377,9 +377,11 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 **Implementation Tasks (Examples):**
 
 > Every task MUST include `**Done when:**` — terse, testable, codebase-verifiable (file exists / signature matches / test passes / behaviour observable). Plan-verify asserts before `[x]`. No task without `Done when:`. One task per in-scope audit finding id; group only on one shared root cause in report — every id still named.
+>
+> **Tests ship with their task.** Task adding / changing logic → names its own unit tests in `Done when`, matrix row or not; tests it breaks → fixed in same task. NEVER defer task tests to later tasks to avoid splits that leave untested code and drop coverage gates.
 
 - [ ] **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly].
-- [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; integration test in `packages/api/items.integration.test.ts` passes].
+- [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; unit test `packages/api/src/items/setStatus.test.ts` covers each status transition; integration test in `packages/api/items.integration.test.ts` passes].
 - [ ] **Task 3:** [e.g., Update React component `page.tsx`]. **Done when:** [e.g., `apps/web/app/items/page.tsx` renders status badge; Playwright spec `apps/web/e2e/items.spec.ts` confirms user-visible state].
 
 ### 🔒 Gate 2: Code Implementation Check
@@ -400,9 +402,9 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Each `Acceptance Scenario → Derived Test Matrix` row → checked test task below; add tasks for gaps.
-- [ ] **Update existing tests:** Review/adjust unit, integration, E2E per `docs/testing.md`.
-- [ ] **Write new tests:** Cover new functionality per Testing Strategy; reuse data factories + auth conventions (above) for browser tests.
+- [ ] **Verify test coverage against Derived Test Matrix:** Each `Acceptance Scenario → Derived Test Matrix` row → one runbook task whose `Done when` carries its test; gaps → add to that task, not here.
+- [ ] **Sweep existing tests:** Each task fixed the tests it broke; full suite green per `docs/testing.md`. Fix only what tasks missed.
+- [ ] **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — NOT where tests are first written. Reuse data factories + auth conventions (above) for browser tests.
 - [ ] **Verify observability:** Observable per `docs/observability.md` — structured `console.error("[Context] Message", payload)` on errors, correlation IDs through pipeline, audit triggers on monitored tables; update doc for new log names / labels / tracing scopes.
 - [ ] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, others via `.agents/docs.md`. Rewrite ground-truth prose; DO NOT append lazy bullet points.
 
