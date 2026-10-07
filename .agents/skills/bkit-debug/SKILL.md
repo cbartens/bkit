@@ -4,7 +4,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
-# Debug Feature (Workflow 4/6)
+# Debug Feature (Workflow 4/5)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Remediate feature failures and push to branch.
@@ -35,7 +35,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
@@ -97,7 +97,26 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Step 1 — Start Workflow
 
-1. Acquire concurrency lock:
+1. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
+2. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
+3. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue. → **STOP**, no further downstream steps.
+4. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+5. Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
+   1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
+   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   3. `ISSUE_ID` non-empty → feature already logged for that issue:
+      ```bash
+      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+      ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
+      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      ```
+      One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
+      Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+   One `FID` for all artifacts once set.
+6. Acquire concurrency lock:
    ```bash
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -132,17 +151,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
-2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:debug"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
-6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. Decide `PUSH_MODE`:
+7. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. Decide `PUSH_MODE`:
    - **If** `PR_NUMBER` non-empty → `PUSH_MODE` = PR.
    - **Else** → `PUSH_MODE` = LOCAL.
-7. Derive `{DEBUG_ATTEMPT}` (cross-run invocation index) from the folded status.jsonl:
+8. Derive `{DEBUG_ATTEMPT}` (cross-run invocation index) from the folded status.jsonl:
    ```bash
    REPO_ROOT="{REPO_ROOT}"
    STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -151,7 +163,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    PRIOR_DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | (last.debugAttempt // 0) | (tonumber? // 0)' "$SRC" 2>/dev/null || echo 0)
    DEBUG_ATTEMPT=$((PRIOR_DEBUG_ATTEMPT + 1))
    ```
-8. Decide `DEBUG_MODE`:
+9. Decide `DEBUG_MODE`:
    - Default `DEBUG_MODE` = NORMAL.
    - **If** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
    - **If** `ACTIVE_RUN` `debug-failure-soak` count (`counter_count`, 0 legal) > 0 → `DEBUG_MODE` = SOAK:
@@ -191,12 +203,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      route_append_debug_mode "$STATUS" SOAK || exit 2
      DEBUG_MODE=SOAK
      ```
-9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
-10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
-    Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-11. Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+10. Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
     **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-12. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
     ###### bkit:generated
@@ -282,7 +291,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. `git branch --show-current` → update `BRANCH` to the adopted branch. Assert non-empty.
 3. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
 4. **If** `BRANCH` = `main` → **Failure Path**. Every other branch is eligible (`feat/{FID}`, `dev`, any hand-named branch).
-5. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+5. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
 6. Update status and commit:
    ```bash
    DEBUG_MODE="{DEBUG_MODE}"
@@ -1159,11 +1168,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `PUSH_MODE` = PR → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **If** `PUSH_MODE` = LOCAL → `TRIGGER_PR` = 1.
    - **Else** → **Failure Path**.
-5. **If** `TRIGGER_PR` = 1 → create PR:
+5. **If** `TRIGGER_PR` = 1 → create PR. `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
    ```bash
    gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
    <!-- bkit:start -->
-   https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-plan.md
+   docs/plans/{YYYYMM}/{FID}-plan.md
    <!-- bkit:end -->
    EOF
    )"

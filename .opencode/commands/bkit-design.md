@@ -4,7 +4,7 @@ $ARGUMENTS
 
 ---
 
-# Design Feature (Workflow 1/6)
+# Design Feature (Workflow 1/5)
 
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -36,7 +36,7 @@ $ARGUMENTS
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
@@ -75,7 +75,26 @@ $ARGUMENTS
 
 ## 🤖 Step 1 — Start Workflow
 
-1. Acquire concurrency lock:
+1. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
+2. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
+3. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue. → **STOP**, no further downstream steps.
+4. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+5. Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
+   1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
+   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   3. `ISSUE_ID` non-empty → feature already logged for that issue:
+      ```bash
+      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+      ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
+      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      ```
+      One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
+      Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+   One `FID` for all artifacts once set.
+6. Acquire concurrency lock:
    ```bash
    git fetch origin dev 2>/dev/null
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -110,19 +129,9 @@ $ARGUMENTS
    fi
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
-2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
-6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
-   Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-8. Add `bkit:design` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+7. Add `bkit:design` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
@@ -564,90 +573,37 @@ $ARGUMENTS
 
 ---
 
-## 🤖 Step 10 — Design Workstream Issues
+## 🤖 Step 10 — Suggest Workstreams
 
 
-**Run only if** uppercase `{LABELS}` contains MILESTONE **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS).
+**Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
-1. Read `design-v3-organised.md` section `Suggested Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
-2. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `milestone.number` as `{MILESTONE_NUMBER}`, `milestone.title` as `{MILESTONE_TITLE}`. **If** `{MILESTONE_NUMBER}` empty → **Failure Path** with `Milestone not set on parent #{ISSUE_ID}`. Then `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "is:issue milestone:\"{MILESTONE_TITLE}\" in:title WS-", perPage: 100 })` → extract `items` array. Each entry has `number` (user-facing #N), `title`, `state`.
-   → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
-3. Per workstream `WS-{N}` in `WORKSTREAMS`:
-   - **If** `EXISTING[WS-{N}]` present → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{N}].id`.
-     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}`.
-     `{BODY}` = fenced block below:
-     ```comment
-     ###### bkit:generated
-     ## Workstream Update — {FID}
-     **Parent issue:** {ISSUE_ID}
-     **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
-     **Workstream:** WS-{N} — {NAME}
-     **Requires:** {REQUIRES}
-     ### Scope
-     {SCOPE}
-     ### Rationale
-     {RATIONALE}
-     ```
-     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
-   - **Else** → set `{WS_TITLE}` = `WS-{N}: {NAME}`, `{WS_BODY}` = description block below.
-       `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{WS_TITLE}", body: "{WS_BODY}", labels: ["bkit:design"], milestone: {MILESTONE_NUMBER} })` → capture `number` as `{WS_ISSUE_ID}`.
-     Description block:
-     ```description
-     ## Workstream Create — {FID}
-     **Parent issue:** {ISSUE_ID}
-     **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
-     **Workstream:** WS-{N} — {NAME}
-     **Requires:** {REQUIRES}
-     ### Scope
-     {SCOPE}
-     ### Rationale
-     {RATIONALE}
-     ```
-     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `{WS_ISSUE_ID}`. **If** `{WS_ISSUE_ID}` empty → **Failure Path**.
-4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{K}].id`.
-    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}`.
-   `{BODY}` = fenced block below:
+1. Read `design-v3-organised.md` section `Suggested Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
+2. Post the list on `{ISSUE_ID}` only. NEVER create a tracker issue. NEVER comment on any other issue. NEVER set blockers.
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below. One `- WS-{N}:` line per `WORKSTREAMS` entry.
    ```comment
    ###### bkit:generated
-   ## Workstream Delete — {FID}
-   **Parent issue:** {ISSUE_ID}
-   **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
-   No longer in current design. Body left unchanged.
+   ### Step 10 — Suggested Workstreams
+   Advisory only. NEVER auto-trigger.
+   - WS-{N}: {NAME}. Requires: {REQUIRES}
+   [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)
    ```
-5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `{BLOCKED_BY_LIST}` from `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. Set `{ISSUE_ID}` = `{WORKSTREAM_ISSUE_ID[WS-{N}]}` for this call.
-   
-   Encode blocked-by via issue body marker block:
-   1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `body` → `{CURRENT_BODY}`.
-   2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `###### bkit:blocked-by start` ... `###### bkit:blocked-by end` → replace between markers, emitting the h6 pair. **Else** → append `\n\n###### bkit:blocked-by start\n## Blocked by\n{BLOCKED_BY_LIST}\n###### bkit:blocked-by end` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
-   3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
-
-
-6. Update status and commit:
+3. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-workstream-issues", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
+     '{type:"step-done", workflow:"design", step:"design-workstream-suggest", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues"
-   ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 10 — Design Workstream Issues
+   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-suggest"
    ```
 
-### 🔒 Gate 10 — Design Workstream Issues
+### 🔒 Gate 10 — Suggest Workstreams
 
 - [ ] Workstreams parsed (`WORKSTREAMS` non-empty)
-- [ ] Parent milestone target read (assignment ref resolved)
-- [ ] Existing workstreams listed (milestone issues read attempted)
-- [ ] Per workstream resolved (`WORKSTREAM_ISSUE_ID` populated, no empty ids)
-- [ ] Stale children commented (orphaned workstreams notified)
-- [ ] Blocked-by edges attempted (per `Requires`)
-- [ ] Workflow status updated (step `design-workstream-issues` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 10` section)
+- [ ] Suggestion comment attempted on `{ISSUE_ID}` only (`Step 10` section)
+- [ ] Workflow status updated (step `design-workstream-suggest` recorded with `parentSha`)
 
 
 ---

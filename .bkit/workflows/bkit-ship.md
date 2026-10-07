@@ -2,7 +2,7 @@
 description: "Ship Feature — Autonomous merge and archive"
 ---
 
-# Ship Feature (Workflow 5/6)
+# Ship Feature (Workflow 5/5)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
@@ -29,19 +29,19 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 4 B2 (conflict-resolve) companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
+> - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 4 B2 (conflict-resolve) companion: `git push --force-with-lease` to the personal `{SHIP_BRANCH}` feature branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
 > - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `$BOOK_ROOT/.../status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash --match-head-commit` → `merge_pull_request` (explicit skip-token-free `commit_message`; pass validated head SHA); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 <!-- bkit:tracker github start -->
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
-> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue. `save_issue` ALWAYS includes `id`.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. No edit-in-place.
 
@@ -221,7 +221,50 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Goal:** resolve `BOOK_ROOT` once, create outbox, preflight `actions: write`, record start row.
 
-1. Acquire concurrency lock and resolve `BOOK_ROOT`:
+1. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
+2. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
+3. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
+   <!-- bkit:tracker github start -->
+   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue. → **STOP**, no further downstream steps.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue. → **STOP**, no further downstream steps.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker false start -->
+   Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
+   <!-- bkit:tracker false end -->
+4. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
+   <!-- bkit:tracker github start -->
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker false start -->
+   No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
+   <!-- bkit:tracker false end -->
+5. Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
+   1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
+   2. `BRANCH` = `feat/{FID}` → that `FID`.
+   3. `ISSUE_ID` non-empty → feature already logged for that issue:
+      ```bash
+      REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+      ISSUE_KEY=$(printf '%s' "{ISSUE_ID}" | tr '[:upper:]' '[:lower:]')
+      ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/"$ISSUE_KEY"-*/ 2>/dev/null | awk -F/ '{print $(NF-1)}' | sort -u
+      ```
+      One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
+   4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
+      <!-- bkit:tracker github start -->
+      Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+      <!-- bkit:tracker github end -->
+      <!-- bkit:tracker linear start -->
+      Lowercase `{ISSUE_ID}`. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+      <!-- bkit:tracker linear end -->
+      <!-- bkit:tracker false start -->
+      `ISSUE_ID` unset → `{branch-suffix}-{slug}`. No strict regex assert.
+      <!-- bkit:tracker false end -->
+   One `FID` for all artifacts once set.
+6. Acquire concurrency lock and resolve `BOOK_ROOT`:
    ```bash
    RUNTIME_DEVPUSHES="{RUNTIME_DEVPUSHES}"
    STATUS_REL="{STATUS_REL}"
@@ -230,7 +273,7 @@ description: "Ship Feature — Autonomous merge and archive"
    BUCKET_COUNT=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
    [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
-   [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before ship" >&2; exit 1; }
+   [ -z "$YYYYMM" ] && YYYYMM=$(date -u +%Y%m)
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ -n "${RUNTIME_DEVPUSHES:-}" ] && [ "$RUNTIME_DEVPUSHES" = "false" ]; then
@@ -269,41 +312,7 @@ description: "Ship Feature — Autonomous merge and archive"
    gh api /repos/{OWNER_REPO}/actions/permissions >/dev/null 2>&1 || echo "[bkit-ship] actions:write preflight — gh may lack dispatch permission" >&2
    ```
    **If** lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): a leftover lock names the interrupted run — `ls -t docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/.lock 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`. **If** empty → newest bucket: `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | sort -r | head -1 | awk -F/ '{print $(NF-1)}'`.
-2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker github start -->
-   Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:ship"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Extract from session prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__linear__save_issue({ title: "{task}", description: "{input}", team: "{LINEAR_TEAM}", assignee: "me", state: "In Progress", labels: ["bkit:ship"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**. `LINEAR_TEAM` = `bkit.linearTeam` from manifest.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   Scan session prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
-   <!-- bkit:tracker false end -->
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
-   <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `COMMENTS`.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
-   <!-- bkit:tracker false end -->
-6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set. Format `{ISSUE_ID}-{slug}`.
-   <!-- bkit:tracker github start -->
-   Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker github end -->
-   <!-- bkit:tracker linear start -->
-   Lowercase `{ISSUE_ID}`. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-   <!-- bkit:tracker linear end -->
-   <!-- bkit:tracker false start -->
-   `ISSUE_ID` unset → `{branch-suffix}-{slug}`. No strict regex assert.
-   <!-- bkit:tracker false end -->
-8. <!-- bkit:tracker github start -->
+7. <!-- bkit:tracker github start -->
    Add `bkit:ship` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -315,7 +324,7 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-9. Write `ship-start-workflow` row to `$BOOK_ROOT/.../status.jsonl`:
+8. Write `ship-start-workflow` row to `$BOOK_ROOT/.../status.jsonl`:
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -324,8 +333,8 @@ description: "Ship Feature — Autonomous merge and archive"
      '{type:"step-done", workflow:"ship", step:"ship-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-input.md"]}' \
      >> "$STATUS"
    ```
-10. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
-11. <!-- bkit:tracker github start -->
+9. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
+10. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
@@ -363,27 +372,38 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch.
 
-1. Create / resume worktree, or adopt current branch in place (NO rebase — Path A):
+1. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (NO rebase — Path A). `{PROMPT_BRANCH}` = branch the session prompt names, else empty:
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
    bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
    bkit_runtime_assert_resolved || exit 2
-   if [ "$RUNTIME_WORKTREES" = "true" ]; then
+   SESSION_BRANCH=$(git branch --show-current)
+   SHIP_BRANCH="{PROMPT_BRANCH}"
+   if [ -z "$SHIP_BRANCH" ]; then
+     if git show-ref --verify --quiet "refs/heads/feat/{FID}" || git ls-remote --exit-code --heads origin "feat/{FID}" >/dev/null 2>&1; then
+       SHIP_BRANCH="feat/{FID}"
+     else
+       case "$SESSION_BRANCH" in dev|main|"") SHIP_BRANCH="feat/{FID}" ;; *) SHIP_BRANCH="$SESSION_BRANCH" ;; esac
+     fi
+   fi
+   case "$SHIP_BRANCH" in dev|main) echo "Refusing to ship $SHIP_BRANCH as a feature branch" >&2; exit 1 ;; esac
+   echo "SHIP_BRANCH=$SHIP_BRANCH"
+   if [ "$RUNTIME_WORKTREES" = "true" ] && [ "$SESSION_BRANCH" != "$SHIP_BRANCH" ]; then
      git worktree prune
      WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
      if [ -d "$WORKTREE_PATH" ]; then
        cd "$WORKTREE_PATH"
      else
-       if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
-         git worktree add "$WORKTREE_PATH" "feat/{FID}"
-       elif git fetch origin "feat/{FID}" 2>/dev/null \
-            && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
-         git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
+       if git show-ref --verify --quiet "refs/heads/$SHIP_BRANCH"; then
+         git worktree add "$WORKTREE_PATH" "$SHIP_BRANCH"
+       elif git fetch origin "$SHIP_BRANCH" 2>/dev/null \
+            && git show-ref --verify --quiet "refs/remotes/origin/$SHIP_BRANCH"; then
+         git worktree add "$WORKTREE_PATH" --track -b "$SHIP_BRANCH" "origin/$SHIP_BRANCH"
        else
          git fetch origin dev
-         git worktree add "$WORKTREE_PATH" -b "feat/{FID}" origin/dev
+         git worktree add "$WORKTREE_PATH" -b "$SHIP_BRANCH" origin/dev
        fi
        cd "$WORKTREE_PATH"
      fi
@@ -399,14 +419,42 @@ description: "Ship Feature — Autonomous merge and archive"
    else
      WORKTREE_PATH="$REPO_ROOT"
      cd "$WORKTREE_PATH"
+     [ "$(git branch --show-current)" = "$SHIP_BRANCH" ] || git switch "$SHIP_BRANCH" || { echo "Adopt mode: cannot switch to $SHIP_BRANCH — commit or stash local changes, then re-run" >&2; exit 1; }
      [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
      mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    fi
    bkit_runtime_row ship "$(date -u +%FT%TZ)" >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
-2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-3. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
-4. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**.
+2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty and = `SHIP_BRANCH` (echoed above); carry `SHIP_BRANCH` to every later step.
+3. **If** `BRANCH` does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
+4. `gh pr list --head "$(git branch --show-current)" --state all --json number,baseRefName,state --jq '[.[] | select(.state == "OPEN")] + [.[] | select(.state == "MERGED")] | .[0]'` → extract `PR_NUMBER`, `PR_BASE` and `state`. **If** `PR_NUMBER` non-empty **and** `PR_BASE` != dev → **Failure Path**. **If** `PR_NUMBER` empty → open PR, `SHIP_OPENED_PR` = true. `docs/plans/{YYYYMM}/{FID}-plan.md` (if present):
+   ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
+   B=$(git branch --show-current)
+   case "$B" in dev|main|"") echo "Nothing to ship: on '$B', no feature branch" >&2; exit 1 ;; esac
+   git fetch origin dev 2>/dev/null
+   AHEAD=$(git rev-list --count origin/dev..HEAD 2>/dev/null || echo 0)
+   [ "$AHEAD" -gt 0 ] || { echo "Nothing to ship: $B has no commits ahead of origin/dev" >&2; exit 1; }
+   git push -u origin "$B"
+   gh pr create --base dev --head "$B" --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
+   <!-- bkit:tracker github start -->
+   <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   <!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker false start -->
+   <!-- bkit:fid={FID} -->
+   <!-- bkit:tracker false end -->
+   <!-- bkit:start -->
+   ⚠️ PR opened by /bkit-ship — no PR existed for this branch.
+   docs/plans/{YYYYMM}/{FID}-plan.md
+   <!-- bkit:end -->
+   EOF
+   )" || exit 1
+   jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"ship", at:$t, openedPr:true}' >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   ```
+   **If** exit non-zero → **Failure Path**. Re-run the `gh pr list` above → extract `PR_NUMBER`, `PR_BASE` and `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
 5. **Route:**
    - **If** `state` = MERGED → record the resume marker, then → Step 9:
      ```bash
@@ -423,7 +471,23 @@ description: "Ship Feature — Autonomous merge and archive"
    MERGEABLE=$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)
    ```
    **If** exit non-zero → **Failure Path**.
-7. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
+7. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first:
+   ```bash
+   REPO_ROOT="{REPO_ROOT}"
+   . "$REPO_ROOT/.bkit/scripts/bkit-ship-timeouts.sh"
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ship] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_wait_ci "{PR_NUMBER}" 120 10
+   [ "$CI_WAIT_RESULT" = "found" ] || { echo "[bkit-ship] no CI run on new PR after ${CI_WAIT_ELAPSED:-0}s (probe=${CI_WAIT_RESULT:-err})" >&2; exit 1; }
+   DEADLINE=$(( $(date +%s) + ${SHIP_CI_WAIT_TIMEOUT_S:-1800} ))
+   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+     OPEN_CHECKS=$(gh pr view {PR_NUMBER} --json statusCheckRollup --jq '[.statusCheckRollup[]? | select((.status // "COMPLETED") != "COMPLETED" or (.state // "") == "PENDING")] | length' 2>/dev/null || echo err)
+     [ "$OPEN_CHECKS" = "0" ] && break
+     sleep "${SHIP_POLL_INTERVAL_S:-30}"
+   done
+   [ "$OPEN_CHECKS" = "0" ] || { echo "[bkit-ship] CI on new PR did not complete within ${SHIP_CI_WAIT_TIMEOUT_S:-1800}s" >&2; exit 1; }
+   ```
+   **If** exit non-zero → **Failure Path**.
+   `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
 8. Update status (bookkeeping to `$BOOK_ROOT`, NO branch commit):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
@@ -461,8 +525,8 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Worktree created / resumed or current branch adopted (NO rebase — Path A)
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
-- [ ] On branch that passed eligibility
-- [ ] `PR_NUMBER` non-empty; `PR_BASE` = dev
+- [ ] On `SHIP_BRANCH` (NOT `dev` / `main`); naming warning emitted when not named for `FID` / `ISSUE_ID`
+- [ ] `PR_NUMBER` non-empty; `PR_BASE` = dev (opened by ship, `openedPr` row recorded, CI awaited — when no PR existed)
 - [ ] `ENTRY_HEAD` read (PR head SHA at entry)
 - [ ] `MERGEABLE` state read
 - [ ] No PR CI failures confirmed
@@ -514,18 +578,18 @@ description: "Ship Feature — Autonomous merge and archive"
 2. **If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
    1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Agent` tool:
       Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
+      Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.
    2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
-   4. **If** `RESOLVE_VERDICT` = PASS → commit and push (B2 is the ONLY step that pushes to `feat/{FID}`):
+   4. **If** `RESOLVE_VERDICT` = PASS → commit and push (B2 is the ONLY step that force-pushes `{SHIP_BRANCH}`):
       ```bash
       REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
       bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$(pwd)" --month={YYYYMM} --fid={FID} --scope=full --mode=stage --stage-tracked-updates \
         || { echo "[bkit-book] conflict-resolve bookkeeping stage failed" >&2; exit 1; }
       git commit -m "chore({FID}): conflict-resolve bkit [skip ci]"
-      git push --force-with-lease origin "feat/{FID}"
+      git push --force-with-lease origin "{SHIP_BRANCH}"
       ```
       **Else** → **Failure Path** (non-mechanical conflict → handover).
 3. **Else** → **Subagent:** Invoke `@bkit-ship-conflict-resolve` → **Failure Path**.
@@ -560,7 +624,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] B2: subagent invoked (`@bkit-ship-conflict-resolve`, no inline work)
 - [ ] B2: artifact written (`ship-conflict-resolve.md`, non-empty)
 - [ ] B2: verdict extracted and valid (`RESOLVE_VERDICT` in `PASS|FAIL`)
-- [ ] B2: pushed to `feat/{FID}` via `--force-with-lease` (ONLY step that pushes the branch)
+- [ ] B2: pushed to `{SHIP_BRANCH}` via `--force-with-lease` (ONLY step that force-pushes the branch)
 - [ ] Workflow status updated (step `ship-conflict-resolve` recorded with `parentSha`, `verdict`)
 
 <!-- bkit:tracker true start -->
@@ -592,7 +656,7 @@ description: "Ship Feature — Autonomous merge and archive"
      else
        DISPATCHED="true"
        echo "[bkit-ship] no run at $CURRENT_HEAD after ${CI_WAIT_ELAPSED:-0}s (probe=${CI_WAIT_RESULT:-err}) — dispatching"
-       gh workflow run ci.yml --ref "feat/{FID}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
+       gh workflow run ci.yml --ref "{SHIP_BRANCH}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
      fi
      jq -nc --arg t "$(date -u +%FT%TZ)" --arg h "$CURRENT_HEAD" --arg r "${CI_WAIT_RESULT:-err}" \
        --arg rr "${REVALIDATE_REASON:-head-move}" --argjson d "$DISPATCHED" --argjson a "${CI_WAIT_ATTEMPTS:-0}" \
@@ -603,7 +667,7 @@ description: "Ship Feature — Autonomous merge and archive"
      ATTEMPT=0
      while [ "$(date +%s)" -lt "$DEADLINE" ]; do
        ATTEMPT=$((ATTEMPT + 1))
-       RUNS=$(gh run list --branch "feat/{FID}" --workflow ci.yml --limit 20 --json status,conclusion,headSha 2>/dev/null)
+       RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json status,conclusion,headSha 2>/dev/null)
        RUN_STATE=$(printf '%s' "$RUNS" | jq -c --arg h "$CURRENT_HEAD" '[.[] | select(.headSha == $h)] | .[0] // empty' 2>/dev/null)
        RUN_STATUS=$(printf '%s' "$RUN_STATE" | jq -r '.status // empty' 2>/dev/null)
        [ "$RUN_STATUS" = "completed" ] && break
@@ -620,8 +684,8 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    **If** exit non-zero → **Failure Path**.
    **If** `{REVALIDATE_REASON}` = `gate-refusal` → Step 6.
-2. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+2. `PLAN_SOURCE` = plan. **If** no `docs/plans/{YYYYMM}/{FID}-plan*.md` in `{WORKTREE_PATH}` → `PLAN_SOURCE` = brief → emit `[bkit-ship] WARNING no plan — deferred sweep judges against ship-input.md` → append `{type:"workflow-meta", workflow:"ship", at, planSource:"brief"}` to `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. `Plan source: {PLAN_SOURCE}.` Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/{FID}-plan*.md`, `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Assert subagent Create file exists and is non-empty. **If** file empty → **Failure Path**.
@@ -697,7 +761,7 @@ description: "Ship Feature — Autonomous merge and archive"
    GATE_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
    DEV_SHA=$(git rev-parse origin/dev)
    ANCESTOR=$(git merge-base --is-ancestor origin/dev "$GATE_HEAD" 2>/dev/null && echo true || echo false)
-   CAPSTONE_RUN=$(gh run list --branch "feat/{FID}" --workflow ci.yml --limit 1 --json databaseId,url --jq '.[0] // {}' 2>/dev/null)
+   CAPSTONE_RUN=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 1 --json databaseId,url --jq '.[0] // {}' 2>/dev/null)
    MERGEABLE_STATE=$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)
    jq -nc \
      --arg gateHead "$GATE_HEAD" --arg devSha "$DEV_SHA" --arg ancestor "$ANCESTOR" \
@@ -722,7 +786,7 @@ description: "Ship Feature — Autonomous merge and archive"
    GATE_SH="$REPO_ROOT/.bkit/scripts/bkit-ship-gate.sh"
    export STATUS_PATH="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    GATE_EXIT=0
-   bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" --branch "feat/{FID}" || GATE_EXIT=$?
+   bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" --branch "{SHIP_BRANCH}" || GATE_EXIT=$?
    ```
    **If** `GATE_EXIT` != 0 → write a status row carrying the exit code, then route:
    ```bash
@@ -833,7 +897,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -1045,7 +1109,7 @@ description: "Ship Feature — Autonomous merge and archive"
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `@bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
+     Read: `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
 4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
    Then re-render the mechanical `roadmap-status` board from the ledger:
@@ -1192,11 +1256,11 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 2. Delete local feature branch:
    ```bash
-   git branch -D "feat/{FID}" 2>/dev/null || true
+   case "{SHIP_BRANCH}" in dev|main|"") echo "[bkit-ship] refusing to delete branch '{SHIP_BRANCH}'" >&2 ;; *) git branch -D "{SHIP_BRANCH}" 2>/dev/null || true ;; esac
    ```
 3. Delete remote feature branch and prune tracking ref:
    ```bash
-   git push origin --delete "feat/{FID}" 2>/dev/null || true
+   case "{SHIP_BRANCH}" in dev|main|"") echo "[bkit-ship] refusing to delete branch '{SHIP_BRANCH}'" >&2 ;; *) git push origin --delete "{SHIP_BRANCH}" 2>/dev/null || true ;; esac
    git fetch --prune origin 2>/dev/null || true
    ```
 4. Update status (bookkeeping to `$BOOK_ROOT`):
@@ -1226,8 +1290,8 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent, or ownership marker absent → skipped)
 - [ ] Worktree prune executed (`git worktree prune`)
-- [ ] Local `feat/{FID}` branch deleted (or already absent)
-- [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
+- [ ] Local `{SHIP_BRANCH}` branch deleted (or already absent)
+- [ ] Remote `origin/{SHIP_BRANCH}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
 
 <!-- bkit:tracker true start -->

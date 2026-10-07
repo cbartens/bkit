@@ -64,7 +64,7 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | Interaction | Purpose | github | linear | none |
 | --- | --- | --- | --- | --- |
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | "not configured" stub |
-| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | session prompt scan / `issue_write` create | session prompt scan / `save_issue` create | scan session prompt; else `ISSUE_ID=""` |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution. No match → stop. Never creates an issue | session prompt scan; no match → stop | session prompt scan; no match → stop | scan session prompt; else `ISSUE_ID=""` |
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
 | `issue-read` | Read state + labels + body + comments | `issue_read` `get` / `get_comments` | `get_issue` / `list_comments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` for ranking only + per-hit `issue_read` `get` / `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |
@@ -75,10 +75,6 @@ Per-tracker call sites referenced across `.bkit/workflows.md` by these names. Ea
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue` In Review | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
 | `comment-post-step` | NEW comment per workflow step | `add_issue_comment` | `save_comment` | skip |
-| `comment-on-issue` | NEW comment on an arbitrary issue | `add_issue_comment` (`{TARGET_ISSUE_ID}`) | `save_comment` (`{TARGET_ISSUE_ID}`) | skip |
-| `list-milestone-issues` | Enumerate workstream issues in the parent's milestone/project (design Step 9) | `search_issues` `milestone:"{title}"` | `list_issues` `projectId`+`projectMilestoneId` | empty |
-| `assign-milestone-issue` | Create a workstream issue assigned to the parent's milestone/project — never a sub-issue (design Step 9) | `issue_write` create + `milestone` number | `save_issue` `projectId`+`projectMilestoneId` | skip |
-| `set-blocked-by` | Set `blockedBy` edges | issue-body marker block | `save_issue` blockedBy | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | FID-only, no fail-closed |

@@ -19,12 +19,11 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 
 ```
 .bkit/workflows/
-├── bkit-design.md         # Workflow 1/6 — 11 steps; hard stop after summary
-├── bkit-plan.md           # Workflow 2/6 — 12 steps; hard stop after summary
-├── bkit-build.md          # Workflow 3/6 — 18 steps; CI takes over after PR
-├── bkit-debug.md          # Workflow 4/6 — 10 steps; normal / soak modes
-├── bkit-ship.md           # Workflow 5/6 — 13 steps; merge → archive → In Review (human closes)
-├── bkit-audit.md          # Workflow 6/6 — 7 steps; planned (not yet shipped)
+├── bkit-design.md         # Workflow 1/5 — 11 steps; hard stop after summary
+├── bkit-plan.md           # Workflow 2/5 — 12 steps; hard stop after summary
+├── bkit-build.md          # Workflow 3/5 — 18 steps; CI takes over after PR
+├── bkit-debug.md          # Workflow 4/5 — 10 steps; normal / soak modes
+├── bkit-ship.md           # Workflow 5/5 — 13 steps; merge → archive → In Review (human closes)
 └── bkit-auto.md          # Utility — phase-routed cloud dispatch (ship/debug by CI on a PR or post-merge `dev`; design/plan/build by dispatch)
 ```
 
@@ -36,8 +35,21 @@ Canonical source: `.bkit/workflows/`. `bkit install` regenerates `.claude/comman
 | `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL |
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
-| `/bkit-audit` | yes | yes | planned — `docs/audits/{FID}-audit.md` + one Linear sub-issue per workstream |
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
+
+## When to Run
+
+Choose by the state of the work. Procedure stays in the command file and in § Per-Phase Workflows.
+
+<!-- prettier-ignore -->
+| Command | When to run | When not to run |
+| --- | --- | --- |
+| `/bkit-design` | The approach is still open — options, trade-offs, or questions nobody has answered. No design doc yet, or the one on disk no longer matches the decision. | The issue is already researched and settled. A design doc already says that and still holds — edit the doc. The change is obvious enough to plan or build. |
+| `/bkit-plan` | The approach is settled and there is no plan an implementer can execute. | A plan already exists and still fits — amend that plan. The approach itself is still open. |
+| `/bkit-build` | What to build is clear (a plan, or a brief) and that code is not on a branch yet. | The change is already implemented on a branch. What to build is still undecided, or not broken into tasks. |
+| `/bkit-debug` | Tests or CI are actually failing, and the cause is not already known. | Nothing is red. The request is new work. The fix is already known and there is no failure to reproduce. |
+| `/bkit-ship` | A branch holds the finished change and it is ready to land on `dev`. | No branch. The branch has nothing `dev` lacks. The work is still a design, a plan, or unfinished code. |
+| `/bkit-auto` | A cloud or CI event should pick the phase: green PR → ship, red CI → debug, a dispatched issue → design / plan / build. | You already know the phase. Run that command. |
 
 ## Workflow Authoring Rules
 
@@ -128,7 +140,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
 - **Auto-route marker derivation is fence-local (build Step 18, debug Step 12, ship Step 5):** every site re-reads `bkit:auto` with `gh issue view … | grep -qxF 'bkit:auto'` inside the same bash fence that consumes `AUTO_ROUTE_SUFFIX`. Two dead shapes preceded it and must not return: `${LABELS:-}` (an MCP-derived template value that is never assigned as a shell variable, so it always expanded empty), and a `mktemp` path published via `$GITHUB_ENV` (the runner applies `$GITHUB_ENV` only BETWEEN Action steps, while every agent Bash tool call in a cloud dispatch runs inside the one `claude-code-action` step). Exact-match `-qxF` mirrors the kill switch in `bkit-cloud.yml`, the marker's only consumer, so `bkit:auto-paused` / `no-bkit:auto` cannot arm the route. A tracker with no readable GitHub issue (Linear, `none`) fails closed and leaves the subject unchanged — the same kill switch could not gate it either. The marker becomes permanent `dev` history; that is inherent to reading `head_commit.message` and is not cleaned up later. Any resulting cross-session `/bkit-debug` dispatch loop is capped by `MAX_DEV_DISPATCH_ATTEMPTS` (`.bkit/scripts/bkit-counter-bus-config.sh`).
 - **Host skill mirrors are in the `--scope=full` bookkeeping pathspec:** `npx skills remove` deletes `.claude/skills` / `.cursor/skills` / `.opencode/skills` alongside `.agents/skills/<name>`, so the close staging must be able to carry those deletions. `bkit-book-commit.sh` builds its pathspec via `git ls-files -z --cached --others --exclude-standard`, so an unmatched glob is empty output (never fatal) and `--cached` still emits a tracked-but-deleted mirror, so the deletion stages cleanly — a claude-only consumer with no `.cursor` / `.opencode` mirror sweeps zero for those globs rather than aborting. Without them the prune commit holds only `.agents/skills` + `skills-lock.json` and the mirror deletions leak into the working tree, where the next unrelated staging sweeps them into a foreign commit.
 - **Ship Step 11 never prunes `bkit-*` skills:** they are bkit render output (Codex host workflow entry points), absent from `.agents/skills.md`. The `case bkit-*) continue` skip is the guard; without it every ship uninstalls them.
-- **Staging routes through `bkit-book-commit.sh`, never a shell `BOOK_PATHS`:** the pathspec used to be rebuilt inline per block with unquoted word-splitting and an `ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl` glob that ABORTS under zsh when unmatched — silently dropping every ledger in a fresh consumer repo, and (worse) swallowing a failed `git add` into a false "nothing to commit" success, since nothing in these blocks sets `set -e`. `bkit-book-commit.sh` (`.bkit/scripts/`, invoked with an explicit `bash` prefix so host shell never matters) builds the pathspec with `git ls-files` instead — an unmatched glob is empty output, never an abort — and stages/commits it via `--pathspec-from-file --pathspec-file-nul` rather than a re-interpolated shell string. It refuses to reach `commit` when that list is empty (exit 6): `git commit --pathspec-from-file=<empty file>` does NOT commit nothing, it silently commits whatever is ALREADY staged in the index — a worse trap than the `git add` no-op it replaces. `BOOK_ROOT` is untouched by this change — still re-derived at each block's own top (`{BOOK_ROOT}` never crosses a Bash-block boundary). `tests/ship-failure-path.bats` pins the 3 `bkit-book-commit.sh` call sites in `bkit-ship.md` (Failure Path flush + union-ledgers share one block, B2 conflict-resolve stage, Close flush) and asserts every one is failure-guarded; `tests/book-commit.bats` unit-tests the script itself under both bash and zsh.
+- **Staging routes through `bkit-book-commit.sh`, never a shell `BOOK_PATHS`:** the pathspec used to be rebuilt inline per block with unquoted word-splitting and an `ls docs/plans/*/logs/*/*.jsonl docs/*.jsonl .bkit/*.jsonl` glob that ABORTS under zsh when unmatched — silently dropping every ledger in a fresh consumer repo, and (worse) swallowing a failed `git add` into a false "nothing to commit" success, since nothing in these blocks sets `set -e`. `bkit-book-commit.sh` (`.bkit/scripts/`, invoked with an explicit `bash` prefix so host shell never matters) builds the pathspec with `git ls-files` instead — an unmatched glob is empty output, never an abort — and stages/commits it via `--pathspec-from-file --pathspec-file-nul` rather than a re-interpolated shell string. It refuses to reach `commit` when that list is empty (exit 6): `git commit --pathspec-from-file=<empty file>` does NOT commit nothing, it silently commits whatever is ALREADY staged in the index — a worse trap than the `git add` no-op it replaces. `BOOK_ROOT` is untouched by this change — still re-derived at each block's own top (`{BOOK_ROOT}` never crosses a Bash-block boundary). `.bkit/src/bkit-ship-invariants.test.ts` pins the 3 `bkit-book-commit.sh` call sites in `bkit-ship.md` (Failure Path flush + union-ledgers share one block, B2 conflict-resolve stage, Close flush) and asserts every one is failure-guarded; `tests/book-commit.bats` unit-tests the script itself under both bash and zsh.
 - **Failure Path never calls `bkit_runtime_assert_resolved`:** its contract is "route a non-zero return to the **Failure Path**", which is a self-loop from inside one. The `case` fallback assigns the least-capable value instead — the same one the shim gives `UNKNOWN` — so an unresolved runtime still lands the record on the current branch rather than attempting a `dev` push it cannot make.
 - **Failure Path reconciles branch-side artifacts before staging:** the deferred sweep and the handover subagent both `cd` into `{WORKTREE_PATH}`, which is not `BOOK_ROOT` in mint mode, and a failed ship never merges the branch — without the copy those artifacts die with the worktree. Ledgers are unioned line-wise rather than copied: both trees hold rows the other does not. The default-expansion form `${WORKTREE_PATH:-…/{FID}}` is avoided because the `}` inside the default closes the expansion early and leaks a trailing brace into the path, silently copying nothing.
 - **`context-fetch` blocks are selected by ordinal, not by `context` + name:** two blocks may legitimately share a pair — the context-coverage advisory tells consumers a second test lane needs its OWN `context=e2e` block, and naming is optional — and matching on the pair spliced both bodies into one `BLOCK` and wrote them to one artifact path. The ordinal comes from the same enumeration pass, so selection is total; the artifact path only grows the ordinal when the pair actually repeats, keeping the documented `context-<context>-<name>-<attempt>.md` shape for every single-block context.
@@ -145,7 +157,7 @@ Re-runnable: source carries wired variants; tracker switch (`--tracker=linear` a
   - **Ledger scans** (plan only, run under `none`): awk counts query-term hits per line (`>=2` distinct terms, or the sole term when one; case-insensitive substring), sorts by hit count desc then line number desc (append-only ledgers → line order is time order), keeps the top 40 per file and footers the total. `cut -f3-` rejoins fields 3..N with tabs, so a literal tab inside a JSONL line survives intact. Backstopped by the `ledger` clamp profile.
 - **Projects v2 board sync** (`issue-update-status`): best-effort, never gates; retry once after 5s on failure. `update_project_item` needs numeric `item_id`, not node id from `add_project_item` → intervening `projects_list` resolve. Status `value` = single-select option id (e.g. `47fc9ee4`), not name. Linear: no-op (state carries status).
 - **Blocked-by edges:** GitHub: `###### bkit:blocked-by start` / `end` pair in issue body. Linear: native `blockedBy` (append-only; unchanged edges = no-op).
-- **Workstream milestone assignment (design Step 10):** `MILESTONE`-labelled parent groups workstreams under native milestone, NOT sub-issues. Parent must carry target (GitHub milestone / Linear project + project milestone) — MCP cannot create → unset = Step 10 Failure Path. Each workstream assigned to same target: GitHub `issue_write` `milestone` (from parent `issue_read`); Linear `save_issue` `projectId` + `projectMilestoneId`. Existing detection: GitHub `search_issues` `milestone:"{title}" in:title WS-` (index lag, best-effort); Linear `list_issues` by `projectId` + `projectMilestoneId`; match `^WS-N:` title. `Requires` → block-by edges unchanged.
+- **No tracker-issue creation:** Workflows never create tracker issues. `issue_write` method is `update`. Linear `save_issue` always includes `id`. Step 1 resolves an existing issue reference from the session prompt; no match → log `No issue ID in the session prompt.` and stop (not **Failure Path**). Design Step 10 posts `## Suggested Workstreams` as an advisory comment on the parent issue. A human files any follow-up issues.
 - **issue-update-review** (phase-close): **update state only — never change label on close.** GitHub: no-op (phase label until ship `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` (partial update would drop `bkit:auto`/`bkit:debug`).
 - **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops phase labels, adds `bkit:merged`, **In Review** — Linear `state: "In Review"`, GitHub **open** (board → review, not done). Human reviews merged change and closes manually. Merge != acceptance.
 
@@ -534,7 +546,7 @@ Every transformation step writes ONE versioned file in `docs/plans/{YYYYMM}/logs
 | `design-apply-review` | `design-v2-reviewed.md` | versioned draft |
 | `design-organise` | `design-v3-organised.md` | versioned draft |
 | `summary` | `design-summary.md` | summary-only |
-| `design-workstream-issues` | (milestone/project issues + `blockedBy` edges) | side-effect only — no file deliverable |
+| `design-workstream-suggest` | parent-issue comment listing `## Suggested Workstreams` | side-effect only — no file deliverable |
 | `close-workflow` (copy) | `{YYYYMM}/{FID}-design.md` | canonical (copy of v3) |
 
 **Versioned chain — plan** (`{YYYYMM}/{FID}-plan.md` is the canonical artifact; populated only at close):
@@ -806,7 +818,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Read | Write | Notes |
 | --- | --- | --- | --- | --- |
-| 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Fetch `origin/dev`. Resolve / create `{ISSUE_ID}`, set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.jsonl` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Fetch `origin/dev`. Resolve `{ISSUE_ID}` from the session prompt (no match → stop; never create), set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.jsonl` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, env files, `design-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). `pnpm install --frozen-lockfile`. |
 | 3 — Brainstorm & Ideate | `@bkit-design-brainstorm-ideate-1` ‖ `-2` ‖ `-3` (parallel triplet) | `design-input.md` | `design-brainstorm-ideate-1.md`, `-2.md`, `-3.md` | Pragmatic / optimal-tradeoff / risk-premortem lenses; effort-tier diversity (`high`/`medium`/`high`); sibling-blind. `BRAINSTORM_VERDICT` = worst of three. |
 | 4 — Generate Design | `@bkit-design-generate` | all three brainstorms, `related-issues.md`, superseded `{YYYYMM}/{FID}-design.md` (if any) | `design-v1-draft.md` (versioned draft) | First write of deliverable design doc. Superseded design = context ONLY, never a constraint; supplied HERE only — NOT to the sibling-blind ideate triplet. |
@@ -815,12 +827,12 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 7 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews, `design-spike.md` (if present) | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. Spike evidence outranks review opinion — a FAIL claim revises the design element resting on it. |
 | 8 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = FAIL (cycles) → Failure Path. |
 | 9 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. Glob picks up `design-spike.md` — `Feasibility` leads with a spike FAIL. |
-| 10 — Design Workstream Issues | — | `design-v3-organised.md` | milestone/project issues + block-by edges, `status.jsonl` | Read parent's milestone (GitHub) / project + project milestone (Linear); unset → Failure Path. Per `WS-N` block in `## Design Workstreams`: list existing milestone issues → existing match → sync comment (body untouched); else create issue assigned to that milestone/project (NOT a sub-issue) with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
+| 10 — Suggest Workstreams | — | `design-v3-organised.md` | parent-issue comment, `status.jsonl` | Read `## Suggested Workstreams`. Post one advisory comment on the parent issue: one line per `WS-N` (`Requires` included) plus the design link. `NEVER auto-trigger`. Never creates an issue, never comments on another issue, never sets blockers. |
 | 11 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3), `{YYYYMM}/archive/` (superseded, re-run only) | Archive any existing canonical → copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. Final return displays `design-summary.md` verbatim. |
 
 **Hard stop in Step 11 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
-**Step 10 contract:** workstream-issue body carries everything `/bkit-plan` needs — no tracker labels, no `WS_ID`, no parent-shape detection. Markers `**Parent design:**`, `**Workstream:**` load-bearing — parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract. `**Parent design:**` = markdown link with bare path display text for plan parser. `Requires:` → block-by edges → `/bkit-build` Step 1 `issue-blockers-check` enforces ordering. Workstreams grouped by parent native milestone/project — NOT sub-issues (MCP cannot create milestone). Re-runs non-destructive: bodies/titles never rewritten (sync comments only); orphans get `## Workstream Delete` comment. Single-workstream designs still spawn one issue; design and plan never share FID.
+**Step 10 contract:** the organised design's `## Suggested Workstreams` is the suggestion. Step 10 copies that list onto the parent issue as an advisory comment (`NEVER auto-trigger`). It does not file issues. `/bkit-plan` Step 1 still parses `**Parent design:**` when a human has put that marker on an issue body; absent → standalone plan. `/bkit-build` Step 1 still honours blocker edges a human has set. Design and plan never share FID.
 
 ### `/bkit-plan` — 12 steps
 
@@ -829,9 +841,9 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` (sub-issue case); **else** leave empty (standalone plan run on issue input alone). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + tracker issue description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. Superseded plan is NOT appended here — it goes to Step 3 only. |
-| 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template), `plan-input.md`, superseded `{YYYYMM}/{FID}-plan.md` (if any). Superseded plan = context ONLY, never a constraint; supplied HERE only — NOT via `plan-input.md`, which the review triplet + summary also read. Writes `plan-generate.md` log + `docs/plans/{YYYYMM}/{FID}-plan.md`. |
+| 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` when the issue body carries the marker; **else** leave empty (standalone plan run on issue input alone). Parse `docs/audits/{YYYYMM}/*.md` paths from `DESCRIPTION` and the session prompt → `AUDIT_PATHS` (absent → empty; a named path that is not a file → Failure Path). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + tracker issue description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). **If** `AUDIT_PATHS` set → append each report in order (missing file → Failure Path). Standalone plans with neither skip both appends. Superseded plan is NOT appended here — it goes to Step 3 only. |
+| 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/templates/bkit-plan.md` (canonical plan template), `plan-input.md`, superseded `{YYYYMM}/{FID}-plan.md` (if any). Superseded plan = context ONLY, never a constraint; supplied HERE only — NOT via `plan-input.md`, which the review triplet + summary also read. Audit reports in `plan-input.md`: `CRITICAL` and `HIGH` → runbook tasks; `MEDIUM` → `Suggested Scope Expansion`; `LOW` → `Out of Scope` as `Exempt`. Writes `plan-generate.md` log + `docs/plans/{YYYYMM}/{FID}-plan.md`. |
 | 4 — Fetch Context | — | Related-issues tracker search (keyed on the generated plan's surfaces) + local `docs/{deferrals,failures}.jsonl` greps → `related-issues.md` (tracker-gated), `related-deferrals.md`, `related-failures.md` (each `None` when empty). Advisory context for review; never gates, never auto-expands scope. |
 | 5 — Review Plan | `@bkit-plan-review-1` ‖ `-2` ‖ `-3` (parallel triplet) | Reads plan + the three `related-*.md` context files. Tightness / dependency-correctness / regression-risk lenses. All three write critique logs. Missing or vague `**Done when:**` on any task → CRITICAL. |
 | 6 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. Preserves every task's `**Done when:**` line (may tighten, never remove/weaken). |
@@ -853,8 +865,8 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Build`, `In Progress`. Check `relations.blocked_by` — any blocker not in `{Done, Cancelled}` → Failure Path with `Blocked by {BLOCKER_ID}`. Plan must exist at `docs/plans/{YYYYMM}/{FID}-plan.md` — else Failure Path with `Build requires plan.` NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | Init `SUB_COUNT` (count `docs/plans/{YYYYMM}/{FID}-plan-*.md`), `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1. `build-input.md` includes the canonical plan. No path moves — plan stays at canonical bucket from design close. |
+| 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Build`, `In Progress`. Check `relations.blocked_by` — any blocker not in `{Done, Cancelled}` → Failure Path with `Blocked by {BLOCKER_ID}`. Resolve `FID`, then lock (missing month bucket → current month). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 2 — Worktree Setup | — | Set `PLAN_SOURCE`: `plan` when `{FID}-plan.md` exists in the worktree, else `brief` (warning + `workflow-meta` `planSource:"brief"`, `doneWhen`). Init `SUB_COUNT` (count `docs/plans/{YYYYMM}/{FID}-plan-*.md`; `1` under `brief`), `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1. `build-input.md` includes the canonical plan when there is one. No path moves — plan stays at canonical bucket from design close. |
 | 3 — Branch Sync | — | `git fetch origin`; if `git log HEAD..origin/dev --oneline -- docs/` non-empty → merge `origin/dev` (prefer `dev` for `docs/` conflicts). |
 | 4 — Plan Current | `@bkit-build-plan-current` _(skipped when the mechanical trigger clears)_ | Orchestrator trigger reads the plan's `bkit:anchor` `baseSha` (§ Anchor Block) and exits 3 — skipping the whole step, no agent, no `step-done` row, same shape as Step 5's `[skills=false]` skip — on any of: no anchor, `baseSha` unreachable in this clone, nothing landed on `origin/dev` since it. Else it emits `BASE_SHA` and the agent derives its own changed-path list from it, intersects that against the paths the plan's tasks depend on, and reads per-path diffs for the intersection ONLY. `Executable` tasks are not findings; `Reword` / `Broken` are. Judges the PLAN against the codebase — the design doc is not an input, and `designPath` / `designBaseSha` have no consumer here. `CURRENT_VERDICT` is advisory on every value — PASS / CONCERNS / FAIL all → Step 5; CONCERNS / FAIL are recorded, comment-posted with `Affected`, and echoed as a console advisory, never blocking. Findings carry into Step 6 as a Read for `@bkit-build-plan-execute`; build NEVER revises the plan, a re-run of `/bkit-plan` does. |
 | 5 — Skills | `@bkit-build-install-skills` _(skip if input contains `[skills=false]`)_ | If new skills installed → commit `chore({FID}): install skills bkit [skip ci]`. |
@@ -921,8 +933,8 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional); staging pathspec built by `bkit-book-commit.sh`; create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; acquire lock; set label `Ship`, `In Progress`. NO commits on `dev`. |
-| 2 — Verify PR (Worktree Setup + Regression Guard) | — | Read PR head SHA (`ENTRY_HEAD`), mergeable state. Regression guard: no CI run for PR HEAD → FAIL; else assert prior failed steps now pass. Branch eligibility check. Resolve `PR_NUMBER`. Init `MERGE_ATTEMPT` = 0. Write ownership marker to outbox. |
+| 1 — Start Workflow | — | Resolve `BOOK_ROOT` (RUNTIME_DEVPUSHES conditional); staging pathspec built by `bkit-book-commit.sh`; create outbox at `$(git rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/`; preflight `actions: write` once; resolve `FID`, then acquire lock (missing month bucket → current month); set label `Ship`, `In Progress`. `ship-input.md` includes the plan when there is one. NO commits on `dev`. |
+| 2 — Verify PR (Worktree Setup + Regression Guard) | — | Resolve `SHIP_BRANCH` (see Branch eligibility). Read PR head SHA (`ENTRY_HEAD`), mergeable state. Regression guard: no CI run for PR HEAD → FAIL; else assert prior failed steps now pass. Resolve `PR_NUMBER` — no PR and branch ahead of `origin/dev` → push, open PR into `dev` (`workflow-meta` `openedPr:true`), wait for its CI; nothing ahead → Failure Path `Nothing to ship`. Init `MERGE_ATTEMPT` = 0. Write ownership marker to outbox. |
 | 3 — Base Check | — | `git merge-base --is-ancestor origin/dev origin/feat/{FID}`: ancestor → Path A → Step 6; not ancestor → Path B → Step 4. |
 | 4 — Integrate (Path B only) | `@bkit-ship-conflict-resolve` _(B2 only)_ | B1 mergeable: `gh pr update-branch` → Step 5. B2 conflicting: worktree + `@bkit-ship-conflict-resolve` + `git push --force-with-lease` → Step 5. Non-mechanical: handover. |
 | 5 — Re-validate + Deferred Sweep | `@bkit-ship-deferred-sweep` | Sub-step 1 on head ≠ `ENTRY_HEAD` **or** `REVALIDATE_REASON` = `gate-refusal`: `bkit_wait_ci` probe, `gh workflow run ci.yml` ONLY on no-run, head-anchored poll (elapsed cap from `bkit-ship-timeouts.sh`), `rate_limit` sample; `gate-refusal` returns to Step 6 here (sub-steps 2-7 first-pass only). Then `@bkit-ship-deferred-sweep`: PASS → Step 6; FAIL touches `$BOOK_ROOT/.../logs/{FID}/.deferred-blocked` → Failure Path (merge never happens). |
@@ -937,30 +949,9 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Failure Path** resolves `BOOK_ROOT` (not `--git-common-dir`), aborts rebase before status append, writes `.deferred-blocked` sentinel (on deferred-sweep FAIL), and includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
-### `/bkit-audit` — 7 steps _(planned — `bkit-audit.md` not yet in `.bkit/workflows/`)_
+### Audits
 
-**Goal:** read-only multi-lens audit. No code, no execution. Always hard-stops after summary for human review (do NOT invoke `/bkit-plan` or `/bkit-build`). Triggered ad-hoc by a human; NOT part of the design → plan → build → debug → ship auto-cycle.
-
-> **Planned prompt names** below (`@bkit-audit-*`) are stubs for the future audit workflow.
-
-<!-- prettier-ignore -->
-| Step | Subagent(s) | Read | Write | Notes |
-| --- | --- | --- | --- | --- |
-| 1 — Start Workflow | — | Linear issue | `.lock`, Linear comment | Pre-flight: fetch `origin/dev`. Resolve argv (no-arg / glob / `TEAM-NNN`) → set `SCOPE_GLOB`, `ISSUE_ID`. Create-or-reuse master Linear issue. NO phase label. FID-format invariant assertion (standard form OR `-audit-{YYYYMMDD-HHmm}` suffix for re-audits). NO commits on `dev` — `status.jsonl` init + `audit-start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, `audit-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). Read-only — drops `pnpm install --frozen-lockfile`. |
-| 3 — Audits | `@bkit-audit-architecture` ‖ `-hotpath` ‖ `-config` ‖ `-reliability` ‖ `-observability` ‖ `-debt` ‖ `-dead-code` ‖ `-deps` ‖ `-security` ‖ `-tests` ‖ `-docs-drift` (parallel 11) | `audit-input.md` | 11 x `audit-{slug}.md` | Sibling-blind. Each auditor reads `.agents/docs.md` for project context (stack-aware report; stack-agnostic probes). Post-Step-3 assertion gate: for each slug verify file exists, non-empty, verdict header present. `LENS_VERDICT_WORST` = worst-of-11 (`FAIL > CONCERNS > PASS`); `MISSING`/`EMPTY` → CONCERNS-equivalent; `NO_VERDICT` → FAIL-equivalent → Failure Path. |
-| 4 — Synthesise | `@bkit-audit-synthesise` | glob `audit-*.md` | `audit-v1-synthesis.md` | Parse standard markdown finding headings via regex `^## \[(\w+)\]\[(\w+)\] (.+) — (.+)$`; dedup on `(class, normalized_location)` with 5-line bucket; severity max-wins; cross-audit confidence upgrade one tier. `SYNTHESIS_VERDICT` = FAIL → Failure Path. |
-| 5 — Organise | `@bkit-audit-organise` | `audit-v1-synthesis.md` | `audit-v2-ranked.md` + Linear sub-issues per workstream | Render severity x class matrix + ranked list + per-class appendix + workstreams. Post-step: orchestrator parses `## Workstreams` section and `save_issue` per `WS-{N}` with `parentId: {ISSUE_ID}` (existing match → `save_comment` sync). `ORGANISE_VERDICT` = FAIL (orphan correlation_id) → Failure Path. |
-| 6 — Summary | `@bkit-audit-summary` | highest `audit-v*` + glob `audit-*.md` | `audit-summary.md` | Subagent emits 500-token summary. Orchestrator appends Step 6 section to master Linear comment with `audit-summary.md` content verbatim. Commit `chore({FID}): summary bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 7 — Close Workflow | — | — | `docs/audits/{FID}-audit.md` (copy of v2) | Copy v2 to `docs/audits/` → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; NO phase label change (audit applies no label). |
-
-**Hard stop in Step 7 caution block:** "Audit requires human review. Do NOT invoke `/bkit-plan` or `/bkit-build`. Findings are advisory; act on them via the spawned Linear sub-issues or open follow-up issues."
-
-**Step 5 contract:** sub-issue body = workstream `## Findings` + `## Rationale`. Markers `**Parent audit:**`, `**Workstream:**` load-bearing. Re-audit: append `-audit-{YYYYMMDD-HHmm}` to FID; lock decoupled via timestamp; existing sub-issues matching `WS-{N}:` title → sync comment not body rewrite.
-
-**Step 6 contract:** matches "ONE Linear comment per workflow run". Master comment grows Steps 1–7 (one section/step); Step 6 section = `audit-summary.md` verbatim. Sub-issues Step 5 = only Linear writes beyond master comment.
-
-**No `Audit` phase label.** Identity via (a) title prefix `Audit run …`, (b) parent → sub-issue tree, (c) `docs/audits/{FID}-audit.md`. Additive labels (`Failed`, `Debug`) coexist.
+No command and no phase label. A template in `docs/templates/bkit-audit-*.md` is the procedure (sections, steps, gates). `@bkit-audit-generate` runs one template and writes `docs/audits/{YYYYMM}/{slug}.md`. **If** that month already has this slug → `{slug}-{TIMESTAMP}.md` (`{TIMESTAMP}` = `date -u +%Y%m%dT%H%M%SZ`). Writes only the report and the template's consumer-owned `Project Instructions` below `bkit:end`, refined each run. `/bkit-plan` reads a design doc, one or more of those reports, or both.
 
 ### `/bkit-auto` — phase-routed dispatch
 
@@ -1058,7 +1049,7 @@ Phase label preserved through Close — tracker state (Linear "In Review", GitHu
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `bkit:auto` | Human (via tracker UI) at issue creation; written by issue-id-extraction snippet's create-issue fallback | Opt-in gate for `/bkit-auto` CI-mode (ship/debug) dispatch. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
+| `bkit:auto` | Human (via tracker UI) at issue creation | Opt-in gate for `/bkit-auto` CI-mode (ship/debug) dispatch. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
 | `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior failure marker) and when `/bkit-ship` Step 13 adds `bkit:merged` (terminal success). |
 | `bkit:debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `bkit:build` or `bkit:ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. |
 
@@ -1082,7 +1073,7 @@ NEW comment per workflow step via tracker MCP. Step 1 = first comment; later ste
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: `###### bkit:blocked-by start` … `end` block in the body). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Design Step 9 `Requires` edges via `set-blocked-by` → enforces workstream ordering.
+`/bkit-build` Step 1: tracker `issue-read` → parse blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: `###### bkit:blocked-by start` … `end` block in the body). Blocker not closed/done → Failure Path `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Workflows never write those edges. A human sets them.
 
 ## GitHub Integration
 
@@ -1091,7 +1082,7 @@ NEW comment per workflow step via tracker MCP. Step 1 = first comment; later ste
 - **Base branch:** `dev`. PRs always target `dev`, never `main`.
 - **Feature branch:** `feat/{FID}` for design / plan / build / ship.
 - **Debug creates no branch:** it adopts `feat/{FID}` when that branch still exists, else the session's current branch in place. A per-run remediation branch strands the fix off the surface whose CI failed and multiplies branches across debug attempts.
-- **Branch eligibility** (`/bkit-ship` Step 2): `{BRANCH}` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive). Else Failure Path with `Wrong branch.` `/bkit-debug` deliberately does NOT gate this way — it accepts any branch but `main`, because the branch carrying the failure is the branch the fix belongs on.
+- **Branch eligibility** (`/bkit-ship` Step 2): ships `SHIP_BRANCH` (see Workflow Primitives § Branch eligibility); `dev` / `main` refused; a branch not named for `{FID}` / `{ISSUE_ID}` gets a warning, not a stop. `/bkit-debug` deliberately does NOT gate this way — it accepts any branch but `main`, because the branch carrying the failure is the branch the fix belongs on.
 - **Never push to `main`** (release branch).
 
 ### `gh` interactions used by the pipeline
@@ -1291,13 +1282,30 @@ Inline definitions for workflow-file tokens. Keep synced with workflow bodies.
 
 ### FID generation
 
-1. Prefer Linear id lowercased: `xxx-123` ← `XXX-123`.
-2. Else kebab from title: strip stopwords (the/a/and/of/to/in/for), <=3 tokens, ASCII lower → `word1-word2-word3`.
-3. One FID for all artifacts once set.
+Step 1 of every phase resolves `FID` BEFORE taking the lock (the lock path is `logs/{FID}/.lock`, so it cannot come first). First match wins:
+
+1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a `docs/plans/` path carrying it.
+2. Current branch is `feat/{FID}`.
+3. `ISSUE_ID` known → the feature already logged for that issue (`logs/{issue}-*/`, issue lowercased). Two features for one issue → Failure Path listing both; the prompt must name one.
+4. Mint: `{ISSUE_ID}-{slug}` (Linear id lowercased), slug = title kebab, stopwords stripped, <=3 tokens, ASCII lower. No tracker → `{branch-suffix}-{slug}`.
+
+One FID for all artifacts once set. A workflow NEVER takes `FID` from the newest leftover `.lock` or newest month bucket: on a fresh run with no issue or plan, that silently attached the run to an unrelated feature's logs.
 
 ### Branch eligibility
 
-`{BRANCH}` passes if it equals `dev` OR contains `{FID}` (case-insensitive) OR contains `{ISSUE_ID}` (case-insensitive). Else Failure Path with `Wrong branch.` Used in `/bkit-debug` Step 2 and `/bkit-ship` Step 2.
+`/bkit-debug` Step 2: any branch but `main`.
+
+`/bkit-ship` Step 2 ships `SHIP_BRANCH` = the branch the prompt names, else `feat/{FID}` when it exists locally or on `origin`, else the session branch when it is not `dev` / `main`, else `feat/{FID}`. `dev` / `main` are refused. A branch not named for `{FID}` / `{ISSUE_ID}` gets a warning, not a stop — the prompt is the authority on what to ship. Later ship steps (CI dispatch and poll, merge gate, branch cleanup) use `SHIP_BRANCH`, never a hardcoded `feat/{FID}`; cleanup refuses to delete `dev` / `main`.
+
+### Best-effort runs (no issue, no plan)
+
+Every phase runs on the session prompt alone. Missing inputs are flagged, never fatal; only "nothing to act on" stops a run.
+
+- **No issue:** wired tracker → the phase creates one from the prompt; `none` → runs without.
+- **No plan, `/bkit-build`:** `PLAN_SOURCE` = `brief`. Execute / verify / gaps-remediate work from `build-input.md` (prompt + issue text) in place of the plan; no stand-in plan file is written. Writing `Done when` items into the request is the user's job: a task without one is a FAIL against a reviewed plan, but only a warning in a brief. Flagged in the console, `status.jsonl` (`workflow-meta` `planSource` / `doneWhen`), the Step 2 tracker comment, the PR body and the build summary.
+- **No plan, `/bkit-ship`:** the deferred sweep judges delivered work against `ship-input.md` and says so (`workflow-meta` `planSource:"brief"`).
+- **No PR, `/bkit-ship`:** opened by ship when the branch is ahead of `dev`. Red or missing CI on an existing PR still stops ship — it never merges unverified work.
+- `/bkit-auto` is out of scope: it is dispatched by CI on an issue label or PR, so an issue or PR always exists.
 
 ### Label flip
 

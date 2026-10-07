@@ -53,7 +53,7 @@ const CUT_MARKER = `###### ${CUT_TOKEN}`;
 // a prompt or a step may name the mechanism without arming it.
 const CUT_MARKER_LINE_RE = new RegExp(`^[ \\t]*${CUT_MARKER}[ \\t]*$`);
 const FENCE_RE = /^[ \t]*```comment$/;
-const TOTAL_EXPECTED_FENCES = 84;
+const TOTAL_EXPECTED_FENCES = 82;
 
 // The cut steps are the ONLY sanctioned place the cut token may appear: one per
 // join into each named stream. Shared by the point-of-use check and the
