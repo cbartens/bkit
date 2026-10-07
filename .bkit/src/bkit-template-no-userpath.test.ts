@@ -20,8 +20,8 @@ const pkgRoot = getPkgRoot();
 
 // The three files named by D20 as the shipped surface for this bug.
 const TARGET_FILES = [
-  path.join(pkgRoot, ".bkit", "templates", "docs", "plans", "template.md"),
-  path.join(pkgRoot, "docs", "plans", "template.md"),
+  path.join(pkgRoot, ".bkit", "templates", "docs", "templates", "bkit-plan.md"),
+  path.join(pkgRoot, "docs", "templates", "bkit-plan.md"),
 ];
 
 // Matches an absolute macOS/Linux home-directory path for a real user,
