@@ -35,10 +35,12 @@ let root: string;
 // A tree where the SAME FID has logs in two month buckets — the split state the
 // multi-bucket guard exists to refuse rather than silently pick a side of.
 let splitRoot: string;
-// A tree with two features, one of which left a `.lock` behind (interrupted).
-let lockRoot: string;
 const OTHER_MONTH = "202608";
-const OTHER_FID = "70-some-other-feature";
+// Issue 68's feature beside a longer issue number sharing its digits (680) and a
+// newer feature holding a leftover `.lock` — neither may be returned for 68.
+let issueRoot: string;
+// Two features logged for the same issue — the lookup must list both.
+let ambiguousRoot: string;
 
 beforeAll(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-snippet-"));
@@ -49,18 +51,32 @@ beforeAll(() => {
     fs.mkdirSync(path.join(splitRoot, "docs", "plans", m, "logs", FID), { recursive: true });
   }
 
-  // The interrupted feature is deliberately NOT the one the old `head -1` sort
-  // would pick: OTHER_FID sorts later and lives in the newer bucket, so a test
-  // that passes here cannot be passing by accident of ordering.
-  lockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-hint-"));
-  fs.mkdirSync(path.join(lockRoot, "docs", "plans", MONTH, "logs", FID), { recursive: true });
-  const lockedDir = path.join(lockRoot, "docs", "plans", OTHER_MONTH, "logs", OTHER_FID);
+  issueRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fid-issue-"));
+  fs.mkdirSync(path.join(issueRoot, "docs", "plans", MONTH, "logs", FID), { recursive: true });
+  fs.mkdirSync(path.join(issueRoot, "docs", "plans", OTHER_MONTH, "logs", "680-longer-issue"), {
+    recursive: true,
+  });
+  const lockedDir = path.join(
+    issueRoot,
+    "docs",
+    "plans",
+    OTHER_MONTH,
+    "logs",
+    "70-some-other-feature",
+  );
   fs.mkdirSync(lockedDir, { recursive: true });
   fs.writeFileSync(path.join(lockedDir, ".lock"), "2026-08-01T00:00:00Z design\n");
+
+  ambiguousRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-fid-ambiguous-"));
+  for (const fid of ["68-first-try", "68-second-try"]) {
+    fs.mkdirSync(path.join(ambiguousRoot, "docs", "plans", MONTH, "logs", fid), {
+      recursive: true,
+    });
+  }
 });
 
 afterAll(() => {
-  for (const dir of [root, splitRoot, lockRoot]) {
+  for (const dir of [root, splitRoot, issueRoot, ambiguousRoot]) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -129,32 +145,6 @@ describe("trailing-slash mechanic (characterisation — why NF-3, not NF-2)", ()
   });
 });
 
-describe("FID-hint snippet (NF-1) stays correct", () => {
-  // The interrupted-run FID hint uses a `*/` glob and `$(NF-1)`. It relies on
-  // the SAME trailing-slash empty field (NF-1 = FID) and is correct as-is — this
-  // locks that in so a future "fix" doesn't shift it in step with the YYYYMM line.
-  const hintFiles = workflowFiles
-    .map((file) => ({ file, content: fs.readFileSync(file, "utf-8") }))
-    .map(({ file, content }) => {
-      const m = content.match(/`(ls -d [^`]*\/logs\/\*\/[^`]*NF-1[^`]*)`/);
-      return m ? { file: path.basename(file), cmd: m[1] } : null;
-    })
-    .filter((x): x is { file: string; cmd: string } => x !== null);
-
-  it("at least one workflow carries the FID-hint snippet", () => {
-    expect(hintFiles.length).toBeGreaterThan(0);
-  });
-
-  it.each(hintFiles)("$file: FID hint extracts the FID", ({ cmd }) => {
-    const script = `cd "$REPO_ROOT"\nprintf '%s' "$(${cmd})"`;
-    const out = execFileSync("bash", ["-c", script], {
-      env: { ...process.env, REPO_ROOT: root },
-      encoding: "utf-8",
-    }).trim();
-    expect(out).toBe(FID);
-  });
-});
-
 // Every multi-bucket guard: the BUCKET_COUNT assignment plus the `-gt 1` bail-out
 // that follows it, extracted as a pair so the test runs the guard as shipped.
 const guardBlocks: Array<{ file: string; block: string }> = [];
@@ -207,27 +197,59 @@ describe("multi-bucket guard refuses a FID split across month buckets", () => {
   });
 });
 
-describe("FID hint resolves the interrupted run by leftover lock", () => {
-  const lockHints = workflowFiles
-    .map((file) => ({ file, content: fs.readFileSync(file, "utf-8") }))
-    .map(({ file, content }) => {
-      const m = content.match(/`(ls -t [^`]*\/logs\/\*\/\.lock[^`]*NF-1[^`]*)`/);
-      return m ? { file: path.basename(file), cmd: m[1] } : null;
-    })
-    .filter((x): x is { file: string; cmd: string } => x !== null);
+// Resolve FID, rule 3: with an issue ID, every phase reuses the feature already
+// logged for THAT issue. It replaced a hint that took the newest leftover
+// `.lock` or newest bucket — which latched a fresh run onto an unrelated feature.
+const PHASES = ["bkit-build.md", "bkit-debug.md", "bkit-design.md", "bkit-plan.md", "bkit-ship.md"];
+const issueLookups = workflowFiles
+  .map((file) => ({ file: path.basename(file), lines: fs.readFileSync(file, "utf-8").split("\n") }))
+  .map(({ file, lines }) => {
+    const key = lines.map((l) => l.trim()).find((l) => l.startsWith("ISSUE_KEY=$("));
+    const ls = lines
+      .map((l) => l.trim())
+      .find((l) => l.startsWith("ls -d") && l.includes('"$ISSUE_KEY"-*/'));
+    return key && ls ? { file, key, ls } : null;
+  })
+  .filter((x): x is { file: string; key: string; ls: string } => x !== null);
 
-  it("at least one workflow carries the lock-based hint", () => {
-    expect(lockHints.length).toBeGreaterThan(0);
+function runLookup(lookup: { key: string; ls: string }, issueId: string, repoRoot: string): string {
+  const script = `${lookup.key.replaceAll("{ISSUE_ID}", issueId)}\n${lookup.ls}`;
+  return execFileSync("bash", ["-c", script], {
+    env: { ...process.env, REPO_ROOT: repoRoot },
+    encoding: "utf-8",
+  }).trim();
+}
+
+describe("Resolve FID — issue lookup reuses only that issue's feature", () => {
+  it("every phase workflow carries the lookup", () => {
+    expect(issueLookups.map((l) => l.file).sort()).toEqual(PHASES);
   });
 
-  it.each(lockHints)("$file: names the locked feature, not the oldest", ({ cmd }) => {
-    const script = `cd "$REPO_ROOT"\nprintf '%s' "$(${cmd})"`;
-    const out = execFileSync("bash", ["-c", script], {
-      env: { ...process.env, REPO_ROOT: lockRoot },
-      encoding: "utf-8",
-    }).trim();
-    expect(out).toBe(OTHER_FID);
-    // The pre-fix `head -1` over ascending buckets returned this instead.
-    expect(out).not.toBe(FID);
+  it.each(issueLookups)("$file: names issue 68's feature, not 680's or a locked one", (lookup) => {
+    expect(runLookup(lookup, "68", issueRoot)).toBe(FID);
+  });
+
+  it.each(issueLookups)("$file: lowercases a Linear-style issue ID", (lookup) => {
+    const script = `${lookup.key.replaceAll("{ISSUE_ID}", "ABC-12")}\nprintf '%s' "$ISSUE_KEY"`;
+    expect(execFileSync("bash", ["-c", script], { encoding: "utf-8" })).toBe("abc-12");
+  });
+
+  it.each(issueLookups)("$file: lists both features when one issue has two", (lookup) => {
+    expect(runLookup(lookup, "68", ambiguousRoot).split("\n")).toEqual([
+      "68-first-try",
+      "68-second-try",
+    ]);
+  });
+
+  it.each(issueLookups)("$file: prints nothing for an issue with no logs", (lookup) => {
+    expect(runLookup(lookup, "999", issueRoot)).toBe("");
+  });
+});
+
+describe("no workflow guesses FID from a leftover lock or the newest bucket", () => {
+  it.each(workflowFiles.map((f) => ({ file: path.basename(f), f })))("$file", ({ f }) => {
+    const content = fs.readFileSync(f, "utf-8");
+    expect(content).not.toMatch(/`FID` hint/);
+    expect(content).not.toMatch(/logs\/\*\/\.lock/);
   });
 });

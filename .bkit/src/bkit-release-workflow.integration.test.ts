@@ -50,6 +50,13 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
     expect(offenders).toEqual([]);
   });
 
+  it("tarball does not ship the maintainer consumer list", () => {
+    const offenders = manifestFiles.filter(
+      (p) => p === "docs/consumers.md" || p === ".bkit/consumers.md",
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("tarball still contains the load-bearing payload (dist/, README.md, .bkit/templates/)", () => {
     expect(manifestFiles.some((p) => p === "dist/bkit-install.js")).toBe(true);
     expect(manifestFiles.some((p) => p === "README.md")).toBe(true);

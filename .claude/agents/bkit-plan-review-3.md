@@ -39,7 +39,7 @@ maxTurns: 100
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`.
+3. Read `.agents/docs.md` → load docs for workflow / step / task but specifically `docs/testing.md`; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
    - Files / modules edited (direct).
