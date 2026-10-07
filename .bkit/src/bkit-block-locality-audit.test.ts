@@ -167,6 +167,7 @@ const PROVIDES: Record<string, string[]> = {
     "CI_WAIT_ALL_ERRORED",
     "CI_WAIT_BLOCKED",
     "TEST_SCOPE",
+    "CI_DECLARED_WORKFLOW",
   ],
 };
 

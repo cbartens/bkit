@@ -482,6 +482,25 @@ jobs:
                 exit 0
               fi
 
+              # A build still writing this branch owns it: dispatching debug or
+              # ship now would put a second agent on the same branch mid-run.
+              # Build pushes before opening its PR, so this only fires when a
+              # PR from an earlier attempt is still open. "Still running" = the
+              # branch's status.jsonl has a build workflow-started with no later
+              # workflow-done / workflow-failed AND its newest build row is under
+              # 30 min old (the lock-staleness window — older means abandoned).
+              # Unreadable status fails open: dispatch as before.
+              git fetch -q origin "$BRANCH" 2>/dev/null || true
+              BUILD_STATUS=$(git ls-tree -r --name-only "origin/$BRANCH" -- docs/plans 2>/dev/null | grep -E "/logs/$FID/status\.jsonl$" | sort | tail -1 || true)
+              if [ -n "$BUILD_STATUS" ]; then
+                BUILD_AGE=$(git show "origin/$BRANCH:$BUILD_STATUS" 2>/dev/null | jq -rs '[.[] | select(.workflow=="build")] | sort_by(.at) as $r | ($r | map(select(.type=="workflow-started" or .type=="workflow-done" or .type=="workflow-failed")) | last | .type) as $t | if $t=="workflow-started" then (now - ($r | last | .at | fromdateiso8601) | floor) else empty end' 2>/dev/null || true)
+                if [ -n "$BUILD_AGE" ] && [ "$BUILD_AGE" -lt 1800 ]; then
+                  echo "::notice::Build for $FID still running on $BRANCH (last row ${BUILD_AGE}s ago) — no-op exit; the build owns the branch."
+                  echo "skip=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+              fi
+
               # feat/** is deliberately NOT capped by MAX_DEV_DISPATCH_ATTEMPTS:
               # pre-merge, PR-scoped, already bounded by the in-session
               # MAX_DEBUG_ATTEMPT / MAX_NORMAL_ATTEMPT counters. The dev arm
@@ -801,6 +820,17 @@ jobs:
                 echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
                 echo "skip=true" >> "$GITHUB_OUTPUT"
                 exit 0
+              fi
+              # Build-still-running guard — see the claude job's ctx step.
+              git fetch -q origin "$BRANCH" 2>/dev/null || true
+              BUILD_STATUS=$(git ls-tree -r --name-only "origin/$BRANCH" -- docs/plans 2>/dev/null | grep -E "/logs/$FID/status\.jsonl$" | sort | tail -1 || true)
+              if [ -n "$BUILD_STATUS" ]; then
+                BUILD_AGE=$(git show "origin/$BRANCH:$BUILD_STATUS" 2>/dev/null | jq -rs '[.[] | select(.workflow=="build")] | sort_by(.at) as $r | ($r | map(select(.type=="workflow-started" or .type=="workflow-done" or .type=="workflow-failed")) | last | .type) as $t | if $t=="workflow-started" then (now - ($r | last | .at | fromdateiso8601) | floor) else empty end' 2>/dev/null || true)
+                if [ -n "$BUILD_AGE" ] && [ "$BUILD_AGE" -lt 1800 ]; then
+                  echo "::notice::Build for $FID still running on $BRANCH (last row ${BUILD_AGE}s ago) — no-op exit; the build owns the branch."
+                  echo "skip=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
               fi
               # feat/** deliberately NOT capped by MAX_DEV_DISPATCH_ATTEMPTS
               # (pre-merge, in-session-bounded). The dev arm is the only capped

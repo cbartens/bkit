@@ -1145,8 +1145,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
-5. Assert `{BRANCH}` non-empty, then push with EXACTLY ONE command: **If** `{BRANCH}` is `dev` / `main` → `git push -u origin "{BRANCH}"`. **Else** → `git push -u --force-with-lease origin "{BRANCH}"`.
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+5. Probe for pre-existing open PR on `{BRANCH}` before push:
+   ```bash
+   BRANCH_NOW=$(git branch --show-current)
+   EXISTING_PR=$(gh pr list --head "$BRANCH_NOW" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   if [ -n "$EXISTING_PR" ]; then
+     echo "feat/{FID} already has open PR #${EXISTING_PR} to dev — build re-run/resume cannot push into it. Resume via /bkit-debug or close the stale PR." >&2; exit 1
+   fi
+   ```
+   **If** exit non-zero → **Failure Path**.
+6. Assert `{BRANCH}` non-empty, then push with EXACTLY ONE command: **If** `{BRANCH}` is `dev` / `main` → `git push -u origin "{BRANCH}"`. **Else** → `git push -u --force-with-lease origin "{BRANCH}"`.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
@@ -1154,7 +1163,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
    ```
-7. Route:
+8. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 18.
    - **If** `SUMMARY_VERDICT` = FAIL → display `build-summary.md` content verbatim as final message to user → **Failure Path**.
    - **Else** → **Failure Path**.
@@ -1166,6 +1175,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
 - [ ] No PENDING placeholders remain (`build-summary.md`)
+- [ ] Open-PR probe ran (no pre-existing open PR)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `build-summary` recorded with `parentSha`, `verdict`)
 
@@ -1327,8 +1337,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
            CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
            echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
          else
-           [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
-             echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+           if [ -z "$CI_OUTCOME" ]; then
+             if bkit_ci_declared; then
+               CI_OUTCOME="unresolved"; CI_REASON="ci-declared-no-run"
+               echo "[bkit-ci-gate] unresolved(ci-declared-no-run): .github/workflows/$CI_DECLARED_WORKFLOW exists but a clean re-trigger dispatched no bkit check — check it for a startup failure: gh run list --commit $PUSHED_HEAD"
+             else
+               CI_OUTCOME="no-ci"
+               echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing and .github/workflows/$CI_DECLARED_WORKFLOW is absent — repo has no CI workflow (logged pass)"
+             fi
+           fi
          fi
        fi
      fi
@@ -1383,7 +1400,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     #### Telemetry
     {TELEMETRY}
     ```
-14. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+14. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. Append `CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug.`
     Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
 ### 🔒 Gate 18 — Close Workflow & Create PR

@@ -790,6 +790,32 @@ EOF
   rm -rf "$DIR"
 }
 
+@test "ci_declared: true when the default ci.yml exists" {
+  DIR="$(mktemp -d)"
+  mkdir -p "$DIR/.github/workflows" && touch "$DIR/.github/workflows/ci.yml"
+  printf '{"name":"x"}\n' > "$DIR/package.json"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && bkit_ci_declared && echo \"wf=\$CI_DECLARED_WORKFLOW\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"wf=ci.yml"* ]]
+  rm -rf "$DIR"
+}
+
+@test "ci_declared: honours bkit.ciWorkflow and is false when that file is absent" {
+  DIR="$(mktemp -d)"
+  mkdir -p "$DIR/.github/workflows" && touch "$DIR/.github/workflows/ci.yml"
+  printf '{"bkit":{"ciWorkflow":"main.yml"}}\n' > "$DIR/package.json"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && { bkit_ci_declared; echo \"rc=\$? wf=\$CI_DECLARED_WORKFLOW\"; }"
+  [[ "$output" == *"rc=1 wf=main.yml"* ]]
+  rm -rf "$DIR"
+}
+
+@test "ci_declared: false with no workflow file and no package.json" {
+  DIR="$(mktemp -d)"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && { bkit_ci_declared; echo \"rc=\$? wf=\$CI_DECLARED_WORKFLOW\"; }"
+  [[ "$output" == *"rc=1 wf=ci.yml"* ]]
+  rm -rf "$DIR"
+}
+
 @test "anchor: stamping two identical-content files with the same base yields cmp -s equal output (Close Workflow re-run regression guard)" {
   DIR="$(mktemp -d)"
   A="$DIR/a.md"

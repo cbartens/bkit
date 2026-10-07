@@ -1103,8 +1103,15 @@ Debug Feature — Autonomous diagnosis and remediation
              CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
              echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
            else
-             [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
-               echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+             if [ -z "$CI_OUTCOME" ]; then
+               if bkit_ci_declared; then
+                 CI_OUTCOME="unresolved"; CI_REASON="ci-declared-no-run"
+                 echo "[bkit-ci-gate] unresolved(ci-declared-no-run): .github/workflows/$CI_DECLARED_WORKFLOW exists but a clean re-trigger dispatched no bkit check — check it for a startup failure: gh run list --commit $PUSHED_HEAD"
+               else
+                 CI_OUTCOME="no-ci"
+                 echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing and .github/workflows/$CI_DECLARED_WORKFLOW is absent — repo has no CI workflow (logged pass)"
+               fi
+             fi
            fi
          fi
        fi
@@ -1231,8 +1238,15 @@ Debug Feature — Autonomous diagnosis and remediation
            CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
            echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
          else
-           [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
-             echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+           if [ -z "$CI_OUTCOME" ]; then
+             if bkit_ci_declared; then
+               CI_OUTCOME="unresolved"; CI_REASON="ci-declared-no-run"
+               echo "[bkit-ci-gate] unresolved(ci-declared-no-run): .github/workflows/$CI_DECLARED_WORKFLOW exists but a clean re-trigger dispatched no bkit check — check it for a startup failure: gh run list --commit $PUSHED_HEAD"
+             else
+               CI_OUTCOME="no-ci"
+               echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing and .github/workflows/$CI_DECLARED_WORKFLOW is absent — repo has no CI workflow (logged pass)"
+             fi
+           fi
          fi
        fi
      fi

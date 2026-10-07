@@ -828,3 +828,24 @@ bkit_resolve_gate() {
   [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; return 2; }
   echo "TEST_SCOPE=$TEST_SCOPE"
 }
+
+# ---------------------------------------------------------------------------
+# bkit_ci_declared
+#
+# Whether the repo declares a CI workflow: `.github/workflows/<bkit.ciWorkflow>`
+# (package.json, default ci.yml) exists. The CI-Dispatch Gate's `no-ci` pass
+# is honest only when this is false. A declared workflow that dispatched no
+# bkit check on a clean re-trigger is broken, not absent — invalid YAML fails
+# at startup with zero check runs, and a trigger or job rename stops it
+# matching — so the gate must not read that silence as "no CI".
+#
+# Sets (current shell only — re-call per block):
+#   CI_DECLARED_WORKFLOW   the workflow filename checked
+#
+# Returns 0 when the file exists, 1 otherwise.
+# ---------------------------------------------------------------------------
+bkit_ci_declared() {
+  CI_DECLARED_WORKFLOW=$(jq -r '.bkit.ciWorkflow // "ci.yml"' package.json 2>/dev/null || true)
+  [ -n "$CI_DECLARED_WORKFLOW" ] || CI_DECLARED_WORKFLOW="ci.yml"
+  [ -f ".github/workflows/$CI_DECLARED_WORKFLOW" ]
+}

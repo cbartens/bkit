@@ -503,6 +503,89 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
+  // Build-still-running guard — a debug or ship dispatched while /bkit-build is
+  // still writing the branch puts a second agent on it. The guard reads the
+  // branch's own status.jsonl from origin: build started, not done/failed, and
+  // the newest build row under 30 min old → no-op. Older = abandoned → dispatch.
+  // -------------------------------------------------------------------------
+  describe("feat/** path — build-still-running guard", () => {
+    const FID = "457-subplan-boundary-gate";
+    const BRANCH = `feat/${FID}`;
+    const iso = (msAgo: number): string =>
+      new Date(Date.now() - msAgo).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+    function pushBranchStatus(rows: object[]): void {
+      const ws = fixture.workspaceDir;
+      git(ws, "checkout", "-q", "-b", BRANCH);
+      const dir = path.join(ws, "docs/plans/202610/logs", FID);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "status.jsonl"),
+        rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
+      );
+      git(ws, "add", "-A");
+      git(ws, "commit", "-qm", "build rows");
+      git(ws, "push", "-q", "origin", BRANCH);
+      git(ws, "checkout", "-q", "dev");
+      fs.rmSync(path.join(ws, "docs/plans/202610"), { recursive: true, force: true });
+    }
+
+    function run(conclusion: "success" | "failure"): RunResult {
+      return runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: conclusion,
+        BRANCH,
+        COMMIT_MSG: `chore(${FID}): summary bkit [auto route]`,
+        HEAD_SHA: "feat-sha-457",
+        STUB_PR_NUMBER: "91",
+        STUB_PR_BODY: `<!-- bkit:issue=#457 --><!-- bkit:fid=${FID} -->`,
+        STUB_ISSUE_LABELS: "bkit:auto",
+      });
+    }
+
+    it.each([["failure"], ["success"]] as const)(
+      "a build started minutes ago with no workflow-done no-ops the %s dispatch",
+      (conclusion) => {
+        pushBranchStatus([
+          { type: "workflow-started", workflow: "build", at: iso(20 * 60_000) },
+          { type: "step-done", workflow: "build", step: "build-summary", at: iso(60_000) },
+        ]);
+        const result = run(conclusion);
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.outputs.skip).toBe("true");
+        expect(result.outputs.phase).toBeUndefined();
+        expect(result.stdout).toContain(`Build for ${FID} still running`);
+      },
+    );
+
+    it("a build whose newest row is over 30 min old is abandoned — dispatch proceeds", () => {
+      pushBranchStatus([
+        { type: "workflow-started", workflow: "build", at: iso(3 * 3_600_000) },
+        { type: "step-done", workflow: "build", step: "build-summary", at: iso(2 * 3_600_000) },
+      ]);
+      const result = run("failure");
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+    });
+
+    it("a finished build (workflow-done after workflow-started) does not block dispatch", () => {
+      pushBranchStatus([
+        { type: "workflow-started", workflow: "build", at: iso(10 * 60_000) },
+        { type: "workflow-done", workflow: "build", at: iso(60_000) },
+      ]);
+      const result = run("success");
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("ship");
+    });
+
+    it("a branch with no status.jsonl dispatches as before", () => {
+      const result = run("failure");
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // Regression — build-challenge M1: `dev_count=$(jq -s ... || echo 0)`
   // silently treated an UNPARSEABLE status.jsonl as zero rows, defeating the
   // cap forever. Fixed to fail-closed (refuse to dispatch) on a jq parse error.

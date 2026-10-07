@@ -450,6 +450,12 @@ Neither job needs `BKIT_GH_TOKEN_INSTALL`. Slash command body already in checked
 | `dev` (post-merge) | no-op — the merge already happened | -> `/bkit-debug {FID}` (capped) |
 | `main` | manual only | manual only |
 
+**Build still running (`feat/**`):** before dispatch, read the branch's `docs/plans/*/logs/{FID}/status.jsonl` from `origin`:
+
+- `build` `workflow-started`, no later `workflow-done` / `workflow-failed`, newest build row < 30 min old → `/bkit-build` owns the branch → no-op.
+- Newest build row >= 30 min old → abandoned → dispatch.
+- No file / unreadable → dispatch.
+
 The post-merge `dev` surface reuses the same free-tier gate: `/bkit-ship` threads ` bkit [auto route]` onto the PR squash-merge `--subject` when the issue carries `bkit:auto`, so the commit that lands on `dev` — and triggers post-merge CI — already carries the marker the gate checks.
 
 ## Routing decision (router orchestrator)

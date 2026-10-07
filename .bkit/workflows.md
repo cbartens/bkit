@@ -860,6 +860,8 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 
 **Goal:** implementation + PR creation. CI takes over after PR exists. Workflow stops on PR creation; no human gate within build itself.
 
+**Build never reads the CI conclusion (by design):** Step 18 CI-Dispatch Gate proves only that a run started (`bkit_wait_ci`). `/bkit-ship` owns the result (`bkit-ship-gate.sh` refuses to merge on red); red PR → `/bkit-debug` (manual, or auto-routed by `bkit-cloud.yml`). Waiting in build → full CI duration on every run + race with the cloud auto-router on the same branch. Final message states it.
+
 **Sub-plan loop (Steps 6–8):** if `docs/plans/{YYYYMM}/{FID}-plan-N.md` exists, loop `N = 1..SUB_COUNT`, resetting `VERIFY_ATTEMPT` = 1 per N. Else `SINGLE_PLAN` = true and execute once on `{FID}-plan.md`. Boundaries between sub-plans run the build gate (§ Sub-plan boundary gate).
 
 <!-- prettier-ignore -->
@@ -881,7 +883,7 @@ Each subsection documents command behaviour — steps, subagents, artifacts, ver
 | 14 — Run Tests | — | Runs the DEEPEST `bkit:gate:*` the consumer declares — descending `static-unit-integration`, `static-unit` (§ Local gate scripts). Pre-PR: no E2E (CI covers it on the resulting PR). Build does NOT run the live tier — the @live boundary needs a deployed URL, so it is validated post-merge by the push-only `bkit-tests-live` CI canary and reproduced on demand via `/bkit-debug`; build gates on local tiers only and records no `testsLiveSkipped` (out of build's scope by design, not skipped). A repo gating unit branch-coverage puts `test:coverage:unit` in `bkit:lane:unit`, so this gate and the CI unit lane run the SAME `package.json` script (one source for the threshold) and a coverage regression fails in the worktree here instead of only on the PR. `TEST_VERDICT` = PASS → Step 17. FAIL → Step 15 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
 | 15 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 14 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. |
 | 16 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 14 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 14. > `MAX_TEST_ATTEMPT` → Failure Path. |
-| 17 — Summary | `@bkit-build-summary` | Commit `chore({FID}): summary` → push (`-u origin {BRANCH}`). |
+| 17 — Summary | `@bkit-build-summary` | Commit `chore({FID}): summary` → open-PR probe → push (`-u origin {BRANCH}`). PR already open (resumed build) → push would fire CI + cloud auto-router on a branch build is still writing → probe stops run first (same probe as Step 18). `bkit-cloud.yml` backstop: no-op while build runs (`.bkit/cloud.md` § Branch-aware routing). |
 | 18 — Close Workflow & Create PR | — | `bkit:auto` re-read BEFORE close-workflow commit; open-PR probe; if any changed path sits under a `migrations/` or `migrate/` directory (case-insensitive, any depth — covers Supabase, Prisma, Drizzle, Rails) and HEAD lacks `bkit [force build]` → amend or empty commit with `bkit [force build]` → push. PR body is the plan blob URL. `gh pr create --base dev` (base pinned). Retry `gh pr create` once on failure. Post-create assertion: `gh pr view --json baseRefName` = dev else Failure Path — guards against repos whose default base is `main`. Set state `In Review`; phase label `Build` persists. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. Final return displays `build-summary.md` verbatim. |
 
 **Failure Path includes handover** — when triggered by exhausted retry counts, invokes `@bkit-debug-abort-handover` and posts `Workflow Handover` comment.
@@ -1159,7 +1161,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 
 - `dispatched` — bkit CI check on pushed HEAD within poll budget. Proceed.
 - `self-healed` — poll exhausted, HEAD clean; one empty `re-trigger` commit (`AUTO_ROUTE_SUFFIX`) + re-poll; run appeared. Proceed.
-- `no-ci` — poll exhausted, HEAD clean, re-trigger also dispatched nothing — no consumer CI workflow. Logged pass; NOT Failure Path.
+- `no-ci` — poll exhausted, HEAD clean, re-trigger also dispatched nothing, and `.github/workflows/{bkit.ciWorkflow}` (default `ci.yml`) absent — no consumer CI workflow. Logged pass; NOT Failure Path.
 - `unresolved` — sub-reason below → **Failure Path** after verdict recorded.
 
 **Sub-reason codes (→ `unresolved`):**
@@ -1168,6 +1170,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
 - `retrigger-suppressed` — re-trigger HEAD carries suppressor; cannot discriminate `no-ci` vs suppression → `unresolved`, NOT `no-ci`.
 - `autoroute-mismatch` — `RETRIGGER_SUFFIX` != `AUTO_ROUTE_SUFFIX` (assert-equal before re-trigger).
 - `gh-error` — every poll iteration errored.
+- `ci-declared-no-run` — clean re-trigger dispatched nothing, yet `bkit_ci_declared` finds the workflow file. Broken workflow (invalid YAML → startup failure, zero check runs; renamed trigger / jobs) looks identical to no CI from the PR side → declared workflow's silence = failure, never `no-ci`.
 
 **Named symbols (both gate sites — identical):**
 
@@ -1184,7 +1187,7 @@ Outcome-verification gate: after final loud push, confirms bkit CI check dispatc
   "head": "<sha>",
   "attempts": 3,
   "retrigger": false,
-  "reason": "timeout-dirty|retrigger-suppressed|autoroute-mismatch|gh-error"
+  "reason": "timeout-dirty|retrigger-suppressed|autoroute-mismatch|gh-error|ci-declared-no-run"
 }
 ```
 

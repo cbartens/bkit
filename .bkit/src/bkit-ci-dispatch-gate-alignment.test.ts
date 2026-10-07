@@ -462,6 +462,32 @@ describe("retrigger-suppressed sub-reason — maps to unresolved only", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 6b. no-ci is a pass ONLY when no CI workflow is declared
+//
+// A workflow file that fails at startup (invalid YAML) produces zero check runs,
+// which from the PR side is indistinguishable from a repo with no CI. Every
+// no-ci assignment must therefore sit in the else-branch of bkit_ci_declared,
+// so a declared-but-silent workflow lands on unresolved(ci-declared-no-run).
+// ---------------------------------------------------------------------------
+describe("no-ci only when no CI workflow is declared", () => {
+  for (const [name, body, sites] of [
+    ["bkit-build.md", buildMd, 1],
+    ["bkit-debug.md", debugMd, 2],
+  ] as const) {
+    it(`${name}: every no-ci assignment is the else-branch of bkit_ci_declared`, () => {
+      const lines = body.split("\n");
+      const noCi = lines.flatMap((l, i) => (l.includes('CI_OUTCOME="no-ci"') ? [i] : []));
+      expect(noCi.length).toBe(sites);
+      for (const i of noCi) {
+        expect(lines[i - 1].trim()).toBe("else");
+        expect(lines[i - 4].trim()).toBe("if bkit_ci_declared; then");
+        expect(lines[i - 3]).toContain('CI_OUTCOME="unresolved"; CI_REASON="ci-declared-no-run"');
+      }
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // 7. KN-11 regression guard — no post-gate verdict-commit push (FIX B lock-in)
 //
 //    The ciDispatch jq >> "$STATUS" verdict write must NOT be followed by a
