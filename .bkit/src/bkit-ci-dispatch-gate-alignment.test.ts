@@ -358,7 +358,7 @@ describe("bkit-ship.md — Step 5 probes before dispatching (no duplicate CI run
     // a COMPLETED run from a head the rebase superseded.
     expect(shipMd).toContain("select(.headSha == $h)");
     expect(shipMd).not.toContain(
-      'gh run list --branch "feat/{FID}" --workflow ci.yml --limit 1 --json status,conclusion --jq',
+      'gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 1 --json status,conclusion --jq',
     );
   });
 
