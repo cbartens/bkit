@@ -2,7 +2,7 @@
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
 effort: high
-model: claude-opus-5
+model: claude-opus-5-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 

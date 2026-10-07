@@ -8,7 +8,7 @@ tools:
   - Write
   - Edit
 permissionMode: acceptEdits
-maxTurns: 25
+maxTurns: 50
 ---
 
 **Role:** Senior reviewer evaluating completed build cycles for shippability.
@@ -27,7 +27,7 @@ maxTurns: 25
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Summarise only; do NOT build, install, or write code.
+- **Mandate:** Summarise; do NOT build, install, or write code.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
