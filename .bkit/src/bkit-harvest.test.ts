@@ -80,7 +80,9 @@ function makeBkitRoot(basePath: string, consumers: string[]): string {
   const bkitRoot = path.join(basePath, "bkit");
   fs.mkdirSync(path.join(bkitRoot, ".bkit"), { recursive: true });
   const consumersContent = consumers.join("\n") + "\n";
-  fs.writeFileSync(path.join(bkitRoot, CONSUMERS_FILE), consumersContent, "utf-8");
+  const consumersFile = path.join(bkitRoot, CONSUMERS_FILE);
+  fs.mkdirSync(path.dirname(consumersFile), { recursive: true });
+  fs.writeFileSync(consumersFile, consumersContent, "utf-8");
   return bkitRoot;
 }
 

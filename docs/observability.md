@@ -58,7 +58,7 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 
 `bkit harvest` stderr. Grep patterns:
 
-- `[bkit-harvest] Found N consumer(s) in .bkit/consumers.md` — harvest start; consumer list read.
+- `[bkit-harvest] Found N consumer(s) in docs/consumers.md` — harvest start; consumer list read.
 - `[bkit-harvest] Harvesting: {path}` — per consumer start.
 - `[bkit-harvest] {path}/.bkit/{file} — copied N rows (malformed: M)` — COPY ledger per-file.
 - `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — COUNT-ONLY ledger per-file.
