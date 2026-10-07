@@ -1,3 +1,5 @@
+<!-- Note: Plans live at `docs/plans/{YYYYMM}/{FID}-plan.md` (canonical month bucket). `{YYYYMM}` = creation month, set once by the first workflow run for `{FID}`. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/` and are delete-eligible. The canonical copy is also stamped with a `bkit:anchor` block recording its base commit; never hand-author or edit it. `@bkit-plan-generate` fills this template. -->
+
 <!-- bkit:start -->
 
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
@@ -17,7 +19,7 @@
 
 ## Context & Goals
 
-[High-level overview of problem/feature. Why is it necessary?]
+[High-level overview of problem/feature and why it is necessary; initially set to `PENDING`.]
 
 > Success criteria ONCE in `Acceptance Scenario → Success Criteria`; each runbook task has own `Done when`. Do NOT restate success list here.
 
@@ -52,13 +54,13 @@
 
 > Inherited from design; do NOT rewrite.
 
-[Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Narrative. No design → per Spec above.]
+[Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Narrative. No design → per Spec above; initially set to `PENDING`.]
 
 ### Success Criteria
 
 > Inherited from design; do NOT rewrite.
 
-[Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Success Criteria. No design → per Spec above.]
+[Copied verbatim from `{FID}-design.md` § Acceptance Scenario → Success Criteria. No design → per Spec above; initially set to `PENDING`.]
 
 ### Process Sketch
 
@@ -139,7 +141,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 > Review proposed names and breaking changes below.
 
-[Proposed names: pages, files, DB tables, routes, API contracts. Breaking changes, DB structure diffs, global layout changes. Use IMPORTANT/WARNING/CAUTION alerts. If none, write "None".]
+[Proposed names: pages, files, DB tables, routes, API contracts. Breaking changes, DB structure diffs, global layout changes. Use IMPORTANT/WARNING/CAUTION alerts. If none, write "None"; initially set to `PENDING`.]
 
 ### 👤 ✅ Human Confirmation
 
@@ -174,13 +176,13 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Alternative Approaches & Recommendations
 
-[Document rejected paths and why. List future phase recommendations.]
+[Document rejected paths and why. List future phase recommendations; initially set to `PENDING`.]
 
 **Selection Rule:** pick the approach with the best quality-of-end-state, NOT the smallest diff / lowest cost-of-change. In-scope work = complete or explicitly moved to `Out of Scope` — no 90% solutions or silent shortcuts.
 
 ## Out of Scope
 
-[Features / fixes excluded to prevent scope creep. Every exclusion is `Exempt` per the rule below, with a reason and a home. If none, write "None".]
+[Features / fixes excluded to prevent scope creep. Every exclusion is `Exempt` per the rule below, with a reason and a home. If none, write "None"; initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Excluded item | Why `Exempt` | Where it belongs |
@@ -192,7 +194,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 
 ## Suggested Scope Expansion
 
-[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures, audit `MEDIUM` findings — surfaced as candidate expansions for the human. If none, write "None".]
+[Prior work overlapping this plan's surfaces — related open issues, `docs/deferrals.jsonl` deferrals, `docs/failures.jsonl` failures, audit `MEDIUM` findings — surfaced as candidate expansions for the human. If none, write "None"; initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
@@ -255,13 +257,13 @@ Verify only when applicable.
 
 ## Data Schema Integration
 
-[Define how this feature interacts with the existing database schema and what changes are required.]
+[Define how this feature interacts with the existing database schema and what changes are required; initially set to `PENDING`.]
 
 **Invariant Conformance:** Multi-store or privileged writes → every mutation path maintains every store a read surface depends on, under a compatible privilege, with the returned error actually checked (never swallowed). If a write can fail on privilege/constraint, the plan says how that failure surfaces — not a silent 200.
 
 ### Data Schema Usage
 
-[List all existing `docs/data-schema.md` tables and fields that this feature will read from (Input) or write to (Output). e.g.,
+[List all existing `docs/data-schema.md` tables and fields that this feature will read from (Input) or write to (Output); initially set to `PENDING`. e.g.,
 
 - **Input (Read):** `users.id`, `items.title`
 - **Output (Write):** `items.status`, `job_audits.log`]
@@ -269,7 +271,7 @@ Verify only when applicable.
 
 ### Data Schema Changes
 
-[List any new tables, new fields, or modifications to existing fields that need to be recorded in `docs/data-schema.md`. e.g.,
+[List any new tables, new fields, or modifications to existing fields that need to be recorded in `docs/data-schema.md`; initially set to `PENDING`. e.g.,
 
 - **ADD:** `items.new_field` (type: text)
 - **MODIFY:** `users.role` (added enum value)]
@@ -277,7 +279,7 @@ Verify only when applicable.
 
 ## Architecture & Component Changes
 
-[Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers.]
+[Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers; initially set to `PENDING`.]
 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
 **CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` MUST state **why existing artifact can't be evolved** — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
@@ -288,7 +290,7 @@ Verify only when applicable.
 
 ### Database Migrations
 
-[Define new tables/columns/RLS (`db:diff`). **Do not run `db push` to Dev/Main.** Migrations are applied by your migration/branching integration (e.g. the Supabase GitHub branching app) upon PR merge — follow `docs/deployments.md`.]
+[Define new tables/columns/RLS (`db:diff`). **Do not run `db push` to Dev/Main.** Migrations are applied by your migration/branching integration (e.g. the Supabase GitHub branching app) upon PR merge — follow `docs/deployments.md`; initially set to `PENDING`.]
 
 > [!WARNING]
 > **If adding/removing columns on CDC/audit-monitored tables (e.g. `users` and the other tenant tables your project monitors):**
@@ -299,7 +301,7 @@ Verify only when applicable.
 
 ### [Component Area 1]
 
-[Summary of component changes]
+[Summary of component changes; initially set to `PENDING`.]
 
 #### [MODIFY] `path/to/file.ext`
 
@@ -316,11 +318,11 @@ Verify only when applicable.
 
 ### Cron Jobs & Scheduled Tasks
 
-[Define scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). Record them in the project's cron/scheduled-jobs doc if it has one (resolve via `.agents/docs.md`).]
+[Define scheduled tasks (e.g. Vercel cron, pg_cron, Inngest). Record them in the project's cron/scheduled-jobs doc if it has one (resolve via `.agents/docs.md`); initially set to `PENDING`.]
 
 ## Supersession Inventory
 
-[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None".]
+[Existing artifacts the new code replaces — shared triggers/routes, redundant exports, etc. If plan adds without replacing, write "None"; initially set to `PENDING`.]
 
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
@@ -365,7 +367,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 ## Agent Execution Runbook
 
-[Chronological, step-by-step checklist guiding implementation. **MANDATORY**]
+[Chronological, step-by-step checklist guiding implementation. **MANDATORY**; initially set to `PENDING`.]
 
 > [!IMPORTANT]
 > **Continuous Execution:** Run runbook autonomously; no user permission at Gates; `[x]` as you go.
