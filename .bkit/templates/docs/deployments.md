@@ -337,7 +337,7 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 
 ### Dependency updaters
 
-**Pair with an updater.** A pin that nothing bumps stays on a vulnerable digest. Copy one example and own it:
+**Pair with an updater.** A pin that nothing bumps stays on a vulnerable digest. All templates: `.bkit/templates.md`. Copy one updater example and own it:
 
 <!-- prettier-ignore -->
 | Updater | Copy | When |

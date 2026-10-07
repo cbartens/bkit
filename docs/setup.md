@@ -14,6 +14,10 @@
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Local seed / test fixtures must never run against remote projects.
 
+## Templates
+
+Optional, copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+
 <!-- bkit:end -->
 
 > Consumer first-time install/auth (`BKIT_GH_TOKEN_INSTALL`, `.npmrc`, GHA secrets, Vercel env) → package `README.md` at `node_modules/@cbartens/bkit/README.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/cloud.md` / `.cursor/cloud.md`.

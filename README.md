@@ -435,6 +435,8 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 
 Use one. The examples exclude `.github/workflows/bkit-cloud.yml` (`ignorePaths` / `exclude-paths`). `enabled: false` does not stop Renovate's digest pin. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
 
+**All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+
 **Why opt-in, not part of a default install:**
 
 - **Tracker** wires real credentials and MCP servers into workflows — consumer must choose provider; bkit can't guess.

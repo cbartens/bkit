@@ -1622,8 +1622,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
             id: "dep-updater-touches-bkit",
             severity: "advisory",
             detect: `${rel} does not exclude ${BKIT_OWNED_WORKFLOW}. bkit rewrites that workflow on install, so an updater pin PR for it reopens forever.`,
-            action: fence +
-                " The example templates already exclude it. See docs/deployments.md § Dependency updaters.",
+            action: fence + " The example templates already exclude it. See .bkit/templates.md.",
         };
     }
     if (active)
@@ -1638,7 +1637,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
         detect: "No dependency updater config. SHA-pinned actions and package bumps will not refresh on their own.",
         action: "Copy one example and own it:\n\n" +
             `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
-            'Use one updater, not both. To silence this advisory, set `bkit.depUpdater` to `"none"` in package.json. See docs/deployments.md § Dependency updaters.',
+            'Use one updater, not both. To silence this advisory, set `bkit.depUpdater` to `"none"` in package.json. See .bkit/templates.md.',
     };
 }
 /**

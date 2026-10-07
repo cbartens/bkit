@@ -94,6 +94,6 @@ playwright/.auth/
 
 # <!-- bkit:end -->
 
-# Python bytecode. scripts/tooling/*.py helpers regenerate this on import.
+# Python bytecode. Python helpers under scripts/ regenerate this on import.
 __pycache__/
 *.pyc

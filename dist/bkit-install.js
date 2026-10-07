@@ -6,7 +6,7 @@ import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpen
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, pruneRetiredClaudeAskRules, opencodeProviderId, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, pruneRetiredClaudeAskRules, opencodeProviderId, isCopyPasteExample, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
@@ -2094,13 +2094,6 @@ async function main() {
         // drift still differs and surfaces as a real conflict. (Same fix shape as bkit-cloud.yml #138.)
         const MCP_ROOT_RELPATH = ".mcp.json";
         const CURSOR_MCP_RELPATH = path.join(".cursor", "mcp.json");
-        // Copy-paste examples under .bkit/templates/.github/. Not in the install manifest,
-        // so the walk would otherwise treat them as unmanaged and rewrite them.
-        const EXAMPLE_UPDATER_TEMPLATES = new Set([
-            ".github/renovate.json5",
-            ".github/dependabot.yml",
-            path.join(".github", "workflows", "renovate.yml"),
-        ]);
         const candidates = [];
         if (fs.existsSync(tplRoot)) {
             const collectTemplates = (dir, rel) => {
@@ -2121,10 +2114,9 @@ async function main() {
                         // (host-gated, non-dry-run).
                         if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH)
                             continue;
-                        // Example updater configs. bkit never writes or drift-checks them.
-                        // Without this skip, an entry-less template under .github/ would be
-                        // force-created on every upgrade.
-                        if (EXAMPLE_UPDATER_TEMPLATES.has(relPath))
+                        // Copy-paste examples (updaters, Serena, graphify). Not in the install
+                        // manifest, so this walk would otherwise force-create them on upgrade.
+                        if (isCopyPasteExample(relPath))
                             continue;
                         // Skip opt-in-module files the consumer hasn't opted into (dest absent).
                         if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {

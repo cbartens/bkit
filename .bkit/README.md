@@ -289,6 +289,8 @@ Two capabilities **opt-in**, excluded from default install: **issue tracker** (`
 
 **Dependency updaters.** Copy one example and own it: `.bkit/templates/.github/renovate.json5`, `.bkit/templates/.github/workflows/renovate.yml` (self-hosted runner only), or `.bkit/templates/.github/dependabot.yml`. `bkit.depUpdater: "none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent`, `dep-updater-both`, and `dep-updater-touches-bkit`. See `docs/deployments.md` § Dependency updaters.
 
+**All templates.** Copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
 bkit dogfoods templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit copy) must stay byte-equal where they overlap. Updater scans `.github/workflows/` only, not template path. Applies ONLY if bkit-repo opted into updater. When updater PR opens against bkit workflows:

@@ -328,9 +328,62 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
       false,
     );
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "graphify", "bkit-graphify.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".graphifyignore"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".serena", "project.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "capabilities.md"))).toBe(false);
     // Non-opt-in managed files DID get created — proving the walk ran (not a no-op).
     expect(fs.existsSync(path.join(tmpDir, ".gitignore"))).toBe(true);
     expect(result.status).toBe(0);
+  });
+
+  it("install --tooling does not write Serena or graphify examples", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"));
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--tooling"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+    expect(result.status).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "graphify", "bkit-graphify.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "serena", "bkit-serena-mcp.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".graphifyignore"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".serena", "project.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "capabilities.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, "docs", "setup.md"), "utf-8")).toContain(
+      ".bkit/templates.md",
+    );
+  });
+
+  it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    writeVersionFile();
+    const owned = "#!/usr/bin/env bash\necho owned\n";
+    fs.mkdirSync(path.join(tmpDir, "scripts", "graphify"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "scripts", "graphify", "bkit-graphify.sh"), owned, "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".serena"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".serena", "project.yml"), "project_name: owned\n", "utf-8");
+    const result = runBkitUpgrade();
+    expect(result.status).toBe(0);
+    expect(
+      fs.readFileSync(path.join(tmpDir, "scripts", "graphify", "bkit-graphify.sh"), "utf-8"),
+    ).toBe(owned);
+    expect(fs.readFileSync(path.join(tmpDir, ".serena", "project.yml"), "utf-8")).toBe(
+      "project_name: owned\n",
+    );
   });
 
   it("does not rewrite a consumer-owned .github/renovate.json5", () => {

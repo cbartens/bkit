@@ -497,3 +497,42 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
     expect(content).toContain("# bkit:end");
   });
 });
+
+describe("copy-paste code-graph examples", () => {
+  const root = path.resolve(".bkit/templates");
+
+  it("ships the copy-paste scripts and says to copy them", () => {
+    for (const rel of [
+      "scripts/graphify/bkit-graphify.sh",
+      "scripts/graphify/bkit-graphify-rollup.py",
+      "scripts/serena/bkit-serena-mcp.sh",
+      "scripts/graphify/bkit-graph-drift-rules.json",
+      ".graphifyignore",
+      ".serena/project.yml",
+      "docs/capabilities.md",
+    ]) {
+      const text = fs.readFileSync(path.join(root, rel), "utf-8");
+      expect(text).toMatch(/Copy/);
+      expect(text).toMatch(/does not write this file|does not write it/);
+      expect(text).not.toMatch(/bkit:start/);
+    }
+  });
+
+  it("keeps capability rules as a starter, not a product register", () => {
+    const rules = fs.readFileSync(
+      path.join(root, "scripts/graphify/bkit-graph-drift-rules.json"),
+      "utf-8",
+    );
+    expect(rules).toContain("new ExampleClient(");
+    expect(rules).not.toContain("family_members");
+    expect(rules).not.toContain("app-gether-life");
+  });
+
+  it("generates capabilities.md and Mermaid from the wrapper", () => {
+    const sh = fs.readFileSync(path.join(root, "scripts/graphify/bkit-graphify.sh"), "utf-8");
+    expect(sh).toContain('CAPABILITIES_DOC="docs/capabilities.md"');
+    expect(sh).toContain("R_PACKAGES_MMD");
+    expect(sh).toContain("R_MODULES_MMD");
+    expect(sh).toContain("--code-only");
+  });
+});

@@ -629,6 +629,7 @@ Dependency updaters (copy an example and own it):
   .bkit/templates/.github/workflows/renovate.yml   (self-hosted runner, optional)
   .bkit/templates/.github/dependabot.yml
   The examples already keep .github/workflows/bkit-cloud.yml out of the updater.
+  All templates and install steps: .bkit/templates.md
 
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs

@@ -60,8 +60,9 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI. |
 | `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
-| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
 | `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `none` blocks in workflow sources. |
+| `.bkit/templates.md` | — | — | ○ | — | ○ | Copy-and-own templates — what each does, how to install. Never installed. |
+| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
 | `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `bkit harvest`. |
 | `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
 | `README.md` | — | — | — | — | ○ | Package page — pitch, first-time install / upgrade paste, token setup. |

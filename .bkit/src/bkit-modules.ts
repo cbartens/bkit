@@ -273,6 +273,27 @@ const RETIRED_MANAGED_PATHS = new Set([
   path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
 ]);
 
+/**
+ * Copy-paste examples. Install and upgrade never write them and never
+ * drift-check them. A consumer copies the file and owns it.
+ */
+const COPY_PASTE_EXAMPLE_EXACT = new Set([
+  ".github/renovate.json5",
+  ".github/dependabot.yml",
+  ".github/workflows/renovate.yml",
+  ".graphifyignore",
+  ".serena/project.yml",
+  "docs/capabilities.md",
+]);
+
+export function isCopyPasteExample(relPath: string): boolean {
+  const norm = relPath.split(path.sep).join("/");
+  if (COPY_PASTE_EXAMPLE_EXACT.has(norm)) return true;
+  // Root `scripts/` in the templates holds only per-tool examples (`scripts/<tool>/`).
+  // bkit's own scripts live under `.bkit/scripts/`.
+  return norm === "scripts" || norm.startsWith("scripts/");
+}
+
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
   // consumer never receives them (#265). runLintModule emits them as Tier 1.
@@ -382,6 +403,8 @@ function processCoreTemplateDir(
     if (ent.isDirectory()) {
       processCoreTemplateDir(srcPath, relPath, dryRun, tokens, ws, logPrefix);
     } else if (ent.isFile()) {
+      // Copy-paste examples live under core dirs (scripts/, docs/) but are not installed.
+      if (isCopyPasteExample(relPath)) continue;
       // Skip opt-in-module-owned files that happen to live under a core dir.
       if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath)) continue;
       const dstPath = relPath;
@@ -469,6 +492,7 @@ export const BKIT_CANONICAL_DOCS = [
   "jsonl.md",
   "providers.md",
   "prompts.md",
+  "templates.md",
   "trackers.md",
   "workflows.md",
   "README.md",

@@ -14,4 +14,8 @@
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Local seed / test fixtures must never run against remote projects.
 
+## Templates
+
+Optional, copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+
 <!-- bkit:end -->
