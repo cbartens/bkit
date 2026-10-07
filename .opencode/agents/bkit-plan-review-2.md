@@ -41,8 +41,8 @@ reasoningEffort: high
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Build task dependency graph from `Agent Execution Runbook` declared dependencies (`Requires:` / `Blocked by:` / `After:` fields).
-6. For each declared edge `A → B`: verify B consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → `CRITICAL`.
-7. For each task: identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → `CRITICAL`. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
+6. Per declared edge `A → B`: verify B consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → `CRITICAL`.
+7. Per task: identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → `CRITICAL`. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
 8. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
 9. Cycle detection: Any cyclic dep → `CRITICAL`.
 10. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.

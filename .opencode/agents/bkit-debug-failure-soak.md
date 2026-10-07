@@ -16,7 +16,7 @@ reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
-**Context:** Senior debug engineer soaking an unknown-cause runtime failure against the failing boundary.
+**Role:** Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]

@@ -16,7 +16,7 @@ permissionMode: acceptEdits
 maxTurns: 100
 ---
 
-**Context:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
+**Role:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
@@ -114,7 +114,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Blast Radius
 
-[Effects beyond named files. For each propagating change: List affected surfaces and compatibility verdict. **If** no propagation → `Localised`; initially set to `PENDING`.]
+[Effects beyond named files. Per propagating change: List affected surfaces and compatibility verdict. **If** no propagation → `Localised`; initially set to `PENDING`.]
 
 ## Suggested Tests
 

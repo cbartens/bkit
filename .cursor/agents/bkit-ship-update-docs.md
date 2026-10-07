@@ -40,7 +40,7 @@ tools:
 3. Run `git log --oneline --stat origin/dev..HEAD` for shipped files this cycle.
 4. Per doc, ALWAYS follow its `Rules` headers when making edits.
 5. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
-6. Check agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
+6. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 7. Grep `docs/deferrals.jsonl` for `{FID}` matches → surface in output `Pending Items` for human review (do NOT write `docs/deferrals.jsonl`).
 8. Produce **Create** output.
 

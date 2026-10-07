@@ -42,7 +42,7 @@ maxTurns: 100
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Scan plan for declared out-of-scope / future-work / non-goals → record each under `Exempt Deferrals` with where, when, and why and mark item `Exempt`. **If** no plan file exists → `ship-input.md` is the plan; intended deliverables = its requested outcomes; NEVER create plan file.
 6. Scan plan `Acceptance Scenario` sections and `Done when` lines for intended deliverables → record each under `Planned vs Delivered` with where, when, and why and mark item `Planned`; unmet preconditions, build process steps, or merge conditions in plan (even as part of `Done when`) are advisory only → record under `Exempt Deferrals`. **If** no plan file exists → outcome as worded is the bar.
-7. For each intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
+7. Per intended deliverable item under `Planned vs Delivered` → assert codebase satisfies deliverable:
    - **If** satisfied (files exist, function signatures match, tests pass, behaviours observed) → mark item `Delivered` → continue.
    - **Else** unmet gap → apply blocking tests:
      - **If** deliverable itself absent, stub only, or produces wrong observable result, shown by named files, symbols, or failing tests and NEVER inferred from plan sentences → mark item `Blocked`.
