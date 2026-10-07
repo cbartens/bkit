@@ -98,6 +98,7 @@
     ],
     "renovateRunner": "self",
     "capstoneJob": "bkit-tests-check",
-    "ciWorkflow": "ci.yml"
+    "ciWorkflow": "ci.yml",
+    "roadmapNext": 25
   }
 }
