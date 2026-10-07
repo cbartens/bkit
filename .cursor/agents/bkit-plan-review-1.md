@@ -28,7 +28,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Review plan only; do NOT build, install, or write code.
+- **Mandate:** Review plan; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
@@ -39,7 +39,7 @@ tools:
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
+5. Verify strict adherence to `docs/templates/bkit-plan.md` — all template-mandated sections present and populated.
 6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` questions lacking options, `Recommended` or `Default if unanswered` → OPTIONAL findings naming missing parts.
 7. Verify plan reflects source — no drift, no omissions, no silent expansion.
    - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections map to plan tasks OR out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.

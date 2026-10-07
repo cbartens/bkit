@@ -30,7 +30,7 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Apply challenge fixes (edit / create source files); ONLY identified findings, no new scope. Do NOT just analyse.
+- **Mandate:** Apply challenge fixes (edit / create source files); ONLY identified findings, no new scope; do NOT just analyse.
 - **Blockers:** Append `BLOCKED` log line per blocked finding; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
@@ -46,7 +46,7 @@ reasoningEffort: high
 7. Implement in priority order — apply suggested remediation per finding (edit / create source) → append log → next finding.
 8. Run `pnpm bkit:gate:static-unit` — ALL local tests MUST pass.
 9. Once remediations verified (tests pass) → append gotcha rows (if any) to `docs/knowledge.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
-10. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications → **If** none valid = NOT valid deferral → FINISH work. Only blocks that survive with valid `reason` earn rows → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+10. For all `BLOCKED` findings (no later `DONE`) → name `Deferral Reason` per `.bkit/jsonl.md` and check justifications. **If** none valid = NOT valid deferral → FINISH work. **Else** → append deferral rows to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = every finding has `DONE` across logs AND local tests pass.
     - `FAIL` = unable to remediate; any `class` = architectural or `CRITICAL` finding ends `BLOCKED` with NO later `DONE` OR local tests fail.

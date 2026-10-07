@@ -2,7 +2,7 @@
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
 effort: medium
-model: claude-sonnet-5
+model: claude-sonnet-5-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
   - Edit
   - Bash
 permissionMode: acceptEdits
-maxTurns: 50
+maxTurns: 100
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
@@ -31,7 +31,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Write tests ONLY; NO implementation changes. Feature's changed files only.
+- **Mandate:** Write tests; NO implementation changes; ONLY feature's changed files; do NOT just analyse.
 - **Blockers:** Append `BLOCKED` log line per blocker; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
@@ -47,7 +47,7 @@ maxTurns: 50
 7. Run `pnpm bkit:gate:static-unit` → append log at EOF via Bash `echo {log entry} >> {output}`. **If** `FAIL` on newly-added tests → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = tests added and newly-added pass.
-   - `FAIL` = generated tests do not compile or run.
+   - `FAIL` = generated tests do NOT compile or run.
    - `CONCERNS` = bugs discovered while running new tests.
 
 **Output format:**

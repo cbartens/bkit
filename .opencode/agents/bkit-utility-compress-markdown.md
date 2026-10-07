@@ -29,13 +29,13 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Compress prose only; do NOT rewrite, rename, or restructure.
+- **Mandate:** Compress prose; do NOT just analyse; do NOT rewrite, rename, or restructure.
 
-**Pre-flight:**
+**Process:**
 
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-2. Read target file fully. Inventory **load-bearing tokens** — MUST appear verbatim in rewrite:
-   - All `#` / `##` / `###` headers — exact string (other agents grep these).
+2. Read target file fully → inventory load-bearing tokens that MUST appear verbatim in the rewrite:
+   - All `#` / `##` / `###` headers — exact string.
    - All bold field labels (e.g., `**Verdict:**`, `**Strategy:**`, `**Files modified:**`).
    - All paths (`docs/...`, `apps/...`, file globs).
    - All agent / tool / command names (`@build-execute-plan`, `pnpm bkit:gate:static-unit`, `gh pr …`).
@@ -44,53 +44,38 @@ reasoningEffort: high
    - All `{TOKEN}` placeholders (`{FID}`, `{ATTEMPT}`, `{PHASE}`, etc.).
    - All numbered / ordered lists — preserve numbering and order.
 3. Skim sibling files in the same directory for cross-refs (`see X.md`, `per template.md`); referenced anchors must stay greppable here.
-
-**Process — compress prose ONLY:**
-
-1. Phrasing → token-efficient, dense.
-2. Strip filler / hedging / restating → "in order to" → "to"; "due to the fact that" → "because"; drop "very / really / simply", "perhaps", "it might be useful to", and restatement of prior context.
-3. Paragraphs → bullets.
-4. Parallel content (label → value pairs, matrix-style enumerations) → compact tables. Atomic instructions → keep on one row, do NOT split across rows.
-5. Sequential process prose → `→` chains: `first X, then Y, finally Z` → `X → Y → Z`. Use for transformations (`A → B`), conditional flows (`If X → Y`), and step ordering. Do NOT collapse numbered / ordered lists into chains — preserve numbering.
-6. Drop articles where dense imperative style works → `Read the plan` → `Read plan`, `Update the file` → `Update file`. **Keep articles in set phrases** → `in the same directory`, `at the time of merge`.
-7. Redundant context already stated earlier → drop.
-8. Multi-sentence run-ons → terse one-liners (preserve meaning).
-9. Internal file refs → bare path: `[docs/foo.md](../../docs/foo.md)` → `docs/foo.md`.
-10. Trailing / duplicate whitespace → collapse; one blank line between blocks.
-
-**NEVER:**
-
-- Drop, rename, or rewrap headers, field labels, paths, agent / tool / identifier names.
-- Modify ANY content inside fenced code blocks, inline code spans, or tables.
-- Merge, drop, or reorder sections.
-- Replace concrete examples or commands with descriptions ("run the tests" instead of the actual command).
-- Drop 🔒 Gates, ⛔ stops, `[!CAUTION]` / `[!NOTE]` blocks, or numbered steps.
-- Summarise or paraphrase normative rules — `MUST`, `DO NOT`, `ONLY`, `NEVER`, `ALWAYS` survive verbatim.
-- Resolve `{TOKEN}` placeholders or change `{FID}` / `{ATTEMPT}`-style refs.
-
-**Examples — GOOD compression:**
-
-- BEFORE: `In order to verify the build, we will need to run the test suite and check the output for any failures.`
-  AFTER: `Verify build: run test suite, check output for failures.`
-- BEFORE: `Read the plan and update the checkboxes in the plan file.`
-  AFTER: `Read plan, update checkboxes.`
-- BEFORE: `[docs/security.md](../../docs/security.md)` → AFTER: `docs/security.md`.
-
-**Examples — BAD compression (DO NOT):**
-
-- ❌ `` `pnpm bkit:gate:static-unit` `` → `run tests` (drops exact command other agents copy).
-- ❌ `## Verification Record` → `## Verify` (header renamed — agents grepping original break).
-- ❌ `**Verdict:** ✅ PASS | ❌ FAIL` → `Verdict: PASS/FAIL` (drops emoji markers and bold label downstream parsers rely on).
-- ❌ Two sibling sections merged into one paragraph (other agents reference them by heading).
-- ❌ `Context: You are a subagent in the Build phase.` → `(subagent, Build).`
-- ❌ `in the same directory` → `in same directory` (set phrase — keep "the").
-- ❌ `at the time of merge` → `at time of merge` (set phrase — keep "the").
-
-**Post-compression verification (mandatory):**
-
-1. **Size sanity:** **If** word reduction > 40% → STOP and report (likely over-compression). Do NOT save.
-2. **Token round-trip:** re-grep every Pre-flight inventory entry in the output. Each MUST match exactly. **If** missing → restore that section from original and re-run.
-3. **Readability:** re-read end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
-4. Report to caller (not file): original vs new line / word counts; list blocks restored verbatim due to ambiguity.
+4. When rewriting prose:
+   - NEVER drop, rename, or rewrap headers, field labels, paths, agent / tool / identifier names.
+   - NEVER modify ANY content inside fenced code blocks, inline code spans, or tables.
+   - NEVER merge, drop, or reorder sections.
+   - NEVER replace concrete examples or commands with descriptions ("run the tests" instead of the actual command).
+   - NEVER drop 🔒 Gates, ⛔ stops, `[!CAUTION]` / `[!NOTE]` blocks, or numbered steps.
+   - NEVER summarise or paraphrase normative rules — `MUST`, `DO NOT`, `ONLY`, `NEVER`, `ALWAYS` survive verbatim.
+   - NEVER resolve `{TOKEN}` placeholders or change `{FID}` / `{ATTEMPT}`-style refs.
+5. Match good pairs; do NOT produce the bad pairs:
+   - Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `Verify build: run test suite, check output for failures.`
+   - Good: `Read the plan and update the checkboxes in the plan file.` → `Read plan, update checkboxes.`
+   - Good: `[docs/security.md](../../docs/security.md)` → `docs/security.md`.
+   - Bad: `` `pnpm bkit:gate:static-unit` `` → `run tests`.
+   - Bad: `## Verification Record` → `## Verify`.
+   - Bad: `**Verdict:** ✅ PASS | ❌ FAIL` → `Verdict: PASS|FAIL`.
+   - Bad: two sibling sections merged into one paragraph.
+   - Bad: `in the same directory` → `in same directory`.
+   - Bad: `at the time of merge` → `at time of merge`.
+6. Compress prose only:
+   - Dense token-efficient phrasing.
+   - Strip redundant context already stated earlier.
+   - Strip filler / hedging: "in order to" → "to"; "due to the fact that" → "because"; drop "very" / "really" / "simply" /  "perhaps" / "it might be useful to". 
+   - Strip articles where dense imperative style works → `Read the plan` → `Read plan`, `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
+   - Convert paragraphs → bullet points.
+   - Convert multi-sentence run-ons → terse one-liners; preserve meaning.
+   - Convert parallel content / lables → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do NOT split across rows.
+   - Convert sequential process prose into `→` chains: `first X, then Y, finally Z` becomes `X → Y → Z`; use for transformations (`A → B`), conditional flows (`If X → Y`), and step ordering; do NOT collapse numbered / ordered lists into chains — preserve numbering.
+   - Convert internal file references → bare path: `[docs/foo.md](../../docs/foo.md)` → `docs/foo.md`.
+   - Collpase trailing / duplicate whitespace → one blank line between blocks.
+7. **If** word reduction > 40% → STOP and report original vs new line / word counts; do NOT save.
+8. Re-grep every inventoried load-bearing token in the output; each MUST match exactly. **If** missing → restore that section from the original and re-run.
+9. Re-read the rewrite end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
+10. Report to caller; do NOT write the report into the file: original vs new line / word counts; list blocks restored verbatim due to ambiguity.
 
 > ⛔ **STOP after compressing prose and producing output. Do NOT make other modifications.**

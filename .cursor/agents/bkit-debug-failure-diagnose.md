@@ -31,7 +31,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Diagnose failure only; do NOT build, install, or write code.
+- **Mandate:** Diagnose failure; do NOT build, install, or write code.
 - **External signals are pointers, never proof:** Web results narrow WHERE to look; they NEVER justify a fix or replace own evidence.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
@@ -45,7 +45,7 @@ tools:
    - `STANDARD` → Targeted diagnosis.
    - `PIVOT` → Identify prior attempt failures and why. Explicitly answer: Re-application of prior commit SHA / debug log? **If** yes → what new evidence makes it work this time? Different angle — do NOT repeat verbatim.
    - `FINAL` → Re-diagnose: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-6. Read historical gotchas: search `docs/knowledge.jsonl` → grep by symptom / error-class / workflow-step. **If** matches → add to `Prior Knowledge`.
+6. Read historical gotchas: fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → search ONLY winning rows where `status` is `ACTIVE` or absent; NEVER search any other rows → search by symptoms / error-classes / workflow-steps. **If** matches found → add to `Prior Knowledge`.
 7. Read scar-tissue: search reverted commits with candidate files. **If** matches capture what was tried and why reverted → add to `Prior Knowledge`.
 8. Investigate inputs: CI logs, diff vs last-passing CI, local / E2E test results, runtime logs, related issues. **If** live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** live tests could not reach boundaries (auth / credential / connection / missing env) → environment problem, NEVER features broken. ONLY re-run narrower filters via Bash if hypothesis needs probing. Absent evidence is NOT proof; cap confidence on unchecked classes.
 9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm bkit:deps:outdated`.

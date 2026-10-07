@@ -28,7 +28,7 @@ tools:
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Update plan only; do NOT build, install, or write code.
+- **Mandate:** Update plan; do NOT just analyse; do NOT build, install, or write code.
 - **Multi-lens inputs:** Distinct lenses; merge max-wins on `CRITICAL`, apply OPTIONAL on merit. Single-input findings normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
@@ -56,7 +56,7 @@ tools:
     - `PASS` = all `CRITICAL` applied; OPTIONAL applied on merit.
     - `CONCERNS` = some OPTIONAL skipped.
     - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
-14. Re-read **Create** → assert template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
+14. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`. **If** NOT intact → set `Verdict` = `FAIL` via `Edit`.
 
 **Output format:**
 

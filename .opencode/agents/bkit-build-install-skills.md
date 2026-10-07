@@ -28,7 +28,7 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Install matching skills only; do NOT code or expand scope.
+- **Mandate:** Install matching skills; do NOT just analyse; do NOT code or expand scope.
 
 **Process:**
 
@@ -39,7 +39,7 @@ reasoningEffort: high
 5. Identify technology skill gaps — requirement NOT matched by any folder name.
 6. Per gap, run `npx skills find [technology]`. Relevance = skill matches technology requirements. **If** multiple matches → pick best; install ONE per gap.
 7. For each selected skill, run `npx skills add <owner/repo> -y`. Cap at 10 newly-installed skills.
-8. **If** nothing found → note as missing, do not block.
+8. **If** nothing found → note as missing, do NOT block.
 9. Produce **Create** output.
 
 **Output format:**

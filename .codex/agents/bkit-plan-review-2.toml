@@ -19,7 +19,7 @@ developer_instructions = """
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Review plan only; do NOT build, install, or write code.
+- **Mandate:** Review plan; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
@@ -35,7 +35,7 @@ developer_instructions = """
 7. For each task: identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → `CRITICAL`. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
 8. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
 9. Cycle detection: Any cyclic dep → `CRITICAL`.
-10. Verify strict adherence to `docs/plans/template.md` — `Done when` criteria and template structure intact.
+10. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.
 11. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
 12. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
