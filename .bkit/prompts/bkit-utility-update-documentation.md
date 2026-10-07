@@ -37,7 +37,7 @@ maxTurns: 100
 2. Read `.agents/docs.md` index — full catalog of docs to check.
 3. Per doc, ALWAYS follow its `Rules` headers when making edits.
 4. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
-5. Check agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
+5. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do NOT duplicate content and ONLY contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
 6. Final return: Display output format verbatim as final message to user; do NOT summarise or trim.
 
 **Output format:**
