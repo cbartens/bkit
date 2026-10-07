@@ -251,19 +251,9 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/"config:recommended"/);
   });
 
-  it("extends a consumer-owned local preset (renovate-local) so repo-specific rules survive bkit install", () => {
-    // renovate.json5 is Tier-1 canonical-overwrite; consumer customisations live in
-    // the unmanaged renovate-local.json5, pulled in via a {{REPO_SLUG}}-tokenised
-    // local preset. Listed LAST in `extends` so it wins over the baseline presets.
-    // The explicit `.json5` extension is load-bearing (issue #179): an
-    // extensionless local preset resolves to `.json`, 404s, and disables the
-    // whole config. The reference must match the seeded `renovate-local.json5`.
-    expect(content).toMatch(/"local>\{\{REPO_SLUG\}\}\/\/\.github\/renovate-local\.json5"/);
-    expect(content).not.toMatch(/renovate-local"/);
-    const extendsBlock = content.match(/extends:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
-    expect(extendsBlock.indexOf("renovate-local")).toBeGreaterThan(
-      extendsBlock.indexOf("config:recommended"),
-    );
+  it("does not extend a renovate-local preset (the copy is the whole config)", () => {
+    expect(content).not.toMatch(/renovate-local/);
+    expect(content).not.toMatch(/\{\{REPO_SLUG\}\}/);
   });
 
   it("enables osvVulnerabilityAlerts (CVE-driven PRs bypass schedule)", () => {
@@ -293,11 +283,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
   });
 
-  it("fences the self-hosted renovate.yml workflow in BOTH ignorePaths and the DO-NOT-BUMP rule (#325, KN-CORE-5)", () => {
-    // renovate.yml is bkit-owned + SHA-pinned; consumer Renovate must never re-pin it.
-    // Absent on Mend-runner installs, so ignoring it there is a harmless no-op.
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/renovate\.yml"/);
-    expect(content).toMatch(/matchFileNames:[\s\S]*renovate\.yml[\s\S]*enabled:\s*false/);
+  it("does not fence renovate.yml (the consumer owns that runner)", () => {
+    expect(content).not.toMatch(/"\.github\/workflows\/renovate\.yml"/);
   });
 
   it("ignores bkit-cloud.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
@@ -378,14 +365,9 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
   });
 
-  it("carries NO hostRules token anchor — private-registry auth lives in renovate-local.json5 (#199)", () => {
-    // The npm.pkg.github.com read-auth token must NOT live in this canonical-
-    // overwrite file: it would re-clobber a consumer's activation on every
-    // `bkit upgrade`. It is seeded into the consumer-owned renovate-local.json5
-    // instead (RENOVATE_LOCAL_STUB), which bkit never overwrites. Guard the
-    // config KEY + the secret ref (prose may still reference `hostRules`).
+  it("keeps the hostRules token commented so self-hosted env auth is not doubled", () => {
     expect(content).not.toMatch(/^\s*hostRules:/m);
-    expect(content).not.toMatch(/secrets\.BKIT_GH_TOKEN_INSTALL/);
+    expect(content).toMatch(/\/\/\s*hostRules:/);
   });
 });
 
@@ -399,9 +381,8 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
 
   it("runs renovatebot/github-action SHA-pinned (KN-CORE-5) on the configurable runner (#362)", () => {
     expect(content).toMatch(/uses:\s*renovatebot\/github-action@[0-9a-f]{40}\s*#/);
-    // runs-on is now a bkit-substituted token (bkit.runners.renovate → ubuntu-latest
-    // default); the literal is no longer hard-coded (#362).
-    expect(content).toMatch(/runs-on:\s*\{\{RENOVATE_RUNNER\}\}/);
+    expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
+    expect(content).not.toMatch(/\{\{RENOVATE_RUNNER\}\}/);
   });
 
   it("wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos)", () => {
@@ -458,6 +439,14 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
 
   it("uses least-privilege job permissions (contents: read)", () => {
     expect(content).toMatch(/permissions:\s+contents:\s*read/);
+  });
+});
+
+describe("example dependabot template (.bkit/templates/.github/dependabot.yml)", () => {
+  const content = fs.readFileSync(path.resolve(".bkit/templates/.github/dependabot.yml"), "utf-8");
+
+  it("excludes bkit-cloud.yml from version updates", () => {
+    expect(content).toMatch(/exclude-paths:[\s\S]*\.github\/workflows\/bkit-cloud\.yml/);
   });
 });
 

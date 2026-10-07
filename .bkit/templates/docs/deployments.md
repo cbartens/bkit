@@ -206,7 +206,7 @@ Fix at source: gate global-dep force on **real** global-dep change. Intersect ch
 
 CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites — surfaces read LIVE from default branch, not `dev` / validated tip:
 
-- **Renovate** resolves its config only from the default branch (see § Customizing Renovate). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
+- **Renovate** resolves its config only from the default branch (see § Dependency updaters). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
 - **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
 - **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
 
@@ -335,80 +335,34 @@ GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is fr
 
 Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) are where this is **especially critical** — a re-pointed ref there runs with those credentials — but the practice applies to **all** third-party refs, not only elevated ones.
 
-**Pair with updater.** Pinning freezes version — without updater, CVEs in pinned refs stay unpatched indefinitely. Pinning without updater worse than not pinning. bkit: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (first-party GitHub, no third-party trust surface). Canonical Renovate config: `.bkit/templates/.github/renovate.json5`.
+### Dependency updaters
 
-**Choosing a Renovate runner (mend vs self-hosted).** Renovate runs on the **Mend Community Cloud App** by default (`--renovate=mend`) — recommended for almost every repo (free, one-click, nothing to operate). The one reason to switch is scale: a large pnpm monorepo can exhaust Mend's fixed **3 GB hosted-runner memory** and fail every run with `kernel-out-of-memory` (KN-CORE-10). Those repos run Renovate **self-hosted** on GitHub Actions instead (`--renovate=self`, `ubuntu-latest` ~16 GB). Start on `mend`; move to `self` only if you hit the OOM (the `pnpm-release-age-gate-oom` advisory points you there when you do). Full details, token setup, and the migration steps are in § Self-hosted Renovate below; the rest of this section (config, grouping, activation) applies to both runners.
+**Pair with an updater.** A pin that nothing bumps stays on a vulnerable digest. Copy one example and own it:
 
-The shipped config:
+<!-- prettier-ignore -->
+| Updater | Copy | When |
+| --- | --- | --- |
+| Renovate (rules) | `.bkit/templates/.github/renovate.json5` → `.github/renovate.json5` | Default. Grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. |
+| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/renovate.yml` → `.github/workflows/renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
+| Dependabot | `.bkit/templates/.github/dependabot.yml` → `.github/dependabot.yml` | First-party GitHub. No App. One PR per package. No lockfile-maintenance job. |
 
-- Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
-- Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
-- Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
-- Caps pnpm's worker pool (`env: { PNPM_WORKERS, PNPM_MAX_WORKERS }`) and enforces release-age freshness in Renovate (`minimumReleaseAge: "1 day"`) — the pnpm-11 microvm-OOM mitigation. See § Renovate pnpm-11 freshness gate & microvm memory below; large monorepos on a pnpm-level `minimumReleaseAge` gate must also drop it to clear the OOM.
-- For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
-- For the `dockerfile` manager: image `FROM <image>:<tag>@sha256:<digest>` pins are refreshed on upstream releases and CVE disclosures (the tag stays inline so Renovate can map digest→tag). Installer fetches pinned by a paired **version + `sha256sum`** (the Vale tarball in `ci.yml`) or by a **commit SHA in a raw URL** (the actionlint download-script) are **not** Renovate-managed — it cannot recompute a tarball checksum — so bump those version/sha pairs by hand when you upgrade the tool.
-- For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
-- Carries no private-registry token itself — the `hostRules` token anchor for `npm.pkg.github.com` is seeded into the consumer-owned `renovate-local.json5` instead, so it survives `bkit upgrade` (this file is canonical-overwrite and would clobber a token added here). You must provision a read token there to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
-- `extends` a consumer-owned local preset (`local>{{REPO_SLUG}}//.github/renovate-local.json5`) so you can add repo-specific rules that survive `bkit install`/`bkit upgrade` (see § Customizing Renovate below). `renovate.json5` itself is bkit-managed and rewritten on every `bkit install` — hand-edits there are clobbered.
+Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
-**Exemption — `bkit-cloud.yml`:** The bkit-canonical `bkit-cloud.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The `ignorePaths` entry above keeps consumer-side Renovate out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-cloud.yml`.
+**Hands off bkit-owned files.** `bkit install` rewrites `.github/workflows/bkit-cloud.yml`. An updater that bumps its action pins opens the same PR forever.
 
-**Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --dependency=renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
+- Renovate: list `.github/workflows/bkit-cloud.yml` in `ignorePaths`. A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file.
+- Also ignore `.bkit/templates/**` and `.agents/skills/**` (bkit-owned; scanning them is noise).
+- Dependabot: `exclude-paths: [".github/workflows/bkit-cloud.yml"]` on the `github-actions` block. That covers version updates. Security-update PRs for that file can still open; close them.
+- Your own `ci.yml` and, if you copied it, `renovate.yml` stay out of that list so their pins can refresh.
+- `bkit install` warns when `bkit-cloud.yml` exists and the updater config does not name it (`dep-updater-touches-bkit`).
 
-1. **Phase A** (first run, config not yet on `origin/<default-branch>`): writes `.github/renovate.json5` to the working tree and prints a prompt to commit, open a PR to your integration branch, and merge through to the default branch. Do NOT install the Renovate App yet.
-2. **Phase B** (re-run after merge to default branch): bkit detects the file on `origin/<default-branch>` and prints the App install URL https://github.com/apps/renovate (Mend Community Cloud, one-click, free — no `gh api` equivalent) plus the activation checklist (verify onboarding PR base branch, disable Dependabot version updates, merge onboarding PR). Within ~5 minutes of install, Renovate opens its onboarding PR; merge it and the first batch of grouped update PRs follows on the next scheduled run.
+**Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
-> **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency. bkit ships that self-hosted path as a first-class opt-in (`--renovate=self`), primarily for repos that OOM on Mend's 3 GB runner — see § Self-hosted Renovate (GitHub Actions alternative to Mend) below.
+**Renovate, Mend.** Install the App at https://github.com/apps/renovate only after `renovate.json5` is on the default branch. No `gh api` equivalent. Within a few minutes the App opens an onboarding PR; merge it.
 
-(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. See `security.md` § Supply-Chain.)
+**Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly — `osvVulnerabilityAlerts` PRs need the daily wake.
 
-### Renovate read-auth for the private package
-
-`@cbartens/bkit` lives on GitHub Packages (`npm.pkg.github.com`, restricted). To regenerate `pnpm-lock.yaml` after bumping **any** dependency, Renovate resolves the whole workspace — including `@cbartens/bkit` — so it needs read auth to that registry. Without it, lockfile regeneration fails, every dependency PR lands with a stale lockfile, and CI fails `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE`. Disabling _updates_ to `@cbartens/bkit` does not help — the regen for unrelated deps still resolves it.
-
-**Critical:** the `BKIT_GH_TOKEN_INSTALL` you set as a GitHub Actions secret for CI is **not** visible to Mend's hosted Renovate runner. The token must be provisioned on Renovate's side. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` anchor for `npm.pkg.github.com`; finish it via the path matching your setup. (It lives in `renovate-local.json5`, not the canonical `renovate.json5`, so it survives `bkit upgrade` — Renovate merges `hostRules` across extended presets, and a secret-bearing token in the local preset is honored.)
-
-- **Mend Community Cloud (hosted, default):** Add `BKIT_GH_TOKEN_INSTALL` (a PAT with `read:packages`) as a **Mend repository secret** at https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets. **In the secret dialog, tick the "If checked - secret will be used during the scan as an environment variable." box** — this is required: without it the secret exists but is never exposed to the scan, so lockfile regeneration still 401s exactly as if no token were set. Then uncomment the `token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}"` line in `.github/renovate-local.json5` so the `hostRules` entry resolves the secret. (Do not commit a literal token; `{{ secrets.* }}` references the dashboard secret.)
-- **Self-hosted Renovate:** Inject the token via the `RENOVATE_HOST_RULES` env var, the bot's `config.js`, or an `encrypted: { token: "<blob>" }` field encrypted with your own bot key — no edit to the committed `token` line needed.
-
-Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps do not read `encrypted` secrets from repo config — only dashboard secrets (the path above). The `encrypted` route is self-hosted only.
-
-This is part of Phase B activation; `pnpm bkit install --dependency=renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
-
-### Renovate pnpm-11 freshness gate & microvm memory
-
-The shipped `renovate.json5` carries two Renovate-scoped mitigations for a physical OOM (`Error: kernel-out-of-memory`) that large **pnpm 11** monorepos hit on Mend's low-RAM hosted runner during `pnpm update --lockfile-only`:
-
-- **(A) Worker cap** — `env: { PNPM_WORKERS: "1", PNPM_MAX_WORKERS: "1" }` bounds pnpm's worker-pool memory. Both vars are allow-listed by Mend's `global:safeEnv` preset (no admin `allowedEnv` change needed) and the cap touches only Renovate's runner, never CI/Vercel/local. `--lockfile-only` barely engages the worker pool, so this alone may **not** clear a metadata-driven OOM.
-- **(B) Renovate-native freshness** — `minimumReleaseAge: "1 day"` holds deps younger than 24h out of PRs with **no** per-install timestamp verification. Security / `osvVulnerabilityAlerts` PRs bypass it by design, so CVE fixes are never delayed.
-
-**Consumer action for (B) — this is the part that actually clears the OOM.** pnpm 11 defaults `minimumReleaseAge` to **1440** (pnpm 10 defaulted it off), so the per-install gate is active **even with no key set** — and it, not Renovate's `minimumReleaseAge`, verifies a publish timestamp for every dependency on every install and OOMs the microvm. Set **`minimumReleaseAge: 0`** as a top-level key in your **`pnpm-workspace.yaml`**: `0` short-circuits the per-entry check entirely (fast install, no OOM). Do **not** just delete the key — pnpm 11 falls back to the `1440` default, so the gate (and the OOM) stay active, and you lose any `minimumReleaseAgeExclude`, which makes same-day `@cbartens/bkit` upgrades fail the gate. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block. `bkit install`/`upgrade` surfaces this as the `pnpm-release-age-gate-oom` advisory (fires on pnpm 11 + Renovate active whenever the gate is not `0`).
-
-**Trade-off.** The pnpm gate aged **every** install (Renovate, CI, Vercel, local, and manual/transitive installs); Renovate-only freshness gates only what Renovate proposes. Accept a small reduction in supply-chain defense-in-depth in exchange for clearing the OOM and faster CI/Vercel builds — or keep the pnpm gate and rely on (A) alone. Either way, **verify against a live Renovate run** with the config on your default branch (Renovate reads config from there); the OOM cannot be reproduced or cleared from a local checkout.
-
-### Self-hosted Renovate (GitHub Actions alternative to Mend)
-
-For repos that OOM on Mend's 3 GB hosted microvm (`Error: kernel-out-of-memory`, 3.0/3.0 GB during `pnpm update --lockfile-only` — see § Renovate pnpm-11 freshness gate & microvm memory above and KN-CORE-10), bkit ships an opt-in self-hosted runner: `pnpm bkit install --renovate=self`. It writes a bkit-managed `.github/workflows/renovate.yml` that runs `renovatebot/github-action@<pinned-sha>` on `ubuntu-latest` (~16 GB — the OOM cannot occur there), moving the execution engine off the Mend App into your own Actions. Default is `--renovate=mend` (the hosted App, § Renovate activation above). Mode is recorded in `package.json` `bkit.renovateRunner`; switch by re-installing with the other value (mend ↔ self). A plain `--dependency=renovate` re-install **preserves** an existing self-hosted mode (detected from the field + `renovate.yml`'s presence), so a routine `bkit install`/`upgrade` never silently reverts you to Mend.
-
-**Custom runner label (Depot / GitHub larger runner / self-hosted).** The `runs-on:` of the self-hosted `renovate.yml` — and both jobs of `bkit-cloud.yml` — are bkit-substituted from a `bkit.runners` config key in `package.json`, so a consumer can point them at any runner without fighting the canonical-overwrite drift gate (the value is rendered from config on every `bkit install`/`upgrade`, so it survives). Unset → `ubuntu-latest` (zero change for existing repos). The label is arbitrary: a GitHub-hosted larger runner, a [Depot](https://depot.dev/docs/github-actions/runner-types) label (`depot-ubuntu-24.04-4`, ~30% cheaper per-minute), or a self-hosted label. For Renovate keep ≥16 GB of headroom (KN-CORE-10). Shape:
-
-```jsonc
-"bkit": {
-  "runners": {
-    "default": "ubuntu-latest",     // fallback for any bkit-managed workflow
-    "renovate": "depot-ubuntu-24.04-4",
-    "bkitCloud": "depot-ubuntu-24.04" // both cloud jobs (claude + opencode) share one label
-  }
-}
-```
-
-Precedence per workflow: the specific key (`renovate` / `bkitCloud`) → `default` → literal `ubuntu-latest`. `ci.yml` is consumer-owned (not canonical) — edit its `runs-on:` directly.
-
-**Config is single-source — the mode IS the workflow file's presence.** `renovate.json5` is byte-identical for both runners (nothing in it names Mend); the whole difference is whether `.github/workflows/renovate.yml` exists. The workflow does no checkout and sets no `configurationFile` — Renovate autodiscovers `.github/renovate.json5`. Everything under § GitHub Actions pinning applies unchanged: the `dev` base branch, `useBaseBranchConfig: "merge"`, the grouping/auto-merge rules, and `osvVulnerabilityAlerts`. Because `renovate.json5` sets `env: { PNPM_WORKERS, PNPM_MAX_WORKERS }` and `allowedEnv` is a global-only option, the shipped workflow sets `RENOVATE_ALLOWED_ENV: "PNPM_*"` (Mend permits these via its safeEnv preset) — without it the self-hosted bot rejects the whole config. bkit ships this in the workflow; you do not configure it.
-
-**Schedule reconciliation — do NOT narrow the cron to weekly.** The workflow triggers on `schedule: cron "17 6 * * *"` (once daily) + `workflow_dispatch` (inputs `logLevel`, `dryRun`), with `timeout-minutes: 30`, `permissions: contents: read`, and `concurrency: { group: renovate, cancel-in-progress: false }` (serialise runs so two never race the lockfile). The cron only _wakes_ the bot; `renovate.json5`'s own `schedule` ("before 6am on Monday") still gates when normal PRs open, and `osvVulnerabilityAlerts` CVE PRs bypass both. A daily wake bounds worst-case CVE-PR latency to ~24h; narrowing the cron to Monday-only would delay CVE PRs by up to a week — the two schedules are layered by design, so keep the cron at least daily.
-
-**Platform auth — a `BKIT_GH_TOKEN` secret, never `GITHUB_TOKEN`.** Set a repo secret `BKIT_GH_TOKEN`; the workflow authenticates Renovate with it. `GITHUB_TOKEN` does **not** work here: PRs opened under it do not trigger CI, so required checks never run and `platformAutomerge` / branch-protection never fire. Use a fine-grained PAT scoped to THIS repo:
+Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Fine-grained PAT, this repo:
 
 <!-- prettier-ignore -->
 | Repository permission | Access |
@@ -421,81 +375,39 @@ Precedence per workflow: the specific key (`renovate` / `bkitCloud`) → `defaul
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` lets Renovate read a commit's CI state (to open the PR and gate `platformAutomerge`) and post its own internal checks (e.g. `renovate/stability-days`); **without it Renovate creates the `renovate/*` branch but 403s on `GET /commits/{sha}/statuses` and never opens the PR** — the tell-tale symptom is a lone `renovate/*` branch with no PR and no CI run. Fine-grained PATs have **no separate `Checks` permission** (check-run _writes_ are GitHub-App-only), so commit statuses is the mechanism a PAT-based Renovate uses — do not go looking for a Checks toggle. `Dependabot alerts: Read` lets Renovate read GitHub's vulnerability feed for security-fix PRs; without it the run logs a harmless `403` and relies on `osvVulnerabilityAlerts` (OSV) alone. (Classic-PAT equivalent: `repo` + `workflow`.) If `BKIT_GH_TOKEN` is missing or under-scoped, no Renovate PRs open and the scheduled Actions run 401s. Keep it **separate** from `BKIT_GH_TOKEN_INSTALL` (which stays `read:packages`-only, least privilege — see § Renovate read-auth above). **Hardening (no annual PAT expiry):** swap the PAT for a self-managed GitHub App — store its `APP_ID` + private key as secrets and mint a short-lived installation token in the workflow via `actions/create-github-app-token`. This is NOT the one-click `/install-github-app` used for Claude (that OIDC broker is Anthropic-specific and has no Renovate equivalent).
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Keep `BKIT_GH_TOKEN` separate from `BKIT_GH_TOKEN_INSTALL` (`read:packages` only). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
-**Commit author (`RENOVATE_GIT_AUTHOR`) — matters on org repos.** Renovate authors its branch commits from the token owner's email, read via the `Email addresses: Read` **Account** permission. That permission only exists on **personal-account** fine-grained PATs — an **org-owned** token has no such permission (only Organization + Repository permissions), so Renovate can't read an email and falls back to the Mend bot author (`renovate@whitesourcesoftware.com`), which shows commits as `Unverified`. The portable fix: set the repo **variable** `RENOVATE_GIT_AUTHOR` (Settings → Secrets and variables → Actions → **Variables**), e.g. `Renovate Bot <renovate@your-domain>`; the shipped workflow reads `${{ vars.RENOVATE_GIT_AUTHOR }}`. On a personal-account repo you can instead add `Email addresses: Read` to the token and leave the variable unset. (Cosmetic either way — commit attribution only.)
+**Private package.** `@cbartens/bkit` is on `npm.pkg.github.com`. Lockfile regen resolves it for every bump. Without a read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
 
-**Enable GitHub's vulnerability feed — alerts ON, auto-fixes OFF.** For Renovate's security-fix PRs (and to clear the `Dependabot alerts` `403`), enable the detection feed but NOT Dependabot's own remediation. In **Settings → Advanced Security**:
+- Mend: add `BKIT_GH_TOKEN_INSTALL` as a Mend repository secret and tick "used during the scan as an environment variable". Uncomment the `hostRules` `token` line in `renovate.json5`.
+- Self-hosted: leave that line commented. The example workflow sets `RENOVATE_HOST_RULES` from the Actions secret. An uncommented Mend-style line adds an empty-token rule and 401s.
+
+**pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
+
+**Fence a `pnpm.overrides` pin.** Renovate's lockfile regen does not honor `pnpm.overrides`. An eligible bump rewrites the lock while the override stays, and `pnpm install --frozen-lockfile` fails. Add a `packageRules` entry `{ matchPackageNames: ["<pkg>"], enabled: false }` in `renovate.json5`.
+
+**Dependabot repo settings** (Settings → Advanced Security), when Dependabot is the updater:
 
 <!-- prettier-ignore -->
-| Setting | Set to | Why |
-| --- | --- | --- |
-| Dependency graph | **Enabled** | prerequisite for Dependabot alerts |
-| Dependabot alerts | **Enabled** | the vulnerability feed Renovate reads |
-| Dependabot security updates | **Disabled** | this makes _Dependabot_ open fix PRs — competing with Renovate. Renovate opens them itself |
-| Dependabot version updates | **Disabled** | the version-bump bot Renovate replaces (mutually exclusive) |
+| Setting | Set to |
+| --- | --- |
+| Dependency graph | Enabled |
+| Dependabot alerts | Enabled |
+| Dependabot security updates | Enabled |
+| Dependabot version updates | Enabled (this file drives them) |
 
-The rule: **detection ON, auto-fixing OFF.** Dependabot feeds vulnerabilities to Renovate; Renovate does all the PR work. (Malware alerts / automatic dependency submission are harmless if you also want them.)
+When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Private-registry auth — `RENOVATE_HOST_RULES`, keep the token line COMMENTED.** Self-hosted has no Mend dashboard, so the `{{ secrets.BKIT_GH_TOKEN_INSTALL }}` templating from § Renovate read-auth does not apply. The workflow instead injects the `@cbartens/bkit` read token via env:
+**Runner labels for bkit workflows.** `bkit-cloud.yml` `runs-on` comes from `bkit.runners.bkitCloud` in `package.json` (else `runners.default`, else `ubuntu-latest`). Do not hand-edit that file. `ci.yml` and a copied `renovate.yml` are yours — edit `runs-on` in the file.
 
-```
-RENOVATE_HOST_RULES=[{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.BKIT_GH_TOKEN_INSTALL }}"}]
-```
-
-Leave the `token:` line in `.github/renovate-local.json5` **commented** — an uncommented Mend-style line adds a second, empty-token `hostRules` entry that 401s self-hosted. `BKIT_GH_TOKEN_INSTALL` is still required, as the Actions secret the env above reads.
-
-**Migrating off Mend — suspend the App first (mutual exclusion).** Mend and self-hosted both open `renovate/*` PRs against the same repo; leaving both active duplicates every PR. When you enable self-hosted, SUSPEND the Mend App for the repo: GitHub UI → Settings → Applications → Renovate → Configure → remove this repo from its access list (no `gh api` equivalent). The App's per-repo state is off-repo, so bkit cannot verify it — `bkit install`/`check` emits the warn-only `renovate-self-hosted-mend-both-active` advisory as a reminder. Keep the default `renovate/` `branchPrefix`: self-hosted Renovate then ADOPTS the existing Dependency Dashboard issue + open Mend PRs instead of opening a parallel set.
-
-**Observability replaces the Mend dashboard.** Failures surface as GitHub Actions run failures (GitHub emails the scheduled workflow's last committer) plus the in-repo Dependency Dashboard issue Renovate maintains. Reproduce a run on demand via `workflow_dispatch` → `logLevel=debug` / `dryRun=full`.
-
-**OOM mitigations are KEPT, not relaxed.** The `PNPM_WORKERS` / `PNPM_MAX_WORKERS` cap is ~no-op under `--lockfile-only`, and both `minimumReleaseAge` knobs (Renovate-side + the `pnpm-workspace.yaml` gate) double as supply-chain / CI-speed controls independent of runner size — so § Renovate pnpm-11 freshness gate stays in force on 16 GB. Only the `pnpm-release-age-gate-oom` advisory is suppressed when `renovate.yml` is present (the OOM it warns about cannot occur on ubuntu-latest).
-
-**`renovate.yml` is bkit-owned → it goes in `ignorePaths`.** Like `bkit-cloud.yml`, the SHA-pinned `renovatebot/github-action` in `renovate.yml` is listed in `renovate.json5`'s `ignorePaths` so the `github-actions` manager never re-pins bkit's own workflow (KN-CORE-5 — `enabled: false` alone is insufficient; only `ignorePaths` stops the scan). New action SHAs arrive via `bkit install`, not consumer Renovate.
-
-### Customizing Renovate (renovate-local.json5)
-
-`.github/renovate.json5` is bkit-managed: `bkit install` rewrites the whole file, so any hand-edit there is clobbered on the next install. For repo-specific Renovate rules, edit **`.github/renovate-local.json5`** instead — a consumer-owned file bkit seeds once and never touches again (it is not a managed template, so neither `install` nor `upgrade` overwrites it). The bkit config pulls it in via `extends: ["local>{{REPO_SLUG}}//.github/renovate-local.json5"]` (the `{{REPO_SLUG}}` token resolves to your `owner/repo` from the `origin` remote at install time; the explicit `.json5` extension is required — an extensionless local preset resolves to `.json` and 404s, disabling the whole config).
-
-**Precedence — read this before relying on it.** Renovate evaluates `extends`-preset packageRules **before** the host config's own inline rules, and for any given setting the later (bkit's inline) rule wins. This means `renovate-local.json5` can:
-
-- ✅ **Add** rules for packages or managers bkit doesn't already configure.
-- ✅ **Set keys bkit leaves unset** — notably `enabled: false` to fence a package. bkit never sets `enabled: true` on a matching rule, so a fence here holds.
-- ❌ **NOT override a key bkit sets explicitly** (e.g. `automerge`, `groupName`) — bkit's inline rule wins for those.
-
-**Grouping and auto-merge are intentionally bkit-enforced, not tunable.** The single `bkit: renovate non-major dependencies` group and its `automerge: true` are a _correctness_ property — they prevent the lockfile rebase cascade described under § GitHub Actions pinning — not a default you adjust per-repo. Per the precedence rule above, `renovate-local.json5` cannot re-split the group or turn its auto-merge off. If you need a different posture: fence a specific package you would rather bump by hand with `enabled: false` (below); or, if your policy is _review every dependency and auto-merge nothing_, install the Dependabot module instead (`pnpm bkit install --dependency=dependabot`, § below) — it opens one PR per package and never auto-merges.
-
-**Canonical use case — fence a `pnpm.overrides`-pinned package.** If you pin a package in root `pnpm.overrides` (e.g. to stop cross-package version skew), Renovate's hosted lockfile regeneration does **not** reconcile against `pnpm.overrides`: it rewrites the locked version on an eligible bump while leaving your override in place, producing an inconsistent `pnpm-lock.yaml` that fails CI's `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`). Fence the pinned package so Renovate leaves it alone:
-
-```json5
-// .github/renovate-local.json5
-{
-  packageRules: [
-    { matchPackageNames: ["react", "react-dom", "react-test-renderer"], enabled: false },
-  ],
+```jsonc
+"bkit": {
+  "runners": {
+    "default": "ubuntu-latest",
+    "bkitCloud": "depot-ubuntu-24.04"
+  }
 }
 ```
-
-**Branch resolution.** Renovate resolves the local preset from your **default branch** (`main`), not from `dev` — `useBaseBranchConfig: "merge"` applies to `renovate.json5` itself, not to its extended presets. Commit `renovate-local.json5` alongside `renovate.json5` and land both on the default branch (the Phase A flow already requires this; the `extends` target must exist or Renovate raises a config error). To resolve it from a different branch instead, append `#<branch>` to the extends entry (e.g. `…/renovate-local.json5#dev`).
-
-### Dependabot alternative (opt-in, mutually exclusive with Renovate)
-
-If you have specific reasons to prefer Dependabot — first-party GitHub feature, no third-party App install, no Mend dependency in the trust surface, no Phase A/B race — bkit ships a Dependabot module as an alternative. Run `pnpm bkit install --dependency=dependabot` (NOT `--renovate`; the two are mutually exclusive and bkit will refuse to install both).
-
-Trade-offs to accept if you pick this path:
-
-- **One PR per package, not per group** — Dependabot's `groups:` support is newer and weaker than Renovate's. Expect more PR volume per scheduled run.
-- **Per-workspace coverage is manual** — bkit's shipped `dependabot.yml` ships the `github-actions` ecosystem enabled and `npm` commented out. For pnpm monorepos with explicit per-workspace coverage, you'll edit the file to add `directories: ["/", "/apps/*", "/packages/*"]` (Dependabot v2.1+) or stamp out one `package-ecosystem: npm` block per path.
-- **No lockfile maintenance** — Renovate's weekly `lockFileMaintenance` job refreshes transitive deps; Dependabot has no equivalent.
-- **No `osvVulnerabilityAlerts: true` analogue in the config** — CVE-driven PRs come from GitHub's security advisory pipeline (enabled via the helper script's `automated-security-fixes` toggle, not the YAML).
-
-The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
-
-    bash .bkit/scripts/bkit-set-dependabot.sh        # apply (idempotent)
-    bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
-    bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
-
-The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`.
 
 ### Manual CVE handling (when an alert fires)
 

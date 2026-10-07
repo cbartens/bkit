@@ -63,17 +63,7 @@ export interface ManifestEntry {
 }
 
 export type ModuleName =
-  | "core"
-  | "claude"
-  | "cursor"
-  | "opencode"
-  | "codex"
-  | "ci"
-  | "lint"
-  | "git-hooks"
-  | "renovate"
-  | "dependabot"
-  | "cloud";
+  "core" | "claude" | "cursor" | "opencode" | "codex" | "ci" | "lint" | "git-hooks" | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -105,71 +95,12 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
 }
 
 // ---------------------------------------------------------------------------
-// Dependency updater (#123 follow-up)
-// ---------------------------------------------------------------------------
-
-/**
- * Dependency-update tool chosen by the consumer (opt-in, mutually exclusive).
- * - `renovate`   — `bkit install --dependency=renovate` (recommended).
- * - `dependabot` — `bkit install --dependency=dependabot` (alternative).
- * - `none`       — explicit opt-out; silences the post-install nudge advisory.
- *
- * Recorded in `package.json` `bkit.depUpdater` by the owning module so the
- * post-install advisory can distinguish "deliberately none" from "undecided".
- */
-export const DEP_UPDATERS = ["renovate", "dependabot", "none"] as const;
-export type DepUpdater = (typeof DEP_UPDATERS)[number];
-
-/** Default when consumer manifest has no `bkit.depUpdater` field (undecided). */
-export const DEFAULT_DEP_UPDATER: DepUpdater = "none";
-
-/** Narrow an unknown string to `DepUpdater` or return `null` if invalid. */
-export function parseDepUpdater(value: unknown): DepUpdater | null {
-  return typeof value === "string" && (DEP_UPDATERS as readonly string[]).includes(value)
-    ? (value as DepUpdater)
-    : null;
-}
-
-// ---------------------------------------------------------------------------
-// Renovate runner — WHERE Renovate executes (#325)
-// ---------------------------------------------------------------------------
-
-/**
- * Where Renovate runs, chosen via
- * `bkit install --renovate=<name>`.
- * - `mend`       — Mend Community Cloud hosted GitHub App (default). No workflow
- *                  file; activated by installing the App (the Phase A/B flow).
- * - `self` — a bkit-managed `.github/workflows/renovate.yml` runs
- *                  `renovatebot/github-action` on `ubuntu-latest` (~16 GB), the
- *                  escape hatch for repos that OOM on Mend's 3 GB hosted microvm
- *                  (physical `kernel-out-of-memory`; #308, KN-41).
- *
- * Orthogonal to `depUpdater` (which is WHAT = renovate); this is WHERE. Recorded
- * in `package.json` `bkit.renovateRunner`. Like `cloudAgents`, file presence
- * (`.github/workflows/renovate.yml`) is the authoritative "self-hosted" signal;
- * the manifest field only distinguishes the deliberate mode on a re-install.
- */
-export const RENOVATE_RUNNERS = ["mend", "self"] as const;
-export type RenovateRunner = (typeof RENOVATE_RUNNERS)[number];
-
-/** Default when consumer manifest has no `bkit.renovateRunner` field. */
-export const DEFAULT_RENOVATE_RUNNER: RenovateRunner = "mend";
-
-/** Narrow an unknown string to `RenovateRunner` or return `null` if invalid. */
-export function parseRenovateRunner(value: unknown): RenovateRunner | null {
-  return typeof value === "string" && (RENOVATE_RUNNERS as readonly string[]).includes(value)
-    ? (value as RenovateRunner)
-    : null;
-}
-
-// ---------------------------------------------------------------------------
 // Runner labels — configurable `runs-on` for bkit-managed workflows (#362)
 // ---------------------------------------------------------------------------
 
 /**
  * Default GitHub Actions `runs-on` label for bkit-managed canonical workflows
- * (`renovate.yml`, `bkit-cloud.yml`). Substituted when `bkit.runners` is unset,
- * so existing consumers see zero behaviour change (#362).
+ * (`bkit-cloud.yml`). Substituted when `bkit.runners` is unset.
  */
 export const DEFAULT_RUNNER = "ubuntu-latest";
 
@@ -201,7 +132,7 @@ export function parseRunnerLabel(value: unknown): string | null {
  *               Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
- * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
+ * Recorded in `package.json` `bkit.cloudAgents`. File presence
  * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
@@ -783,43 +714,6 @@ const CLOUD_MANIFEST: ManifestEntry[] = [
   ...CLOUD_MANIFEST_CURSOR,
 ];
 
-// Renovate is opt-in via `bkit install --dependency=renovate` — phase-gated against the
-// default branch. NOT included in --full. See issue #123 follow-up.
-const RENOVATE_MANIFEST: ManifestEntry[] = [
-  { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
-  // .github/renovate-local.json5 — consumer-owned overrides, seeded once (create-if-absent)
-  // and deliberately unmanaged: it has NO template file, so the template-walking check/upgrade
-  // collector never sees it (its whole purpose is to diverge from the seed). Listed here ONLY
-  // so uninstall reclaims it — hash-guarded (removed while still byte-equal to the seed,
-  // preserved once customised), unconditional on --nuke (#255 P1-7).
-  {
-    path: ".github/renovate-local.json5",
-    format: "byte-equal-text",
-    module: "renovate",
-    seedOrPrint: true,
-  },
-  // .github/workflows/renovate.yml — self-hosted GitHub Actions runner (#325).
-  // Written by runRenovateModule ONLY when renovateRunner === "self"; on a
-  // "mend" install it is hash-guarded-reclaimed (deleted while byte-equal to the
-  // canonical template, preserved once the consumer edits it) so migrating back to
-  // Mend never leaves a second, double-running Renovate. Kept in this SINGLE union
-  // manifest (no mend/self split, unlike CLOUD_MANIFEST): a mend consumer
-  // simply never has the file on disk, so union-removal of an absent file on
-  // uninstall is a no-op — the DECISION-D rationale documented above. Canonical
-  // Tier-1 byte-equal (force-overwritten every install), exactly like bkit-cloud.yml.
-  { path: ".github/workflows/renovate.yml", format: "byte-equal-text", module: "renovate" },
-];
-
-// Dependabot is opt-in via `bkit install --dependency=dependabot` — first-party GitHub
-// feature, no App install required. Mutually exclusive with --renovate. NOT
-// included in --full. See issue #109 (origin) + #123 follow-up. dependabot.yml
-// is Tier 3 (seed-or-print) because consumers commonly tune the npm section
-// per their monorepo shape; the helper script is Tier 1 (canonical).
-const DEPENDABOT_MANIFEST: ManifestEntry[] = [
-  { path: ".github/dependabot.yml", format: "byte-equal-text", module: "dependabot" },
-  { path: ".bkit/scripts/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
-];
-
 // --typescript (#265): the Node/TS toolchain (most of it is plain Node — prettier/husky/
 // slop work on .js; only tsc + the cast/@ts-* rule are TS-exclusive). Always installed
 // alongside `ci` (--typescript implies --ci). Vale CONFIG lives under `ci` (agnostic); the
@@ -907,8 +801,6 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
   "git-hooks": GIT_HOOKS_MANIFEST,
-  renovate: RENOVATE_MANIFEST,
-  dependabot: DEPENDABOT_MANIFEST,
   cloud: CLOUD_MANIFEST,
 };
 

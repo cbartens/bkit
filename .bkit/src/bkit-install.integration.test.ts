@@ -22,9 +22,7 @@ import {
   runPayload,
   STAGING_ROOT,
   detectOpencodeProviders,
-  detectRenovateRunner,
 } from "./bkit-install";
-import { getTemplatesRoot } from "./bkit-paths";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
 import { resolveNetworkAllowlist } from "./bkit-cloud-env";
@@ -1748,72 +1746,6 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
 // ---------------------------------------------------------------------------
 // detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)
 // ---------------------------------------------------------------------------
-
-describe("detectRenovateRunner — runner resolution + clobber guard (#325)", () => {
-  const WF_REL = path.join(".github", "workflows", "renovate.yml");
-  // Render the canonical template the way `bkit install` writes it: the
-  // `{{RENOVATE_RUNNER}}` token (#362) resolves to the given label (default
-  // ubuntu-latest). The raw template is never what lands on disk.
-  const CANONICAL = (runner = "ubuntu-latest") =>
-    fs
-      .readFileSync(path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml"), "utf-8")
-      .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => runner);
-  const writeWorkflow = (content: string) => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, WF_REL), content, "utf-8");
-  };
-  const writePkg = (bkit?: Record<string, unknown>) =>
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify(bkit ? { name: "x", bkit } : { name: "x" }),
-      "utf-8",
-    );
-
-  it("field wins: bkit.renovateRunner=self → self (even with no workflow)", () => {
-    writePkg({ renovateRunner: "self" });
-    expect(detectRenovateRunner(tmpDir)).toBe("self");
-  });
-
-  it("field wins: bkit.renovateRunner=mend → mend (even with a byte-equal workflow present)", () => {
-    writePkg({ renovateRunner: "mend" });
-    writeWorkflow(CANONICAL());
-    expect(detectRenovateRunner(tmpDir)).toBe("mend");
-  });
-
-  it("no field + byte-equal workflow → self (field-stripped recovery)", () => {
-    writePkg();
-    writeWorkflow(CANONICAL());
-    expect(detectRenovateRunner(tmpDir)).toBe("self");
-  });
-
-  it("no field + BESPOKE workflow (differs from template) → mend, NOT self (clobber guard)", () => {
-    // A consumer's own self-hosted renovate.yml uses the conventional filename. It must
-    // NOT be classified bkit-owned, or the self writeTier1 would force-overwrite it.
-    writePkg();
-    writeWorkflow("name: My Own Renovate\non:\n  schedule:\n    - cron: '0 0 * * 0'\n");
-    expect(detectRenovateRunner(tmpDir)).toBe("mend");
-  });
-
-  it("no field + workflow rendered with a custom runner label → self (#362)", () => {
-    // A consumer on `bkit.runners.renovate=depot-…` (but no legacy renovateRunner
-    // field): the on-disk file has the Depot label, and detectRenovateRunner must
-    // render the template with the same config before comparing, still classifying
-    // it bkit-owned rather than a bespoke consumer workflow.
-    writePkg({ runners: { renovate: "depot-ubuntu-24.04-4" } });
-    writeWorkflow(CANONICAL("depot-ubuntu-24.04-4"));
-    expect(detectRenovateRunner(tmpDir)).toBe("self");
-  });
-
-  it("no field + no workflow → mend (fresh install default)", () => {
-    writePkg();
-    expect(detectRenovateRunner(tmpDir)).toBe("mend");
-  });
-
-  it("malformed package.json → mend (no throw)", () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), "{ not json", "utf-8");
-    expect(detectRenovateRunner(tmpDir)).toBe("mend");
-  });
-});
 
 describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)", () => {
   it("reads opencodeProviders array from package.json", () => {

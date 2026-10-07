@@ -1,14 +1,20 @@
-# Dependabot configuration shipped by bkit.
-# Tier 3 (seed-or-print): bkit writes this file once if absent; if present
-# bkit will not overwrite — see install advisory `tier3-merge-suggested-dependabot.yml`
-# for the recommended merge.
+# Example Dependabot config. Copy it to `.github/dependabot.yml` and own it.
+# Use this OR Renovate, not both.
 #
-# Important: GitHub reads .github/dependabot.yml ONLY from the default branch
-# (typically `main`). This file must be merged all the way through dev → main
-# before Dependabot will start opening PRs. PRs land on `dev` (per
-# `target-branch:` below), not on the branch where you committed this file.
+# GitHub reads .github/dependabot.yml ONLY from the default branch (typically
+# `main`). Merge it through to that branch before Dependabot opens PRs. PRs land
+# on `dev` (per `target-branch:` below).
 #
-# Reference: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# exclude-paths keeps bkit-cloud.yml out of version-update PRs. bkit rewrites that
+# file on install, so a pin PR for it never stays closed. exclude-paths does not
+# suppress security-update PRs; close those for bkit-cloud.yml.
+#
+# Repo settings (not in this file): enable the dependency graph and Dependabot
+# alerts. If this is your only updater, enable security updates. If you also run
+# Renovate, disable Dependabot version updates and security updates so the two
+# bots do not compete.
+#
+# Reference: https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
 version: 2
 updates:
   # GitHub Actions — refreshes SHA-pinned `uses:` lines on upstream releases
@@ -27,6 +33,8 @@ updates:
       github-actions:
         patterns:
           - "*"
+    exclude-paths:
+      - ".github/workflows/bkit-cloud.yml"
 
   # npm — opt-in. Uncomment and tune to your monorepo shape. For pnpm
   # workspaces, `directory: "/"` relies on hoisting; for explicit per-workspace

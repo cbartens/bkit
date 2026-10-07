@@ -1,7 +1,7 @@
 // bkit-cli.test.ts — CLI dispatch surface (#252 redesign + #234 comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
 // core implicit; --tooling expands to ci/lint/git-hooks; --auto replaces --cloud;
-// --dependency= replaces bare --renovate/--dependabot; --full/--core dropped.
+// --dependency= and --renovate= are unknown flags; --full/--core dropped.
 // comply verb: --phase=<design|plan|build|debug|ship> (WS2-T5, #234).
 // telemetry verb: `bkit telemetry migrate [--dry-run]` (WS5-T2, #234).
 import { describe, expect, it, vi } from "vitest";
@@ -115,28 +115,14 @@ describe("parseArgs — module flags", () => {
     expect([...result.modules]).toEqual(["core"]);
   });
 
-  it("--dependency=renovate → renovate + core only", () => {
-    const result = parseArgs(["install", "--dependency=renovate"]);
-    expect([...result.modules].sort()).toEqual(["core", "renovate"]);
-    expect(result.moduleFlags.has("renovate")).toBe(true);
-  });
-
-  it("--dependency=dependabot → dependabot + core only", () => {
-    const result = parseArgs(["install", "--dependency=dependabot"]);
-    expect([...result.modules].sort()).toEqual(["core", "dependabot"]);
-  });
-
-  it("--dependency=<bad> → rejected", () => {
-    const msg = expectExit(() => parseArgs(["install", "--dependency=snyk"]));
-    expect(msg).toMatch(/Unknown dependency updater/);
-  });
-
-  it("--claude --tooling --dependency=renovate compose", () => {
-    const result = parseArgs(["install", "--claude", "--tooling", "--dependency=renovate"]);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("renovate")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
+  it("--dependency= and --renovate= are unknown flags", () => {
+    expect(expectExit(() => parseArgs(["install", "--dependency=renovate"]))).toMatch(
+      /Unknown flag/,
+    );
+    expect(expectExit(() => parseArgs(["install", "--renovate=self"]))).toMatch(/Unknown flag/);
+    expect(expectExit(() => parseArgs(["install", "--claude", "--dependency=dependabot"]))).toMatch(
+      /Unknown flag/,
+    );
   });
 
   it("--auto=claude → cloud + core only; cloudVariant=claude", () => {
@@ -162,49 +148,6 @@ describe("parseArgs — module flags", () => {
     expect(msg).toMatch(/Unknown cloud variant/);
   });
 
-  it("--dependency=renovate + --dependency=dependabot → mutually exclusive", () => {
-    const msg = expectExit(() =>
-      parseArgs(["install", "--dependency=renovate", "--dependency=dependabot"]),
-    );
-    expect(msg).toMatch(/mutually exclusive/);
-  });
-
-  // --renovate=<mend|self> (#325) — single flag: auto-selects the renovate module + runner.
-  it("--renovate=self alone → auto-selects renovate + renovateRunner=self", () => {
-    const result = parseArgs(["install", "--renovate=self"]);
-    expect(result.modules.has("renovate")).toBe(true);
-    expect(result.renovateRunner).toBe("self");
-  });
-
-  it("--renovate=mend alone → auto-selects renovate + renovateRunner=mend", () => {
-    const result = parseArgs(["install", "--renovate=mend"]);
-    expect(result.modules.has("renovate")).toBe(true);
-    expect(result.renovateRunner).toBe("mend");
-  });
-
-  it("--dependency=renovate --renovate=self → renovateRunner=self (explicit, equivalent)", () => {
-    const result = parseArgs(["install", "--dependency=renovate", "--renovate=self"]);
-    expect(result.modules.has("renovate")).toBe(true);
-    expect(result.renovateRunner).toBe("self");
-  });
-
-  it("--dependency=renovate alone → renovateRunner=null (unspecified; module defaults/preserves)", () => {
-    const result = parseArgs(["install", "--dependency=renovate"]);
-    expect(result.renovateRunner).toBeNull();
-  });
-
-  it("--renovate=<bad> → rejected", () => {
-    const msg = expectExit(() => parseArgs(["install", "--renovate=fly"]));
-    expect(msg).toMatch(/Unknown renovate runner/);
-  });
-
-  it("--dependency=dependabot --renovate=self → mutually-exclusive error (renovate auto-added)", () => {
-    const msg = expectExit(() =>
-      parseArgs(["install", "--dependency=dependabot", "--renovate=self"]),
-    );
-    expect(msg).toMatch(/mutually exclusive/);
-  });
-
   it("parseArgs returns resolved modules as a Set", () => {
     const result = parseArgs(["install", "--claude"]);
     expect(result.modules).toBeInstanceOf(Set);
@@ -226,6 +169,8 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
     "--git-hooks",
     "--renovate",
     "--dependabot",
+    "--dependency=renovate",
+    "--renovate=self",
     "--cloud",
     "--cloud=claude",
   ];
@@ -311,8 +256,6 @@ describe("resolveModules — verb-aware resolution", () => {
       "ci",
       "lint",
       "git-hooks",
-      "renovate",
-      "dependabot",
       "cloud",
       "opencode",
     ] as ModuleFlag[]) {
@@ -327,7 +270,7 @@ describe("resolveModules — verb-aware resolution", () => {
       "git-hooks",
       "lint",
     ]);
-    expect([...resolveModules(set("renovate"), "uninstall")]).toEqual(["renovate"]);
+    expect([...resolveModules(set("cloud"), "uninstall")]).toEqual(["cloud"]);
   });
 
   it("check/upgrade: core implicit + named (main() rejects stray module flags)", () => {
@@ -382,8 +325,10 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--ci");
     expect(output).toContain("--typescript");
     expect(output).toContain("--tooling");
-    expect(output).toContain("--dependency=");
-    expect(output).toContain("--renovate=");
+    expect(output).toContain("renovate.json5");
+    expect(output).toContain("dependabot.yml");
+    expect(output).not.toMatch(/--dependency=/);
+    expect(output).not.toMatch(/--renovate=/);
     expect(output).toContain("--auto=");
   });
 
@@ -449,8 +394,6 @@ describe("parseArgs — uninstall verb", () => {
       "ci",
       "lint",
       "git-hooks",
-      "renovate",
-      "dependabot",
       "cloud",
       "opencode",
     ] as ModuleFlag[]) {
@@ -475,9 +418,10 @@ describe("parseArgs — uninstall verb", () => {
     expect(result.cloudVariant).toBeNull();
   });
 
-  it("uninstall --dependency=renovate → renovate only", () => {
-    const result = parseArgs(["uninstall", "--dependency=renovate"]);
-    expect([...result.modules]).toEqual(["renovate"]);
+  it("uninstall --dependency=renovate is an unknown flag", () => {
+    expect(expectExit(() => parseArgs(["uninstall", "--dependency=renovate"]))).toMatch(
+      /Unknown flag/,
+    );
   });
 
   it("uninstall --dry-run sets dryRun flag", () => {

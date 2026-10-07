@@ -7,7 +7,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
 import {
   writeTier1,
   writeTier2,
@@ -54,7 +53,6 @@ import {
   type IssueTracker,
   DEFAULT_ISSUE_TRACKER,
   type CloudAgents,
-  type RenovateRunner,
   LINT_SCRIPT,
   LINT_PROSE_SCRIPT,
   TYPECHECK_NO_TSCONFIG_SCRIPT,
@@ -87,7 +85,7 @@ import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-c
  * Persist a `bkit.<field>` value into the consumer's package.json so the
  * post-install advisory can tell "deliberately none" from "undecided". Mirrors
  * the `bkit.issueTracker` persist logic in bkit-install.ts. Used for the opt-in
- * decisions recorded by their owning modules (`depUpdater`, `cloudAgents`). No-op
+ * decisions recorded by their owning modules (`cloudAgents`). No-op
  * on dry-run or when package.json is absent/unparseable (non-fatal — the config
  * file presence is still the primary signal).
  */
@@ -228,12 +226,6 @@ export interface ModuleContext {
    */
   cloudVariant?: CloudVariant | null;
   /**
-   * Renovate runner chosen via `--renovate=mend|self` (#325). null/absent =
-   * not specified → `runRenovateModule` defaults to `mend`. Selects whether the module
-   * writes `.github/workflows/renovate.yml` (self) or reclaims it (mend).
-   */
-  renovateRunner?: RenovateRunner | null;
-  /**
    * Installing bkit version (package.json `version`) stamped into every rendered agent +
    * command as a managed-version marker (#256). Additive/optional: when absent the render
    * functions fall back to reading the package root directly (readInstallingVersion), so
@@ -270,11 +262,18 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]
 // double-recording them in the WriteSet. These are written by their owning module.
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
-// NOT shipped by the plain core pass — skip them there so the right owner writes them:
-//   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependency=dependabot` only.
+// NOT shipped by the plain core pass — skip them there so the right owner writes them.
 // Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
-const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
+/** Paths bkit used to own and now only ships as copy-paste examples. Dropped from `.bkit/version` hashes so a stale key cannot exempt them from checks. */
+const RETIRED_MANAGED_PATHS = new Set([
+  ".github/renovate.json5",
+  ".github/renovate-local.json5",
+  ".github/workflows/renovate.yml",
+  ".github/dependabot.yml",
   path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
+]);
+
+const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
   // consumer never receives them (#265). runLintModule emits them as Tier 1.
   path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
@@ -958,10 +957,12 @@ export function runCoreModule(ctx: ModuleContext): void {
     const tier3Hashes: Record<string, string> = { ...narrowedExistingTier3, ...newTier3Entries };
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    const canonicalHashes: Record<string, string> = {
-      ...existingCanonical,
-      ...newCanonicalEntries,
-    };
+    // Drop paths bkit no longer manages (dependency-updater examples). A stale key
+    // would keep exempting that workflow from the floating-tag check.
+    const canonicalHashes: Record<string, string> = {};
+    for (const [p, h] of Object.entries({ ...existingCanonical, ...newCanonicalEntries })) {
+      if (!RETIRED_MANAGED_PATHS.has(p)) canonicalHashes[p] = h;
+    }
 
     // Decide whether a write is needed: version mismatch, first install, or new
     // canonical entries.
@@ -970,7 +971,10 @@ export function runCoreModule(ctx: ModuleContext): void {
     const webFetchDerived = ctx.webFetchRecorded ?? existingVersion?.webFetchDerived ?? [];
     const derivedChanged =
       JSON.stringify(webFetchDerived) !== JSON.stringify(existingVersion?.webFetchDerived ?? []);
-    const needsWrite = versionChanged || hasNewEntries || derivedChanged;
+    const droppedRetired =
+      Object.keys(existingCanonical).some((p) => RETIRED_MANAGED_PATHS.has(p)) ||
+      Object.keys(existingTier3Hashes).some((p) => RETIRED_MANAGED_PATHS.has(p));
+    const needsWrite = versionChanged || hasNewEntries || derivedChanged || droppedRetired;
 
     if (needsWrite) {
       console.log(
@@ -2630,12 +2634,6 @@ export function runCiModule(ctx: ModuleContext): void {
   // tooling install wired an autonomous router to a tracker that may
   // not be configured. See issue #119 ("Managed Cloud Agents").
 
-  // renovate.json5 is no longer shipped by the ci module (`--tooling`). Renovate is opt-in via
-  // `bkit install --dependency=renovate` (phase-gated). See `runRenovateModule` below
-  // and issue #123 follow-up for rationale (Renovate App's first scan reads
-  // the default branch, so the file must reach `main` before App install —
-  // default install can't sequence that).
-
   // Vale prose-lint config is stack-agnostic (external binary, lints .md) → ships with
   // --ci (#265). The `lint:prose` npm wrapper + typecheck/test package.json footprint live
   // under --typescript (runLintModule); --ci has NO package.json footprint so a non-Node
@@ -3061,360 +3059,11 @@ export function runGitHooksModule(ctx: ModuleContext): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// runRenovateModule — opt-in `.github/renovate.json5` (phase-gated)
-// ---------------------------------------------------------------------------
-//
-// Renovate is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --dependency=renovate` and runs a two-phase flow gated on whether the
-// config has reached the remote default branch:
-//
-//   Phase A — file NOT yet on origin/<DEFAULT_BRANCH>:
-//     Writes the file to the working tree and emits a "commit + PR to main,
-//     then re-run" advisory. Does NOT print the App-install URL — installing
-//     the App before the config reaches the default branch causes Renovate
-//     to fire its default onboarding flow (broken; ignores the shipped
-//     config). See issue #123 follow-up.
-//
-//   Phase B — file IS on origin/<DEFAULT_BRANCH>:
-//     Re-writes the file (idempotent byte-equal) and emits the App-install
-//     URL + activation checklist.
-
-// Seed content for `.github/renovate-local.json5` — the consumer-owned overrides
-// file pulled in by renovate.json5's `extends`. bkit writes this ONCE (create-if-
-// absent) and never touches it again: it is NOT a managed template (no Tier-1/2/3
-// candidate), so neither `bkit install` nor `bkit upgrade` overwrites or nags about
-// it. The `extends` target must exist or Renovate raises a config error, so the
-// stub guarantees a resolvable, valid (if empty) preset from the first commit.
-const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT manage or overwrite this file.
-//
-// \`.github/renovate.json5\` (bkit-owned, rewritten on every \`bkit install\`) pulls
-// this file in via \`extends: ["local>OWNER/REPO//.github/renovate-local.json5"]\`. Put
-// repo-specific Renovate rules here — they survive \`bkit install\`/\`bkit upgrade\`.
-//
-// Precedence: rules here are evaluated BEFORE bkit's built-in rules in renovate.json5,
-// so this file can ADD rules and set keys bkit leaves unset — notably \`enabled: false\`
-// to fence a package — but it canNOT override a key bkit sets explicitly (e.g.
-// \`automerge\`). Renovate resolves this preset from your DEFAULT branch; commit it
-// alongside renovate.json5 and land both on the default branch before activating the
-// Renovate App. To resolve it from a different branch, append \`#<branch>\` to the
-// extends entry in renovate.json5 (e.g. \`.../renovate-local.json5#dev\`).
-//
-// Example — fence a package pinned in root \`pnpm.overrides\` so Renovate's hosted
-// lockfile regen can't rewrite the locked version and desync pnpm-lock.yaml (which
-// would fail CI's \`pnpm install --frozen-lockfile\`):
-//
-//   packageRules: [
-//     { matchPackageNames: ["react", "react-dom", "react-test-renderer"], enabled: false },
-//   ],
-{
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
-
-  // Private-registry read auth for the restricted \`@cbartens/bkit\` package on
-  // npm.pkg.github.com. Renovate resolves the WHOLE workspace (incl. this package)
-  // to regenerate pnpm-lock.yaml for ANY dependency bump — without a token the regen
-  // 401s, every dependency PR lands with a stale lockfile, and CI fails
-  // \`pnpm install --frozen-lockfile\` (ERR_PNPM_OUTDATED_LOCKFILE). The GitHub-Actions
-  // \`BKIT_GH_TOKEN_INSTALL\` CI secret is NOT visible to Mend's hosted runner — provision it
-  // on Renovate's side, then activate the token below. This anchor lives here
-  // (consumer-owned) and NOT in renovate.json5 (canonical-overwrite, clobbered every
-  // \`bkit upgrade\`): Renovate merges hostRules across presets, so the token SURVIVES
-  // upgrades.
-  //   - Mend hosted: add \`BKIT_GH_TOKEN_INSTALL\` (a PAT with \`read:packages\`) as a Mend
-  //     repository secret (https://developer.mend.io/github/<owner>/<repo> → Settings →
-  //     Secrets). You MUST tick "If checked - secret will be used during the scan as an
-  //     environment variable." — without it the secret is never exposed to the scan and
-  //     regen still 401s. Then uncomment the \`token:\` line below.
-  //   - Self-hosted: inject via the \`RENOVATE_HOST_RULES\` env var or an \`encrypted\`
-  //     block — no edit needed here.
-  hostRules: [
-    {
-      matchHost: "npm.pkg.github.com",
-      hostType: "npm",
-      // token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
-    },
-  ],
-
-  packageRules: [],
-}
-`;
-
-// Customization guidance appended to EVERY renovate install advisory (Phase A
-// and Phase B), so a consumer learns where their overrides go before they reach
-// Phase B — not only at App-activation time. The load-bearing point: renovate.json5
-// is bkit-owned and overwritten on every install, so any override that would
-// conflict with it belongs in renovate-local.json5, which survives install/upgrade.
-const RENOVATE_CUSTOMIZE_NOTE =
-  "Customizing Renovate: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`/`bkit upgrade`, so changes there are lost on the next run. Put repo-specific rules in `.github/renovate-local.json5` instead (consumer-owned; bkit never overwrites it). On conflict renovate-local ADDS to bkit's rules and can set keys bkit leaves unset (notably `enabled: false` to fence a package) but canNOT override a key bkit sets explicitly (e.g. `automerge`). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.";
-
 // Shared note appended to the cloud-setup advisories (#362). Both bkit-cloud.yml jobs
 // share one configurable runner label; do NOT hand-edit the canonical workflow (the
 // drift gate reverts it) — set the label in config and let bkit render it.
 const CLOUD_RUNNER_NOTE =
-  "RUNNER (optional — cost / perf): both cloud jobs' `runs-on` is bkit-substituted from `bkit.runners.bkitCloud` in `package.json` (default `ubuntu-latest`). The label is arbitrary — a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. bkit renders it on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. Do NOT hand-edit `runs-on` in `.github/workflows/bkit-cloud.yml` — that edit is reverted on the next run. See docs/deployments.md § Self-hosted Renovate (runner-label config).";
-
-function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): boolean {
-  try {
-    // Strip git hook env vars so this git command operates on the repo at `cwd`
-    // rather than the GIT_DIR injected by the pre-push hook runner.
-    const env = { ...process.env };
-    delete env["GIT_DIR"];
-    delete env["GIT_WORK_TREE"];
-    execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
-      cwd,
-      stdio: ["ignore", "ignore", "ignore"],
-      env,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function runRenovateModule(ctx: ModuleContext): void {
-  const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  // Mutually exclusive with --dependabot — refuse if Dependabot config exists.
-  // Both opening PRs against the same packages is silly and creates noise.
-  const dependabotYml = path.join(process.cwd(), ".github", "dependabot.yml");
-  const dependabotYaml = path.join(process.cwd(), ".github", "dependabot.yaml");
-  if (fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml)) {
-    advisories.push({
-      id: "renovate-dependabot-mutually-exclusive",
-      severity: "blocker",
-      detect:
-        "`.github/dependabot.yml` is present — Renovate and Dependabot are mutually exclusive (running both opens competing PRs against the same packages). Refusing to install Renovate.",
-      action:
-        "Choose one:\n\n" +
-        "  A. Switch to Renovate (recommended):\n" +
-        "     1. `git rm .github/dependabot.yml` (also `git rm .bkit/scripts/bkit-set-dependabot.sh` if present).\n" +
-        "     2. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n" +
-        "     3. Re-run `pnpm bkit install --dependency=renovate`.\n\n" +
-        "  B. Keep Dependabot: skip renovate; run `pnpm bkit install --dependency=dependabot` to keep using bkit's Dependabot module.",
-    });
-    return;
-  }
-
-  const renovateSrc = path.join(getTemplatesRoot(), ".github", "renovate.json5");
-  if (!fs.existsSync(renovateSrc)) return;
-
-  const renovateDst = path.join(".github", "renovate.json5");
-  const prevLen = ws.writes.length;
-  writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
-  if (ws.writes.length > prevLen) {
-    console.log(`${logPrefix} ${tag}renovate: ${renovateDst}`);
-  }
-
-  // Seed the consumer-owned overrides file pulled in by renovate.json5's `extends`.
-  // Create-if-absent only: once written it is the consumer's — never overwritten,
-  // never diffed, no nag advisory (its whole purpose is to diverge from this stub).
-  // It is deliberately NOT a managed template, so `bkit upgrade` ignores it too.
-  const renovateLocalDst = path.join(".github", "renovate-local.json5");
-  if (!fs.existsSync(renovateLocalDst)) {
-    if (!dryRun) {
-      fs.mkdirSync(path.dirname(renovateLocalDst), { recursive: true });
-      fs.writeFileSync(renovateLocalDst, RENOVATE_LOCAL_STUB, "utf-8");
-    }
-    ws.writes.push({ path: renovateLocalDst, action: "write" });
-    console.log(`${logPrefix} ${tag}renovate (consumer overrides): ${renovateLocalDst}`);
-  }
-
-  // Record the choice so the post-install advisory stays quiet about
-  // "undecided dep updater" and the mutual-exclusion check has a record.
-  setConsumerBkitField("depUpdater", "renovate", dryRun);
-
-  // ── Runner axis (#325): WHERE Renovate executes. `mend` (default) = the hosted
-  // GitHub App; `self` = a bkit-managed GitHub Actions workflow on ubuntu-latest
-  // (~16 GB), the escape hatch for repos that OOM on Mend's 3 GB hosted microvm.
-  const runner = ctx.renovateRunner ?? "mend";
-  setConsumerBkitField("renovateRunner", runner, dryRun);
-
-  const renovateWorkflowDst = path.join(".github", "workflows", "renovate.yml");
-  const renovateWorkflowSrc = path.join(getTemplatesRoot(), ".github", "workflows", "renovate.yml");
-  // Guard the workflow template's existence (mirrors the `renovate.json5` guard above):
-  // under a partial packaging defect the reclaim byte-compare would otherwise throw
-  // mid-install, after renovate.json5 was already written.
-  if (runner === "self") {
-    if (fs.existsSync(renovateWorkflowSrc)) {
-      const beforeLen = ws.writes.length;
-      writeTier1(renovateWorkflowSrc, renovateWorkflowDst, tokens, dryRun, ws);
-      if (ws.writes.length > beforeLen) {
-        console.log(`${logPrefix} ${tag}renovate (self-hosted runner): ${renovateWorkflowDst}`);
-      }
-    }
-  } else if (fs.existsSync(renovateWorkflowDst) && fs.existsSync(renovateWorkflowSrc)) {
-    // Switching back to Mend (or a default install over a prior self-hosted one):
-    // reclaim the workflow so the two runners never double-open the same PRs. Hash-
-    // guarded — delete only while the file is still byte-equal to bkit's canonical
-    // template; preserve it (and warn) once the consumer has edited it (or the template
-    // is unavailable to verify). Not pushed to ws.writes: a removal must not enter the
-    // `.bkit/version` canonical-hash pass.
-    const canonical = applyTokens(fs.readFileSync(renovateWorkflowSrc, "utf-8"), tokens);
-    const onDisk = fs.readFileSync(renovateWorkflowDst, "utf-8");
-    if (onDisk === canonical) {
-      if (!dryRun) fs.rmSync(renovateWorkflowDst, { force: true });
-      console.log(
-        `${logPrefix} ${tag}renovate (reclaimed self-hosted workflow): ${renovateWorkflowDst}`,
-      );
-    } else {
-      advisories.push({
-        id: "renovate-self-workflow-preserved",
-        severity: "advisory",
-        detect: `\`${renovateWorkflowDst}\` differs from bkit's canonical template, so \`--renovate=mend\` left it in place rather than deleting consumer edits. If it stays active while the Mend App is installed, BOTH open the same \`renovate/*\` PRs.`,
-        action: `Finish switching to the Mend App by removing it (\`git rm ${renovateWorkflowDst}\`), or keep self-hosted by re-running with \`--renovate=self\`.`,
-      });
-    }
-  }
-
-  const defaultBranch = tokens.DEFAULT_BRANCH;
-  const onDefault = isRenovateConfigOnDefaultBranch(defaultBranch, process.cwd());
-
-  if (runner === "self") {
-    // Self-hosted activation REPLACES the Mend App Phase-B flow. Phase A (land the
-    // config on the default branch) still applies: the scheduled workflow runs from
-    // the default branch and Renovate reads its config from there.
-    advisories.push({
-      id: "renovate-self-hosted-activate",
-      severity: "advisory",
-      detect: onDefault
-        ? `.github/workflows/renovate.yml + renovate.json5 are on origin/${defaultBranch} — ready to activate self-hosted Renovate on GitHub Actions (~16 GB runner, no Mend dependency).`
-        : `.github/workflows/renovate.yml is in the working tree but renovate.json5 is not yet on origin/${defaultBranch}. The scheduled workflow runs from the default branch and Renovate reads its config from there, so land the config first.`,
-      action:
-        (onDefault
-          ? "Activate the self-hosted runner:\n\n"
-          : "Phase A — land the config on the default branch first:\n\n" +
-            "  0. Commit `.github/renovate.json5`, `.github/renovate-local.json5`, AND `.github/workflows/renovate.yml`; open a PR to your integration branch and merge through to " +
-            `\`${defaultBranch}\`. Then continue:\n\n`) +
-        "  1. Add a repo Actions secret `BKIT_GH_TOKEN` — a fine-grained PAT. Repository permissions (as labelled in the token UI): Contents: Read and write, Pull requests: Read and write, Workflows: Read and write, Commit statuses: Read and write (else Renovate creates the `renovate/*` branch but 403s on `/commits/{sha}/statuses` and opens NO PR — symptom is a lone branch with no PR; fine-grained PATs have no `Checks` permission, commit statuses is the mechanism), Issues: Read and write, Dependabot alerts: Read, Metadata: Read-only. Do NOT use the default `GITHUB_TOKEN`: PRs it opens do not trigger CI, so `platformAutomerge` never fires and update PRs pile up. (Durable alternative with no annual expiry: a GitHub App token — see the `renovate.yml` header and docs/deployments.md § Self-hosted Renovate.)\n" +
-        "  2. Commit authorship: on a PERSONAL-account token also add the Account permission `Email addresses: Read` so Renovate commits with your verified email. ORG-owned tokens have NO Email-addresses permission — instead set the repo variable `RENOVATE_GIT_AUTHOR` (Settings -> Secrets and variables -> Actions -> Variables), e.g. `Renovate Bot <renovate@your-domain>`. Skipping both is fine but commits then show the Mend bot author as `Unverified`.\n" +
-        "  3. Confirm a repo Actions secret `BKIT_GH_TOKEN_INSTALL` (a PAT with `read:packages`) exists — the workflow injects it via `RENOVATE_HOST_RULES` so private `@cbartens/bkit` lockfile regen succeeds. Keep the `token:` line in `.github/renovate-local.json5` COMMENTED (the workflow supplies the token; an uncommented Mend-style `{{ secrets.* }}` line adds an empty-token rule self-hosted and 401s).\n" +
-        "  4. Enable GitHub's vulnerability feed (Settings -> Advanced Security): turn ON `Dependency graph` and `Dependabot alerts`. Keep `Dependabot security updates` and `Dependabot version updates` OFF — those make Dependabot open its OWN PRs, competing with Renovate. Renovate reads the alerts and opens the security-fix PRs itself (and already carries `osvVulnerabilityAlerts` for an OSV source too).\n" +
-        "  5. SUSPEND the Mend Renovate App for this repo if it is installed (GitHub UI -> Settings -> Applications -> Renovate -> Configure -> remove this repo; no `gh api` equivalent). Otherwise Mend AND this workflow open the same `renovate/*` PRs. bkit cannot verify the App state (off-repo).\n" +
-        "  6. Trigger the workflow once from the Actions tab -> Renovate -> Run workflow (optionally `dryRun=full`, `logLevel=debug`) to confirm auth + config load before the schedule takes over. It adopts any existing Dependency Dashboard issue and open `renovate/*` PRs (the default `renovate/` branch prefix is unchanged).\n" +
-        "  7. (Optional — cost / headroom) The `runs-on` label is configurable via `bkit.runners.renovate` in `package.json` (default `ubuntu-latest`). The label is arbitrary: a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04-4`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. Keep >=16 GB of headroom (KN-CORE-10). bkit renders the label on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. See docs/deployments.md § Self-hosted Renovate.\n\n" +
-        RENOVATE_CUSTOMIZE_NOTE,
-    });
-    return;
-  }
-
-  if (!onDefault) {
-    advisories.push({
-      id: "renovate-phase-a-pr-to-default-branch",
-      severity: "advisory",
-      detect: `.github/renovate.json5 is in the working tree but not yet on origin/${defaultBranch}. The Renovate GitHub App's first scan reads the default branch — installing the App before the config lands there triggers a broken onboarding PR that ignores this config (issue #123).`,
-      action:
-        "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
-        "  1. Commit BOTH `.github/renovate.json5` AND `.github/renovate-local.json5` (the consumer-owned overrides file renovate.json5 pulls in via `extends`). Renovate raises a config error if the `extends` target is missing, so they must travel together.\n" +
-        `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
-        `  3. Re-run \`pnpm bkit install --dependency=renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
-        "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).\n\n" +
-        RENOVATE_CUSTOMIZE_NOTE,
-    });
-    return;
-  }
-
-  advisories.push({
-    id: "renovate-phase-b-install-app",
-    severity: "advisory",
-    detect: `.github/renovate.json5 is present on origin/${defaultBranch} — ready for Renovate GitHub App activation.`,
-    action:
-      "Phase B — activate Renovate by installing the GitHub App (one-time, manual, free; bkit cannot automate this — no `gh api` equivalent exists):\n\n" +
-      "  1. Open https://github.com/apps/renovate and click Install.\n" +
-      '  2. Choose "Only select repositories" → pick this repo.\n' +
-      "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `BKIT_GH_TOKEN_INSTALL` secret is NOT visible to Mend's runner. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` token anchor for `npm.pkg.github.com` — activate it (it survives `bkit upgrade`; the canonical `renovate.json5` deliberately holds no token):\n" +
-      '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `BKIT_GH_TOKEN_INSTALL` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}"` in `.github/renovate-local.json5`.\n' +
-      "     - Self-hosted: set the `RENOVATE_HOST_RULES` env var (or an `encrypted` block). See docs/deployments.md § GitHub Actions pinning.\n" +
-      '  4. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranchPatterns: ["dev"]`).\n' +
-      "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
-      "  5. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
-      "  6. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
-      "If Mend's hosted runner later OOMs on your monorepo (large pnpm graph → every run fails `kernel-out-of-memory` at the 3 GB ceiling), switch off Mend to the self-hosted runner: re-run `pnpm bkit install --renovate=self` (runs on `ubuntu-latest` ~16 GB by default; point `bkit.runners.renovate` at a Depot label or larger runner for more headroom / lower cost). See docs/deployments.md § Self-hosted Renovate.\n\n" +
-      RENOVATE_CUSTOMIZE_NOTE,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// runDependabotModule — opt-in `.github/dependabot.yml` + helper script
-// ---------------------------------------------------------------------------
-//
-// Dependabot is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --dependency=dependabot` and is mutually exclusive with `--renovate`.
-//
-// Unlike Renovate, Dependabot is first-party GitHub and does NOT have an
-// App-install race condition — the `dependabot.yml` file is read directly
-// from the default branch by GitHub's hosted Dependabot service. The only
-// out-of-band setup is the repo-level Dependabot toggles (auto-fixes-enabled,
-// vulnerability-alerts), which the shipped helper script `bkit-set-dependabot.sh`
-// flips via `gh api`.
-
-export function runDependabotModule(ctx: ModuleContext): void {
-  const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  // Mutually exclusive with --renovate — refuse if Renovate config exists.
-  const renovateJson5 = path.join(process.cwd(), ".github", "renovate.json5");
-  const renovateJson = path.join(process.cwd(), ".github", "renovate.json");
-  if (fs.existsSync(renovateJson5) || fs.existsSync(renovateJson)) {
-    advisories.push({
-      id: "dependabot-renovate-mutually-exclusive",
-      severity: "blocker",
-      detect:
-        "`.github/renovate.json5` is present — Renovate and Dependabot are mutually exclusive (running both opens competing PRs against the same packages). Refusing to install Dependabot.",
-      action:
-        "Choose one:\n\n" +
-        "  A. Switch to Dependabot:\n" +
-        "     1. `git rm .github/renovate.json5`.\n" +
-        "     2. Uninstall the Renovate GitHub App at https://github.com/settings/installations → Renovate → Configure → Uninstall.\n" +
-        "     3. Re-run `pnpm bkit install --dependency=dependabot`.\n\n" +
-        "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip dependabot; the existing Renovate setup stays.",
-    });
-    return;
-  }
-
-  // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
-  const ymlSrc = path.join(getTemplatesRoot(), ".github", "dependabot.yml");
-  const scriptSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", "bkit-set-dependabot.sh");
-  if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc)) return;
-
-  const ymlDst = path.join(".github", "dependabot.yml");
-  const scriptDst = path.join(".bkit", "scripts", "bkit-set-dependabot.sh");
-  const prevLen = ws.writes.length;
-  writeTier1(ymlSrc, ymlDst, tokens, dryRun, ws);
-  if (ws.writes.length > prevLen) {
-    console.log(`${logPrefix} ${tag}dependabot: ${ymlDst}`);
-  }
-  const prevLen2 = ws.writes.length;
-  writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
-  if (ws.writes.length > prevLen2) {
-    console.log(`${logPrefix} ${tag}dependabot: ${scriptDst}`);
-    // Preserve executable bit on the helper script.
-    if (!dryRun) {
-      try {
-        fs.chmodSync(scriptDst, 0o755);
-      } catch {
-        // Fail-open: chmod is best-effort. The dependabot-setup-repo-state
-        // advisory below invokes the helper via `bash <script>` (no +x bit
-        // required), so a chmod failure does not block the documented setup path.
-      }
-    }
-  }
-
-  // Record the choice (parity with renovate path).
-  setConsumerBkitField("depUpdater", "dependabot", dryRun);
-
-  advisories.push({
-    id: "dependabot-setup-repo-state",
-    severity: "advisory",
-    detect:
-      "`.github/dependabot.yml` and `.bkit/scripts/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
-    action:
-      "One-shot repo-level setup (idempotent — safe to re-run):\n\n" +
-      "    bash .bkit/scripts/bkit-set-dependabot.sh\n\n" +
-      "The script uses `gh api` to enable Dependabot security updates, vulnerability alerts, and the never-auto-merge-on-main policy. Re-run any time the policy needs sanity-checking; use `--dry-run` to preview, `--print` to inspect current state.\n\n" +
-      "After commit + merge through to your default branch, Dependabot will start opening PRs on the next scheduled poll (per `schedule:` in dependabot.yml — default weekly).",
-  });
-}
+  "RUNNER (optional — cost / perf): both cloud jobs' `runs-on` is bkit-substituted from `bkit.runners.bkitCloud` in `package.json` (default `ubuntu-latest`). The label is arbitrary — a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. bkit renders it on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. Do NOT hand-edit `runs-on` in `.github/workflows/bkit-cloud.yml` — that edit is reverted on the next run. See docs/deployments.md § Runner labels.";
 
 // ---------------------------------------------------------------------------
 // runCloudModule — opt-in cloud-agent integration (issue #119, "Managed Cloud Agents")
@@ -3880,8 +3529,6 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   ci: runCiModule,
   lint: runLintModule,
   "git-hooks": runGitHooksModule,
-  renovate: runRenovateModule,
-  dependabot: runDependabotModule,
   cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -3896,8 +3543,6 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "ci",
   "lint",
   "git-hooks",
-  "renovate",
-  "dependabot",
   "cloud",
 ];
 

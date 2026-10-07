@@ -123,8 +123,8 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 | --- | --- | --- |
 | `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
 | `[force build]` | The lighter hammer. Exposes `should_force_build=true` + `run_level=full`; does **not** bypass `web_affected`, so no integration / e2e / @live unless web is genuinely affected. Rebuild without paying @live's side effects. No effect unless the consumer's deploy steps gate on the output. | Read by `Detect Direct Push` step |
-| `[force full]` | The hammer. Exposes `should_run_full=true` → `run_level=full` **and** bypasses `web_affected` (the `bkit-stub:e2e` / integration / `bkit-tests-live` blocks run on **any** commit, incl. docs-only / empty), greening the non-hollow capstone (the forced lanes must genuinely run). On a PR it upgrades the local e2e lane to the full suite; `@live` stays **push-only** (reached on a docs-only/empty `[force full]` push via the effective `web_affected`, never off a PR / dispatch — real LLM + email side effects). Replaces the removed `[force e2e]` / `[force live]`. | Read by `Detect Direct Push` step |
-| `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key — never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
+| `[force full]` | The hammer. `run_level=full` **and** it bypasses `web_affected`, so integration, `bkit-tests-e2e-web`, and `bkit-tests-live-web` run on any commit, including docs-only. The E2E spec set does not change — a PR already runs the full suite. `@live` stays **push-only** (a docs-only `[force full]` push reaches it through the effective `web_affected`; never a PR, never a dispatch). | Read by `Detect Direct Push` step |
+| `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key — never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` on `bkit-tests-static` (copy the same `env:` onto each lane) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 
 **Two deploy-forcing markers only: `[force build]` + `[force full]`.** No granular `[force e2e]` / `[force live]` — they would be silent no-ops gated behind `web_affected`. `[force full]` = single gate-bypass ("validate everything") → one effective `web_affected` drives integration + e2e + @live uniformly.
@@ -150,28 +150,43 @@ Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 
-Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers, computes `run_level` / optional `run_migration`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build` / `-integration` / `-e2e` / `-live` / `-migration` — and `bkit-tests-check` capstone joins them (asserts every expected tier ran and passed). Static/unit/build/integration wait only on the planner. **One exception:** when `bkit-tests-migration` owns the shared-remote `db push`, e2e/live `needs:` that lane with `result != 'failure'` so they cannot race a schema the push has not applied (and a from-empty failure cannot reach remote). Do **not** gate live behind static/unit/build/e2e (~35% wall-clock on real consumer, buys ~nothing). `bkit-tests-migration` (DB repos): always-on (no job-level `if:`); replay plan-/path-gated per-step; remote push on every `dev`/`main` push, un-gated by `run_migration` (self-heal); capstone asserts success whenever scope succeeded (`bkit-stub:bkit-tests-migration`). Before CI speed spend: **measure job graph, find pole** — same consumer: setup levers (browser cache, `node_modules` cache, composite setup, fetch-depth) ~3%; one `needs:` edge 35%; lever on non-pole lane = zero gain. Starter `ci.yml` ships primitives; **FULL CI SCAFFOLD REFERENCE** at end of `.github/workflows/ci.yml` reproduces every step for tier adoption. Table below: `none` / `partial` / `full` shape primitives + plan plug into.
+Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote `db push`, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `ci.yml` are the any-repo starter. The **FULL CI SCAFFOLD REFERENCE** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
 | --- | --- | --- | --- |
-| `none` | HEAD has `[skip ci]` / `[skip actions]`; or `cache.outputs.skip == 'true'` (SHA passed in last 7 days). | Nothing (workflow skipped entirely or short-circuited after the cache check). | All gates |
-| `partial` | Push to `dev` from a merged PR; routine chore commits without `[force build]`. | Typecheck, unit tests, integration tests, format check, prose + slop lint, bkit check. | Deploy, smoke, E2E. |
-| `full` | Push to `main`; PR runs; or any commit with `[force build]` / `[force full]`. | Partial + deploy gate + (optional) Vercel preview await + E2E. | Smoke (runs as `workflow_run` after CI). |
+| `none` | `[skip ci]` / `[skip actions]`, or `cache.outputs.skip == 'true'` (this SHA went green in the last 7 days). | Planner, then stop. | Every test lane. |
+| `partial` | Push to `dev` that came from a merged PR, and no `[force build]` / `[force full]`. | Static, unit, integration when `web_affected`, build lanes, migration. `@live` (`bkit-tests-live-web`) still runs on this push when `web_affected`. | `bkit-tests-e2e-web`. Deploy (not the default branch). |
+| `full` | Pull request; `workflow_dispatch`; push to `main`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. `bkit-tests-deploy` only on a default-branch push, after the capstone, and it is not required. Health runs as `workflow_run` after CI. |
+
+Device lanes follow `plan.run_native_*`, not `run_level`. Same rule on a PR, a push (including `partial`), and a dispatch.
+
+## One run per branch or pull request
+
+```yaml
+group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+cancel-in-progress: true
+```
+
+A newer run cancels the older one on every event. A pull request keys on its number; a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
+
+A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run or it is no longer an ancestor. A `workflow_dispatch` has no base commit: short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on dispatch — steer with inputs (§ Commit-message force tags). The planner parses markers once; every lane reads `plan.markers_present`. The only re-read of the commit or PR text is workflow-level `TURBO_FORCE`. Plan JSON: validate with `has()` / `!= null`. jq `//` treats `false` as absent and drops a real `run_live: false`.
+
+Migration-immutability and slop-delta run on every event against that same base. The starter's copies of those steps are still `pull_request`-only; that `if:` is the pre-planner shape. Point them at the planner base once `bkit-tests-scope` exists.
 
 Composition guidance:
 
 - `cache.outputs.skip` = `none` gate — every step: `if: steps.cache.outputs.skip != 'true'`.
 - `steps.detect.outputs.should_force_build` / `should_run_full` = escalation into `full`.
 - No merged PR on `dev` push (auto `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
-- Smoke: separate workflow (`bkit-stub:smoke` in `ci.yml`), `workflow_run`-keyed — non-blocking for PR merges, gates production observability.
-- Capstone `bkit-tests-check` = SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". Light/cached/partial green by construction — confirm `full` run before treating green as validation.
+- Health (or smoke, when the probe is a script rather than a health URL): separate workflow, `workflow_run` after CI success — not a required check. One of the two, unless the probes differ (§ Smoke trigger plumbing).
+- Capstone `bkit-tests-check` = SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
 
 ### Parallel test lanes (one lane per tier)
 
-Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e` (+ `-migration` / `-live`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumers gether/fraser run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout/install, shared infra e.g. local DB) — mitigate with turbo remote cache + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E PR-subset tiering + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
+Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e-web` (+ `-migration` / `-live-web`, and optional `-build-ios` / `-e2e-ios` / `-build-android` / `-e2e-android`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumers gether/fraser run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout/install, shared infra e.g. local DB) — mitigate with turbo remote cache + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E full-suite parity + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
 
-**Shared-resource teardown is a join, not a per-lane step** (optional; shared-resource repos). WHEN: 2+ lanes write ONE long-lived resource concurrently, BY DESIGN. Per-lane cleanup cannot work there — a purge asserting "only canonical rows remain" reds on rows a sibling wrote in the gap (consumer's iOS lane: 3 rows in a 41-second window, red on a state its design calls normal). `bkit-stub:bkit-tests-reset`: `needs:` every writer, `if: always()`, ref-gated to the credentials the purge needs, **skips** when no writer ran, never plan-gated. Emits no `<tier>_ran` → capstone asserts `result` only, tolerating `skipped` / `cancelled`. DROP if one lane owns the resource, or it is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
+**Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use ONE long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
 **Runner size = per-lane lever, ONLY for pole.** Flat graph → one lane defines wall-clock (commonly E2E). Larger runner (more vCPU/RAM) raises internal parallelism (more workers, concurrent E2E projects) → can cut long lane substantially; scope via `runs-on: <your-larger-runner-label>` to **one** lane, default runner elsewhere. Two caveats: (1) **higher per-minute rate** — confirm before adopting (may not appear until first invoice). [Depot](https://depot.dev/docs/github-actions/runner-types) labels (e.g. `depot-ubuntu-24.04-8`) ~30% cheaper than GitHub-hosted; `ci.yml` consumer-owned; bkit-managed via `bkit.runners` — § Self-hosted Renovate. (2) **Zero wall-clock** when aimed at non-pole lane: consumer measured bigger E2E runner **+0.0 min** while `@live` stayed pole — worth ~7 min ONLY after `@live` gate removed and E2E became pole. Measure first, re-measure after: pole moves. (3) **A label that does not exist does not fail — it queues.** Typo'd / retired label → no error anywhere, job queued indefinitely, run neither reds nor completes. Label set in exactly ONE place, every `runs-on:` derived from it, planner fails closed on no label.
 
@@ -181,6 +196,8 @@ Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-in
 
 ### turbo `//` over-triggers `web_affected` on docs-only diffs
 
+Capture turbo stdout and stderr separately. Merging with `2>&1` puts the banner in the JSON; jq falls back to `[]` and the lane ghost-greens. Error, missing base, or non-JSON → `web_affected=true`.
+
 `bkit-tests-scope` affected-graph (monorepo) forces `web_affected=true` on **real global dependency** change. Turbo attributes any changed root-level path outside workspace / undeclared `globalDependency` (`docs/**`, `README`, `LICENSE`, …) to root `//` (`FileChanged`). Fallback keying on _any_ `//` `FileChanged` can't distinguish global-dep bump from docs-only diff → over-triggers: e2e scheduled, ignore-command cancels docs-only preview, `Await Deployment` reds e2e on **every** docs-only push.
 
 Fix at source: gate global-dep force on **real** global-dep change. Intersect changed root files against `turbo.json` `globalDependencies` / `globalEnv` (+ root lockfile + `package.json`); force `web_affected` ONLY on match. Turbo-pinned `//` (docs, metadata, non-triggering root dirs) must **not** force. Narrow `docs/**`-only guard = same idea, incomplete (`README`-only still over-triggers) — prefer `globalDependencies` intersection. Consumer `ci.yml` (Tier-3 `bkit-stub:affected-graph`); port fix per monorepo. Orthogonal to `[force full]` (deliberately bypasses `web_affected`).
@@ -189,7 +206,7 @@ Fix at source: gate global-dep force on **real** global-dep change. Intersect ch
 
 CI on `dev` proves code good; nothing checks good code reached default branch. Gap bites — surfaces read LIVE from default branch, not `dev` / validated tip:
 
-- **Renovate** resolves its config only from the default branch (see § Customizing Renovate). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
+- **Renovate** resolves its config only from the default branch (see § Dependency updaters). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
 - **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
 - **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
 
@@ -207,7 +224,7 @@ failed to parse workflow: (Line: 2112, Col: 14): Exceeded max expression length 
 
 Undocumented, and invisible to the toolchain — file stays valid YAML, passes `actionlint`, passes GitHub's own `@actions/workflow-parser`. GitHub refuses to compile, near-silently: `pull_request` runs **never created** (PR sits with no checks, no API error); push to a branch the `on:` filters exclude mints a zero-job run named after the file path. Consumer added ~4.6 KB of prose to one E2E step → CI stopped running on that branch for two hours with nothing to read.
 
-- **A comment inside a `run: |` body is part of the expression**, charged full price; a YAML comment above the step costs nothing — and is where a reader meets it before the code. Move prose up, do not compress it away.
+- **A comment inside a `run: |` body is part of the expression.** A `#` comment above the step is free. Keep that comment to the rule plus a pointer at this section. The essay stays here. Pasting it into `run:` is what trips the cap.
 - **Guard below the cap, not at it.** 20,999 leaves the next edit no room and fails unreadably. Static lane: scan `.github/workflows/*.{yml,yaml}`, measure every block scalar containing `${{`, fail with margin (consumer uses 20,000).
 - **A long `run:` body is the symptom.** Fix is rarely compression — move the logic into a script the step calls (`node scripts/ci/…`), unit-testable as a side effect.
 
@@ -239,9 +256,9 @@ The merge gate (`bkit-ship-gate.sh`) asserts the capstone job's `conclusion=succ
 
 bkit-ship-gate covers the **common** violation shapes. A skipped non-capstone lane is **reported, not refused** — the planned-vs-vacuous judgement belongs to the capstone, which takes every lane result as an input and already asserts it per lane. The gate cannot make that judgement itself: the jobs API reports no reason for a skip (a job skipped by a job-level `if:` never reaches a runner, so it carries an empty `steps` array), and a SHA-cache short-circuit concludes `success` with step-level skips plus a `cache_skip` output, never `skipped`.
 
-**Code 16 is opt-in, and must stay that way.** It fires only for lanes named in `bkit.shipGateRequiredLanes` (package.json array) or `--required-lanes a,b,c`; the default empty list never refuses. A blanket refuse-on-any-skip is **unsatisfiable by construction** for the CI shape bkit ships: a lane whose `if:` is event-scoped — native builds and `@live` gated on a push to `dev`, because real side effects must not fire off a PR — cannot run pre-merge at any head, so a pre-merge gate demanding it refuses every PR forever. Name a lane in `shipGateRequiredLanes` only when your capstone does not assert it and the lane genuinely can run pre-merge. `BKIT_SHIP_GATE_OVERRIDE` remains the audited per-head escape hatch. What still carries the anti-vacuity guarantee is codes 10-15: a run exists, at THIS head, completed, not cancelled, capstone present, capstone green. Code 14 (green at a superseded head) requires `--branch`: the head-keyed run query is filtered server-side, so a moved head returns the same empty list as a head that never ran, and only a second branch-scoped query separates them. A run that is **present but degraded-but-not-skipped** (e.g. a required lane ran with a reduced test set due to a consumer config the gate cannot see) is a **residual risk named here, not claimed as covered** — the capstone is green because bkit's own `run_level` planner computed `full`; a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check so `green == validated` survives a docs-only push; do NOT add per-lane required checks (a hollow lane then green-bars the capstone).
+**Code 16 is opt-in, and must stay that way.** It fires only for lanes named in `bkit.shipGateRequiredLanes` (package.json array) or `--required-lanes a,b,c`; the default empty list never refuses. A blanket refuse-on-any-skip is **unsatisfiable by construction** for the CI shape bkit ships: a lane whose `if:` is event-scoped — `bkit-tests-live-web` runs on a push to `dev` or the default branch only — cannot run pre-merge at any head, so a pre-merge gate demanding it refuses every PR forever. Device lanes (`-ios` / `-android`) use the same rule on a pull request and a push; do not treat them as post-merge canaries. Name a lane in `shipGateRequiredLanes` only when your capstone does not assert it and the lane genuinely can run pre-merge. `BKIT_SHIP_GATE_OVERRIDE` remains the audited per-head escape hatch. What still carries the anti-vacuity guarantee is codes 10-15: a run exists, at THIS head, completed, not cancelled, capstone present, capstone green. Code 14 (green at a superseded head) requires `--branch`: the head-keyed run query is filtered server-side, so a moved head returns the same empty list as a head that never ran, and only a second branch-scoped query separates them. A run that is **present but degraded-but-not-skipped** (e.g. a required lane ran with a reduced test set due to a consumer config the gate cannot see) is a **residual risk named here, not claimed as covered** — the capstone is green because bkit's own `run_level` planner computed `full`; a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check so `green == validated` survives a docs-only push; do NOT add per-lane required checks (a hollow lane then green-bars the capstone).
 
-**No duplicate dispatch on an already-triggered head (ship Step 5):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own, and `ci.yml` keys `pull_request` concurrency by `head_ref` but `workflow_dispatch` by `run_id` — separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes that exact head for a run (presence-only) and dispatches ONLY on no-run; the probe is not a pass condition, and the completion poll is head-anchored (`select(.headSha == $h)`) because an unfiltered `gh run list --limit 1` can return a completed run from a superseded head. Gate codes 10 / 11 / 14 re-enter that probe-and-poll ONLY, never the deferred sweep, bounded by `MAX_REVALIDATE_ATTEMPT`.
+**No duplicate dispatch on an already-triggered head (ship Step 5):** a branch push / `gh pr update-branch` fires `pull_request` at the new SHA on its own. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref` — separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes that exact head for a run (presence-only) and dispatches ONLY on no-run; the probe is not a pass condition, and the completion poll is head-anchored (`select(.headSha == $h)`) because an unfiltered `gh run list --limit 1` can return a completed run from a superseded head. Gate codes 10 / 11 / 14 re-enter that probe-and-poll ONLY, never the deferred sweep, bounded by `MAX_REVALIDATE_ATTEMPT`.
 
 ### Consumer rollback path
 
@@ -256,7 +273,7 @@ Bookkeeping (`status.jsonl`, ship artifacts) goes to the dev tree from Step 1 wh
 
 ## Smoke trigger plumbing
 
-Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). Pick the trigger by **where the deploy happens**, not by habit:
+Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). When `bkit-tests-deploy` promotes inside CI, that probe is `health.yml` (`workflow_run` after CI success on the default branch) — one workflow, not a second smoke file, unless the two probes differ. Pick the trigger by **where the deploy happens**, not by habit:
 
 - **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed` + `conclusion == 'success'`). Mind the 3-level `workflow_run` chain cap — a fourth chained workflow will not fire.
 - **An external platform deploys after merge** (Vercel / Netlify-style Git integration) → key to a **post-_deploy_** signal — `deployment_status` (`state == 'success'`) or the platform's `repository_dispatch` event — so smoke fires when the deploy is actually **live**, not merely when CI finished. `workflow_run` here smokes a not-yet-serving (or about-to-be-replaced) deployment.
@@ -267,7 +284,7 @@ Smoke runs **after** deploy, in its own workflow, off the merge gate (what it ac
 
 The deploy-time **apply** and the test-time **replay** gate are different guarantees — keep both, preferably in the **same always-on lane** (`bkit-tests-migration`):
 
-- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed. Home: `bkit-tests-migration` on every push to `dev`/`main` (`db push --linked --include-all`), **not** inside `bkit-tests-e2e` (leaving it in e2e while live runs parallel is the schema-cache race). Un-gated by `run_migration` so it self-heals a remote left behind. AFTER the replay steps so a from-empty failure never reaches shared remote.
+- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed. Home: `bkit-tests-migration` on every push to `dev`/`main` (`db push --linked --include-all`), **not** inside `bkit-tests-e2e-web` (leaving it in e2e while live runs parallel is the schema-cache race). Un-gated by `run_migration` so it self-heals a remote left behind. AFTER the replay steps so a from-empty failure never reaches shared remote.
 - **Replay (test path):** the fresh-DB gate proves from-empty replay + seed load (`testing.md` § Migration-replay + seed). Passing one is not passing the other.
 - **Immutability:** once a migration is merged, never edit it — ship a new corrective migration. Flag any modification to an already-merged migration file in review.
 - **Multiple chains:** apply **every** migration system (e.g. a SQL chain + an ORM / CMS chain), each idempotent and retried independently.
@@ -288,23 +305,13 @@ If your host auto-deploys on push (Vercel / Netlify Git integration) while CI ap
 
 Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migration` proves migrations _replay_ from empty **and** (on push) owns the remote apply; it still does nothing for build-vs-deploy _host_ ordering — this race is orthogonal to that gate (serialise migrate → deploy at the host).
 
-## Vercel Deployment Checks — hold production promotion until CI passes
+## Promote after the capstone (`bkit-tests-deploy`)
 
-Vercel **Deployment Checks** (Project Settings → Build & Deployment → Deployment Checks) hold production promotion until a named GitHub Actions check reports success. The build starts immediately on push (in parallel with CI), but the production alias is NOT updated until the check passes.
+The host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment and leaves it un-promoted. The lanes test that URL. `bkit-tests-deploy` `needs: [bkit-tests-check, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published. It does not look the deployment up again by SHA. A red deploy job means the previous deployment stays live.
 
-### Setup
+Do not add a host-side "hold promotion until a named check passes" setting (e.g. Vercel Deployment Checks). That list stays empty. This job is the promotion. e.g. Vercel: `git.deploymentEnabled` for the default branch is false; auto-assign of production domains is off.
 
-1. **Dashboard:** Vercel Dashboard → Project → Settings → Build & Deployment → Deployment Checks. Add a check matching the capstone job name (e.g. `bkit-tests-check`).
-
-2. **CI workflow:** Add the `vercel/repository-dispatch/actions/status@v1` action as the last step in the capstone job. This reports the job outcome back to Vercel so the deployment check resolves:
-
-```yaml
-- name: Notify Vercel Deployment Check
-  if: always()
-  uses: vercel/repository-dispatch/actions/status@30f760c6640485cd92f8c785ef361382555fb712 # v1
-  with:
-    name: "Vercel - <project-name>: <capstone-job-name>"
-```
+Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after that CI run succeeds, and smokes the deployment this SHA promoted. Not a required check.
 
 ## Disable GitHub Code Quality before GA billing
 
@@ -328,80 +335,34 @@ GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is fr
 
 Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) are where this is **especially critical** — a re-pointed ref there runs with those credentials — but the practice applies to **all** third-party refs, not only elevated ones.
 
-**Pair with updater.** Pinning freezes version — without updater, CVEs in pinned refs stay unpatched indefinitely. Pinning without updater worse than not pinning. bkit: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (first-party GitHub, no third-party trust surface). Canonical Renovate config: `.bkit/templates/.github/renovate.json5`.
+### Dependency updaters
 
-**Choosing a Renovate runner (mend vs self-hosted).** Renovate runs on the **Mend Community Cloud App** by default (`--renovate=mend`) — recommended for almost every repo (free, one-click, nothing to operate). The one reason to switch is scale: a large pnpm monorepo can exhaust Mend's fixed **3 GB hosted-runner memory** and fail every run with `kernel-out-of-memory` (KN-CORE-10). Those repos run Renovate **self-hosted** on GitHub Actions instead (`--renovate=self`, `ubuntu-latest` ~16 GB). Start on `mend`; move to `self` only if you hit the OOM (the `pnpm-release-age-gate-oom` advisory points you there when you do). Full details, token setup, and the migration steps are in § Self-hosted Renovate below; the rest of this section (config, grouping, activation) applies to both runners.
+**Pair with an updater.** A pin that nothing bumps stays on a vulnerable digest. Copy one example and own it:
 
-The shipped config:
+<!-- prettier-ignore -->
+| Updater | Copy | When |
+| --- | --- | --- |
+| Renovate (rules) | `.bkit/templates/.github/renovate.json5` → `.github/renovate.json5` | Default. Grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. |
+| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/renovate.yml` → `.github/workflows/renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
+| Dependabot | `.bkit/templates/.github/dependabot.yml` → `.github/dependabot.yml` | First-party GitHub. No App. One PR per package. No lockfile-maintenance job. |
 
-- Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
-- Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
-- Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
-- Caps pnpm's worker pool (`env: { PNPM_WORKERS, PNPM_MAX_WORKERS }`) and enforces release-age freshness in Renovate (`minimumReleaseAge: "1 day"`) — the pnpm-11 microvm-OOM mitigation. See § Renovate pnpm-11 freshness gate & microvm memory below; large monorepos on a pnpm-level `minimumReleaseAge` gate must also drop it to clear the OOM.
-- For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
-- For the `dockerfile` manager: image `FROM <image>:<tag>@sha256:<digest>` pins are refreshed on upstream releases and CVE disclosures (the tag stays inline so Renovate can map digest→tag). Installer fetches pinned by a paired **version + `sha256sum`** (the Vale tarball in `ci.yml`) or by a **commit SHA in a raw URL** (the actionlint download-script) are **not** Renovate-managed — it cannot recompute a tarball checksum — so bump those version/sha pairs by hand when you upgrade the tool.
-- For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
-- Carries no private-registry token itself — the `hostRules` token anchor for `npm.pkg.github.com` is seeded into the consumer-owned `renovate-local.json5` instead, so it survives `bkit upgrade` (this file is canonical-overwrite and would clobber a token added here). You must provision a read token there to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
-- `extends` a consumer-owned local preset (`local>cbartens/bkit//.github/renovate-local.json5`) so you can add repo-specific rules that survive `bkit install`/`bkit upgrade` (see § Customizing Renovate below). `renovate.json5` itself is bkit-managed and rewritten on every `bkit install` — hand-edits there are clobbered.
+Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
-**Exemption — `bkit-cloud.yml`:** The bkit-canonical `bkit-cloud.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The `ignorePaths` entry above keeps consumer-side Renovate out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-cloud.yml`.
+**Hands off bkit-owned files.** `bkit install` rewrites `.github/workflows/bkit-cloud.yml`. An updater that bumps its action pins opens the same PR forever.
 
-**Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --dependency=renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
+- Renovate: list `.github/workflows/bkit-cloud.yml` in `ignorePaths`. A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file.
+- Also ignore `.bkit/templates/**` and `.agents/skills/**` (bkit-owned; scanning them is noise).
+- Dependabot: `exclude-paths: [".github/workflows/bkit-cloud.yml"]` on the `github-actions` block. That covers version updates. Security-update PRs for that file can still open; close them.
+- Your own `ci.yml` and, if you copied it, `renovate.yml` stay out of that list so their pins can refresh.
+- `bkit install` warns when `bkit-cloud.yml` exists and the updater config does not name it (`dep-updater-touches-bkit`).
 
-1. **Phase A** (first run, config not yet on `origin/<default-branch>`): writes `.github/renovate.json5` to the working tree and prints a prompt to commit, open a PR to your integration branch, and merge through to the default branch. Do NOT install the Renovate App yet.
-2. **Phase B** (re-run after merge to default branch): bkit detects the file on `origin/<default-branch>` and prints the App install URL https://github.com/apps/renovate (Mend Community Cloud, one-click, free — no `gh api` equivalent) plus the activation checklist (verify onboarding PR base branch, disable Dependabot version updates, merge onboarding PR). Within ~5 minutes of install, Renovate opens its onboarding PR; merge it and the first batch of grouped update PRs follows on the next scheduled run.
+**Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
-> **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency. bkit ships that self-hosted path as a first-class opt-in (`--renovate=self`), primarily for repos that OOM on Mend's 3 GB runner — see § Self-hosted Renovate (GitHub Actions alternative to Mend) below.
+**Renovate, Mend.** Install the App at https://github.com/apps/renovate only after `renovate.json5` is on the default branch. No `gh api` equivalent. Within a few minutes the App opens an onboarding PR; merge it.
 
-(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`) — `bkit-cloud.yml` will not dispatch on them by design. See `security.md` § Supply-Chain.)
+**Renovate, self-hosted.** Copy the workflow example. Suspend the Mend App for this repo (Settings → Applications → Renovate → Configure → remove this repo) or both open `renovate/*` PRs. The cron wakes the bot daily; `renovate.json5` `schedule` still gates normal PRs. Do not narrow the cron to weekly — `osvVulnerabilityAlerts` PRs need the daily wake.
 
-### Renovate read-auth for the private package
-
-`@cbartens/bkit` lives on GitHub Packages (`npm.pkg.github.com`, restricted). To regenerate `pnpm-lock.yaml` after bumping **any** dependency, Renovate resolves the whole workspace — including `@cbartens/bkit` — so it needs read auth to that registry. Without it, lockfile regeneration fails, every dependency PR lands with a stale lockfile, and CI fails `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE`. Disabling _updates_ to `@cbartens/bkit` does not help — the regen for unrelated deps still resolves it.
-
-**Critical:** the `BKIT_GH_TOKEN_INSTALL` you set as a GitHub Actions secret for CI is **not** visible to Mend's hosted Renovate runner. The token must be provisioned on Renovate's side. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` anchor for `npm.pkg.github.com`; finish it via the path matching your setup. (It lives in `renovate-local.json5`, not the canonical `renovate.json5`, so it survives `bkit upgrade` — Renovate merges `hostRules` across extended presets, and a secret-bearing token in the local preset is honored.)
-
-- **Mend Community Cloud (hosted, default):** Add `BKIT_GH_TOKEN_INSTALL` (a PAT with `read:packages`) as a **Mend repository secret** at https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets. **In the secret dialog, tick the "If checked - secret will be used during the scan as an environment variable." box** — this is required: without it the secret exists but is never exposed to the scan, so lockfile regeneration still 401s exactly as if no token were set. Then uncomment the `token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}"` line in `.github/renovate-local.json5` so the `hostRules` entry resolves the secret. (Do not commit a literal token; `{{ secrets.* }}` references the dashboard secret.)
-- **Self-hosted Renovate:** Inject the token via the `RENOVATE_HOST_RULES` env var, the bot's `config.js`, or an `encrypted: { token: "<blob>" }` field encrypted with your own bot key — no edit to the committed `token` line needed.
-
-Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps do not read `encrypted` secrets from repo config — only dashboard secrets (the path above). The `encrypted` route is self-hosted only.
-
-This is part of Phase B activation; `pnpm bkit install --dependency=renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
-
-### Renovate pnpm-11 freshness gate & microvm memory
-
-The shipped `renovate.json5` carries two Renovate-scoped mitigations for a physical OOM (`Error: kernel-out-of-memory`) that large **pnpm 11** monorepos hit on Mend's low-RAM hosted runner during `pnpm update --lockfile-only`:
-
-- **(A) Worker cap** — `env: { PNPM_WORKERS: "1", PNPM_MAX_WORKERS: "1" }` bounds pnpm's worker-pool memory. Both vars are allow-listed by Mend's `global:safeEnv` preset (no admin `allowedEnv` change needed) and the cap touches only Renovate's runner, never CI/Vercel/local. `--lockfile-only` barely engages the worker pool, so this alone may **not** clear a metadata-driven OOM.
-- **(B) Renovate-native freshness** — `minimumReleaseAge: "1 day"` holds deps younger than 24h out of PRs with **no** per-install timestamp verification. Security / `osvVulnerabilityAlerts` PRs bypass it by design, so CVE fixes are never delayed.
-
-**Consumer action for (B) — this is the part that actually clears the OOM.** pnpm 11 defaults `minimumReleaseAge` to **1440** (pnpm 10 defaulted it off), so the per-install gate is active **even with no key set** — and it, not Renovate's `minimumReleaseAge`, verifies a publish timestamp for every dependency on every install and OOMs the microvm. Set **`minimumReleaseAge: 0`** as a top-level key in your **`pnpm-workspace.yaml`**: `0` short-circuits the per-entry check entirely (fast install, no OOM). Do **not** just delete the key — pnpm 11 falls back to the `1440` default, so the gate (and the OOM) stay active, and you lose any `minimumReleaseAgeExclude`, which makes same-day `@cbartens/bkit` upgrades fail the gate. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block. `bkit install`/`upgrade` surfaces this as the `pnpm-release-age-gate-oom` advisory (fires on pnpm 11 + Renovate active whenever the gate is not `0`).
-
-**Trade-off.** The pnpm gate aged **every** install (Renovate, CI, Vercel, local, and manual/transitive installs); Renovate-only freshness gates only what Renovate proposes. Accept a small reduction in supply-chain defense-in-depth in exchange for clearing the OOM and faster CI/Vercel builds — or keep the pnpm gate and rely on (A) alone. Either way, **verify against a live Renovate run** with the config on your default branch (Renovate reads config from there); the OOM cannot be reproduced or cleared from a local checkout.
-
-### Self-hosted Renovate (GitHub Actions alternative to Mend)
-
-For repos that OOM on Mend's 3 GB hosted microvm (`Error: kernel-out-of-memory`, 3.0/3.0 GB during `pnpm update --lockfile-only` — see § Renovate pnpm-11 freshness gate & microvm memory above and KN-CORE-10), bkit ships an opt-in self-hosted runner: `pnpm bkit install --renovate=self`. It writes a bkit-managed `.github/workflows/renovate.yml` that runs `renovatebot/github-action@<pinned-sha>` on `ubuntu-latest` (~16 GB — the OOM cannot occur there), moving the execution engine off the Mend App into your own Actions. Default is `--renovate=mend` (the hosted App, § Renovate activation above). Mode is recorded in `package.json` `bkit.renovateRunner`; switch by re-installing with the other value (mend ↔ self). A plain `--dependency=renovate` re-install **preserves** an existing self-hosted mode (detected from the field + `renovate.yml`'s presence), so a routine `bkit install`/`upgrade` never silently reverts you to Mend.
-
-**Custom runner label (Depot / GitHub larger runner / self-hosted).** The `runs-on:` of the self-hosted `renovate.yml` — and both jobs of `bkit-cloud.yml` — are bkit-substituted from a `bkit.runners` config key in `package.json`, so a consumer can point them at any runner without fighting the canonical-overwrite drift gate (the value is rendered from config on every `bkit install`/`upgrade`, so it survives). Unset → `ubuntu-latest` (zero change for existing repos). The label is arbitrary: a GitHub-hosted larger runner, a [Depot](https://depot.dev/docs/github-actions/runner-types) label (`depot-ubuntu-24.04-4`, ~30% cheaper per-minute), or a self-hosted label. For Renovate keep ≥16 GB of headroom (KN-CORE-10). Shape:
-
-```jsonc
-"bkit": {
-  "runners": {
-    "default": "ubuntu-latest",     // fallback for any bkit-managed workflow
-    "renovate": "depot-ubuntu-24.04-4",
-    "bkitCloud": "depot-ubuntu-24.04" // both cloud jobs (claude + opencode) share one label
-  }
-}
-```
-
-Precedence per workflow: the specific key (`renovate` / `bkitCloud`) → `default` → literal `ubuntu-latest`. `ci.yml` is consumer-owned (not canonical) — edit its `runs-on:` directly.
-
-**Config is single-source — the mode IS the workflow file's presence.** `renovate.json5` is byte-identical for both runners (nothing in it names Mend); the whole difference is whether `.github/workflows/renovate.yml` exists. The workflow does no checkout and sets no `configurationFile` — Renovate autodiscovers `.github/renovate.json5`. Everything under § GitHub Actions pinning applies unchanged: the `dev` base branch, `useBaseBranchConfig: "merge"`, the grouping/auto-merge rules, and `osvVulnerabilityAlerts`. Because `renovate.json5` sets `env: { PNPM_WORKERS, PNPM_MAX_WORKERS }` and `allowedEnv` is a global-only option, the shipped workflow sets `RENOVATE_ALLOWED_ENV: "PNPM_*"` (Mend permits these via its safeEnv preset) — without it the self-hosted bot rejects the whole config. bkit ships this in the workflow; you do not configure it.
-
-**Schedule reconciliation — do NOT narrow the cron to weekly.** The workflow triggers on `schedule: cron "17 6 * * *"` (once daily) + `workflow_dispatch` (inputs `logLevel`, `dryRun`), with `timeout-minutes: 30`, `permissions: contents: read`, and `concurrency: { group: renovate, cancel-in-progress: false }` (serialise runs so two never race the lockfile). The cron only _wakes_ the bot; `renovate.json5`'s own `schedule` ("before 6am on Monday") still gates when normal PRs open, and `osvVulnerabilityAlerts` CVE PRs bypass both. A daily wake bounds worst-case CVE-PR latency to ~24h; narrowing the cron to Monday-only would delay CVE PRs by up to a week — the two schedules are layered by design, so keep the cron at least daily.
-
-**Platform auth — a `BKIT_GH_TOKEN` secret, never `GITHUB_TOKEN`.** Set a repo secret `BKIT_GH_TOKEN`; the workflow authenticates Renovate with it. `GITHUB_TOKEN` does **not** work here: PRs opened under it do not trigger CI, so required checks never run and `platformAutomerge` / branch-protection never fire. Use a fine-grained PAT scoped to THIS repo:
+Platform auth is a repo secret `BKIT_GH_TOKEN`, never `GITHUB_TOKEN` (those PRs do not trigger CI, so required checks and automerge never fire). Fine-grained PAT, this repo:
 
 <!-- prettier-ignore -->
 | Repository permission | Access |
@@ -414,81 +375,39 @@ Precedence per workflow: the specific key (`renovate` / `bkitCloud`) → `defaul
 | Dependabot alerts | Read |
 | Metadata | Read-only |
 
-`Commit statuses: Read and write` lets Renovate read a commit's CI state (to open the PR and gate `platformAutomerge`) and post its own internal checks (e.g. `renovate/stability-days`); **without it Renovate creates the `renovate/*` branch but 403s on `GET /commits/{sha}/statuses` and never opens the PR** — the tell-tale symptom is a lone `renovate/*` branch with no PR and no CI run. Fine-grained PATs have **no separate `Checks` permission** (check-run _writes_ are GitHub-App-only), so commit statuses is the mechanism a PAT-based Renovate uses — do not go looking for a Checks toggle. `Dependabot alerts: Read` lets Renovate read GitHub's vulnerability feed for security-fix PRs; without it the run logs a harmless `403` and relies on `osvVulnerabilityAlerts` (OSV) alone. (Classic-PAT equivalent: `repo` + `workflow`.) If `BKIT_GH_TOKEN` is missing or under-scoped, no Renovate PRs open and the scheduled Actions run 401s. Keep it **separate** from `BKIT_GH_TOKEN_INSTALL` (which stays `read:packages`-only, least privilege — see § Renovate read-auth above). **Hardening (no annual PAT expiry):** swap the PAT for a self-managed GitHub App — store its `APP_ID` + private key as secrets and mint a short-lived installation token in the workflow via `actions/create-github-app-token`. This is NOT the one-click `/install-github-app` used for Claude (that OIDC broker is Anthropic-specific and has no Renovate equivalent).
+`Commit statuses: Read and write` is what opens the PR. Without it Renovate creates the branch and 403s on commit status. There is no separate Checks permission on a fine-grained PAT. Keep `BKIT_GH_TOKEN` separate from `BKIT_GH_TOKEN_INSTALL` (`read:packages` only). Org-owned tokens cannot read the owner email; set the Actions variable `RENOVATE_GIT_AUTHOR` (for example `Renovate Bot <renovate@your-domain>`).
 
-**Commit author (`RENOVATE_GIT_AUTHOR`) — matters on org repos.** Renovate authors its branch commits from the token owner's email, read via the `Email addresses: Read` **Account** permission. That permission only exists on **personal-account** fine-grained PATs — an **org-owned** token has no such permission (only Organization + Repository permissions), so Renovate can't read an email and falls back to the Mend bot author (`renovate@whitesourcesoftware.com`), which shows commits as `Unverified`. The portable fix: set the repo **variable** `RENOVATE_GIT_AUTHOR` (Settings → Secrets and variables → Actions → **Variables**), e.g. `Renovate Bot <renovate@your-domain>`; the shipped workflow reads `${{ vars.RENOVATE_GIT_AUTHOR }}`. On a personal-account repo you can instead add `Email addresses: Read` to the token and leave the variable unset. (Cosmetic either way — commit attribution only.)
+**Private package.** `@cbartens/bkit` is on `npm.pkg.github.com`. Lockfile regen resolves it for every bump. Without a read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
 
-**Enable GitHub's vulnerability feed — alerts ON, auto-fixes OFF.** For Renovate's security-fix PRs (and to clear the `Dependabot alerts` `403`), enable the detection feed but NOT Dependabot's own remediation. In **Settings → Advanced Security**:
+- Mend: add `BKIT_GH_TOKEN_INSTALL` as a Mend repository secret and tick "used during the scan as an environment variable". Uncomment the `hostRules` `token` line in `renovate.json5`.
+- Self-hosted: leave that line commented. The example workflow sets `RENOVATE_HOST_RULES` from the Actions secret. An uncommented Mend-style line adds an empty-token rule and 401s.
+
+**pnpm 11 on Mend's runner.** A large graph can OOM during `pnpm update --lockfile-only`. The example sets `minimumReleaseAge: "1 day"` and caps `PNPM_WORKERS`. To clear the per-install gate, set `minimumReleaseAge: 0` in `pnpm-workspace.yaml`. Deleting the key does not: pnpm 11 defaults it to 1440. Self-hosted on `ubuntu-latest` has the memory; the freshness setting is still yours to keep or drop.
+
+**Fence a `pnpm.overrides` pin.** Renovate's lockfile regen does not honor `pnpm.overrides`. An eligible bump rewrites the lock while the override stays, and `pnpm install --frozen-lockfile` fails. Add a `packageRules` entry `{ matchPackageNames: ["<pkg>"], enabled: false }` in `renovate.json5`.
+
+**Dependabot repo settings** (Settings → Advanced Security), when Dependabot is the updater:
 
 <!-- prettier-ignore -->
-| Setting | Set to | Why |
-| --- | --- | --- |
-| Dependency graph | **Enabled** | prerequisite for Dependabot alerts |
-| Dependabot alerts | **Enabled** | the vulnerability feed Renovate reads |
-| Dependabot security updates | **Disabled** | this makes _Dependabot_ open fix PRs — competing with Renovate. Renovate opens them itself |
-| Dependabot version updates | **Disabled** | the version-bump bot Renovate replaces (mutually exclusive) |
+| Setting | Set to |
+| --- | --- |
+| Dependency graph | Enabled |
+| Dependabot alerts | Enabled |
+| Dependabot security updates | Enabled |
+| Dependabot version updates | Enabled (this file drives them) |
 
-The rule: **detection ON, auto-fixing OFF.** Dependabot feeds vulnerabilities to Renovate; Renovate does all the PR work. (Malware alerts / automatic dependency submission are harmless if you also want them.)
+When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Private-registry auth — `RENOVATE_HOST_RULES`, keep the token line COMMENTED.** Self-hosted has no Mend dashboard, so the `{{ secrets.BKIT_GH_TOKEN_INSTALL }}` templating from § Renovate read-auth does not apply. The workflow instead injects the `@cbartens/bkit` read token via env:
+**Runner labels for bkit workflows.** `bkit-cloud.yml` `runs-on` comes from `bkit.runners.bkitCloud` in `package.json` (else `runners.default`, else `ubuntu-latest`). Do not hand-edit that file. `ci.yml` and a copied `renovate.yml` are yours — edit `runs-on` in the file.
 
-```
-RENOVATE_HOST_RULES=[{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.BKIT_GH_TOKEN_INSTALL }}"}]
-```
-
-Leave the `token:` line in `.github/renovate-local.json5` **commented** — an uncommented Mend-style line adds a second, empty-token `hostRules` entry that 401s self-hosted. `BKIT_GH_TOKEN_INSTALL` is still required, as the Actions secret the env above reads.
-
-**Migrating off Mend — suspend the App first (mutual exclusion).** Mend and self-hosted both open `renovate/*` PRs against the same repo; leaving both active duplicates every PR. When you enable self-hosted, SUSPEND the Mend App for the repo: GitHub UI → Settings → Applications → Renovate → Configure → remove this repo from its access list (no `gh api` equivalent). The App's per-repo state is off-repo, so bkit cannot verify it — `bkit install`/`check` emits the warn-only `renovate-self-hosted-mend-both-active` advisory as a reminder. Keep the default `renovate/` `branchPrefix`: self-hosted Renovate then ADOPTS the existing Dependency Dashboard issue + open Mend PRs instead of opening a parallel set.
-
-**Observability replaces the Mend dashboard.** Failures surface as GitHub Actions run failures (GitHub emails the scheduled workflow's last committer) plus the in-repo Dependency Dashboard issue Renovate maintains. Reproduce a run on demand via `workflow_dispatch` → `logLevel=debug` / `dryRun=full`.
-
-**OOM mitigations are KEPT, not relaxed.** The `PNPM_WORKERS` / `PNPM_MAX_WORKERS` cap is ~no-op under `--lockfile-only`, and both `minimumReleaseAge` knobs (Renovate-side + the `pnpm-workspace.yaml` gate) double as supply-chain / CI-speed controls independent of runner size — so § Renovate pnpm-11 freshness gate stays in force on 16 GB. Only the `pnpm-release-age-gate-oom` advisory is suppressed when `renovate.yml` is present (the OOM it warns about cannot occur on ubuntu-latest).
-
-**`renovate.yml` is bkit-owned → it goes in `ignorePaths`.** Like `bkit-cloud.yml`, the SHA-pinned `renovatebot/github-action` in `renovate.yml` is listed in `renovate.json5`'s `ignorePaths` so the `github-actions` manager never re-pins bkit's own workflow (KN-CORE-5 — `enabled: false` alone is insufficient; only `ignorePaths` stops the scan). New action SHAs arrive via `bkit install`, not consumer Renovate.
-
-### Customizing Renovate (renovate-local.json5)
-
-`.github/renovate.json5` is bkit-managed: `bkit install` rewrites the whole file, so any hand-edit there is clobbered on the next install. For repo-specific Renovate rules, edit **`.github/renovate-local.json5`** instead — a consumer-owned file bkit seeds once and never touches again (it is not a managed template, so neither `install` nor `upgrade` overwrites it). The bkit config pulls it in via `extends: ["local>cbartens/bkit//.github/renovate-local.json5"]` (the `cbartens/bkit` token resolves to your `owner/repo` from the `origin` remote at install time; the explicit `.json5` extension is required — an extensionless local preset resolves to `.json` and 404s, disabling the whole config).
-
-**Precedence — read this before relying on it.** Renovate evaluates `extends`-preset packageRules **before** the host config's own inline rules, and for any given setting the later (bkit's inline) rule wins. This means `renovate-local.json5` can:
-
-- ✅ **Add** rules for packages or managers bkit doesn't already configure.
-- ✅ **Set keys bkit leaves unset** — notably `enabled: false` to fence a package. bkit never sets `enabled: true` on a matching rule, so a fence here holds.
-- ❌ **NOT override a key bkit sets explicitly** (e.g. `automerge`, `groupName`) — bkit's inline rule wins for those.
-
-**Grouping and auto-merge are intentionally bkit-enforced, not tunable.** The single `bkit: renovate non-major dependencies` group and its `automerge: true` are a _correctness_ property — they prevent the lockfile rebase cascade described under § GitHub Actions pinning — not a default you adjust per-repo. Per the precedence rule above, `renovate-local.json5` cannot re-split the group or turn its auto-merge off. If you need a different posture: fence a specific package you would rather bump by hand with `enabled: false` (below); or, if your policy is _review every dependency and auto-merge nothing_, install the Dependabot module instead (`pnpm bkit install --dependency=dependabot`, § below) — it opens one PR per package and never auto-merges.
-
-**Canonical use case — fence a `pnpm.overrides`-pinned package.** If you pin a package in root `pnpm.overrides` (e.g. to stop cross-package version skew), Renovate's hosted lockfile regeneration does **not** reconcile against `pnpm.overrides`: it rewrites the locked version on an eligible bump while leaving your override in place, producing an inconsistent `pnpm-lock.yaml` that fails CI's `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`). Fence the pinned package so Renovate leaves it alone:
-
-```json5
-// .github/renovate-local.json5
-{
-  packageRules: [
-    { matchPackageNames: ["react", "react-dom", "react-test-renderer"], enabled: false },
-  ],
+```jsonc
+"bkit": {
+  "runners": {
+    "default": "ubuntu-latest",
+    "bkitCloud": "depot-ubuntu-24.04"
+  }
 }
 ```
-
-**Branch resolution.** Renovate resolves the local preset from your **default branch** (`main`), not from `dev` — `useBaseBranchConfig: "merge"` applies to `renovate.json5` itself, not to its extended presets. Commit `renovate-local.json5` alongside `renovate.json5` and land both on the default branch (the Phase A flow already requires this; the `extends` target must exist or Renovate raises a config error). To resolve it from a different branch instead, append `#<branch>` to the extends entry (e.g. `…/renovate-local.json5#dev`).
-
-### Dependabot alternative (opt-in, mutually exclusive with Renovate)
-
-If you have specific reasons to prefer Dependabot — first-party GitHub feature, no third-party App install, no Mend dependency in the trust surface, no Phase A/B race — bkit ships a Dependabot module as an alternative. Run `pnpm bkit install --dependency=dependabot` (NOT `--renovate`; the two are mutually exclusive and bkit will refuse to install both).
-
-Trade-offs to accept if you pick this path:
-
-- **One PR per package, not per group** — Dependabot's `groups:` support is newer and weaker than Renovate's. Expect more PR volume per scheduled run.
-- **Per-workspace coverage is manual** — bkit's shipped `dependabot.yml` ships the `github-actions` ecosystem enabled and `npm` commented out. For pnpm monorepos with explicit per-workspace coverage, you'll edit the file to add `directories: ["/", "/apps/*", "/packages/*"]` (Dependabot v2.1+) or stamp out one `package-ecosystem: npm` block per path.
-- **No lockfile maintenance** — Renovate's weekly `lockFileMaintenance` job refreshes transitive deps; Dependabot has no equivalent.
-- **No `osvVulnerabilityAlerts: true` analogue in the config** — CVE-driven PRs come from GitHub's security advisory pipeline (enabled via the helper script's `automated-security-fixes` toggle, not the YAML).
-
-The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
-
-    bash .bkit/scripts/bkit-set-dependabot.sh        # apply (idempotent)
-    bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
-    bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
-
-The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`.
 
 ### Manual CVE handling (when an alert fires)
 
@@ -515,8 +434,8 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 | `.npmrc` (registry mapping only) | `@cbartens:registry=https://npm.pkg.github.com` — the auth token is **NOT** stored here; write it once to pnpm's user-level config: `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` (pnpm >=10.34.3 401s on a project-`.npmrc` `${BKIT_GH_TOKEN_INSTALL}` ref — see KN-CORE-7) | Missing registry mapping → 401; a leftover `_authToken` line → 401 and shadows the user-level token | `detectNpmrcAuth` and `detectNpmrcLegacyAuthToken` (Phase 3) |
 | GitHub Actions secret | `gh secret set BKIT_GH_TOKEN_INSTALL --body=$BKIT_GH_TOKEN_INSTALL` AND an install step that runs `pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"` before `pnpm install`, with `env: { BKIT_GH_TOKEN_INSTALL: ${{ secrets.BKIT_GH_TOKEN_INSTALL }} }` | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` and `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` authenticates to GH Packages but the step is unwired) |
 | Vercel env (preview and production) | `vercel env add BKIT_GH_TOKEN_INSTALL preview` and `vercel env add BKIT_GH_TOKEN_INSTALL production`, **plus** a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL && pnpm install` (Vercel cannot run a pre-install shell step) | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance; without the installCommand the token never reaches pnpm's auth config | `detectVercelEnv("preview" \| "production")` (Phase 3) |
-| Renovate (Mend hosted, **only if `--renovate`**) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `renovate-local.json5`'s `hostRules` (consumer-owned, survives `bkit upgrade`). Self-hosted: `RENOVATE_HOST_RULES` env | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE` — Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard); surfaced in the `--renovate` Phase B checklist and § Renovate read-auth above |
-| Renovate self-hosted platform auth (**only if `--renovate=self`**) — the **general** `BKIT_GH_TOKEN` (same one that drives the MCP server), set here as a repo Actions secret; a **different** token from `BKIT_GH_TOKEN_INSTALL` | Repo Actions secret `BKIT_GH_TOKEN` — fine-grained PAT (Contents/PRs/Workflows/Issues **RW** and Metadata **R**), or a GitHub App token via `actions/create-github-app-token`; keep separate from `BKIT_GH_TOKEN_INSTALL` (least privilege) | No Renovate PRs open / the scheduled Actions run 401s. (With `GITHUB_TOKEN` instead, PRs open but never trigger CI, so `platformAutomerge` never fires.) | None — repo Actions secret bkit does not read; surfaced in the self-hosted activation checklist and § Self-hosted Renovate above |
+| Renovate (Mend hosted) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `.github/renovate.json5` `hostRules`. Self-hosted: leave that line commented; the workflow sets `RENOVATE_HOST_RULES` | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE` — Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard). See § Dependency updaters |
+| Renovate self-hosted platform auth — the **general** `BKIT_GH_TOKEN` (same one that drives the MCP server), set as a repo Actions secret; a **different** token from `BKIT_GH_TOKEN_INSTALL` | Repo Actions secret `BKIT_GH_TOKEN` — fine-grained PAT (Contents/PRs/Workflows/Issues **RW** and Metadata **R**), or a GitHub App token via `actions/create-github-app-token`; keep separate from `BKIT_GH_TOKEN_INSTALL` (least privilege) | No Renovate PRs open / the scheduled Actions run 401s. (With `GITHUB_TOKEN` instead, PRs open but never trigger CI, so `platformAutomerge` never fires.) | None — repo Actions secret bkit does not read. See § Dependency updaters |
 
 Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
 
@@ -561,14 +480,12 @@ Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git ad
 
 ### Renovate — fencing bkit's own footprint
 
-The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that lands inside any repo using bkit. This repo dogfoods the **same** config (no divergence — `bkit check --renovate` enforces it). The fence has two parts:
+This repo's `.github/renovate.json5` keeps Renovate off files `bkit install` rewrites, and off the `@cbartens/bkit` package.
 
-- `ignorePaths` includes `.bkit/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install` / `upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
-- A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade --latest` (or `--to=<version>`), which bumps the package AND re-syncs templates and pin in one atomic step, never a bare `pnpm add`/Renovate version bump (which would leave the rendered mirrors stale), and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-cloud.yml` exemption.
+- `ignorePaths`: `.bkit/templates/**`, `.agents/skills/**`, `.github/workflows/bkit-cloud.yml`, `.github/workflows/renovate.yml`.
+- A packageRule disables `@cbartens/bkit`. Bump it with `pnpm bkit upgrade --latest` (or `--to=<version>`).
 
-**Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.bkit/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.bkit/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
-
-See § Renovate activation above for consumer-reported dashboard noise.
+Template workflow pins under `.bkit/templates/.github/workflows/` sit on an ignored path, so Renovate does not bump them. This repo's `.github/workflows/*.yml` stays in scope. Refresh template pins by hand when revising CI.
 
 ### CI trigger on final workflow push
 

@@ -170,20 +170,19 @@ describe("resolveRunnerLabel — bkit.runners precedence (#362)", () => {
 });
 
 describe("resolveTokens — runner labels (#362)", () => {
-  it("populates RENOVATE_RUNNER + CLOUD_RUNNER from bkit.runners", async () => {
+  it("populates CLOUD_RUNNER from bkit.runners.bkitCloud", async () => {
     writeJson("package.json", {
       name: "proj",
-      bkit: { runners: { renovate: "depot-ubuntu-24.04-4", bkitCloud: "depot-ubuntu-24.04" } },
+      bkit: { runners: { bkitCloud: "depot-ubuntu-24.04" } },
     });
     const tokens = await resolveTokens(tmpDir);
-    expect(tokens.RENOVATE_RUNNER).toBe("depot-ubuntu-24.04-4");
     expect(tokens.CLOUD_RUNNER).toBe("depot-ubuntu-24.04");
+    expect("RENOVATE_RUNNER" in tokens).toBe(false);
   });
 
-  it("defaults both to ubuntu-latest when unset", async () => {
+  it("defaults CLOUD_RUNNER to ubuntu-latest when unset", async () => {
     writeJson("package.json", { name: "proj" });
     const tokens = await resolveTokens(tmpDir);
-    expect(tokens.RENOVATE_RUNNER).toBe("ubuntu-latest");
     expect(tokens.CLOUD_RUNNER).toBe("ubuntu-latest");
   });
 });
@@ -217,21 +216,18 @@ describe("applyTokens", () => {
     expect(applyTokens(content, tokens)).toBe(content);
   });
 
-  it("substitutes {{RENOVATE_RUNNER}} + {{CLOUD_RUNNER}} from the token values (#362)", () => {
+  it("substitutes {{CLOUD_RUNNER}} and leaves {{RENOVATE_RUNNER}} untouched", () => {
     const content = "renovate: {{RENOVATE_RUNNER}}\ncloud: {{CLOUD_RUNNER}}";
     const result = applyTokens(content, {
       ...tokens,
-      RENOVATE_RUNNER: "depot-ubuntu-24.04-4",
       CLOUD_RUNNER: "depot-ubuntu-24.04",
     });
-    expect(result).toBe("renovate: depot-ubuntu-24.04-4\ncloud: depot-ubuntu-24.04");
+    expect(result).toBe("renovate: {{RENOVATE_RUNNER}}\ncloud: depot-ubuntu-24.04");
   });
 
-  it("falls back to ubuntu-latest for runner tokens when omitted (bare literal TokenMap, #362)", () => {
-    // The applyTokens tests' `tokens` literal omits RENOVATE_RUNNER/CLOUD_RUNNER —
-    // the default must render so existing behaviour is preserved.
-    const result = applyTokens("a: {{RENOVATE_RUNNER}}\nb: {{CLOUD_RUNNER}}", tokens);
-    expect(result).toBe("a: ubuntu-latest\nb: ubuntu-latest");
+  it("falls back to ubuntu-latest for CLOUD_RUNNER when omitted", () => {
+    const result = applyTokens("b: {{CLOUD_RUNNER}}", tokens);
+    expect(result).toBe("b: ubuntu-latest");
   });
 
   it("substitutes {{BKIT_MANAGED_MARKER}} from the token value when provided", () => {

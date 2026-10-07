@@ -40,7 +40,7 @@ import {
   MULTI_LABEL_SUFFIXES,
   MULTI_TENANT_APEXES,
 } from "./bkit-registry";
-import { ISSUE_TRACKERS, DEP_UPDATERS } from "./bkit-manifest";
+import { ISSUE_TRACKERS } from "./bkit-manifest";
 import type { TokenMap } from "./bkit-tokens";
 
 let tmpDir: string;
@@ -749,15 +749,7 @@ describe("egress registry — completeness, invariants and the anti-widening gat
       }
       expect(BKIT_EGRESS_SOURCES.find((r) => r.id === `mcp-${tracker}`)?.kind).toBe("tracker-mcp");
     }
-    // dep updaters are a RECORDED absence: their egress happens on CI runners, not in a session
-    for (const updater of DEP_UPDATERS) {
-      if (updater === "none") {
-        skipped.push(updater);
-        continue;
-      }
-      expect(BKIT_EGRESS_SOURCES.some((r) => r.id.includes(updater))).toBe(false);
-    }
-    expect(skipped).toEqual(["none", "none"]);
+    expect(skipped).toEqual(["none"]);
   });
 
   // T2 — the literals in the leaf are tied back to the provider baseURL they claim to derive from.

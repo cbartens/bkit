@@ -98,10 +98,10 @@ export const OPENCODE_PROVIDER_DEFAULTS: Record<
  * provider fails at authoring time.
  *
  * Deliberate absences, recorded so a later reader does not "fix" them:
- * - `DEP_UPDATERS` / `RENOVATE_RUNNERS` hosts. That egress happens on GitHub Actions
- *   runners, never inside an agent session.
- * - The literal "none" member of `ISSUE_TRACKERS` / `DEP_UPDATERS`. A sentinel, not a
- *   source. The completeness test skips exactly "none" and asserts it was the only skip.
+ * - Dependency-updater hosts (Renovate, Dependabot). That egress happens on the
+ *   updater's runner, never inside an agent session.
+ * - The literal "none" member of `ISSUE_TRACKERS`. A sentinel, not a source. The
+ *   completeness test skips exactly "none" and asserts it was the only skip.
  * - `json.schemastore.org`. Fetched by the editor JSON language server for the settings
  *   `$schema`, never by an agent tool call, so no WebFetch, curl or hook decision is
  *   ever taken against it.

@@ -287,10 +287,8 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
 // ---------------------------------------------------------------------------
 // Issue #129 §5 — `bkit upgrade` must NOT force-create opt-in module files
 //
-// Opt-in modules (renovate, dependabot) ship only via an explicit
-// `bkit install --renovate`/`--dependabot`. The upgrade template walk previously
-// wrote EVERY template, so it created `.github/renovate.json5` on consumers that
-// never opted in — opening duplicate dependency PRs next to existing Dependabot.
+// Updater configs are examples. Upgrade must not create them, and must not
+// rewrite a copy the consumer already owns.
 // ---------------------------------------------------------------------------
 
 describe("issue #129 §5 — upgrade does not force-create opt-in module files", () => {
@@ -335,22 +333,32 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(result.status).toBe(0);
   });
 
-  it("DOES update .github/renovate.json5 when the consumer has already opted in (dest present)", () => {
+  it("does not rewrite a consumer-owned .github/renovate.json5", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "consumer" }),
+      JSON.stringify({
+        name: "consumer",
+        bkit: { depUpdater: "renovate", renovateRunner: "self" },
+      }),
       "utf-8",
     );
     writeVersionFile();
-    // Consumer opted into Renovate previously — a stale config sits on disk.
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{ stale: true }\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const owned = "{ stale: true }\n";
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), owned, "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "renovate.yml"),
+      "name: Renovate\n",
+      "utf-8",
+    );
 
     runBkitUpgrade();
 
-    // The opt-in file is still present (processed as a candidate, not skipped/deleted).
-    expect(fs.existsSync(path.join(tmpDir, ".github", "renovate.json5"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8")).toBe(owned);
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "utf-8"),
+    ).toBe("name: Renovate\n");
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {

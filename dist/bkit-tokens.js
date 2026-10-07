@@ -88,8 +88,7 @@ function resolveDefaultBranch(cwd) {
 // Resolve REPO_SLUG: parse `owner/repo` from `git remote get-url origin`.
 // Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
 // (`git@github.com:owner/repo.git`), and ssh:// URLs. Returns "" on failure —
-// the Renovate module is origin-gated, so an empty slug only occurs before the
-// repo has a remote, and self-heals on the next `--renovate` run.
+// An empty slug only occurs before the repo has a remote.
 function resolveRepoSlug(cwd) {
     try {
         const url = execSync("git remote get-url origin", {
@@ -110,10 +109,10 @@ function resolveRepoSlug(cwd) {
     return "";
 }
 // Resolve a bkit-managed workflow's `runs-on` label from `bkit.runners` config (#362).
-// Precedence: the per-workflow key (e.g. `runners.renovate`) → `runners.default` →
+// Precedence: the per-workflow key (e.g. `runners.bkitCloud`) → `runners.default` →
 // literal `ubuntu-latest`. Invalid/blank labels are ignored (parseRunnerLabel returns
 // null) so a typo falls back rather than emitting broken YAML. Accepts the already-parsed
-// package.json so callers that hold it (resolveTokens, detectRenovateRunner) avoid re-IO.
+// package.json so resolveTokens avoids a second read.
 export function resolveRunnerLabel(pkg, workflowKey) {
     const bkit = pkg["bkit"];
     if (bkit && typeof bkit === "object") {
@@ -153,7 +152,6 @@ export async function resolveTokens(cwd) {
         PROJECT_NAME: name.trim(),
         REPO_SLUG: resolveRepoSlug(cwd),
         BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
-        RENOVATE_RUNNER: resolveRunnerLabel(pkg, "renovate"),
         CLOUD_RUNNER: resolveRunnerLabel(pkg, "bkitCloud"),
     };
 }
@@ -166,16 +164,14 @@ export function applyTokens(content, tokens) {
     const defaultBranch = tokens.DEFAULT_BRANCH;
     const projectName = tokens.PROJECT_NAME;
     const repoSlug = tokens.REPO_SLUG;
-    // Runner labels default to ubuntu-latest when the TokenMap omits them (bare
-    // literals in tests / non-resolveTokens callers) so existing behaviour is preserved (#362).
-    const renovateRunner = tokens.RENOVATE_RUNNER ?? DEFAULT_RUNNER;
+    // Runner label defaults to ubuntu-latest when the TokenMap omits it (bare
+    // literals in tests / non-resolveTokens callers).
     const cloudRunner = tokens.CLOUD_RUNNER ?? DEFAULT_RUNNER;
     let out = content
         .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
         .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
         .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
         .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug)
-        .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => renovateRunner)
         .replace(/\{\{CLOUD_RUNNER\}\}/g, () => cloudRunner);
     // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
     // placeholder is actually present AND the caller's TokenMap omitted the value

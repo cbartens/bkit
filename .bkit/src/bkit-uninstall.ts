@@ -258,7 +258,7 @@ export function buildDecisionTable(
   const moduleList =
     modules instanceof Set
       ? ([...modules].filter((m) =>
-          // Include the opt-in add-ons (renovate/dependabot/cloud) too — a Set caller passing
+          // Include the opt-in add-ons (cloud) too — a Set caller passing
           // them must not have them silently dropped (zero-footprint trap). (#255 P3)
           [
             "core",
@@ -269,8 +269,6 @@ export function buildDecisionTable(
             "git-hooks",
             "opencode",
             "codex",
-            "renovate",
-            "dependabot",
             "cloud",
           ].includes(m),
         ) as ModuleName[])
@@ -477,7 +475,7 @@ export async function runUninstall(
   const moduleList =
     modules instanceof Set
       ? ([...modules].filter((m) =>
-          // Include the opt-in add-ons (renovate/dependabot/cloud) too — a Set caller passing
+          // Include the opt-in add-ons (cloud) too — a Set caller passing
           // them must not have them silently dropped (zero-footprint trap). (#255 P3)
           [
             "core",
@@ -488,8 +486,6 @@ export async function runUninstall(
             "git-hooks",
             "opencode",
             "codex",
-            "renovate",
-            "dependabot",
             "cloud",
           ].includes(m),
         ) as ModuleName[])
@@ -704,7 +700,8 @@ export async function runUninstall(
   }
 
   // Full/core uninstall: strip the `bkit` install-state object from package.json
-  // (issueTracker / opencodeProvider(s) / depUpdater / cloudAgents / runners). Scripts
+  // (issueTracker / opencodeProvider(s) / cloudAgents / runners). Legacy
+  // depUpdater / renovateRunner keys go with the block. Scripts
   // and devDeps still need `--package`; this clears the preference/manifest block so an
   // "uninstalled" repo does not keep advertising prior bkit choices. No try/catch — malformed
   // package.json is a hard failure on full teardown (same as a missing dest would be).

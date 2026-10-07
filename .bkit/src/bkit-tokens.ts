@@ -22,14 +22,11 @@ export interface TokenMap {
   // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it
   // — applyTokens computes the marker on demand when the placeholder is present.
   BKIT_MANAGED_MARKER?: string;
-  // Configurable `runs-on` labels for bkit-managed canonical workflows (#362).
-  // RENOVATE_RUNNER → `.github/workflows/renovate.yml`; CLOUD_RUNNER →
-  // `.github/workflows/bkit-cloud.yml` (both the claude + opencode jobs share one
-  // label). Resolved from `bkit.runners` in the consumer package.json (per-workflow
-  // key → `runners.default` → literal `ubuntu-latest`). Optional so existing bare
-  // TokenMap literals need not set them — applyTokens falls back to DEFAULT_RUNNER,
-  // preserving today's behaviour when `bkit.runners` is unset.
-  RENOVATE_RUNNER?: string;
+  // Configurable `runs-on` label for the bkit-managed cloud workflow (#362).
+  // CLOUD_RUNNER → `.github/workflows/bkit-cloud.yml` (both jobs share one label).
+  // Resolved from `bkit.runners` (per-workflow key → `runners.default` → `ubuntu-latest`).
+  // Optional so bare TokenMap literals need not set it — applyTokens falls back to
+  // DEFAULT_RUNNER.
   CLOUD_RUNNER?: string;
 }
 
@@ -119,8 +116,7 @@ function resolveDefaultBranch(cwd: string): string {
 // Resolve REPO_SLUG: parse `owner/repo` from `git remote get-url origin`.
 // Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
 // (`git@github.com:owner/repo.git`), and ssh:// URLs. Returns "" on failure —
-// the Renovate module is origin-gated, so an empty slug only occurs before the
-// repo has a remote, and self-heals on the next `--renovate` run.
+// An empty slug only occurs before the repo has a remote.
 function resolveRepoSlug(cwd: string): string {
   try {
     const url = execSync("git remote get-url origin", {
@@ -140,10 +136,10 @@ function resolveRepoSlug(cwd: string): string {
 }
 
 // Resolve a bkit-managed workflow's `runs-on` label from `bkit.runners` config (#362).
-// Precedence: the per-workflow key (e.g. `runners.renovate`) → `runners.default` →
+// Precedence: the per-workflow key (e.g. `runners.bkitCloud`) → `runners.default` →
 // literal `ubuntu-latest`. Invalid/blank labels are ignored (parseRunnerLabel returns
 // null) so a typo falls back rather than emitting broken YAML. Accepts the already-parsed
-// package.json so callers that hold it (resolveTokens, detectRenovateRunner) avoid re-IO.
+// package.json so resolveTokens avoids a second read.
 export function resolveRunnerLabel(pkg: Record<string, unknown>, workflowKey: string): string {
   const bkit = pkg["bkit"];
   if (bkit && typeof bkit === "object") {
@@ -185,7 +181,6 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
     PROJECT_NAME: name.trim(),
     REPO_SLUG: resolveRepoSlug(cwd),
     BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
-    RENOVATE_RUNNER: resolveRunnerLabel(pkg, "renovate"),
     CLOUD_RUNNER: resolveRunnerLabel(pkg, "bkitCloud"),
   };
 }
@@ -199,16 +194,14 @@ export function applyTokens(content: string, tokens: TokenMap): string {
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   const repoSlug = tokens.REPO_SLUG;
-  // Runner labels default to ubuntu-latest when the TokenMap omits them (bare
-  // literals in tests / non-resolveTokens callers) so existing behaviour is preserved (#362).
-  const renovateRunner = tokens.RENOVATE_RUNNER ?? DEFAULT_RUNNER;
+  // Runner label defaults to ubuntu-latest when the TokenMap omits it (bare
+  // literals in tests / non-resolveTokens callers).
   const cloudRunner = tokens.CLOUD_RUNNER ?? DEFAULT_RUNNER;
   let out = content
     .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
     .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug)
-    .replace(/\{\{RENOVATE_RUNNER\}\}/g, () => renovateRunner)
     .replace(/\{\{CLOUD_RUNNER\}\}/g, () => cloudRunner);
   // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
   // placeholder is actually present AND the caller's TokenMap omitted the value

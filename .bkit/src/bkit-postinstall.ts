@@ -17,9 +17,6 @@ import {
   parseIssueTracker,
   DEFAULT_ISSUE_TRACKER,
   type IssueTracker,
-  parseDepUpdater,
-  DEFAULT_DEP_UPDATER,
-  type DepUpdater,
   parseCloudAgents,
   DEFAULT_CLOUD_AGENTS,
   type CloudAgents,
@@ -1303,10 +1300,9 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
  *
  * bkit-canonical workflow files (those tracked in `.bkit/version`
  * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
- * ship tag-only pins. The bkit-shipped `renovate.json5` adds a packageRule
- * with `matchFileNames` for bkit-managed workflow files so consumer-side
- * Renovate stays out of them; new SHAs/versions arrive via `bkit install`
- * when consumers bump the bkit package.
+ * ship tag-only pins. The example updater configs ignore
+ * `.github/workflows/bkit-cloud.yml` so a consumer's Renovate or Dependabot
+ * does not re-pin a file `bkit install` rewrites.
  */
 export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
   const workflowsDir = path.join(cwd, ".github", "workflows");
@@ -1339,7 +1335,7 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
     action:
       "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
       "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --dependency=renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
+      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Copy `.github/renovate.json5` or `.github/dependabot.yml` from the bkit examples so SHA pins refresh on upstream releases. See docs/deployments.md § Dependency updaters.",
   };
 }
 
@@ -1666,199 +1662,104 @@ export function detectGithubProjectFieldIdFormat(cwd: string): PreflightFinding 
   };
 }
 
-/**
- * Read `bkit.depUpdater` from the consumer's package.json. Returns the value
- * or the default ("none") when absent / unreadable.
- */
-function readConsumerDepUpdater(cwd: string): DepUpdater {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return DEFAULT_DEP_UPDATER;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    const parsed = parseDepUpdater(bkitField?.depUpdater);
-    return parsed ?? DEFAULT_DEP_UPDATER;
-  } catch {
-    return DEFAULT_DEP_UPDATER;
-  }
-}
+const UPDATER_EXAMPLE_PATHS = [
+  "node_modules/@cbartens/bkit/.bkit/templates/.github/renovate.json5",
+  "node_modules/@cbartens/bkit/.bkit/templates/.github/workflows/renovate.yml",
+  "node_modules/@cbartens/bkit/.bkit/templates/.github/dependabot.yml",
+].join("\n  ");
 
-/**
- * Emit a dependency-updater setup advisory (parity with the tracker advisory).
- * Renovate and Dependabot are both opt-in (mutually exclusive); neither ships
- * with a default install. This nudges consumers to make the choice post-install.
- *
- * Resolution order (file presence is authoritative, package.json field is the
- * "deliberate opt-out" escape hatch):
- *   - `.github/renovate.json5` present     → `dep-updater-renovate` (informational; active)
- *   - `.github/dependabot.yml` present     → `dep-updater-dependabot` (informational; active)
- *   - `bkit.depUpdater === "none"`         → null (deliberate opt-out — stay quiet)
- *   - otherwise (undecided)                → `dep-updater-none` (nudge to choose)
- *
- * Only fires when there is a `.github/workflows/` dir (somewhere to apply
- * github-actions updates) — a repo with no workflows has nothing to update.
- */
-export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | null {
+const BKIT_OWNED_WORKFLOW = ".github/workflows/bkit-cloud.yml";
+
+function updaterConfigPaths(cwd: string): { renovate: string | null; dependabot: string | null } {
   const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
   const renovateJson = path.join(cwd, ".github", "renovate.json");
   const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
   const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
-
-  if (fs.existsSync(renovateJson5) || fs.existsSync(renovateJson)) {
-    return {
-      id: "dep-updater-renovate",
-      severity: "advisory",
-      detect:
-        "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
-      action:
-        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --dependency=renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
-    };
-  }
-
-  if (fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml)) {
-    return {
-      id: "dep-updater-dependabot",
-      severity: "advisory",
-      detect:
-        "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
-      action:
-        "If you have not yet enabled the repo-level Dependabot state, run `bash .bkit/scripts/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
-    };
-  }
-
-  // No config present — distinguish deliberate opt-out from undecided.
-  if (readConsumerDepUpdater(cwd) === "none" && hasExplicitDepUpdaterField(cwd)) {
-    return null; // consumer explicitly chose `none` — stay quiet
-  }
-
-  // Only nudge if there's a workflows dir to update in the first place.
-  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
-
-  return {
-    id: "dep-updater-none",
-    severity: "advisory",
-    detect:
-      "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
-    action:
-      "Optional post-install decision — pick one (mutually exclusive):\n\n" +
-      "  - `pnpm bkit install --dependency=renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
-      "  - `pnpm bkit install --dependency=dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
-      'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
-  };
+  const renovate = fs.existsSync(renovateJson5)
+    ? renovateJson5
+    : fs.existsSync(renovateJson)
+      ? renovateJson
+      : null;
+  const dependabot = fs.existsSync(dependabotYml)
+    ? dependabotYml
+    : fs.existsSync(dependabotYaml)
+      ? dependabotYaml
+      : null;
+  return { renovate, dependabot };
 }
 
-/** True when package.json has an explicit `bkit.depUpdater` field (any value). */
-function hasExplicitDepUpdaterField(cwd: string): boolean {
+/** Legacy `bkit.depUpdater: "none"` still silences the missing-updater suggestion. Other values are ignored. */
+function legacyDepUpdaterOptOut(cwd: string): boolean {
   const pkgPath = path.join(cwd, "package.json");
   if (!fs.existsSync(pkgPath)) return false;
   try {
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
     const bkitField = pkg.bkit as Record<string, unknown> | undefined;
-    return bkitField !== undefined && bkitField.depUpdater !== undefined;
+    return bkitField?.depUpdater === "none";
   } catch {
     return false;
   }
 }
 
-/** Parse the pnpm major from package.json `packageManager` (0 if absent / non-pnpm). */
-function readPnpmMajor(cwd: string): number {
-  const pkgPath = path.join(cwd, "package.json");
-  if (!fs.existsSync(pkgPath)) return 0;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
-    const pm = typeof pkg.packageManager === "string" ? pkg.packageManager : "";
-    const m = pm.match(/^pnpm@(\d+)/);
-    return m ? Number(m[1]) : 0;
-  } catch {
-    return 0;
+function configOmitsBkitWorkflow(configPath: string): boolean {
+  return !fs.readFileSync(configPath, "utf-8").includes("bkit-cloud.yml");
+}
+
+/**
+ * Read-only dependency-updater check.
+ *
+ * - Both Renovate and Dependabot configs → they open competing PRs.
+ * - An updater config exists, `bkit-cloud.yml` exists, and the config does not
+ *   name that file → the updater will re-pin a file `bkit install` rewrites.
+ * - No updater config, workflows exist, and the legacy opt-out is unset → point
+ *   at the example templates.
+ */
+export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | null {
+  const { renovate, dependabot } = updaterConfigPaths(cwd);
+  const cloudOwned = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"));
+
+  if (renovate && dependabot) {
+    return {
+      id: "dep-updater-both",
+      severity: "advisory",
+      detect:
+        "Both Renovate and Dependabot configs are present. Each opens update PRs for the same packages.",
+      action:
+        "Keep one. Delete the config you are not using, and turn off that bot in the host UI.",
+    };
   }
-}
 
-/**
- * True when the pnpm-level release-age gate is ACTIVE (OOM-causing) for this repo.
- *
- * pnpm 11 defaults `minimumReleaseAge` to 1440 (pnpm 10 defaulted to 0), so the
- * per-entry publish-timestamp verification runs whenever the key is absent OR set
- * to a positive value; ONLY an explicit `minimumReleaseAge: 0` short-circuits it.
- * Deleting the key therefore does NOT disable the gate — pnpm falls back to 1440.
- * Requires a pnpm-workspace.yaml (the monorepo signal; a single-package repo without
- * one is out of the OOM scope). Line-anchored top-level YAML key (column 0), so a
- * `#`-prefixed comment mentioning the setting is ignored. Absent file => false.
- */
-function pnpmReleaseAgeGateActive(cwd: string): boolean {
-  const wsPath = path.join(cwd, "pnpm-workspace.yaml");
-  if (!fs.existsSync(wsPath)) return false;
-  const ws = fs.readFileSync(wsPath, "utf-8");
-  const m = ws.match(/^minimumReleaseAge:[ \t]*(\d+)\b/m);
-  // No explicit key => pnpm 11's 1440 default is active. Explicit key => active
-  // unless it is exactly 0 (the only value that disables the verification).
-  if (!m) return true;
-  return Number(m[1]) !== 0;
-}
+  const active = renovate ?? dependabot;
+  if (active && cloudOwned && configOmitsBkitWorkflow(active)) {
+    const rel = path.relative(cwd, active);
+    const fence = renovate
+      ? `Add ".github/workflows/bkit-cloud.yml" to \`ignorePaths\` in ${rel} (\`enabled: false\` does not stop Renovate's tag-to-SHA pin).`
+      : `Add ".github/workflows/bkit-cloud.yml" under \`exclude-paths\` on the github-actions block in ${rel}.`;
+    return {
+      id: "dep-updater-touches-bkit",
+      severity: "advisory",
+      detect: `${rel} does not exclude ${BKIT_OWNED_WORKFLOW}. bkit rewrites that workflow on install, so an updater pin PR for it reopens forever.`,
+      action:
+        fence +
+        " The example templates already exclude it. See docs/deployments.md § Dependency updaters.",
+    };
+  }
 
-/**
- * Advise disabling the per-install pnpm `minimumReleaseAge` gate (set it to `0`)
- * when it is paired with Renovate on pnpm 11 — the gate's per-entry verification
- * OOMs Mend's low-RAM hosted Renovate microvm on a large monorepo (physical
- * `kernel-out-of-memory` during `pnpm update --lockfile-only`, blocking every
- * dependency PR). See #308.
- *
- * pnpm 11 turns this gate ON by default (`minimumReleaseAge: 1440`), so it is active
- * even with no key set — the shipped renovate.json5 re-homes release-age freshness to
- * Renovate itself (`minimumReleaseAge: "1 day"` + a `PNPM_WORKERS`/`PNPM_MAX_WORKERS`
- * memory cap), making the per-install pnpm gate redundant for Renovate's PRs and the
- * memory spike. Fires only when ALL hold:
- *   - Renovate is the active updater (`.github/renovate.json5` present) — the OOM is
- *     specific to Mend's runner; Dependabot consumers are on GitHub's runners.
- *   - pnpm major >= 11 (package.json `packageManager`) — pnpm 10 defaulted the gate off.
- *   - the pnpm-level gate is ACTIVE (pnpm-workspace.yaml present and not `minimumReleaseAge: 0`).
- */
-export function buildPnpmReleaseAgeOomAdvisory(cwd: string): PreflightFinding | null {
-  const renovateActive =
-    fs.existsSync(path.join(cwd, ".github", "renovate.json5")) ||
-    fs.existsSync(path.join(cwd, ".github", "renovate.json"));
-  if (!renovateActive) return null;
-
-  // Self-hosted Renovate (#325) runs on ubuntu-latest (~16 GB), where the microvm OOM
-  // this advisory warns about physically cannot occur — the constraint was Mend's 3 GB
-  // hosted runner. Suppress it there: the pnpm gate's only remaining cost is slightly
-  // slower CI/local installs (a minor optimization, not a blocker), and telling a
-  // self-hosted consumer to change pnpm-workspace.yaml "to avoid the OOM" would be false.
-  if (fs.existsSync(path.join(cwd, ".github", "workflows", "renovate.yml"))) return null;
-
-  if (readPnpmMajor(cwd) < 11) return null;
-
-  if (!pnpmReleaseAgeGateActive(cwd)) return null;
+  if (active) return null;
+  if (legacyDepUpdaterOptOut(cwd)) return null;
+  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
 
   return {
-    id: "pnpm-release-age-gate-oom",
+    id: "dep-updater-absent",
     severity: "advisory",
     detect:
-      "pnpm 11 defaults `minimumReleaseAge` to 1440 (the gate is active even with no key set) and Renovate is active. The gate verifies a publish timestamp for every dependency on every install, which OOMs Mend's low-RAM hosted Renovate runner on a large monorepo during `pnpm update --lockfile-only` (physical `kernel-out-of-memory`), blocking every dependency PR. `pnpm-workspace.yaml` does not disable it with `minimumReleaseAge: 0`.",
+      "No dependency updater config. SHA-pinned actions and package bumps will not refresh on their own.",
     action:
-      'Set `minimumReleaseAge: 0` as a top-level key in `pnpm-workspace.yaml`. `0` short-circuits the per-entry verification entirely (fast install, no OOM). Do NOT just delete the key — pnpm 11 falls back to its `1440` default, so the gate (and the OOM) stay active, and you also lose any `minimumReleaseAgeExclude`, which makes same-day `@cbartens/bkit` upgrades fail the gate. Release-age freshness for dependency PRs is still enforced Renovate-side (`minimumReleaseAge: "1 day"` in the shipped renovate.json5); security / osvVulnerabilityAlerts PRs bypass it, so CVE fixes are not delayed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`\'s `settings:` block. Trade-off: `minimumReleaseAge: 0` drops pnpm-level gating of manual/transitive fresh installs. Config takes effect only once it reaches your default branch; verify against a live Renovate run. Alternatively, drop the OOM entirely by running Renovate self-hosted (`pnpm bkit install --renovate=self`) on a 16 GB GitHub Actions runner. Detail: `docs/deployments.md` § Renovate pnpm-11 freshness gate & microvm memory.',
+      "Copy one example and own it:\n\n" +
+      `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
+      'Use one updater, not both. To silence this advisory, set `bkit.depUpdater` to `"none"` in package.json. See docs/deployments.md § Dependency updaters.',
   };
 }
-
-/**
- * Warn that self-hosted Renovate and the Mend App must not both be active (#325).
- * Fires whenever `.github/workflows/renovate.yml` is present. bkit CANNOT observe
- * whether the Mend App is installed (off-repo), so this is an unconditional reminder on
- * the local signal — mirroring the honest "can't detect off-repo state" posture bkit
- * already takes for the Renovate read-auth secret.
- */
-export function buildRenovateSelfHostedMendAdvisory(cwd: string): PreflightFinding | null {
-  if (!fs.existsSync(path.join(cwd, ".github", "workflows", "renovate.yml"))) return null;
-  return {
-    id: "renovate-self-hosted-mend-both-active",
-    severity: "advisory",
-    detect:
-      "A self-hosted Renovate workflow (`.github/workflows/renovate.yml`) is present. If the Mend Renovate App is ALSO installed for this repo, both open the same `renovate/*` PRs and race on the Dependency Dashboard issue.",
-    action:
-      "Confirm the Mend Renovate App is suspended for this repo (GitHub UI -> Settings -> Applications -> Renovate -> Configure -> remove this repo; no `gh api` equivalent). bkit cannot verify the App state — it is off-repo. If you meant to stay on Mend, remove the workflow via `pnpm bkit install --renovate=mend`.",
-  };
-}
-
 /**
  * One-time migration nudge for the BKIT_-prefixed GitHub token names. bkit now uses:
  *   - `BKIT_GH_TOKEN_INSTALL` — classic `read:packages` PAT for GitHub Packages install /
@@ -1885,7 +1786,7 @@ export function buildTokenRenameMigrationAdvisory(cwd: string): PreflightFinding
       "Rename the keys wherever the token is set — the VALUES do not change:\n\n" +
       "  1. `.bkit/.env`: rename `GH_BKIT_TOKEN_INSTALL` -> `BKIT_GH_TOKEN_INSTALL`, `GH_BKIT_TOKEN` -> `BKIT_GH_TOKEN`, and `GH_MCP_TOKEN` -> `BKIT_GH_TOKEN`. Then `direnv allow` and restart your editor.\n" +
       "  2. Everywhere else the classic install token lives, rename `GH_BKIT_TOKEN_INSTALL` -> `BKIT_GH_TOKEN_INSTALL`: the CI Actions secret (`gh secret set BKIT_GH_TOKEN_INSTALL`), Vercel env (preview + production), the `pnpm config set` auth line, and — if you use Mend-hosted Renovate — the Mend dashboard secret.\n" +
-      "  3. `BKIT_GH_TOKEN` also becomes self-hosted Renovate's platform secret if you enable `--renovate=self` — add it as a repo Actions secret there.\n\n" +
+      "  3. If you run the example self-hosted Renovate workflow, `BKIT_GH_TOKEN` is also its platform secret — add it as a repo Actions secret.\n\n" +
       "Detail: docs/deployments.md § `BKIT_GH_TOKEN_INSTALL` — presence matrix.",
   };
 }
@@ -2835,10 +2736,9 @@ export function runPostInstallCheck(
 
   // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
   //   1. Issue tracker — branch on bkit.issueTracker.
-  //   2. Dependency updater — branch on renovate/dependabot config presence.
+  //   2. Dependency updater — read-only. Suggests an example template, or warns
+  //      when an existing config would re-pin bkit-cloud.yml. Never writes config.
   //   3. Cloud agents — branch on bkit-cloud.yml presence (#119).
-  // Each nudges the consumer to choose post-install; each silenceable via the
-  // respective package.json field set to `none`.
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
   // GitHub Projects v2 board-sync prerequisites (config + toolset + PAT scope) —
@@ -2851,12 +2751,6 @@ export function runPostInstallCheck(
   if (githubProjectFieldId) phase3.push(githubProjectFieldId);
   const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
   if (depUpdaterSetup) phase3.push(depUpdaterSetup);
-  // pnpm-11 + per-install release-age gate + Renovate OOMs Mend's microvm (#308).
-  const pnpmReleaseAgeOom = buildPnpmReleaseAgeOomAdvisory(cwd);
-  if (pnpmReleaseAgeOom) phase3.push(pnpmReleaseAgeOom);
-  // Self-hosted Renovate + the Mend App must be mutually exclusive (#325).
-  const renovateSelfHostedMend = buildRenovateSelfHostedMendAdvisory(cwd);
-  if (renovateSelfHostedMend) phase3.push(renovateSelfHostedMend);
   // One-time GitHub-token scheme rename (BKIT_GH_TOKEN split into _INSTALL + general).
   const tokenRename = buildTokenRenameMigrationAdvisory(cwd);
   if (tokenRename) phase3.push(tokenRename);
@@ -2893,9 +2787,7 @@ export function runPostInstallCheck(
   const ciYml = detectCiYmlMissingTokenEnv(cwd);
   if (ciYml) phase3.push(ciYml);
 
-  // GHA action SHA pinning (KN-3). Renovate and Dependabot are both opt-in
-  // (`bkit install --renovate` / `--dependabot`, mutually exclusive). Neither
-  // absence is surfaced by default postinstall — consumer owns the choice.
+  // GHA action SHA pinning (KN-3). Updater configs are consumer-owned examples.
   const gha = detectGhaFloatingTags(cwd);
   if (gha) phase3.push(gha);
 

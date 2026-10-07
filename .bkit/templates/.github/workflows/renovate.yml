@@ -1,22 +1,19 @@
-# Renovate — self-hosted runner (bkit-managed, Tier-1 canonical-overwrite).
+# Example self-hosted Renovate runner. Copy it to `.github/workflows/renovate.yml`
+# and own it. Rules live in
+# `.github/renovate.json5` (Renovate clones the repo and reads that file).
 #
-# Rewritten on every `bkit install`; do NOT hand-edit (changes are clobbered — put
-# repo-specific rules in `.github/renovate-local.json5` instead). Written ONLY when
-# you install with `--renovate=self`; a `--renovate=mend`
-# re-install reclaims it. This is the alternative to the Mend-hosted Renovate GitHub
-# App: it runs Renovate on `ubuntu-latest` (~16 GB) instead of Mend's 3 GB hosted
-# microvm, which physically OOMs (`kernel-out-of-memory`) on large pnpm monorepos.
-# The `runs-on:` label below is bkit-substituted from `bkit.runners.renovate`
-# (default `ubuntu-latest`; the label is arbitrary — a GitHub larger runner, a Depot
-# label, or a self-hosted alias — point it at ≥16 GB headroom). See docs/deployments.md
-# § Self-hosted Renovate and KN-CORE-10.
+# Runs `renovatebot/github-action` on `ubuntu-latest` (~16 GB) instead of Mend's
+# 3 GB hosted microvm, which OOMs (`kernel-out-of-memory`) on large pnpm monorepos.
+# Edit `runs-on` yourself (a GitHub larger runner, a Depot label, or a self-hosted
+# alias). Keep ≥16 GB of headroom.
 #
-# MUTUAL EXCLUSION: the Mend Renovate App MUST be suspended for this repo, or both
-# open the same `renovate/*` PRs. bkit cannot verify that (off-repo) — it only warns.
+# MUTUAL EXCLUSION: suspend the Mend Renovate App for this repo, or both open the
+# same `renovate/*` PRs. GitHub UI → Settings → Applications → Renovate → Configure
+# → remove this repo. No `gh api` equivalent.
 #
-# SHA-pinned per docs/deployments.md § GitHub Actions pinning. New SHAs arrive via
-# `bkit install`; this file is in renovate.json5 `ignorePaths`, so consumer Renovate
-# never bumps its own action pins (KN-CORE-5, same exemption as bkit-cloud.yml).
+# SHA-pin the action. This file is yours, so Renovate may bump the pin. Do NOT add
+# this path to renovate.json5 `ignorePaths` (that list is for files bkit rewrites,
+# such as bkit-cloud.yml).
 name: Renovate
 
 on:
@@ -58,7 +55,7 @@ concurrency:
 
 jobs:
   renovate:
-    runs-on: {{RENOVATE_RUNNER}} # default ubuntu-latest (~16 GB, the headroom that fixes Mend's 3 GB OOM); override via bkit.runners.renovate
+    runs-on: ubuntu-latest # ~16 GB. Edit this label in your copy.
     timeout-minutes: 30
     steps:
       # No checkout / configurationFile: Renovate clones the repo itself and
@@ -105,12 +102,12 @@ jobs:
           # allowedEnv") and Renovate does nothing. Mend allows these via its safeEnv
           # preset; self-hosted must set it explicitly. Glob covers any future PNPM_* var.
           RENOVATE_ALLOWED_ENV: "PNPM_*"
-          # Private-registry read auth for the restricted @cbartens/bkit package,
-          # injected via env so the consumer-owned renovate-local.json5 needs NO
-          # Mend-only "{{ secrets.* }}" templating (keep its token: line COMMENTED on
-          # self-hosted). BKIT_GH_TOKEN_INSTALL (read:packages) is already a repo Actions
-          # secret. Without this, lockfile regen 401s and every dep PR fails CI with
-          # ERR_PNPM_OUTDATED_LOCKFILE. See docs/deployments.md § Renovate read-auth.
+          # Private-registry read auth for the restricted @cbartens/bkit package.
+          # Leave the hostRules token line in renovate.json5 commented — an uncommented
+          # Mend-style line adds a second, empty-token rule and 401s. BKIT_GH_TOKEN_INSTALL
+          # (read:packages) is a repo Actions secret. Without this, lockfile regen 401s
+          # and every dep PR fails CI with ERR_PNPM_OUTDATED_LOCKFILE.
+          # See docs/deployments.md § Dependency updaters.
           RENOVATE_HOST_RULES: >-
             [{"matchHost":"npm.pkg.github.com","hostType":"npm","token":"${{ secrets.BKIT_GH_TOKEN_INSTALL }}"}]
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}

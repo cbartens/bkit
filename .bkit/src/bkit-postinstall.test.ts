@@ -39,8 +39,6 @@ import {
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
-  buildPnpmReleaseAgeOomAdvisory,
-  buildRenovateSelfHostedMendAdvisory,
   buildTokenRenameMigrationAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
@@ -1299,49 +1297,55 @@ describe("detectGhaFloatingTags", () => {
   });
 });
 
-// detectOrphanedDependabotConfig was dropped — Dependabot is now opt-in via
-// `bkit install --dependabot` (mutually exclusive with --renovate). Consumers
-// who run --dependabot intentionally write the config; consumers who skip
-// both opt-ins are silent. The mutual-exclusion blocker fires in the module
-// itself (runRenovateModule / runDependabotModule) when both configs exist.
-
 // ---------------------------------------------------------------------------
-// buildDepUpdaterSetupAdvisory — optional post-install decision (parity with
-// the tracker advisory). Renovate/Dependabot are both opt-in, mutually exclusive.
+// buildDepUpdaterSetupAdvisory — read-only.
 // ---------------------------------------------------------------------------
 
 describe("buildDepUpdaterSetupAdvisory", () => {
-  it("renovate.json5 present → dep-updater-renovate (informational, active)", () => {
+  it("both configs → dep-updater-both", () => {
     fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
-    const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dep-updater-renovate");
-  });
-
-  it("dependabot.yml present → dep-updater-dependabot (informational, active)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "renovate.json5"),
+      '{ ignorePaths: [".github/workflows/bkit-cloud.yml"] }\n',
+    );
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dep-updater-dependabot");
-    expect(result!.action).toMatch(/bash .bkit\/scripts\/bkit-set-dependabot\.sh/);
+    expect(result?.id).toBe("dep-updater-both");
   });
 
-  it("nudges (dep-updater-none) when workflows exist but neither config is present", () => {
+  it("updater config that omits bkit-cloud.yml → dep-updater-touches-bkit", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), "name: cloud\n");
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{ enabled: false }\n");
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dep-updater-none");
-    expect(result!.action).toMatch(/pnpm bkit install --dependency=renovate/);
-    expect(result!.action).toMatch(/pnpm bkit install --dependency=dependabot/);
+    expect(result?.id).toBe("dep-updater-touches-bkit");
+    expect(result?.action).toMatch(/ignorePaths/);
   });
 
-  it("returns null when no workflows dir exists (nothing to update — no nudge)", () => {
+  it("fenced config is quiet", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), "name: cloud\n");
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "renovate.json5"),
+      '{ ignorePaths: [".github/workflows/bkit-cloud.yml"] }\n',
+    );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("stays quiet when bkit.depUpdater is explicitly 'none' (deliberate opt-out)", () => {
+  it("nudges (dep-updater-absent) when workflows exist but neither config is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result?.id).toBe("dep-updater-absent");
+    expect(result?.action).toMatch(/renovate\.json5/);
+    expect(result?.action).toMatch(/dependabot\.yml/);
+    expect(result?.action).not.toMatch(/bkit install --dependency/);
+  });
+
+  it("returns null when no workflows dir exists", () => {
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet when bkit.depUpdater is explicitly 'none'", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1350,117 +1354,26 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 
-  it("still nudges when bkit.depUpdater is absent (undecided, not opted out)", () => {
+  it("a legacy bkit.depUpdater value other than none does not install or silence", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
-    const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dep-updater-none");
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { depUpdater: "renovate", renovateRunner: "self" } }),
+    );
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)?.id).toBe("dep-updater-absent");
   });
 
-  it("config presence wins over a stale bkit.depUpdater=none field", () => {
-    // Edge case: field says none but renovate.json5 is actually present.
+  it("config that names bkit-cloud.yml wins over a stale depUpdater=none", () => {
     fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "renovate.json5"),
+      '{ ignorePaths: [".github/workflows/bkit-cloud.yml"] }\n',
+    );
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
     );
-    const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dep-updater-renovate");
-  });
-});
-
-describe("buildPnpmReleaseAgeOomAdvisory", () => {
-  // Seed the affecting combination: Renovate active + pnpm 11 + a pnpm-workspace.yaml.
-  // `mra` is spliced into the workspace file (default: the explicit 1440 gate).
-  const seed = (mra = "minimumReleaseAge: 1440\n") => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", packageManager: "pnpm@11.9.0" }),
-    );
-    fs.writeFileSync(path.join(tmpDir, "pnpm-workspace.yaml"), `packages:\n  - "apps/*"\n${mra}`);
-  };
-
-  it("fires on an explicit positive gate and says set minimumReleaseAge: 0 (not delete)", () => {
-    seed();
-    const result = buildPnpmReleaseAgeOomAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("pnpm-release-age-gate-oom");
-    expect(result!.severity).toBe("advisory");
-    expect(result!.action).toMatch(/Set `minimumReleaseAge: 0`/);
-    expect(result!.action).toMatch(/Do NOT just delete the key/);
-  });
-
-  it("fires when the key is ABSENT — pnpm 11 defaults the gate to 1440", () => {
-    seed(""); // pnpm-workspace.yaml with packages only, no minimumReleaseAge line
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)?.id).toBe("pnpm-release-age-gate-oom");
-  });
-
-  it("clears ONLY when minimumReleaseAge is explicitly 0 (the disable)", () => {
-    seed("minimumReleaseAge: 0\n");
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("does NOT clear on deletion — a #-comment breadcrumb leaves the 1440 default active", () => {
-    seed("# set minimumReleaseAge: 0 to disable the gate\n");
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)?.id).toBe("pnpm-release-age-gate-oom");
-  });
-
-  it("null when there is no pnpm-workspace.yaml (single-package repo — out of OOM scope)", () => {
-    seed();
-    fs.rmSync(path.join(tmpDir, "pnpm-workspace.yaml"));
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("null when Renovate is not the active updater (Dependabot consumers unaffected)", () => {
-    seed();
-    fs.rmSync(path.join(tmpDir, ".github", "renovate.json5"));
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("null on pnpm 10 — its minimumReleaseAge defaulted off, no OOM", () => {
-    seed();
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", packageManager: "pnpm@10.18.0" }),
-    );
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("reads the numeric value, not minimumReleaseAgeExclude — `0` + an exclude list clears", () => {
-    seed('minimumReleaseAge: 0\nminimumReleaseAgeExclude:\n  - "@cbartens/*"\n');
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-
-  it("null when self-hosted Renovate is active — 16 GB runner, the microvm OOM cannot occur (#325)", () => {
-    seed(); // pnpm 11 + gate active + renovate.json5 → would otherwise fire
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "name: Renovate\n");
-    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildRenovateSelfHostedMendAdvisory — mutual-exclusion warning (#325)
-// ---------------------------------------------------------------------------
-
-describe("buildRenovateSelfHostedMendAdvisory", () => {
-  it("fires whenever the self-hosted workflow is present (App state is off-repo/undetectable)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "renovate.yml"), "name: Renovate\n");
-    const result = buildRenovateSelfHostedMendAdvisory(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("renovate-self-hosted-mend-both-active");
-    expect(result!.severity).toBe("advisory");
-    expect(result!.action).toMatch(/Mend Renovate App is suspended/);
-  });
-
-  it("null for a Mend consumer with no self-hosted workflow", () => {
-    expect(buildRenovateSelfHostedMendAdvisory(tmpDir)).toBeNull();
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 });
 

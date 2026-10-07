@@ -1610,18 +1610,15 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
     expect(flags(["ci"])).toBe("--ci");
   });
 
-  it("maps dependency + cloud opt-ins (placeholder when the variant is unknown)", () => {
-    // renovate emits the single --renovate=<runner> flag (#325); defaults to mend.
-    expect(flags(["renovate"])).toBe("--renovate=mend");
-    expect(flags(["dependabot"])).toBe("--dependency=dependabot");
+  it("maps the cloud opt-in (placeholder when the variant is unknown)", () => {
     expect(flags(["cloud"], null, "cursor")).toBe("--auto=cursor");
     expect(flags(["cloud"], null, null)).toBe("--auto=<variant>");
   });
 
   it("composes multiple modules in flag order", () => {
-    expect(flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "renovate"])).toBe(
-      "--claude --cursor --tooling --renovate=mend",
-    );
+    expect(
+      flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "cloud"], null, "claude"),
+    ).toBe("--claude --cursor --tooling --auto=claude");
   });
 });
 

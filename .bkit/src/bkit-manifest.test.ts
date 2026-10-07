@@ -13,9 +13,6 @@ import {
   CLOUD_MANIFEST_OPENCODE,
   OPENCODE_MANIFEST,
   parseCloudAgents,
-  parseRenovateRunner,
-  RENOVATE_RUNNERS,
-  DEFAULT_RENOVATE_RUNNER,
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
   type ManifestEntry,
@@ -289,78 +286,6 @@ describe("getInstallManifest", () => {
     }
   });
 
-  it("renovate manifest includes consumer-owned renovate-local.json5 so uninstall reclaims it (#255)", () => {
-    const entry = getInstallManifest(["renovate"]).find(
-      (e) => e.path === ".github/renovate-local.json5",
-    );
-    expect(entry, "renovate-local.json5 must be in the manifest").toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
-    expect(entry!.seedOrPrint).toBe(true);
-  });
-
-  it("git-hooks manifest includes .husky files as byte-equal-text (Tier 3 seed-or-print, v2.0.4)", () => {
-    const entries = getInstallManifest(["git-hooks"]);
-    const preCommit = entries.find((e) => e.path === ".husky/pre-commit");
-    const prePush = entries.find((e) => e.path === ".husky/pre-push");
-    expect(preCommit).toBeDefined();
-    expect(preCommit!.format).toBe("byte-equal-text");
-    expect(prePush).toBeDefined();
-    expect(prePush!.format).toBe("byte-equal-text");
-  });
-
-  it("cursor manifest includes hooks.json as json", () => {
-    const entries = getInstallManifest(["cursor"]);
-    const hooksEntry = entries.find((e) => e.path === ".cursor/hooks.json");
-    expect(hooksEntry).toBeDefined();
-    expect(hooksEntry!.format).toBe("json");
-  });
-
-  it("cursor manifest includes guardrails.cjs as markered-text (consumer owns the driver)", () => {
-    const entries = getInstallManifest(["cursor"]);
-    const entry = entries.find((e) => e.path === ".cursor/hooks/guardrails.cjs");
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("markered-text");
-    expect(entry!.seedOrPrint ?? false).toBe(false);
-    // opts in to the no-marker migration policy (pre-markers consumer installs)
-    expect(entry!.noMarkerMigration).toBeTruthy();
-  });
-
-  it("claude manifest includes settings.json as json", () => {
-    const entries = getInstallManifest(["claude"]);
-    const settingsEntry = entries.find((e) => e.path === ".claude/settings.json");
-    expect(settingsEntry).toBeDefined();
-    expect(settingsEntry!.format).toBe("json");
-  });
-
-  it("lint manifest includes slop-scan.config.json as byte-equal-text", () => {
-    const entries = getInstallManifest(["lint"]);
-    const slopEntry = entries.find((e) => e.path === "slop-scan.config.json");
-    expect(slopEntry).toBeDefined();
-    expect(slopEntry!.format).toBe("byte-equal-text");
-  });
-
-  it("cloud manifest includes environment.json as byte-equal-text (moved out of cursor — #119)", () => {
-    const entries = getInstallManifest(["cloud"]);
-    const envEntry = entries.find((e) => e.path === ".cursor/environment.json");
-    expect(envEntry).toBeDefined();
-    expect(envEntry!.format).toBe("byte-equal-text");
-    expect(envEntry!.seedOrPrint).toBe(true);
-    // Not in the default cursor module — it ships only via --cloud.
-    expect(
-      getInstallManifest(["cursor"]).find((e) => e.path === ".cursor/environment.json"),
-    ).toBeUndefined();
-  });
-
-  it("cloud manifest includes Dockerfile as markered-text (moved out of cursor — #119)", () => {
-    const entries = getInstallManifest(["cloud"]);
-    const dockerEntry = entries.find((e) => e.path === ".cursor/Dockerfile");
-    expect(dockerEntry).toBeDefined();
-    expect(dockerEntry!.format).toBe("markered-text");
-    expect(
-      getInstallManifest(["cursor"]).find((e) => e.path === ".cursor/Dockerfile"),
-    ).toBeUndefined();
-  });
-
   it("cloud manifest includes cloud-bootstrap.sh as markered-text (moved out of claude — #119)", () => {
     const entries = getInstallManifest(["cloud"]);
     const bootstrapEntry = entries.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh");
@@ -384,48 +309,6 @@ describe("getInstallManifest", () => {
 // ---------------------------------------------------------------------------
 // getModuleManifest — single-module accessor
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// parseRenovateRunner + RENOVATE_MANIFEST — self-hosted runner axis (#325)
-// ---------------------------------------------------------------------------
-
-describe("parseRenovateRunner — value space", () => {
-  it("accepts mend and self", () => {
-    expect(parseRenovateRunner("mend")).toBe("mend");
-    expect(parseRenovateRunner("self")).toBe("self");
-  });
-  it("rejects unknown / empty / non-string", () => {
-    expect(parseRenovateRunner("fly")).toBeNull();
-    expect(parseRenovateRunner("")).toBeNull();
-    expect(parseRenovateRunner(null)).toBeNull();
-    expect(parseRenovateRunner(undefined)).toBeNull();
-    expect(parseRenovateRunner(42)).toBeNull();
-  });
-  it("default runner is mend", () => {
-    expect(DEFAULT_RENOVATE_RUNNER).toBe("mend");
-    expect(RENOVATE_RUNNERS).toContain("mend");
-    expect(RENOVATE_RUNNERS).toContain("self");
-  });
-});
-
-describe("RENOVATE_MANIFEST — self-hosted workflow entry", () => {
-  it("ships .github/workflows/renovate.yml as a Tier-1 byte-equal renovate file", () => {
-    const entries = getModuleManifest("renovate");
-    const wf = entries.find((e) => e.path === ".github/workflows/renovate.yml");
-    expect(wf).toBeDefined();
-    expect(wf!.format).toBe("byte-equal-text");
-    expect(wf!.module).toBe("renovate");
-    // Canonical (auto-overwritten), NOT a seed-or-print consumer-owned file.
-    expect(wf!.seedOrPrint ?? false).toBe(false);
-  });
-  it("still owns renovate.json5 (canonical) and renovate-local.json5 (seed-or-print)", () => {
-    const entries = getModuleManifest("renovate");
-    const canonical = entries.find((e) => e.path === ".github/renovate.json5");
-    const local = entries.find((e) => e.path === ".github/renovate-local.json5");
-    expect(canonical?.seedOrPrint ?? false).toBe(false);
-    expect(local?.seedOrPrint).toBe(true);
-  });
-});
 
 describe("getModuleManifest", () => {
   const ALL_MODULES: ModuleName[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];

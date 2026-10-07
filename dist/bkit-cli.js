@@ -1,6 +1,6 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
-import { ISSUE_TRACKERS, parseIssueTracker, RENOVATE_RUNNERS, parseRenovateRunner, } from "./bkit-manifest.js";
+import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
 /**
@@ -89,9 +89,9 @@ export function parseComplyPhase(value) {
 // Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing), `tooling`,
 // `ci`, and `typescript` are intercepted by dedicated branches in parseArgs before this
 // set is consulted; the generic check only ever validates claude/cursor. `full`, `core`,
-// `lint`, `git-hooks`, `renovate`, `dependabot` and `cloud` are NOT accepted as bare flags
-// (#252/#265): use `--ci`/`--typescript`/`--tooling`, `--dependency=<renovate|dependabot>`,
-// and `--auto=<claude|cursor>`; core is implicit.
+// `lint`, `git-hooks`, and `cloud` are NOT accepted as bare flags
+// (#252/#265): use `--ci`/`--typescript`/`--tooling` and `--auto=<claude|cursor>`; core is implicit.
+// There is no dependency-updater flag. Copy an example; CI warns when none is present.
 const MODULE_FLAGS = new Set([
     "claude",
     "cursor",
@@ -106,18 +106,12 @@ const MODULE_FLAGS = new Set([
 const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 /**
  * Opt-in modules: never installed implicitly; each requires an explicit flag
- * (`--dependency=`, `--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove
- * them (zero footprint). Rationale: renovate's App scans the default branch first;
- * renovate+dependabot open competing PRs; cloud auto-dispatches agents and is inert
+ * (`--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove
+ * them (zero footprint). Rationale: cloud auto-dispatches agents and is inert
  * without secrets; opencode is a provider-pluggable additive host. See issue #119.
+ * Dependency-updater files are not modules — bkit never writes or removes them.
  */
-export const OPTIN_MODULES = new Set([
-    "renovate",
-    "dependabot",
-    "cloud",
-    "opencode",
-    "codex",
-]);
+export const OPTIN_MODULES = new Set(["cloud", "opencode", "codex"]);
 /**
  * Resolve the explicit module-flag set into the concrete module set to dispatch.
  * `flags` holds the internal module names the user explicitly named — core is NOT
@@ -232,7 +226,6 @@ export function parseArgs(argv) {
     let tracker = null;
     let cloudVariant = null;
     let opencodeProvider = null;
-    let renovateRunner = null;
     let complyPhase = null;
     let telemetrySubverb = null;
     const telemetryMigrateFlags = { dryRun: false };
@@ -353,35 +346,6 @@ export function parseArgs(argv) {
                 moduleFlags.add("opencode");
                 continue;
             }
-            // Value-bearing flag: --dependency=<renovate|dependabot>
-            // The unified form of the `--renovate` / `--dependabot` booleans (kept as
-            // deprecated aliases below). Mirrors --tracker= / --auto= grammar.
-            if (flag.startsWith("dependency=")) {
-                const value = flag.slice("dependency=".length);
-                if (value !== "renovate" && value !== "dependabot") {
-                    console.error(`[bkit] Unknown dependency updater: "${value}". Valid values: renovate, dependabot`);
-                    process.exit(1);
-                }
-                moduleFlags.add(value);
-                continue;
-            }
-            // Value-bearing flag: --renovate=<mend|self> (#325) — selects the renovate
-            // module AND its runner in ONE flag (mirrors --auto=/--opencode=/--dependency=).
-            // `self` ships a `.github/workflows/renovate.yml` (self-hosted GitHub Actions,
-            // ~16 GB); `mend` (default) uses the hosted App and reclaims a stale workflow.
-            // Auto-adds the renovate module, so it stands alone — like `--typescript` auto-adds
-            // `--ci`. `--dependency=renovate` remains an equivalent way to select renovate (mend).
-            if (flag.startsWith("renovate=")) {
-                const value = flag.slice("renovate=".length);
-                const parsed = parseRenovateRunner(value);
-                if (parsed === null) {
-                    console.error(`[bkit] Unknown renovate runner: "${value}". Valid values: ${RENOVATE_RUNNERS.join(", ")}`);
-                    process.exit(1);
-                }
-                renovateRunner = parsed;
-                moduleFlags.add("renovate");
-                continue;
-            }
             // Uninstall-specific flags (accepted for all verbs that use them)
             if (flag === "dry-run") {
                 uninstallFlags.dryRun = true;
@@ -469,7 +433,7 @@ export function parseArgs(argv) {
             }
             // Bare module flags. opencode/tooling are intercepted above; only claude/cursor
             // reach here. Everything else (incl. the dropped --full/--core/--lint/
-            // --git-hooks/--renovate/--dependabot/--cloud) hits the generic unknown-flag error.
+            // --git-hooks/--cloud) hits the generic unknown-flag error.
             const moduleFlag = flag;
             if (!MODULE_FLAGS.has(moduleFlag)) {
                 console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
@@ -480,13 +444,6 @@ export function parseArgs(argv) {
         }
         // Any other positional after verb
         console.error(`[bkit] Unexpected argument: ${arg}. Run \`bkit help\` for usage.`);
-        process.exit(1);
-    }
-    // Mutual exclusion: `--renovate` and `--dependabot` cannot be combined.
-    // Both open PRs against the same packages; running both creates competing
-    // update PRs (see issue #109 + #123 follow-up for rationale).
-    if (moduleFlags.has("renovate") && moduleFlags.has("dependabot")) {
-        console.error("[bkit] `--renovate` and `--dependabot` are mutually exclusive (running both opens competing PRs against the same packages). Pick one.");
         process.exit(1);
     }
     // Self-bump flags (`--to=`/`--latest`) only apply to the `upgrade` verb, and the
@@ -515,7 +472,6 @@ export function parseArgs(argv) {
         tracker,
         cloudVariant,
         opencodeProvider,
-        renovateRunner,
         complyPhase,
         telemetrySubverb,
         telemetryMigrateFlags,
@@ -545,7 +501,8 @@ Usage:
                                  \`pnpm add @cbartens/bkit\` alone leaves mirrors stale.
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = full removal — ALL modules incl. opt-in add-ons
-                                 (renovate/dependabot/cloud/opencode) + core. Consumer-modified
+                                 (cloud/opencode) + core. Consumer-owned updater configs
+                                 (renovate.json5, dependabot.yml, renovate.yml) are left in place. Consumer-modified
                                  files, the docs/ payload, and generated artefacts
                                  (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
@@ -574,7 +531,7 @@ Usage:
   bkit harvest                  Cross-repo harvest — COPIES consumer .bkit/stats.jsonl
                                  and MOVES .bkit/friction.jsonl into harvest/ (COUNT-ONLY
                                  for docs/deferrals.jsonl and docs/failures.jsonl).
-                                 Reads consumer paths from .bkit/consumers.md.
+                                 Reads consumer paths from docs/consumers.md.
                                  DESTRUCTIVE: harvested friction rows are REMOVED from
                                  the consumer, but only after they are fsync'd and read
                                  back from harvest/. stats.jsonl is never modified.
@@ -666,16 +623,13 @@ Module flags (composable; symmetric install ↔ uninstall):
                   WIRED ci.yml step bodies. Most of it is plain Node; name is colloquial.
   --tooling       Back-compat alias for \`--ci --typescript\` (the full ci+lint+git-hooks
                   bundle). Symmetric install↔uninstall (removes all three).
-  --dependency=<renovate|dependabot>
-                  Dependency updater (opt-in, mutually exclusive — both open PRs against
-                  the same packages). renovate is phase-gated against the default branch;
-                  dependabot is a first-party GitHub feature (no App / phase gate).
-  --renovate=<mend|self>
-                  Install Renovate + choose WHERE it runs (one flag; auto-selects the
-                  renovate module). mend (default) = the hosted Mend GitHub App. self =
-                  a bkit-managed GitHub Actions workflow on ubuntu-latest (~16 GB) — the
-                  escape hatch for large monorepos that OOM on Mend's 3 GB hosted runner.
-                  Switchable by re-install. (--dependency=renovate also works = mend.)
+
+Dependency updaters (copy an example and own it):
+  .bkit/templates/.github/renovate.json5
+  .bkit/templates/.github/workflows/renovate.yml   (self-hosted runner, optional)
+  .bkit/templates/.github/dependabot.yml
+  The examples already keep .github/workflows/bkit-cloud.yml out of the updater.
+
   --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
                   tracker=github + BKIT_ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
@@ -722,10 +676,6 @@ Examples:
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
   bkit install --opencode=ollama                Ollama cloud endpoint (BKIT_OLLAMA_API_KEY).
   bkit uninstall --opencode=openrouter          remove openrouter block only; keep the gateway.
-  bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
-  bkit install --renovate=self
-                                              Renovate via self-hosted GitHub Actions (16 GB;
-                                              for repos that OOM on Mend's hosted runner).
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.

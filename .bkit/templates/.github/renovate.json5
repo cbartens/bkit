@@ -1,32 +1,21 @@
-// Renovate configuration shipped by bkit.
-// Tier 1 (canonical-overwrite): bkit owns this file. Rewritten on every
-// `bkit install`. Do NOT edit by hand — changes will be overwritten.
+// Example Renovate config. Copy it to `.github/renovate.json5` and own it.
 //
 // Reference: https://docs.renovatebot.com/configuration-options/
 //
-// Renovate App install is one-click via GitHub UI (https://github.com/apps/renovate).
-// No `gh api` equivalent exists.
+// Mend App install is one-click via GitHub UI (https://github.com/apps/renovate).
+// No `gh api` equivalent exists. Land this file on the default branch before
+// installing the App. Self-hosted runner: copy
+// `.bkit/templates/.github/workflows/renovate.yml` as well, and suspend the
+// Mend App for this repo so both do not open the same PRs.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
   // Extend Renovate's curated baseline. `config:recommended` enables the
   // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
-  //
-  // `local>{{REPO_SLUG}}//.github/renovate-local.json5` pulls in `.github/renovate-local.json5`,
-  // a CONSUMER-OWNED file bkit does NOT manage. This file (renovate.json5) is
-  // Tier-1 canonical-overwrite — rewritten on every `bkit install` — so hand-edits
-  // here are clobbered. Put repo-specific Renovate rules in renovate-local.json5
-  // instead; they survive `bkit install`/`bkit upgrade`. It's listed LAST so it
-  // wins over the presets above. Precedence caveat: extended-preset packageRules
-  // are evaluated BEFORE this config's inline packageRules below, so renovate-local
-  // can ADD rules and set keys bkit leaves unset (notably `enabled: false` to fence
-  // a package — bkit never sets `enabled: true`), but it canNOT override a key bkit
-  // sets explicitly (e.g. `automerge`). Renovate resolves the preset from the
-  // DEFAULT branch; append `#<branch>` to resolve from another branch.
+  // Repo-specific rules go in this file. You own it.
   extends: [
     "config:recommended",
     ":dependencyDashboard",
-    "local>{{REPO_SLUG}}//.github/renovate-local.json5",
   ],
 
   // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open
@@ -100,16 +89,14 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
-  // by consumer Renovate — scanning them only produces onboarding noise (and an
-  // unauthable `@cbartens/bkit` lookup).
-  // `bkit-cloud.yml` and (on self-hosted Renovate) `renovate.yml` are bkit-owned
-  // too and SHA-pinned by design (new SHAs arrive via `bkit install`). They MUST be
-  // ignored here, not merely fenced by the packageRule below: `enabled: false`
-  // suppresses version bumps but the github-actions manager still SCANS the file and
-  // applies its tag->SHA pinDigests, recreating a "Pin dependencies" PR on every
-  // scan. ignorePaths stops the scan outright. (`renovate.yml` is absent on
-  // Mend-runner installs, so ignoring it there is a harmless no-op.)
+  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned. Scanning them
+  // produces onboarding noise. `bkit-cloud.yml` is bkit-owned and rewritten on
+  // install. It MUST be in ignorePaths, not only a packageRule `enabled: false`:
+  // `enabled: false` suppresses version bumps, but the github-actions manager
+  // still scans the file and applies tag->SHA pinDigests, recreating a
+  // "Pin dependencies" PR on every scan. ignorePaths stops the scan.
+  // Your own renovate.yml (if you copied the self-hosted example) is yours —
+  // leave it out of ignorePaths so action pins there can refresh.
   ignorePaths: [
     "**/node_modules/**",
     "**/dist/**",
@@ -117,20 +104,22 @@
     ".bkit/templates/**",
     ".agents/skills/**",
     ".github/workflows/bkit-cloud.yml",
-    ".github/workflows/renovate.yml",
   ],
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Private-registry read auth (`@cbartens/bkit` on npm.pkg.github.com) is
-  // configured in the consumer-owned `.github/renovate-local.json5`, NOT here.
-  // Renovate merges `hostRules` across extended presets, so the token set there
-  // SURVIVES every `bkit upgrade` — whereas this file is canonical-overwrite and
-  // would clobber a token added here on the next install.
-  // Without that token Renovate's lockfile regen 401s, every dependency PR lands
-  // with a stale lockfile, and CI fails `pnpm install --frozen-lockfile`
-  // (ERR_PNPM_OUTDATED_LOCKFILE). Activation recipe: `.github/renovate-local.json5`
-  // and docs/deployments.md § Renovate read-auth.
-  // ─────────────────────────────────────────────────────────────────────
+  // Private-registry read auth for `@cbartens/bkit` on npm.pkg.github.com.
+  // Renovate resolves the whole workspace to regenerate the lockfile. Without a
+  // read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
+  // Mend: uncomment `token` and add BKIT_GH_TOKEN_INSTALL as a Mend repository
+  // secret with "used during the scan as an environment variable" ticked.
+  // Self-hosted: leave `token` commented; the example workflow injects
+  // RENOVATE_HOST_RULES from the Actions secret instead. Do not commit a literal token.
+  // hostRules: [
+  //   {
+  //     matchHost: "npm.pkg.github.com",
+  //     hostType: "npm",
+  //     token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
+  //   },
+  // ],
 
   // Cap concurrent PRs so a major-version flood doesn't drown the repo.
   prConcurrentLimit: 10,
@@ -138,19 +127,13 @@
 
   packageRules: [
     // ─────────────────────────────────────────────────────────────────────
-    // bkit-managed workflow files — DO NOT BUMP.
-    // bkit ships these via `bkit install`. Consumer-side Renovate must stay
-    // out of them; new SHAs/versions arrive when consumers bump the bkit
-    // package and re-run `bkit install`. The primary fence is `ignorePaths`
-    // above (stops the scan AND the tag->SHA pinning that recreated the "Pin
-    // dependencies" PR); this rule is a secondary guard that still suppresses
-    // version bumps should the file ever be removed from ignorePaths.
+    // bkit-managed workflow — DO NOT BUMP.
+    // `bkit install` rewrites `bkit-cloud.yml`. New SHAs arrive with the bkit
+    // package. The primary fence is `ignorePaths` above (stops the scan AND
+    // the tag->SHA pinning). This rule is a secondary guard.
     // ─────────────────────────────────────────────────────────────────────
     {
-      matchFileNames: [
-        ".github/workflows/bkit-cloud.yml",
-        ".github/workflows/renovate.yml",
-      ],
+      matchFileNames: [".github/workflows/bkit-cloud.yml"],
       enabled: false,
     },
 
