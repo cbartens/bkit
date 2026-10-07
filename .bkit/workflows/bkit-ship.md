@@ -324,11 +324,27 @@ description: "Ship Feature — Autonomous merge and archive"
    <!-- bkit:tracker linear start -->
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
-8. Write `ship-start-workflow` row to `$BOOK_ROOT/.../status.jsonl`:
+8. Write `workflow-started` and `ship-start-workflow` rows to `$BOOK_ROOT/.../status.jsonl`:
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
-   PARENT_SHA=$(git rev-parse HEAD)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   DIR="docs/plans/{YYYYMM}/logs/{FID}"
    STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   if [ -f "$BOOK_ROOT/$DIR/status.json" ] && [ ! -f "$STATUS" ]; then
+     jq -c '.[] as $w | ($w.workflow) as $wf
+       | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
+       , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
+       , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+          elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+          else empty end)' "$BOOK_ROOT/$DIR/status.json" > "$STATUS"
+   fi
+   [ -f "$STATUS" ] || : > "$STATUS"
+   . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+   if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "ship" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
+     jq -nc --arg t "$(date -u +%FT%TZ)" --arg p "$(git rev-parse HEAD 2>/dev/null || echo '')" '{type:"workflow-started", workflow:"ship", at:$t, parentSha:$p}' >> "$STATUS"
+   fi
+   PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"ship", step:"ship-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-input.md"]}' \
      >> "$STATUS"

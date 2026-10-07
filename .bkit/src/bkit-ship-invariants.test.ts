@@ -303,6 +303,31 @@ describe("bkit-ship.md — BOOK_ROOT / BOOK_PATHS named conventions", () => {
 });
 
 // ---------------------------------------------------------------------------
+// POSITIVE — every workflow opens its run with a workflow-started row (#492)
+// ---------------------------------------------------------------------------
+
+describe("every workflow writes its own workflow-started row (#492)", () => {
+  for (const workflow of ["design", "plan", "build", "debug", "ship"]) {
+    it(`bkit-${workflow}.md appends workflow-started for "${workflow}", skipped when that run is IN_PROGRESS`, () => {
+      const content = fs.readFileSync(
+        path.join(REPO_ROOT, `.bkit/workflows/bkit-${workflow}.md`),
+        "utf-8",
+      );
+      const lines = content.split("\n");
+      const emitIdx = lines.findIndex(
+        (l) =>
+          l.includes(`'{type:"workflow-started", workflow:"${workflow}", at:$t, parentSha:$p}'`) &&
+          /^\s*jq -nc .*>> "\$STATUS"$/.test(l),
+      );
+      expect(emitIdx, `no workflow-started append for "${workflow}"`).toBeGreaterThan(0);
+      const guard = lines[emitIdx - 1];
+      expect(guard).toContain(`.workflow // ""')" != "${workflow}"`);
+      expect(guard).toContain(`.status // ""')" != "IN_PROGRESS"`);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POSITIVE — every status.jsonl write resolves via BOOK_ROOT
 // ---------------------------------------------------------------------------
 
