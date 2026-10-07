@@ -486,7 +486,7 @@ jobs:
       # unit-tested; vitest coverage is per-RUN not per-project, so scoping is a CLI flag) with the
       # branch-coverage floor --coverage.thresholds.branches (set just below current, ratcheted up)
       # that reds the lane on a regression — lives in the `test:coverage:unit` package.json script.
-      # SINGLE SOURCE: the /bkit-build pre-PR gate runs the SAME script (bkit-build.md Step 13), so a
+      # SINGLE SOURCE: the /bkit-build Run Tests step runs the SAME script (via bkit:gate:static-unit), so a
       # coverage drop fails in the worktree before this lane ever sees it; bump the threshold in
       # package.json and both callers move together. This step only appends the JSON test reporter +
       # outputFile for the executed-count below. Its parallel sibling bkit-tests-integration owns the
