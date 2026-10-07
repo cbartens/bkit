@@ -132,7 +132,7 @@ export const VALID_SEVERITIES = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
  */
 export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
-/** The decision lifecycle — a separate axis from the triage ladder. */
+/** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
 export const FEATURE_STATUSES = new Set([
     "DESIGNED",
@@ -263,7 +263,7 @@ export function validate(event) {
         return { ok: false, reason: `${kind} rows do not carry severity` };
     }
     // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
-    // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+    // decision and knowledge, absent elsewhere. Optional: absent = ACTIVE on that lifecycle.
     // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
     if (SEVERITY_KINDS.has(kind)) {
         if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"])) {
@@ -273,11 +273,11 @@ export function validate(event) {
             };
         }
     }
-    else if (kind === "decision") {
+    else if (kind === "decision" || kind === "knowledge") {
         if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"])) {
             return {
                 ok: false,
-                reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+                reason: `${kind} status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
             };
         }
     }

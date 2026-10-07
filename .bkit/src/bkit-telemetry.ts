@@ -255,14 +255,14 @@ export const SEVERITY_KINDS: Set<string> = new Set(["friction", "deferral", "fai
  * CRITICAL failures, an audit debt lens, an age report — MUST count it. Only
  * `CLOSED` is done.
  *
- * NOT on knowledge (no status — a lesson is not work) or decision (`ACTIVE`/
- * `SUPERSEDED` is a lifecycle, a different axis entirely).
+ * NOT on knowledge or decision. Both use the `ACTIVE` / `SUPERSEDED`
+ * lifecycle, a different axis entirely. Absent `status` = `ACTIVE`.
  */
 export type TriageStatus = "OPEN" | "TRIAGED" | "CLOSED";
 
 export const TRIAGE_STATUSES: Set<string> = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 
-/** The decision lifecycle — a separate axis from the triage ladder. */
+/** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES: Set<string> = new Set(["ACTIVE", "SUPERSEDED"]);
 
 /**
@@ -557,6 +557,8 @@ export interface KnowledgePayload {
   description?: string;
   rootCause?: string;
   remediation?: string;
+  /** Absent = `ACTIVE`. Same closed set as `DecisionPayload.status`. */
+  status?: "ACTIVE" | "SUPERSEDED";
 }
 
 // decision — keyed by explicit `key` field (P5)
@@ -710,7 +712,7 @@ export function validate(event: unknown): ValidationResult {
   }
 
   // status — triage ladder on the SEVERITY_KINDS trio, ACTIVE/SUPERSEDED lifecycle on
-  // decision, absent elsewhere. Optional: a row is raised before its disposition is known.
+  // decision and knowledge, absent elsewhere. Optional: absent = ACTIVE on that lifecycle.
   // Enforced on write only; `parse` stays tolerant so legacy free-text statuses still read.
   if (SEVERITY_KINDS.has(kind)) {
     if (e["status"] !== undefined && !TRIAGE_STATUSES.has(e["status"] as string)) {
@@ -719,11 +721,11 @@ export function validate(event: unknown): ValidationResult {
         reason: `${kind} status must be one of OPEN|TRIAGED|CLOSED (got: ${String(e["status"])})`,
       };
     }
-  } else if (kind === "decision") {
+  } else if (kind === "decision" || kind === "knowledge") {
     if (e["status"] !== undefined && !DECISION_STATUSES.has(e["status"] as string)) {
       return {
         ok: false,
-        reason: `decision status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
+        reason: `${kind} status must be one of ACTIVE|SUPERSEDED (got: ${String(e["status"])})`,
       };
     }
   } else if (kind === "feature") {

@@ -35,10 +35,10 @@ One file per `kind`; writers:
 | `outcome` | `.bkit/stats.jsonl` | every workflow at its close (one run row per workflow run; keyed by `repo`+`workflow`+`parentSha`) |
 | `counter` | `.bkit/stats.jsonl` | every workflow at its close step (attempt counters) |
 | `friction` | `.bkit/friction.jsonl` | orchestrator workflows (design / plan / build / debug / ship) on observed friction |
-| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only) |
-| `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover` |
-| `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix) |
-| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate` |
+| `deferral` | `docs/deferrals.jsonl` | `@bkit-design-generate`, `@bkit-plan-generate`, `@bkit-plan-update`, `@bkit-build-challenge-remediate` (blocked), `@bkit-debug-abort-handover`, `@bkit-ship-deferred-sweep` (adjudication only), `@bkit-utility-update-deferrals` (close / triage / locator) |
+| `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-utility-update-failures` (close / triage / locator) |
+| `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
+| `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct) |
 | `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 10 on `$BOOK_ROOT`; `ABANDONED` only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** ONLY agents listed as writers for a given kind are allowed to write that specific kind; NO exceptions.
@@ -69,7 +69,7 @@ One file per `kind`; writers:
 | `friction` | `key`, `category` (§ Categories), `scope:"bkit-repo"\|"consumer"\|"universal"`, `severity`, `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?` (see § Updating a Row), `confidence?:number`, `lastConfirmed?:number`, `recurrenceCount?:number`. |
 | `deferral` | `key`, `type:"issue"\|"feature"`, `category` (§ Categories), `severity`, `reason` (§ Deferral Reason), `summary?`, `description`, `remediation?`, `source?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"?`. |
 | `failure` | `key`, `category?` (§ Categories; `"testing"` = flaky/intermittent test), `summary?`, `severity`, `description`, `rootCause?`, `remediation?`, `status:"OPEN"\|"TRIAGED"\|"CLOSED"\|string?`. |
-| `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`. |
+| `knowledge` | `key`, `summary`, `description?`, `rootCause?`, `remediation?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `decision` | `key`, `summary`, `description?`, `rationale?`, `alternatives?`, `status:"ACTIVE"\|"SUPERSEDED"?`. |
 | `feature` | `key` (the FID), `category` (§ Categories), `summary?`, `description`, `status:"DESIGNED"\|"PLANNED"\|"BUILT"\|"DEBUGGED"\|"SHIPPED"\|"ABANDONED"` (REQUIRED — no severity; see `docs/roadmap.md`), `shippedAt:number?` (§ Ship Date). |
 
@@ -226,7 +226,7 @@ Fields that change after first write:
 <!-- prettier-ignore -->
 | Field | Changes when |
 | --- | --- |
-| `status` | work closes (`OPEN` -> `CLOSED`), or a decision is `SUPERSEDED`. |
+| `status` | work closes (`OPEN` -> `CLOSED`), or a decision or knowledge row is `SUPERSEDED`. |
 | `reason` | (`deferral` only) reviewer adjudicates -> `unjustified`, naming the failed test in `description` and setting `status` -> `TRIAGED`. One-way: never rewritten, carried verbatim by every later row — fold is last-wins, so omitting it erases the verdict and its rate. Gated on the live ledger. |
 | `remediation` | the fix is known — usually AFTER the row was logged mid-workflow. |
 | `severity` | re-triage says it was worse or milder than first thought. |
@@ -251,7 +251,9 @@ Copy prior row, change deltas, append. Carry `key` verbatim — reworded `key` f
 
 **`TRIAGED` IS STILL OPEN WORK.** Open-entry counts — CI gate on open `CRITICAL` failures, audit debt lens, age report — test `status != "CLOSED"`. Only `CLOSED` is done.
 
-Not on `knowledge` (no status) or `decision` (`ACTIVE` / `SUPERSEDED` lifecycle).
+Not on `knowledge` or `decision` — both use `ACTIVE` / `SUPERSEDED`. Absent `status` = `ACTIVE`.
+
+**Readers** of either ledger: fold by `key`, highest `ts` wins → read ONLY winning rows where `status` is `ACTIVE` or absent; NEVER read any other rows.
 
 Readers count ENTITIES, never lines — `fold` first.
 
@@ -444,6 +446,7 @@ Indented for readability — **on disk each row = single physical line** (§ Wri
   "description": "401 from the GitHub MCP server or gh despite a freshly-rotated, valid, correctly-scoped PAT in .bkit/.env",
   "rootCause": "the MCP server captures GH_MCP_TOKEN at process launch, so a mid-session rotation leaves it holding the dead token",
   "remediation": "restart/reload the MCP server after rotating; for a one-off CLI, prefix `direnv exec . gh …`",
+  "status": "ACTIVE",
   "references": ["ISSUE-137", ".bkit/.env"]
 }
 ```

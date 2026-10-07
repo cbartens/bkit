@@ -128,6 +128,15 @@ function decisionEvent(key: string, overrides: Partial<TelemetryEvent> = {}): Te
   } as TelemetryEvent;
 }
 
+function knowledgeEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
+  return {
+    ...baseEnvelope("knowledge"),
+    key,
+    summary: "a gotcha",
+    ...overrides,
+  } as TelemetryEvent;
+}
+
 function featureEvent(key: string, overrides: Partial<TelemetryEvent> = {}): TelemetryEvent {
   return {
     ...baseEnvelope("feature"),
@@ -271,6 +280,20 @@ describe("severity — per-kind requirement + closed enum", () => {
 
   it.each(["OPEN", "CLOSED", "TRIAGED"])("rejects triage status %j on a decision", (status) => {
     const r = validate({ ...decisionEvent("k"), status });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("ACTIVE|SUPERSEDED");
+  });
+
+  it.each(["ACTIVE", "SUPERSEDED"])("accepts knowledge status %j", (s) => {
+    expect(validate({ ...knowledgeEvent("k"), status: s }).ok).toBe(true);
+  });
+
+  it("accepts a knowledge row with status absent", () => {
+    expect(validate(knowledgeEvent("k")).ok).toBe(true);
+  });
+
+  it.each(["OPEN", "CLOSED", "TRIAGED"])("rejects triage status %j on knowledge", (status) => {
+    const r = validate({ ...knowledgeEvent("k"), status });
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("ACTIVE|SUPERSEDED");
   });
