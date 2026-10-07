@@ -26,28 +26,30 @@
 
 ### Context & Goals
 
-An automated gate that proves its own rules are on, and waits for real content, still covers a slice of the rules, a slice of the routes, and none of keyboard, screen reader, zoom, or native. Re-finding what CI already blocks wastes the run. Target failure: **a gate that stays green while the unchecked surface is where the defects are** — an allowlist entry with no expiry, a route never opened, a checker run against a skeleton, a custom control whose name the role forgot. Start from the gate snapshot; everything below is scoped against it.
+Gate on + waiting for real content still covers partial rules/routes; not keyboard, screen reader, zoom, or native. Re-finding what CI blocks wastes the run.
+
+Target failure: **a gate that stays green while the unchecked surface is where the defects are** — allowlist with no expiry, route never opened, checker on skeleton, custom control whose name the role forgot. Start from gate snapshot; scope everything below against it.
 
 **Applies when:** a user interface (web, native, or email). None → one `N/A` row with evidence, never "clean".
 
-**Cadence:** quarterly. Extra pass when the palette, a shared control, or a route's layout changes. Sessions with assistive-technology users run once a year, on their own date; each run records when the next is due.
+**Cadence:** quarterly. Extra pass when palette, shared control, or route layout changes. Assistive-technology user sessions: once a year, own date; record next due.
 
 **Anchor Standards:** record version and date read. Newer version → `Standards` step reads what changed.
 
-- WCAG 2.2 (W3C Recommendation; the same text is ISO/IEC 40500). Record the dated update.
-- EN 301 549. Record which version the procurement regime cites.
+- WCAG 2.2 (W3C Recommendation; same text ISO/IEC 40500). Record dated update.
+- EN 301 549. Record version procurement regime cites.
 - European Accessibility Act, Directive (EU) 2019/882, where it applies.
-- WAI-ARIA Authoring Practices Guide; record the date read.
+- WAI-ARIA Authoring Practices Guide; record date read.
 - Platform accessibility HIG and store nutrition-label criteria (e.g. Apple HIG and Accessibility Nutrition Labels, Android accessibility guidelines and Accessibility Scanner).
-- National disability-discrimination guidance that `Laws` finds applies (e.g. Australia's DDA and AHRC digital-access guidelines, US ADA via DOJ web guidance).
+- National disability-discrimination guidance `Laws` finds applies (e.g. Australia's DDA and AHRC digital-access guidelines, US ADA via DOJ web guidance).
 
 ### Scope
 
-- Applicable accessibility laws, and the statement they require.
-- The automated gate: rules, routes, themes, allowlists, self-checks, checker version.
-- Full rule set, report-only, on every route and both themes.
-- Auth routes (accessible authentication), email, and manual passes including the assistive-technology matrix.
-- WCAG 2.2 additions, every Level A and AA criterion, native, and text across locales and widths.
+- Applicable accessibility laws and required statement.
+- Automated gate: rules, routes, themes, allowlists, self-checks, checker version.
+- Full rule set, report-only, every route and both themes.
+- Auth routes (accessible authentication), email, manual passes including assistive-technology matrix.
+- WCAG 2.2 additions, every Level A and AA criterion, native, text across locales and widths.
 
 ### Out of Scope
 
@@ -68,7 +70,7 @@ An automated gate that proves its own rules are on, and waits for real content, 
 
 Always verify.
 
-- [ ] **Gate Source:** Steps 2, 4, 13 — automated-gate files readable. Fallback: no gate while a UI exists = finding; later steps run without a snapshot.
+- [ ] **Gate Source:** Steps 2, 4, 13 — automated-gate files readable. Fallback: no gate while UI exists = finding; later steps run without snapshot.
 - [ ] **Checker:** Steps 5, 6 — full rule set, e.g. axe-core, pa11y, Accessibility Insights. Fallback: manual steps only; automated rows `Not Checked`.
 - [ ] **Web:** Step 15 — fetch anchor standards. Fallback: versions recorded as unread.
 
@@ -76,7 +78,7 @@ Always verify.
 
 Verify only when applicable.
 
-- [ ] **Browser Runner:** Web UI → Steps 5, 6, 8, 11 — e.g. Playwright, Cypress. Fallback: manual on a named sample of routes; the rest `Not Checked`.
+- [ ] **Browser Runner:** Web UI → Steps 5, 6, 8, 11 — e.g. Playwright, Cypress. Fallback: manual on named route sample; rest `Not Checked`.
 - [ ] **Assistive Tech:** Manual pass → Step 8 — e.g. NVDA, JAWS, VoiceOver, TalkBack, Voice Control, Voice Access, Switch Control. Fallback: each missing pair → `Not Checked`.
 - [ ] **Native Audits:** Native UI → Step 12 — e.g. Xcode Accessibility Inspector, `performAccessibilityAudit()`, Android Accessibility Scanner, Espresso Accessibility Test Framework. Fallback: `Not Checked`.
 - [ ] **Email Render:** Transactional email → Step 7 — rendered HTML. Fallback: template source.
@@ -91,59 +93,59 @@ Verify only when applicable.
 
 ### Probe Steps
 
-- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count its findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
-- [ ] **Step 2 — Gate:** Open the gate specs and their helpers. Record, in `Gate`: the rule set passed to the checker; the route list and each route's ready / settle selectors; the contents of each allowlist; the checker version the gate pins and the version this audit runs; rules the checker changelog adds between the previous report's version and this one. A pinned old version under-reports newer WCAG 2.2 rules. Everything below is scoped against that snapshot. **Done when:** snapshot in `Gate`, or no gate recorded.
-- [ ] **Step 3 — Laws:** Which laws apply is an owner decision; record it, or that it is unmade (`Project Instructions` names the questions). A law that requires a public accessibility statement, service information, and a feedback channel → check they exist. Statement wording vs behaviour → `bkit-audit-privacy`. **Done when:** `Laws` row per regime: applies · why · statement.
-- [ ] **Step 4 — Allowlists:** Per-offender keys, never a runtime hash, never a rule downgrade or a route exclusion. That design stays honest only if each entry is re-read. Per entry: is the offender still there, is the reason still true, and can it be fixed now? An entry with no expiry or owner is a permanent exemption = finding. A list whose policy is "a new entry is a finding, not a fix" (`Project Instructions`) → a new entry = finding. Stale entry (offender gone, key remains) = finding. **Done when:** `Allowlists` row per entry: still present · reason true · expiry or owner · verdict. Empty list → one row `none`, with the key shape.
-- [ ] **Step 5 — Full Rules:** The gate runs a small rule set so it can be a hard gate. This audit runs everything, report-only: no rule restriction, every route, both themes, and the WCAG 2.2 AA tag set rather than only the default rules. A full run on a route the gate does not cover will produce findings. Do NOT widen the CI rule set this run — rank, and leave widening to a later plan. Same sequencing as `bkit-audit-dead-code`: report first, gate later. **Done when:** `Full Rules` counts per route and theme, each violation dispositioned.
-- [ ] **Step 6 — Routes:** Diff the gate's route list against every route. On each auth route, check WCAG 2.2 3.3.8 Accessible Authentication directly: paste works in every password and code field; each field carries its `autocomplete` token (`email`, `current-password`, `new-password`, and `one-time-code` on any code field), which also satisfies 1.3.5 Identify Input Purpose; any CAPTCHA has an alternative that is not a cognitive test; note whether a magic-link or passkey sign-in exists. **Done when:** `Routes` row per route: in gate / not, and a 3.3.8 line per auth route.
-- [ ] **Step 7 — Emails:** Invitation, sign-up confirmation, and inbound-reply emails are part of the flow. Per message: `lang` set, a plain-text part or a real text alternative, images have alt text, layout tables carry `role="presentation"`, link text makes sense out of context, and text meets contrast. **Done when:** `Emails` row per message, or no email surface in `Checked`.
-- [ ] **Step 8 — Manual:** None of this is automatable. One pass per run on the primary flows (sign-in → first screen → create the main object → its calendar or list):
-  - Keyboard only. Every interactive control reachable, in a sensible order, with a visible focus indicator. Nothing reachable that should not be. No trap.
-  - Focus management. Dialogs and popovers take focus, restore it on close, and do not strand it.
-  - Screen reader. Names, roles, states — particularly on custom controls. A `div` with a role is where a name goes missing.
-  - Assistive-technology matrix. Each pair: NVDA with Chrome and with Firefox; JAWS with Chrome; VoiceOver with Safari on macOS; VoiceOver on iOS in Safari and in the native app; TalkBack in Chrome and in the native app on Android. Then one flow with Voice Control (iOS) or Voice Access (Android), and one with Switch Control. Record each version. Which pairs matter comes from the latest WebAIM Screen Reader User Survey; re-read it when a new one is published, and record the figure and year.
-  - Composite widgets against the WAI-ARIA APG pattern they imitate: grid with arrow-key navigation, popover as dialog or disclosure, picker as listbox or combobox, tabs, and menus. Roles, keys, and focus match the pattern.
-  - Status messages (4.1.3). Toasts, async processing state, save confirmations, and form errors are announced through `aria-live` or `role="status"` without moving focus. A toast that dismisses itself stays long enough to read, or can be paused (2.2.1).
-  - Page structure. A skip link to the main content (2.4.1); a unique page title per route and locale (2.4.2); link text that says where it goes (2.4.4).
-  - Colour alone (1.4.1). Items told apart by colour also carry initials, an icon, or a pattern. Automated contrast cannot see this.
-  - Non-text contrast (1.4.11). Automated tools often skip it. Both themes: focus indicators, input borders, outlines, toggles, and icons reach 3:1 against what is next to them.
-  - Forced colours and increased contrast. `forced-colors: active`, and the platforms' Increase Contrast settings. Custom-drawn controls and focus rings are the usual casualties.
-  - Zoom and reflow. 200% zoom and a 320px viewport without horizontal scroll or lost content (1.4.10).
-  - Text spacing (1.4.12). Line height 1.5, paragraph spacing 2×, letter spacing 0.12em, and word spacing 0.16em; nothing clipped or overlapping.
-  - Content on hover or focus (1.4.13). Dismiss with Esc, hover without vanishing, and stay until dismissed.
-  - Orientation and text size. No orientation lock unless essential (1.3.4). Text resizes to 200% without loss (1.4.4), separate from the 320px reflow check.
-  - Reduced motion. `prefers-reduced-motion` respected by the animation surfaces.
-  - Motion and flashing. No animation that starts by itself and runs longer than 5 seconds without a way to pause it (2.2.2), and nothing that flashes (2.3.1). On native, Reduce Motion is respected through the platform API.
+- [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
+- [ ] **Step 2 — Gate:** Open gate specs and helpers. Record in `Gate`: checker rule set; route list + ready/settle selectors per route; each allowlist; gate-pinned vs audit-run checker version; rules checker changelog adds since previous report version (pinned old version under-reports newer WCAG 2.2 rules). Scope everything below against snapshot. **Done when:** snapshot in `Gate`, or no gate recorded.
+- [ ] **Step 3 — Laws:** Which laws apply = owner decision; record or unmade (`Project Instructions` names questions). Law requiring public accessibility statement, service info, feedback channel → check they exist. Statement wording vs behaviour → `bkit-audit-privacy`. **Done when:** `Laws` row per regime: applies · why · statement.
+- [ ] **Step 4 — Allowlists:** Per-offender keys, never runtime hash, never rule downgrade or route exclusion. Honest only if each entry re-read. Per entry: offender still there, reason still true, fixable now? No expiry/owner = permanent exemption = finding. Policy "new entry = finding, not fix" (`Project Instructions`) → new entry = finding. Stale (offender gone, key remains) = finding. **Done when:** `Allowlists` row per entry: still present · reason true · expiry or owner · verdict. Empty → one row `none`, key shape noted.
+- [ ] **Step 5 — Full Rules:** Gate runs small rule set as hard gate. This audit: everything report-only — no rule restriction, every route, both themes, WCAG 2.2 AA tag set not just defaults. Full run on gate-uncovered route → findings. Do NOT widen CI rule set — rank; widening = later plan. Same sequencing as `bkit-audit-dead-code`: report first, gate later. **Done when:** `Full Rules` counts per route and theme, each violation dispositioned.
+- [ ] **Step 6 — Routes:** Diff gate route list vs every route. Each auth route: WCAG 2.2 3.3.8 Accessible Authentication — paste in every password/code field; `autocomplete` (`email`, `current-password`, `new-password`, `one-time-code` on code fields, also 1.3.5); CAPTCHA alternative not cognitive test; note magic-link/passkey sign-in. **Done when:** `Routes` row per route: in gate / not, 3.3.8 line per auth route.
+- [ ] **Step 7 — Emails:** Invitation, sign-up confirmation, inbound-reply in flow. Per message: `lang`; plain-text or real text alternative; image alt; layout tables `role="presentation"`; link text out of context; contrast. **Done when:** `Emails` row per message, or no email surface in `Checked`.
+- [ ] **Step 8 — Manual:** Not automatable. One pass per run on primary flows (sign-in → first screen → create main object → calendar or list):
+  - Keyboard only: every control reachable, sensible order, visible focus; nothing reachable that should not be; no trap.
+  - Focus management: dialogs/popovers take focus, restore on close, no strand.
+  - Screen reader: names, roles, states — custom controls; `div` + role = common missing name.
+  - Assistive-technology matrix: NVDA+Chrome, NVDA+Firefox; JAWS+Chrome; VoiceOver+Safari macOS; VoiceOver iOS Safari + native app; TalkBack Chrome + native Android; one flow Voice Control (iOS) or Voice Access (Android); one Switch Control. Record versions. Pairs from latest WebAIM Screen Reader User Survey — re-read new editions; record figure and year.
+  - Composite widgets vs WAI-ARIA APG: grid (arrow keys), popover (dialog/disclosure), picker (listbox/combobox), tabs, menus — roles, keys, focus match pattern.
+  - Status messages (4.1.3): toasts, async state, save confirmations, form errors via `aria-live` or `role="status"` without moving focus; self-dismissing toast readable duration or pausable (2.2.1).
+  - Page structure: skip link to main (2.4.1); unique title per route/locale (2.4.2); link text names destination (2.4.4).
+  - Colour alone (1.4.1): colour-only distinction also has initials, icon, or pattern — contrast tools miss this.
+  - Non-text contrast (1.4.11): both themes — focus, borders, outlines, toggles, icons ≥3:1 vs adjacent; tools often skip.
+  - Forced colours / increased contrast: `forced-colors: active`, platform Increase Contrast — custom controls and focus rings usual failures.
+  - Zoom/reflow: 200% zoom, 320px viewport — no horizontal scroll or lost content (1.4.10).
+  - Text spacing (1.4.12): line-height 1.5, paragraph spacing 2×, letter 0.12em, word 0.16em — nothing clipped/overlapping.
+  - Content on hover/focus (1.4.13): Esc dismiss, hover without vanish, persist until dismissed.
+  - Orientation/text size: no orientation lock unless essential (1.3.4); text 200% without loss (1.4.4), separate from 320px reflow.
+  - Reduced motion: `prefers-reduced-motion` on animation surfaces.
+  - Motion/flashing: no >5s self-starting animation without pause (2.2.2); no flashing (2.3.1). Native: Reduce Motion via platform API.
 
   **Done when:** `Manual` row per pass: met / finding / not checked (which pair).
 
-- [ ] **Step 9 — Sessions:** Once a year, 3 to 5 people who use assistive technology every day walk the primary flow. Expert review misses their strategies; many screen-reader users move by headings first (latest WebAIM survey — record the figure). Record the date of the last session and when the next is due. None yet → due now, not a pass. **Done when:** `Sessions` holds last date, next due, and barriers, or `due now`.
-- [ ] **Step 10 — Additions:** WCAG 2.2 criteria are the likeliest gaps:
-  - 2.5.7 Dragging Movements — every drag has a single-pointer alternative.
-  - 2.4.11 Focus Not Obscured — sticky headers and footers can cover a focused element.
+- [ ] **Step 9 — Sessions:** Yearly, 3–5 daily assistive-technology users on primary flow. Expert review misses their strategies; many screen-reader users navigate by headings first (WebAIM survey — record figure). Record last session date and next due. None yet → due now, not pass. **Done when:** `Sessions` holds last date, next due, barriers, or `due now`.
+- [ ] **Step 10 — Additions:** WCAG 2.2 likeliest gaps:
+  - 2.5.7 Dragging Movements — every drag has single-pointer alternative.
+  - 2.4.11 Focus Not Obscured — sticky headers/footers can cover focus.
   - 3.2.6 Consistent Help and 3.3.7 Redundant Entry across multi-step flows.
-  - 2.5.8 Target Size (Minimum) — the 24px floor, distinct from any larger house convention the gate enforces.
+  - 2.5.8 Target Size (Minimum) — 24px floor, distinct from larger house convention gate may enforce.
 
   **Done when:** `Additions` line per criterion: met / finding / not applicable (why).
 
-- [ ] **Step 11 — Layout:** Same screens, and nothing else owns them. Text that fits in the source language breaks first when translations are longer.
-  - Hardcoded strings. Re-read each exception a CI guard allows: is the reason still true? A string a person reads, with no reason, = finding. Authoring the translation is a plan, not this run.
-  - Longer text. Fixed widths, single-line truncation, and buttons sized to the source-language label. Walk the primary flow in the pseudo-locale and in the longest shipped locale, on web and on native.
-  - Right-to-left. Physical `left` / `right` and physical margin or padding sides where logical `start` / `end` is meant; icons that should mirror and do not.
-  - Type floor. Font sizes in `px` that do not scale with the user's text size, anything below 12px, and native text that does not follow the system font size.
-  - Off-scale values. Colours and spacing that bypass design tokens. A raw-colour contract does not cover spacing or sizes.
-  - Layout-shift causes. Images and media without width and height. CLS numbers → `bkit-audit-app-performance`.
-  - Breakpoints. Each primary screen at phone, tablet, and desktop widths, not only the 320px reflow check.
-  - Before a colour or sizing defect, ask whether the value is duplicated. A duplicated colour or spacing value is a finding here and is named for `bkit-audit-duplication`. The design-doc palette table is the reference a fix edits first.
+- [ ] **Step 11 — Layout:** Same screens; nothing else owns them. Source-language text breaks first when translations longer.
+  - Hardcoded strings: re-read each CI guard exception — reason still true? User-facing string without reason = finding. Translation authoring = plan, not this run.
+  - Longer text: fixed widths, single-line truncation, buttons sized to source label. Primary flow in pseudo-locale and longest shipped locale, web and native.
+  - RTL: physical `left`/`right`, physical margin/padding where logical `start`/`end`; icons that should mirror and do not.
+  - Type floor: `px` fonts not scaling with user text size; <12px; native text ignoring system font size.
+  - Off-scale: colours/spacing bypassing design tokens; raw-colour contract does not cover spacing/sizes.
+  - Layout-shift causes: images/media without width/height. CLS → `bkit-audit-app-performance`.
+  - Breakpoints: each primary screen phone, tablet, desktop — not only 320px reflow.
+  - Before colour/sizing defect: value duplicated? Duplicated colour/spacing = finding here + name for `bkit-audit-duplication`. Design-doc palette table = reference fix edits first.
 
   **Done when:** `Layout` row per check: met / finding.
 
-- [ ] **Step 12 — Native:** Native UI → shared controls carry a name, role, and state (e.g. `accessibilityLabel`, `accessibilityRole`, `accessibilityState`). Screen reader over the same primary flow. Platform splits (`.native` / `.web`) have not diverged in labelling. Where a shared component fixed a web bug, confirm the native twin got it — references on both consumers; text search corroborates, because a language server under-reports. Then the platforms' own automated audits, report-only, on each primary-flow screen: iOS Accessibility Inspector, or `performAccessibilityAudit()` in an XCUITest where the OS supports it; Android Accessibility Scanner, or Espresso's Accessibility Test Framework. Text scaling: largest accessibility text size, and the 200% font maximum (large-text scaling is not linear, e.g. Android 14 and later). Content text is not clipped or overlapped. Search `allowFontScaling={false}` and a low `maxFontSizeMultiplier` on content text; each is a finding unless the reason is recorded. Map results onto the platform's nutrition-label criteria (`Project Instructions`). A label can be declared only when people can complete common tasks with that feature; larger text needs text to reach at least 200%. Record which labels could honestly be declared. Declaring them → `bkit-audit-app-store`. **Done when:** `Native` holds label parity, audit rows, scaling, and the label map, or no native UI in `Checked`.
-- [ ] **Step 13 — Gate Proof:** The vacuous-assertion class is specific to this surface: a checker run against an unmounted subtree passes, and an unmatched locator can be a passing assertion. Confirm the gate's own self-checks still fail closed — the injected failure is reported, and the injected undersize shows the rule executed, not merely that a violation was absent when the rule's alternatives can pass an isolated node. Each route's settle selector still resolves after the content it guards actually renders, including content that mounts later than the skeleton. A refactored route can go back to measuring a skeleton. **Done when:** self-check results in `Gate`, or no gate recorded.
-- [ ] **Step 14 — Criteria:** Automated rules cover a minority of WCAG's success criteria, and `Manual` and `Additions` check a chosen subset. For the primary flows, on web and native, record pass, fail, or not applicable for every WCAG 2.2 Level A and AA criterion. Reuse what earlier steps established, naming the step, and check the rest by hand. Each fail is a finding. **Done when:** `Criteria` has no empty criterion.
-- [ ] **Step 15 — Standards:** Confirm current version per anchor standard; read changes since previous report's version. `Standards Coverage`: one row per anchor standard and per WCAG 2.2 Level A and AA success criterion → checked (name step; reuse `Criteria`) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
-- [ ] **Step 16 — Anything Else:** (a) Everything changed since previous report's commit touching accessibility (routes, shared controls and their `.web` / `.native` twins, the palette and design tokens, animations, emails, the gate's rule set, route list, and allowlists, and the checker version) → one-line verdict each. (b) Bounded ~30 min pass: what a senior accessibility specialist flags that no step asks; read what happened since previous run (incidents, new `docs/failures.jsonl` rows, log-audit output from `bkit-audit-logs`, vendor status incidents) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class seen on 2 runs → propose step in `Process Improvements`.
+- [ ] **Step 12 — Native:** Native UI → shared controls: name, role, state (e.g. `accessibilityLabel`, `accessibilityRole`, `accessibilityState`). Screen reader on same primary flow. `.native`/`.web` splits not diverged in labelling. Shared component fixed web bug → confirm native twin (consumer refs both ways; text search — language server under-reports). Platform automated audits report-only per primary-flow screen: iOS Accessibility Inspector or `performAccessibilityAudit()` in XCUITest; Android Accessibility Scanner or Espresso Accessibility Test Framework. Text scaling: largest accessibility text size + 200% font max (large-text scaling non-linear, e.g. Android 14+). Content not clipped/overlapped. Search `allowFontScaling={false}`, low `maxFontSizeMultiplier` on content text — finding unless reason recorded. Map to platform nutrition-label criteria (`Project Instructions`); declare only if common tasks completable with that feature; larger text needs ≥200%. Record honest labels; declaring → `bkit-audit-app-store`. **Done when:** `Native` holds label parity, audit rows, scaling, label map, or no native UI in `Checked`.
+- [ ] **Step 13 — Gate Proof:** Vacuous-assertion class: checker on unmounted subtree passes; unmatched locator can pass assertion. Confirm gate self-checks fail closed — injected failure reported, injected undersize proves rule ran (not merely no violation when alternatives pass isolated node). Each route settle selector resolves after guarded content renders, including post-skeleton mount. Refactored route may measure skeleton again. **Done when:** self-check results in `Gate`, or no gate recorded.
+- [ ] **Step 14 — Criteria:** Automated rules cover minority of WCAG success criteria; `Manual` + `Additions` = chosen subset. Primary flows web + native: pass/fail/N/A every WCAG 2.2 Level A and AA criterion. Reuse earlier steps (name step); hand-check rest. Each fail = finding. **Done when:** `Criteria` has no empty criterion.
+- [ ] **Step 15 — Standards:** Current version per anchor standard; read changes since previous report. `Standards Coverage`: row per anchor + per WCAG 2.2 A/AA criterion → checked (name step; reuse `Criteria`) / not applicable (why) / finding. Unapplied recommended practice → adopt (propose step) / reject (why) / not applicable. **Done when:** no empty row.
+- [ ] **Step 16 — Anything Else:** (a) Since previous report commit touching accessibility (routes, shared controls + `.web`/`.native` twins, palette/tokens, animations, emails, gate rule set/route list/allowlists, checker version) → one-line verdict each. (b) ~30 min bounded: senior specialist flags no step asks; read since previous run (incidents, new `docs/failures.jsonl`, `bkit-audit-logs`, vendor status) — what would no step catch? **Done when:** `Beyond the Steps` holds both passes, or `none`. Class on 2 runs → propose step in `Process Improvements`.
 
 ### 🔒 Gate 2: Probes Check
 
