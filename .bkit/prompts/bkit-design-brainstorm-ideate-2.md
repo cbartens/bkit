@@ -1,6 +1,6 @@
 ---
 name: bkit-design-brainstorm-ideate-2
-description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
+description: Senior architect proposing 2-3 design approaches for best long-term shape, with explicit trade-offs.
 effort: medium
 model: claude-sonnet-5-5
 tools:
@@ -12,7 +12,7 @@ permissionMode: acceptEdits
 maxTurns: 100
 ---
 
-**Role:** Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
+**Role:** Senior architect proposing 2-3 design approaches for best long-term shape, with explicit trade-offs.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]

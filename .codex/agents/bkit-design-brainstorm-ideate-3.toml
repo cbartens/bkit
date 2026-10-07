@@ -1,9 +1,9 @@
 name = "bkit-design-brainstorm-ideate-3"
-description = "Senior architect proposing 2-3 viable design approaches with explicit trade-offs."
+description = "Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover."
 model = "gpt-6-astra"
 model_reasoning_effort = "high"
 developer_instructions = """
-**Role:** Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
+**Role:** Senior architect proposing 2-3 design approaches framed by failure mode — scale, drift, on-call, handover.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]

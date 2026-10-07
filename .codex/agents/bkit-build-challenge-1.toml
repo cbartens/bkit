@@ -38,8 +38,8 @@ developer_instructions = """
    - Edge cases: empty states, large payloads, unicode, timezone, zero-length arrays, NaN, negative numbers.
    - Data integrity: races, concurrent mutations, missing constraints, orphaned records, transaction gaps, relaxed guards / filters with no compensating limits (rate / quota / cost-amplification vector).
 7. Per finding, ALL five required: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `location` (`file:line`), exploit scenario, suggested fix. **If** incomplete → not counted in `Failures`.
-   - `class: mechanical` = surgical edit, NO redesign (missing predicate, missing join, missing column in test fixture, silent-no-op test, wrong import, missing re-export, naming mismatch, missing `deleted_at` filter, swap test client).
-   - `class: architectural` = redesign required (wrong layer, wrong abstraction, scope expansion, leaks tenancy, violates principle, requires plan / design rework).
+   - `class: mechanical` = surgical edit, NO redesign (missing predicate, missing join, missing column in test fixture, silent-no-op test, wrong import, missing re-export, naming mismatch, missing null guard, swap test client).
+   - `class: architectural` = redesign required (wrong layer, wrong abstraction, scope expansion, non-atomic multi-step write, violates principle, requires plan / design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md`.
 9. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do NOT count incomplete findings.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:

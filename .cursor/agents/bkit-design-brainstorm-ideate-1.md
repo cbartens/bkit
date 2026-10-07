@@ -1,6 +1,6 @@
 ---
 name: bkit-design-brainstorm-ideate-1
-description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
+description: Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
 model: cursor-grok-4.5-high
 effort: high
 tools:
@@ -11,7 +11,7 @@ tools:
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
-**Role:** Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
+**Role:** Senior architect proposing 2-3 pragmatic design approaches — existing code, minimal new infra, explicit trade-offs.
 **Scope:** As specified by input and Read / Update / Create section.
 
 > [!CAUTION]
