@@ -15,8 +15,9 @@
  * template is bumped alongside it.
  *
  * Scope notes:
- *   - Floating tags (`@v4`) are out of scope — `bkit-cloud.yml` uses them by
- *     design on both sides (`docs/deployments.md` § GitHub Actions pinning).
+ *   - Floating refs (`@v4`, `@main`) fail outright: every third-party `uses:` in
+ *     a shipped template is SHA-pinned (`docs/deployments.md` § GitHub Actions
+ *     pinning), so the template ships exactly what bkit runs.
  *   - Template-only actions (nothing in `.github/workflows/` uses them) have no
  *     reference pin to compare against and are skipped.
  */
@@ -35,10 +36,7 @@ const TEMPLATE_WORKFLOWS = path.join(REPO_ROOT, ".bkit/templates/.github/workflo
  * record, not an oversight — which is the whole difference this test buys. Remove
  * the entry when the template is bumped.
  */
-const HELD_BACK: Record<string, string> = {
-  "actions/setup-node":
-    "repo pins v7 with `node-version-file: .nvmrc`; the template passes `node-version: {{NODE_VERSION}}`, so the v6 -> v7 major needs verifying against that input before it ships to consumers",
-};
+const HELD_BACK: Record<string, string> = {};
 
 const PIN_RE = /uses:\s*([a-zA-Z0-9._/-]+)@([0-9a-f]{40})\s*#\s*(\S+)/g;
 
@@ -76,6 +74,24 @@ describe("shipped CI templates track the repo's own action pins", () => {
   it("finds SHA-pinned actions on both surfaces", () => {
     expect(pins(REPO_WORKFLOWS).size).toBeGreaterThan(0);
     expect(pins(TEMPLATE_WORKFLOWS).size).toBeGreaterThan(0);
+  });
+
+  it("every template `uses:` is SHA-pinned with a tag comment", () => {
+    // Commented-out stubs count: consumers uncomment them as shipped.
+    const unpinned: string[] = [];
+    for (const entry of fs.readdirSync(TEMPLATE_WORKFLOWS)) {
+      if (!entry.endsWith(".yml") && !entry.endsWith(".yaml")) continue;
+      const lines = fs.readFileSync(path.join(TEMPLATE_WORKFLOWS, entry), "utf-8").split("\n");
+      lines.forEach((line, i) => {
+        if (!/uses:\s*[^\s@]+@/.test(line)) return;
+        if (/uses:\s*[a-zA-Z0-9._/-]+@[0-9a-f]{40}\s*#\s*\S+/.test(line)) return;
+        unpinned.push(`${entry}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(
+      unpinned,
+      "pin each to `@<40-char-sha> # vX.Y.Z` (`git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`)",
+    ).toEqual([]);
   });
 
   it("every template pin is one the repo actually runs", () => {

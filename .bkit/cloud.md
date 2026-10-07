@@ -406,7 +406,7 @@ Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/work
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action@v1` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `BKIT_ANTHROPIC_API_KEY`. Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
+| **Claude** | `.github/workflows/bkit-cloud.yml` — `claude` job (opt-in via `bkit install --auto=claude`; GitHub-tracker only). Two-tier gate: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `BKIT_ANTHROPIC_API_KEY`. Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. |
 | **opencode** | Same `.github/workflows/bkit-cloud.yml` — `opencode` job (opt-in via `bkit install --auto=opencode`; GitHub-tracker only). Same two-tier gate (same file, separate job). Dispatches via `opencode run "/bkit-auto $PHASE $ARG"`. No `id-token: write` — no OIDC; uses `github.token` for repo ops. | GitHub repo secret: `OPENCODE_PROVIDER_KEY` (set to your provider API key). Provider model committed in `.opencode/opencode.json`. The linked **GitHub issue** must carry `bkit:auto`. |
 | **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
 
@@ -420,7 +420,7 @@ Routing **logic** in single bkit-managed slash-command orchestrator (`.bkit/work
 
 ## Claude — required GitHub Actions permissions
 
-Flip **both** org and repo before first router run — else `actions/checkout@v4` 403s with `Write access to repository not granted`. Workflow declares `permissions: contents: write` at workflow scope, but org/repo "Workflow permissions" ceiling overrides — repo cannot exceed org.
+Flip **both** org and repo before first router run — else `actions/checkout` 403s with `Write access to repository not granted`. Workflow declares `permissions: contents: write` at workflow scope, but org/repo "Workflow permissions" ceiling overrides — repo cannot exceed org.
 
 - **Org**: `https://github.com/organizations/{ORG}/settings/actions` → Workflow permissions → **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.
 - **Repo**: `https://github.com/{ORG}/{REPO}/settings/actions` → same section, same two settings. Apply at repo too — inheriting from org not automatic.
@@ -432,7 +432,7 @@ Flip **both** org and repo before first router run — else `actions/checkout@v4
 <!-- prettier-ignore -->
 | Secret | Job | Why | Scope |
 | --- | --- | --- | --- |
-| `BKIT_ANTHROPIC_API_KEY` | `claude` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
+| `BKIT_ANTHROPIC_API_KEY` | `claude` | `claude-code-action` authenticates against Anthropic. | API key with Claude Code access. |
 | `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`, `BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
 
 Each job independently gated on its secret. Only `BKIT_ANTHROPIC_API_KEY` → claude job only. Only `OPENCODE_PROVIDER_KEY` → opencode only. Both → both jobs (additive coexistence). **No `BKIT_LINEAR_API_KEY`** — `bkit-cloud.yml` GitHub-tracker only for both jobs. Workflow grants `id-token: write` per-job for claude only (opencode no OIDC).

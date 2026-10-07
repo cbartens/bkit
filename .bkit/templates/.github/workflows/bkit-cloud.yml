@@ -136,9 +136,9 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` fences this file off
-      # from consumer-side Renovate; new SHAs arrive via `bkit install`.
-      - uses: actions/checkout@v4
+      # SHA pins in this file — the bkit-shipped `renovate.json5` fences it off from
+      # consumer-side Renovate; new SHAs arrive via `bkit install`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
           # Check out `dev` at the workspace root: the cloud orchestrator writes its own
@@ -523,7 +523,7 @@ jobs:
 
       - name: Dispatch /bkit-auto on Claude Code runner
         if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1.0.244
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
           # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
@@ -576,7 +576,7 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
           ref: dev

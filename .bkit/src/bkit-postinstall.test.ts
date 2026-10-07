@@ -1229,12 +1229,12 @@ describe("detectGhaFloatingTags", () => {
   });
 
   // Issue #124 — bkit-canonical workflow files (listed in `.bkit-version`)
-  // intentionally use tag-only pins. The shipped `renovate.json5` adds a
+  // carry bkit-owned pins. The shipped `renovate.json5` adds a
   // packageRule with `matchFileNames` for bkit-managed workflow files so
   // consumer-side Renovate stays out of them; consumers receive new
   // SHAs/versions via `bkit install`, not via their own Renovate. The
   // floating-tag advisory must skip them; otherwise consumers "remediate"
-  // the canonical file straight back into the collision the design is preventing.
+  // a file `bkit install` overwrites on the next run.
   it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });

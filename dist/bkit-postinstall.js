@@ -1188,10 +1188,10 @@ export function detectTestIntegrationEnv(cwd) {
  * SHA pins for any workflow that runs with elevated permissions.
  *
  * bkit-canonical workflow files (those tracked in `.bkit/version`
- * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
- * ship tag-only pins. The example updater configs ignore
- * `.github/workflows/bkit-cloud.yml` so a consumer's Renovate or Dependabot
- * does not re-pin a file `bkit install` rewrites.
+ * under `canonicalHashes` or `tier3Hashes`) are exempt — bkit owns their pins
+ * and `bkit install` rewrites them, so a consumer edit would be overwritten.
+ * The example updater configs ignore `.github/workflows/bkit-cloud.yml` for
+ * the same reason.
  */
 export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");

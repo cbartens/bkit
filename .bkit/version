@@ -6,7 +6,7 @@
     ".github/workflows/bkit-cloud.yml": "97a0630191f21d9ff9a409213a155f31a5f0b8d3bcb8740fa45dd8e8bd00cefa"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "bd60130ce034f7c33c22d6259130290804c1e83bbb2a7ccfc0be57be9d36e7eb",
+    "docs/deployments.md": "93b6f26a9940fbfce14ba2b360beb2354e54e9ee68616b7b21013c7dcbb25cd0",
     "docs/testing.md": "ea1b59fe2f90930793d2d0307eaca58854c9cd8518fb43c021d0f31affeb97bc",
     ".claude/settings.json": "b86a61cefdfbb8f7632823f8c8799c02581068b0d4a1a98091c87abb1c98e325",
     ".husky/pre-push": "ac46db2b540d08cd5801055a072d518e8238b38d8dfc5aeaccdce9f7524fec40",
@@ -28,7 +28,7 @@
     ".vale.ini": "e688090b16a46c51edb2c9e01f2451d18336357ea4e8a1e662ab3674af7d7b6d",
     "AGENTS.md": "e18f55c531a687a0337042f70621079f9cd6a25ebafed387990f25f68eda5096",
     "CLAUDE.md": "d26a6649753e6b646f6c65c7d623826e61022a9b7084e6eb8bdbcaa601131016",
-    "docs/setup.md": "a90bded7542c5695e224a3f1f0f4080f404db4284e76c7fa3d2dc9ead129e587",
+    "docs/setup.md": "3da71ce67c639eb976d218b26ed5d81cda34b574e458582f7fde2fe513aeb2d8",
     "docs/data-schema.md": "ff38f013bbcb9ba53a7fffc9cca6ab3ab151bf9492f6264310b1444c6d00ab91",
     "slop-scan.config.json": "1021583fde34ef4cf6443a07740c12eb1753c18b6dc60e97ff43d87366643750",
     ".gitattributes": "dedac86da95e7b8d325ede30e6cecce26d4b1e62d5128466418fba001dc05d87",
@@ -43,7 +43,7 @@
     ".mcp.json": "65b29f1bb28dd6296d1dc8ea34aca4826d9ca072d7cef9d2971a7045280505d9",
     "docs/architecture.md": "35ba818b2b2b4ce52a33ff8645985b691b8281baee0321738f0365d73f7321b5",
     "docs/technology.md": "7ce34dc5a1880f9262a5daab3978af5892d5bcb7e759b6d1898e84b37093035a",
-    ".github/workflows/bkit-cloud.yml": "30e793d337979b9bfcce4505f18cc4cef803fc85d18c926385304c6f19254ca2",
+    ".github/workflows/bkit-cloud.yml": "159dd47ea7aba986b3f8aff2cef312b2982e122c1237eb22571d839d9ae39adf",
     ".claude/hooks/gateguard.cjs": "95575607c69acc4d5d0621c04c1237727f378e8abf56023e9512284b38d0191d",
     ".bkit/.env.example": "dbb483b1ac7b5699cb725e290861a241342b4dbcaf430dcba78b6fb6e32f8018",
     ".opencode/opencode.json": "2208108050c229c375839f8ca09d302f736ecb7972be070c99b10bb70d1e0990",

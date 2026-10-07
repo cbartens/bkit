@@ -550,7 +550,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM secret |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `BKIT_ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` |
+| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `BKIT_ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` |
 | `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
 
 **Rules:**
