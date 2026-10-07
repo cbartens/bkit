@@ -801,3 +801,30 @@ bkit_close_transport_row() {
     --arg at "$_bct_at" \
     '{type:"close-transport",shape:$shape,sha:$sha,scanResult:$scanResult,at:$at}'
 }
+
+# ---------------------------------------------------------------------------
+# bkit_resolve_gate GATE...
+#
+# Picks the local gate a workflow runs: the first GATE package.json declares,
+# so callers pass candidates DEEPEST first (order is the contract —
+# bkit-local-gate-audit.test.ts). Shared by build Step 7 (sub-plan boundary),
+# build Step 14 and debug Step 3 so the probe exists once.
+#
+# Sets (current shell only — re-call per block):
+#   TEST_SCOPE   "pnpm <gate>", or "" when nothing resolved
+#
+# Prints `TEST_SCOPE=<value>` on success. Returns 2 when no GATE is declared:
+# an empty scope reaching `eval ""` exits 0 and records a gate that ran
+# nothing, so callers MUST stop on the non-zero return.
+# ---------------------------------------------------------------------------
+bkit_resolve_gate() {
+  TEST_SCOPE=""
+  for _brg_gate in "$@"; do
+    if jq -e --arg g "$_brg_gate" '.scripts[$g]' package.json >/dev/null 2>&1; then
+      TEST_SCOPE="pnpm $_brg_gate"
+      break
+    fi
+  done
+  [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; return 2; }
+  echo "TEST_SCOPE=$TEST_SCOPE"
+}

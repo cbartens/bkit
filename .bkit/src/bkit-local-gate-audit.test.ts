@@ -94,9 +94,11 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
   [".bkit/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they build the call from the
-  // descending probe (`TEST_SCOPE="pnpm $g"`), so no literal appears. The PROBES
+  // descending probe (`bkit_resolve_gate`), so no literal appears. The PROBES
   // block below covers them, including the fail-loud branch.
 ];
+
+const RUNTIME_SH = path.resolve(REPO_ROOT, ".bkit/templates/.bkit/scripts/bkit-runtime.sh");
 
 describe("bkit-local-gate-audit (#437)", () => {
   describe("no toolchain command is inlined at a call site", () => {
@@ -150,11 +152,64 @@ describe("bkit-local-gate-audit (#437)", () => {
 
       it("fails loud when no candidate is declared, never silently skipping", () => {
         // The defect this whole issue exists to kill: an unresolved gate must not
-        // reach `eval ""`, which exits 0 and reads as a clean run.
-        expect(body).toContain('[ -n "$TEST_SCOPE" ] ||');
+        // reach `eval ""`, which exits 0 and reads as a clean run. The probe lives
+        // in bkit_resolve_gate; every call site must stop on its non-zero return.
+        const calls = body.split("\n").filter((l) => l.includes("bkit_resolve_gate"));
+        expect(calls.length).toBeGreaterThan(0);
+        for (const call of calls) expect(call.trimEnd()).toMatch(/\|\| exit 2$/);
       });
     });
   }
+
+  it("bkit_resolve_gate returns non-zero and leaves TEST_SCOPE empty when nothing resolves", () => {
+    const body = fs.readFileSync(RUNTIME_SH, "utf-8");
+    const fn = body.slice(body.indexOf("bkit_resolve_gate() {"));
+    expect(fn).toContain('TEST_SCOPE=""');
+    expect(fn).toContain('[ -n "$TEST_SCOPE" ] || {');
+    expect(fn.slice(0, fn.indexOf("\n}"))).toContain("return 2");
+  });
+
+  // #457. Build runs its gate at every sub-plan boundary, not only once at Step 14,
+  // so a sub-plan that breaks the tree is caught before the next one builds on it.
+  // Each clause below is load-bearing: drop the boundary call and the loop is
+  // gate-free again; drop a route and a red boundary either advances to the next
+  // sub-plan or never reaches the agent that can fix it.
+  describe("bkit-build.md gates every sub-plan boundary (#457)", () => {
+    const body = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+    const step7 = body.slice(
+      body.indexOf("### 🧠 Step 7 — Plan Verify"),
+      body.indexOf("### 🔒 Gate 7"),
+    );
+    const step8 = body.slice(
+      body.indexOf("### 🧠 Step 8 — Plan Gaps Remediate"),
+      body.indexOf("### 🔒 Gate 8"),
+    );
+    const resolve = `bkit_resolve_gate ${BKIT_BUILD_GATES.join(" ")} || exit 2`;
+
+    it("runs the same gate as Step 14, from Step 7, between sub-plans only", () => {
+      expect(step7).toContain(resolve);
+      expect(body.split(resolve).length - 1).toBe(2);
+      expect(step7).toContain(
+        "**If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 15.",
+      );
+      expect(step7).toContain('step:"build-subplan-gate"');
+    });
+
+    it("never advances past a red boundary", () => {
+      expect(step7).toContain("**If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:");
+      expect(step7).toContain(
+        "**If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL — run counter-bus routing:",
+      );
+    });
+
+    it("hands a red boundary to gaps-remediate with the gate log", () => {
+      expect(step8).toContain("**or** `BOUNDARY_VERDICT` = FAIL.");
+      expect(step8).toContain("build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present)");
+      expect(step8).toContain(
+        "**If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`.",
+      );
+    });
+  });
 
   it("only debug reaches the live tier, and only its deepest gate carries the `live` word", () => {
     // bkit-debug.md greps the recorded scope for the WORD `live` to decide

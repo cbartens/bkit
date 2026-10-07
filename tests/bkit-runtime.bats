@@ -763,6 +763,33 @@ EOF
   [ "$status" -eq 2 ]
 }
 
+@test "resolve_gate: picks the deepest declared candidate, not the first declared in package.json" {
+  DIR="$(mktemp -d)"
+  printf '{"scripts":{"bkit:gate:static-unit":"x","bkit:gate:static-unit-integration":"y"}}\n' > "$DIR/package.json"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && bkit_resolve_gate bkit:gate:static-unit-integration bkit:gate:static-unit && echo \"got=\$TEST_SCOPE\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"got=pnpm bkit:gate:static-unit-integration"* ]]
+  rm -rf "$DIR"
+}
+
+@test "resolve_gate: falls back to a shallower candidate when the deeper one is undeclared" {
+  DIR="$(mktemp -d)"
+  printf '{"scripts":{"bkit:gate:static-unit":"x"}}\n' > "$DIR/package.json"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && bkit_resolve_gate bkit:gate:static-unit-integration bkit:gate:static-unit && echo \"got=\$TEST_SCOPE\""
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"got=pnpm bkit:gate:static-unit"* ]]
+  rm -rf "$DIR"
+}
+
+@test "resolve_gate: fails loud (rc=2, empty TEST_SCOPE) when no candidate is declared — never hands eval an empty scope" {
+  DIR="$(mktemp -d)"
+  printf '{"scripts":{"test":"x"}}\n' > "$DIR/package.json"
+  run env -i PATH="$PATH" bash -c "cd '$DIR' && . '$RUNTIME_SH' && { bkit_resolve_gate bkit:gate:static-unit; rc=\$?; echo \"rc=\$rc scope=[\$TEST_SCOPE]\"; }"
+  [[ "$output" == *"rc=2 scope=[]"* ]]
+  [[ "$output" == *"no bkit:gate:* script declared"* ]]
+  rm -rf "$DIR"
+}
+
 @test "anchor: stamping two identical-content files with the same base yields cmp -s equal output (Close Workflow re-run regression guard)" {
   DIR="$(mktemp -d)"
   A="$DIR/a.md"

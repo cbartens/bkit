@@ -44,6 +44,7 @@ const EXEMPT_COMPUTED = new Set([
   "DOCS_VERDICT", // ship derives it from a `jq` SHIPPED-row assertion on .bkit/issues.jsonl
   "MERGE_VERDICT", // ship derives it from the merge outcome
   "TEST_VERDICT", // build/debug derive it from the test-run exit code
+  "BOUNDARY_VERDICT", // build derives it from the sub-plan boundary gate's exit code
   "FETCH_VERDICT", // debug derives it from context-fetch block outcomes
   "DEBUG_MODE", // routing mode, not an artifact verdict
   "DIAGNOSE_MODE",

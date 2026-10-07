@@ -41,7 +41,7 @@ maxTurns: 150
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read challenge findings (priority `CRITICAL` → `HIGH` → `MEDIUM` → `LOW`, class architectural → mechanical) and all logs (`DONE` = done, `BLOCKED` = blocked). Find first finding NOT `DONE`, resume.
+4. Read challenge findings (priority `CRITICAL` → `HIGH` → `MEDIUM` → `LOW`, class architectural → mechanical) and all logs (`DONE` = done, `BLOCKED` = blocked) → find first finding NOT `DONE` → resume.
 5. Update **Create** after each finding — append `DONE` / `BLOCKED` at EOF via Bash `echo {log entry} >> {output}`.
 6. ANY finding with `class` = architectural → append `BLOCKED` → proceed to next.
 7. Implement in priority order — apply suggested remediation per finding (edit / create source) → append log → next finding.

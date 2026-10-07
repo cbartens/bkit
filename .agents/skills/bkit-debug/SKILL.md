@@ -370,14 +370,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    DEBUG_ATTEMPT=$(jq -s -r "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    [ "$DEBUG_ATTEMPT" -gt 0 ] || exit 2
-   GATES="bkit:gate:static-unit-integration-e2e-live bkit:gate:static-unit-integration-e2e bkit:gate:static-unit"
-   grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md" 2>/dev/null && GATES="${GATES#* }"
-   TEST_SCOPE=""
-   for g in $GATES; do
-     jq -e --arg g "$g" '.scripts[$g]' package.json >/dev/null 2>&1 && TEST_SCOPE="pnpm $g" && break
-   done
-   [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; exit 2; }
-   echo "TEST_SCOPE=$TEST_SCOPE"
+   set -- bkit:gate:static-unit-integration-e2e-live bkit:gate:static-unit-integration-e2e bkit:gate:static-unit
+   grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md" 2>/dev/null && shift
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_resolve_gate "$@" || exit 2
    TEST_LOG="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-${DEBUG_ATTEMPT}.md"
    mkdir -p "$(dirname "$TEST_LOG")"
    eval "$TEST_SCOPE" 2>&1 | tee "$TEST_LOG"

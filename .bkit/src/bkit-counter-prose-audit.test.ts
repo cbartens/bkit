@@ -876,6 +876,7 @@ describe("#58 DEBUG_ATTEMPT off-by-one regression: every cross-run-fold derive s
 const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
+  "build-subplan-gate": ["build-plan-verify"],
   "build-challenge": ["build-challenge-remediate"],
   "build-challenge-reconcile": ["build-challenge-remediate"],
   "build-challenge-remediate": ["build-challenge-remediate"],
@@ -946,11 +947,11 @@ describe("#58 T5.4: mapping rule — each block derives the RIGHT counter, not m
     (f) => f.content !== "",
   );
 
-  it("COUNTER_STEP_MAP contains the 11 counter-!=-row entries and 6 counter-==-row entries (17 step-keyed references across 16 row-steps)", () => {
+  it("COUNTER_STEP_MAP contains the 12 counter-!=-row entries and 6 counter-==-row entries (18 step-keyed references across 17 row-steps)", () => {
     const keys = Object.keys(COUNTER_STEP_MAP);
-    expect(keys.length).toBe(16);
+    expect(keys.length).toBe(17);
     const totalRefs = Object.values(COUNTER_STEP_MAP).reduce((n, v) => n + v.length, 0);
-    expect(totalRefs).toBe(17);
+    expect(totalRefs).toBe(18);
   });
 
   it("real corpus: green after WS-3 — every deriving+row-writing block maps correctly", () => {

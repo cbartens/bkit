@@ -674,10 +674,52 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ### Step 7 — Plan Verify - Verdict: {VERIFY_VERDICT} - Failures: {VERIFY_FAILURES} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT}
     ```
     <!-- bkit:tracker true end -->
-14. **If** `VERIFY_VERDICT` = PASS:
+14. Route:
+    - **If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 15.
+    - **Else** → `BOUNDARY_VERDICT` = SKIPPED → sub-step 18.
+15. Run boundary gate:
+    ```bash
+    SUB_PLAN="{SUB_PLAN}"
+    REPO_ROOT=$(git rev-parse --show-toplevel)
+    . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
+    . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus.sh"
+    . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+    . "$REPO_ROOT/.bkit/scripts/bkit-context-clamp.sh" || { echo "[bkit] missing bkit-context-clamp.sh — run 'bkit install'" >&2; exit 2; }
+    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+    PARENT_SHA=$(git rev-parse HEAD)
+    VERIFY_ATTEMPT=$(counter_current "$STATUS" build build-plan-verify --sub-plan "$SUB_PLAN") || exit 2
+    bkit_resolve_gate bkit:gate:static-unit-integration bkit:gate:static-unit || exit 2
+    GATE_LOG="docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-${SUB_PLAN}-${VERIFY_ATTEMPT}.md"
+    eval "$TEST_SCOPE" > "$GATE_LOG" 2>&1 && BOUNDARY_VERDICT=PASS || BOUNDARY_VERDICT=FAIL
+    tail -n 40 "$GATE_LOG"
+    echo "BOUNDARY_VERDICT=$BOUNDARY_VERDICT"
+    CLAMP_LOG="$REPO_ROOT/tmp/bkit-clamp-{FID}-build-subplan-gate-${SUB_PLAN}-${VERIFY_ATTEMPT}.jsonl"
+    clamp_log_reset "$CLAMP_LOG" || exit 2
+    clamp_artifact "$GATE_LOG" debug-evidence "$CLAMP_LOG" || exit 2
+    CLAMPED=$(clamp_log_array "$CLAMP_LOG")
+    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$BOUNDARY_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg art "$GATE_LOG" --argjson c "$CLAMPED" \
+      '{type:"step-done", workflow:"build", step:"build-subplan-gate", status:"DONE", verdict:$v, scope:$sc, attempt:$a, subPlan:$sp, at:$t, parentSha:$p, artifacts:[$art], clamped:$c}' \
+      >> "$STATUS"
+    git add -A && git commit --allow-empty -m "chore({FID}): subplan-gate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
+    ```
+16. Extract `BOUNDARY_VERDICT` and `TEST_SCOPE` from run block `BOUNDARY_VERDICT=` / `TEST_SCOPE=` lines.
+17. <!-- bkit:tracker github start -->
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker true start -->
+    `{BODY}` = fenced block below:
+    ```comment
+    ###### bkit:generated
+    ### Step 7 — Boundary Gate - Verdict: {BOUNDARY_VERDICT} - Scope: {TEST_SCOPE} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT}
+    ```
+    <!-- bkit:tracker true end -->
+18. **If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:
     - **If** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → next `SUB_PLAN` → Step 6.
     - **Else** → Step 9.
-15. **If** `VERIFY_VERDICT` = CONCERNS or FAIL — run counter-bus routing:
+19. **If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL — run counter-bus routing:
     ```bash
     SUB_PLAN="{SUB_PLAN}"
     REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -691,7 +733,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     - **If** exit 0 (printed `step-7`) → Step 8.
     - **If** exit 1 (printed `failure-path`) → **Failure Path**.
     - **If** any other exit → **Failure Path**.
-16. **Else** → **Failure Path**.
+20. **Else** → **Failure Path**.
 
 ### 🔒 Gate 7 — Plan Verify
 
@@ -701,10 +743,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `Verdict` extracted and valid, failures extracted (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`; `VERIFY_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-plan-verify` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`)
+- [ ] Boundary verdict extracted and valid (`BOUNDARY_VERDICT` in `PASS|FAIL|SKIPPED`)
+- [ ] Boundary status updated (step `build-subplan-gate` recorded with `parentSha`, `verdict`, `scope`, `attempt`, `subPlan`)
 
 <!-- bkit:tracker true start -->
 
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 7` section; `Step 7 — Boundary Gate` section)
 
 <!-- bkit:tracker true end -->
 
@@ -712,9 +756,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 8 — Plan Gaps Remediate
 
-**Run only if** Step 7 `VERIFY_VERDICT` = CONCERNS or FAIL.
+**Run only if** Step 7 `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL.
 
-17. Read status.jsonl and extract `PRIOR_STRATEGY`:
+21. Read status.jsonl and extract `PRIOR_STRATEGY`:
     ```bash
     SUB_PLAN="{SUB_PLAN}"
     REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -724,14 +768,14 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     PRIOR_STRATEGY=$(route_last_strategy "$STATUS" build build-plan-gaps-remediate --sub-plan "$SUB_PLAN") || exit 2
     STRATEGY=$(ladder_next "$PRIOR_STRATEGY") || exit 2
     ```
-18. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
-    Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
+22. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
+    Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. `Strategy`: `{STRATEGY}`. **If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+    Read: `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
     Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
-19. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-20. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
-21. Update status and commit:
+23. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+24. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+25. Update status and commit:
     ```bash
     REMEDIATE_VERDICT="{REMEDIATE_VERDICT}"
     STRATEGY="{STRATEGY}"
@@ -747,7 +791,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
       >> "$STATUS"
     git add -A && git commit --allow-empty -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
-22. <!-- bkit:tracker github start -->
+26. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
@@ -760,7 +804,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ### Step 8 — Plan Gaps Remediate - Verdict: {REMEDIATE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT} - Strategy: {STRATEGY}
     ```
     <!-- bkit:tracker true end -->
-23. Re-run Step 7.
+27. Re-run Step 7.
 
 ### 🔒 Gate 8 — Plan Gaps Remediate
 
@@ -1101,13 +1145,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 2. Run verbatim — do NOT substitute the gate's contents for the script name:
    ```bash
-   GATES="bkit:gate:static-unit-integration bkit:gate:static-unit"
-   TEST_SCOPE=""
-   for g in $GATES; do
-     jq -e --arg g "$g" '.scripts[$g]' package.json >/dev/null 2>&1 && TEST_SCOPE="pnpm $g" && break
-   done
-   [ -n "$TEST_SCOPE" ] || { echo "[bkit] no bkit:gate:* script declared — run 'pnpm bkit install --typescript'" >&2; exit 2; }
-   echo "TEST_SCOPE=$TEST_SCOPE"
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_resolve_gate bkit:gate:static-unit-integration bkit:gate:static-unit || exit 2
    eval "$TEST_SCOPE"
    ```
 3. Decide `TEST_VERDICT` and `TEST_FAILURES` from exit code:
