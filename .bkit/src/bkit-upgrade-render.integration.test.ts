@@ -233,3 +233,36 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     ).toBeUndefined();
   }, 180_000);
 });
+
+describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
+  it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+
+    const install = runBkit(["install", "--claude"]);
+    expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+
+    // Whole-file managed: no manifest entry, no markers → drift-detected via diffFile.
+    const rel = ".bkit/scripts/bkit-ship-gate.sh";
+    const abs = path.join(tmpDir, rel);
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    const recordedHash = (): string | undefined =>
+      (
+        JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+          canonicalHashes: Record<string, string>;
+        }
+      ).canonicalHashes[rel];
+
+    const before = recordedHash();
+    expect(before, `install must record a hash for ${rel}`).toBeTruthy();
+
+    fs.appendFileSync(abs, "# consumer edit\n", "utf-8");
+
+    // The CLI rebuilds the result it hands to the hash refresh — this exercises that seam.
+    const upgrade = runBkit(["upgrade"]);
+    expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\] Done\./);
+
+    expect(fs.readFileSync(abs, "utf-8")).toContain("# consumer edit");
+    expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
+  }, 180_000);
+});

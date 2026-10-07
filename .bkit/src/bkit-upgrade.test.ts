@@ -137,6 +137,22 @@ describe("P4.T5 — diffFile", () => {
     const result = diffFile(".claude/agents/bkit-foo.md", absPath, newTemplateContent, {});
     expect(result.action).toBe("conflict");
   });
+
+  it('tags a disk-equals-template skip as "in-sync"', () => {
+    const content = "bkit content\n";
+    const absPath = writeFile(".claude/agents/bkit-foo.md", content);
+    const result = diffFile(".claude/agents/bkit-foo.md", absPath, content, {});
+    expect(result).toEqual({ action: "skip", reason: "in-sync" });
+  });
+
+  it('tags a template-unchanged skip over a consumer-drifted file as "template-unchanged" (#459)', () => {
+    const template = "bkit content\n";
+    const absPath = writeFile(".claude/agents/bkit-foo.md", "consumer edit\n");
+    const result = diffFile(".claude/agents/bkit-foo.md", absPath, template, {
+      ".claude/agents/bkit-foo.md": sha256(template),
+    });
+    expect(result).toEqual({ action: "skip", reason: "template-unchanged" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -295,6 +311,77 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     expect(result.updated).toHaveLength(0);
     expect(result.conflicts).toHaveLength(0);
     expect(result.skipped).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #459 — skipped files whose disk content may be recorded as the canonical hash
+// ---------------------------------------------------------------------------
+
+describe("runUpgrade — skippedSeedable (#459)", () => {
+  const WHOLE = ".bkit/scripts/bkit-foo.sh";
+
+  function upgradeOnce(relPath: string, template: string, format?: "markered-text") {
+    const templatePath = writeFile(`.bkit-staging/template/${path.basename(relPath)}`, template);
+    return runUpgrade([{ relPath, templatePath, format }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
+  }
+
+  it("whole-file skip with disk == template is seedable", () => {
+    writeFile(WHOLE, "bkit script\n");
+    writeBkitVersionInDir(makeVersion({}));
+
+    const result = upgradeOnce(WHOLE, "bkit script\n");
+
+    expect(result.skipped).toEqual([WHOLE]);
+    expect(result.skippedSeedable).toEqual([WHOLE]);
+  });
+
+  it("whole-file skip over a consumer-drifted file (template unchanged) is NOT seedable", () => {
+    const template = "bkit script\n";
+    writeFile(WHOLE, "bkit script\n# consumer edit\n");
+    writeBkitVersionInDir(makeVersion({ [WHOLE]: sha256(template) }));
+
+    const result = upgradeOnce(WHOLE, template);
+
+    expect(result.skipped).toEqual([WHOLE]);
+    expect(result.skippedSeedable).toEqual([]);
+  });
+
+  it("block-merge skip is seedable even though disk carries consumer prose outside the block", () => {
+    const template = "<!-- bkit:start -->\nmanaged\n<!-- bkit:end -->\n";
+    writeFile("docs/foo.md", `${template}\nconsumer prose\n`);
+    writeBkitVersionInDir(makeVersion({}));
+    // First pass settles the block-merge layout; the second is the skip under test.
+    upgradeOnce("docs/foo.md", template, "markered-text");
+
+    const result = upgradeOnce("docs/foo.md", template, "markered-text");
+
+    expect(fs.readFileSync(path.join(tmpDir, "docs/foo.md"), "utf-8")).toContain("consumer prose");
+    expect(result.skipped).toEqual(["docs/foo.md"]);
+    expect(result.skippedSeedable).toEqual(["docs/foo.md"]);
+  });
+
+  it("a consumer edit survives a no-op upgrade and is a conflict on the next template change", () => {
+    const v1 = "bkit script v1\n";
+    const edited = `${v1}# consumer edit\n`;
+    writeFile(WHOLE, edited);
+    writeBkitVersionInDir(makeVersion({ [WHOLE]: sha256(v1) }));
+
+    // Upgrade 1: template unchanged → skip; the recorded hash must stay bkit's.
+    const first = upgradeOnce(WHOLE, v1);
+    updateCanonicalHashesAfterUpgrade(first, { dryRun: false, cwd: tmpDir });
+    const recorded = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
+    expect(recorded!.canonicalHashes[WHOLE]).toBe(sha256(v1));
+
+    // Upgrade 2: template changes → conflict, consumer edit untouched.
+    const second = upgradeOnce(WHOLE, "bkit script v2\n");
+    expect(second.updated).not.toContain(WHOLE);
+    expect(second.conflicts.map((c) => c.relPath)).toEqual([WHOLE]);
+    expect(fs.readFileSync(path.join(tmpDir, WHOLE), "utf-8")).toBe(edited);
   });
 });
 
@@ -482,7 +569,12 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     // taken from disk, NOT the template, so block/scope-merged files record correctly.
     writeFile(".claude/agents/bkit-foo.md", newContent);
 
-    const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
+    const result = {
+      updated: [".claude/agents/bkit-foo.md"],
+      conflicts: [],
+      skipped: [],
+      skippedSeedable: [],
+    };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
     const updated = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
@@ -496,7 +588,12 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256("old\n") }));
     writeFile(".claude/agents/bkit-foo.md", "new\n");
 
-    const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
+    const result = {
+      updated: [".claude/agents/bkit-foo.md"],
+      conflicts: [],
+      skipped: [],
+      skippedSeedable: [],
+    };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: true, cwd: tmpDir });
 
     const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
@@ -506,7 +603,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
 
   it("is a no-op when no files were updated", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256("content\n") }));
-    const result = { updated: [], conflicts: [], skipped: [] };
+    const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
     // Should not throw
     expect(() =>
       updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir }),
@@ -519,13 +616,35 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     writeBkitVersionInDir(makeVersion({}));
     writeFile(".claude/agents/bkit-foo.md", content);
 
-    const result = { updated: [], conflicts: [], skipped: [".claude/agents/bkit-foo.md"] };
+    const result = {
+      updated: [],
+      conflicts: [],
+      skipped: [".claude/agents/bkit-foo.md"],
+      skippedSeedable: [".claude/agents/bkit-foo.md"],
+    };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
     const updated = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(updated).not.toBeNull();
     // Canonical hash now recorded — next upgrade can detect true drift instead of all-conflict.
     expect(updated!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(content));
+  });
+
+  it("does NOT re-seed a skipped file outside skippedSeedable — keeps bkit's recorded hash (#459)", () => {
+    const bkitContent = "bkit content\n";
+    writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(bkitContent) }));
+    writeFile(".claude/agents/bkit-foo.md", "consumer edit\n");
+
+    const result = {
+      updated: [],
+      conflicts: [],
+      skipped: [".claude/agents/bkit-foo.md"],
+      skippedSeedable: [],
+    };
+    updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
+
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
+    expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(bkitContent));
   });
 
   it("does NOT seed canonicalHashes for conflict files (would re-introduce silent overwrite)", () => {
@@ -543,6 +662,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
         },
       ],
       skipped: [],
+      skippedSeedable: [],
     };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
@@ -552,7 +672,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
 
   it("bumps pinnedVersion to the upgraded-to version, even with no files processed (#129 §3)", () => {
     writeBkitVersionInDir(makeVersion({})); // pinnedVersion "0.8.0"
-    const result = { updated: [], conflicts: [], skipped: [] };
+    const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
 
     // A clean upgrade where everything was a no-op skip must still bump the pin,
     // otherwise the next `bkit check` wants to write it (1 write → exit 1).
@@ -568,7 +688,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
 
   it("does not rewrite .bkit-version when the pin is already current and no files processed", () => {
     writeBkitVersionInDir(makeVersion({ "x.md": sha256("x") }));
-    const result = { updated: [], conflicts: [], skipped: [] };
+    const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
 
     updateCanonicalHashesAfterUpgrade(result, {
       dryRun: false,

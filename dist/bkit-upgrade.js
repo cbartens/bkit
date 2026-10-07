@@ -106,12 +106,12 @@ export function diffFile(relPath, absolutePath, templateContent, canonicalHashes
     // Checked first so a missing canonical hash never produces a spurious conflict
     // when the file content is already identical to the template.
     if (diskHash === templateHash) {
-        return { action: "skip" };
+        return { action: "skip", reason: "in-sync" };
     }
     // Template unchanged since last install → skip.
     const canonicalHash = canonicalHashes[relPath];
     if (canonicalHash && canonicalHash === templateHash) {
-        return { action: "skip" };
+        return { action: "skip", reason: "template-unchanged" };
     }
     // Template has changed (or canonical hash unknown). Check consumer drift —
     // when canonical hash is missing, isConsumerModified treats the file as drifted
@@ -139,7 +139,7 @@ export function runUpgrade(candidates, options) {
     const bkitVersion = readBkitVersion(versionFile);
     const canonicalHashes = bkitVersion?.canonicalHashes ?? {};
     const tokens = options.tokens ?? EMPTY_TOKENS;
-    const result = { updated: [], conflicts: [], skipped: [] };
+    const result = { updated: [], conflicts: [], skipped: [], skippedSeedable: [] };
     // Local WriteSet drives updated/skipped classification for the block/scope-merge
     // formats; the tier writers push exactly one entry per file they actually change.
     const ws = { writes: [] };
@@ -227,6 +227,7 @@ export function runUpgrade(candidates, options) {
             }
             else {
                 result.skipped.push(relPath);
+                result.skippedSeedable.push(relPath);
             }
             continue;
         }
@@ -253,6 +254,8 @@ export function runUpgrade(candidates, options) {
         switch (diffAction.action) {
             case "skip":
                 result.skipped.push(relPath);
+                if (diffAction.reason === "in-sync")
+                    result.skippedSeedable.push(relPath);
                 break;
             case "new":
             case "update": {
@@ -290,10 +293,14 @@ export function runUpgrade(candidates, options) {
 /**
  * After a successful upgrade, update `.bkit/version`:
  *   - `canonicalHashes`: refresh from the ON-DISK content of every file bkit wrote
- *     or confirmed (`result.updated` ∪ `result.skipped`). For block/scope-merge
- *     formats the disk content is NOT the template (it carries consumer content
- *     too), so the file must be hashed as it now sits on disk. Conflicts are NEVER
- *     seeded — that would re-introduce the silent-overwrite bug.
+ *     or confirmed (`result.updated` ∪ `result.skippedSeedable`):
+ *       - updated → always (disk is what bkit just wrote).
+ *       - block/scope-merge skips → always. Disk is NOT the template (it carries
+ *         consumer content too), so the file is hashed as it now sits on disk.
+ *       - whole-file skips → only when disk == template. A template-unchanged skip
+ *         over consumer drift keeps its prior hash, so the next template change is
+ *         a conflict, not a silent overwrite (#459).
+ *       - conflicts → never, for the same reason.
  *   - `pinnedVersion`: bump to the version just upgraded TO (`options.pinnedVersion`).
  *     `bkit upgrade` previously refreshed hashes but left the pin stale, so the very
  *     next `bkit check` wanted to write the pin (1 write → exit 1), leaving a clean
@@ -311,7 +318,7 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     const bkitVersion = readBkitVersion(versionFile);
     if (!bkitVersion)
         return;
-    const seedablePaths = new Set([...result.updated, ...result.skipped]);
+    const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
     const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
     for (const relPath of seedablePaths) {
         // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,

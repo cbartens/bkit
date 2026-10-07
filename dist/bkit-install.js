@@ -2371,6 +2371,7 @@ async function main() {
                     ...(migratedContextFetch ? [path.join("docs", "observability.md")] : []),
                 ],
                 skipped: result.skipped,
+                skippedSeedable: result.skippedSeedable,
                 conflicts: result.conflicts,
             }, {
                 dryRun: false,
