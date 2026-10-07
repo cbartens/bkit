@@ -13,6 +13,12 @@
   // Extend Renovate's curated baseline. `config:recommended` enables the
   // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
   // Repo-specific rules go in this file. You own it.
+  // A `local>` preset with no `#` is read from the default branch. `useBaseBranchConfig`
+  // does not change that fetch. Append the branch `baseBranchPatterns` names — a branch
+  // after `#` works (branch, tag, or commit SHA):
+  //   "local>owner/repo//path/to/preset.json5#dev"
+  // The `extends` line itself is still read from the default branch, so `#dev` needs
+  // one merge there before edits on `dev` apply.
   extends: [
     "config:recommended",
     ":dependencyDashboard",
@@ -28,7 +34,7 @@
   // to `main` to take effect. `merge` layers `dev`'s config over `main`'s for the
   // dev-targeted runs, so ongoing config edits can live on `dev`. Bootstrap caveat:
   // this option is itself read from `main`, so it needs ONE merge to `main` before
-  // dev-side config edits are honored. See docs/deployments.md § GitHub Actions pinning.
+  // dev-side config edits are honored. See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
   // Weekly batched runs — keeps PR noise low. CVE-driven updates fire
