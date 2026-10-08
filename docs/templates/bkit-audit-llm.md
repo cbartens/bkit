@@ -69,6 +69,7 @@ Taxonomy names match `bkit-audit-red-team`, so a finding here and its live proof
 | Fitting a timeout inside the caller duration limit, and retry safety of non-model side effects | Reliability sweep; per-call token, retry, and fan-out caps stay here | `bkit-audit-reliability` |
 | Lawful basis and retention periods for prompt data | Privacy sweep | `bkit-audit-privacy` |
 | Test quality beyond the eval questions in `Evals` | Testing sweep | `bkit-audit-testing` |
+| Coding-agent permissions, hooks, tool servers, model pins | Agent config sweep | `bkit-audit-agents` |
 | Changing prompts, tools, limits, or provider settings | Audit reports only | Plan from this report |
 
 ### 🚨 Pre-Flight / Dependencies 🚨

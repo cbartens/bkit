@@ -66,6 +66,7 @@ Docs are the record agents work from: memory points at them, plans cite them, co
 | Architecture graph diagram correctness | Architecture sweep | `bkit-audit-architecture` |
 | Turning a check into a CI gate | Gate design | `bkit-audit-gates` |
 | A stale fact inside a historical record | History, not a defect | Citers only; fix a dead pointer at the target |
+| Instruction files each agent host loads; agent permissions, hooks, tool servers | Agent config sweep | `bkit-audit-agents` |
 | Applying doc edits, appending ledger rows, editing memory | Audit reports only | Plan from this report |
 
 ### 🚨 Pre-Flight / Dependencies 🚨

@@ -337,6 +337,7 @@ Every template under `docs/templates/bkit-audit-*.md`:
 | Template | Title | What it does |
 | --- | --- | --- |
 | `bkit-audit-accessibility` | Accessibility Audit | WCAG 2.2 AA — automated-gate coverage vs gaps; manual passes nothing automates. |
+| `bkit-audit-agents` | Agent Config Audit | Per host: instruction loading, permissions, hooks, tool servers, agents, model pins — hosts agree; bkit correct + current. |
 | `bkit-audit-aio-seo` | AIO SEO Audit | Search + answer engines find, read, and describe public pages. |
 | `bkit-audit-analytics` | Analytics Audit | Product events — fires, name / shape parity across clients, consent-first, no personal data in payload. |
 | `bkit-audit-annotations` | Annotations Triage | Green-CI annotations — silent failures, deadline deprecations, lint warnings, suppression on the wrong node. |

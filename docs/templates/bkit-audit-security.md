@@ -74,6 +74,7 @@ Fixes land on call sites a sweep already knew; the doc records the rule. A later
 | Log triage | Log sweep | `bkit-audit-logs` |
 | General incident process and non-security alerts | Reliability sweep | `bkit-audit-reliability` |
 | Whether a code-owners file exists | Repo sweep | `bkit-audit-repo` |
+| Coding-agent permissions, hooks, tool-server credential scope | Agent config sweep | `bkit-audit-agents` |
 | Applying fixes / changing workflows, secrets, or settings | Audit reports only | Plan from this report |
 
 ### 🚨 Pre-Flight / Dependencies 🚨

@@ -60,6 +60,7 @@ Config ids look identical delisted vs choice day. Target failure: **a stale entr
 | Spend, budgets, blended cost of a switch, fallback-rate dollars | Cost sweep | `bkit-audit-cost` |
 | User-facing latency outside model choice | Performance sweep | `bkit-audit-app-performance` |
 | Personal-data transfer, retention, children's-data borders | Privacy sweep | `bkit-audit-privacy` |
+| Coding-agent model pins | Agent config sweep | `bkit-audit-agents` |
 | Editing the registry, wrappers, or routing | Audit reports only | Plan from this report |
 
 ### 🚨 Pre-Flight / Dependencies 🚨
