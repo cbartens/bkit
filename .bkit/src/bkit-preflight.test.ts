@@ -26,6 +26,7 @@ import {
   detectMissingMcpServers,
   detectExtraMcpServers,
   REQUIRED_MCP_SERVERS,
+  MARKERED_TEXT_DRIFT_PATHS,
   detectMissingDotenv,
   detectBlankDotenvKeys,
   detectDirenvMissing,
@@ -492,12 +493,9 @@ describe("husky Tier-3 migration — removed detectors must not return in source
     expect(src).not.toMatch(/export function detectHuskyBlockDuplicates\b/);
   });
 
-  it("runPreflight no longer hardcodes .husky/* in markeredTextPaths (Tier 3 owns drift)", () => {
-    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
-    const markeredBlock = src.match(/const markeredTextPaths = \[([\s\S]*?)\];/);
-    expect(markeredBlock).not.toBeNull();
-    expect(markeredBlock![1]).not.toContain(".husky/pre-commit");
-    expect(markeredBlock![1]).not.toContain(".husky/pre-push");
+  it("runPreflight no longer drift-checks .husky/* as markered text (Tier 3 owns drift)", () => {
+    expect(MARKERED_TEXT_DRIFT_PATHS).not.toContain(".husky/pre-commit");
+    expect(MARKERED_TEXT_DRIFT_PATHS).not.toContain(".husky/pre-push");
   });
 });
 

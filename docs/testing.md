@@ -427,6 +427,18 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 
 When adding bkit-managed file types or scope keys, extend fixture — single source of truth for real consumer surface; do not mock.
 
+## Pre-release consumer shapes
+
+`utility-pre-release-check` dogfoods the packed tarball in each consumer shape bkit ships to. bkit's own repo (single-package, marker-free `ci.yml`) is not one of them.
+
+<!-- prettier-ignore -->
+| Shape | Proves |
+|---|---|
+| Single-package repo | Every verb, drift gate, option matrix, uninstall symmetry; `bkit upgrade --to=<v>` self-bump runs `pnpm add -D` WITHOUT `-w` |
+| pnpm workspace root, bkit as root devDependency | `bkit upgrade --to=<v>` self-bump runs `pnpm add -D -w` and succeeds against the real registry |
+
+Always-on guard: `bkit-templates-content.test.ts` § compared workflow blocks — every non-`optional` managed block in a block-compared workflow file (`MARKERED_TEXT_DRIFT_PATHS`, `bkit-preflight.ts`) references no `steps.<id>` defined outside its own markers.
+
 ## Counter derivation test coverage
 
 `*_ATTEMPT` counters **derived** from `status.jsonl` at use — never carried across Bash calls (§ Attempt counters, `.bkit/workflows.md`). Shell state does not persist between fenced blocks → value crosses only via `status.jsonl`.

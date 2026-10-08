@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { MARKERED_TEXT_DRIFT_PATHS } from "./bkit-preflight";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
@@ -152,19 +153,6 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
       // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
       expect(step).not.toMatch(/exit [1-9]/);
     });
-
-    it("is self-contained — references no step id defined outside the managed block", () => {
-      // The block is byte-compared across ALL consumers (tier2-text-drift) and must be
-      // valid standalone. Referencing `steps.cache.outputs.skip` — a step id that lives
-      // OUTSIDE the block (freely-editable Tier-3 territory, not guaranteed to exist) —
-      // meant a consumer without a `Check SHA Cache` step drifted, and re-syncing per the
-      // advisory injected an undefined-step reference that reds actionlint. Keep the guard
-      // OUT so the block stands alone in any job shape.
-      const block =
-        content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
-        "";
-      expect(block).not.toContain("steps.cache");
-    });
   });
 
   it("ships the bkit-stub:coverage block commented, per-tier (unit + integration reports)", () => {
@@ -222,6 +210,54 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
 
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
+  });
+});
+
+// `bkit check` compares each non-`optional` managed block against every consumer
+// (tier2-text-drift), so the block must be valid standalone in any job shape. Content outside
+// the markers is consumer-owned: a step id defined there is not guaranteed to exist, and
+// re-syncing a block that reads it injects an undefined-step reference that reds actionlint.
+// Walks every marker pair (not extractNamedBlocks, which keeps only the first block per name).
+describe("compared workflow blocks reference no step defined outside the block", () => {
+  const workflowPaths = MARKERED_TEXT_DRIFT_PATHS.filter((p) => /\.ya?ml$/.test(p));
+  const START = /^\s*#\s*bkit:start(?:\s+([A-Za-z0-9][A-Za-z0-9_-]*))?(?:\s+(optional))?\s*$/;
+  const END = /^\s*#\s*bkit:end(?:\s+[A-Za-z0-9][A-Za-z0-9_-]*)?\s*$/;
+
+  it("covers at least one workflow file", () => {
+    expect(
+      workflowPaths.length,
+      "no workflow file is block-compared any more — this guard has nothing to protect; delete it",
+    ).toBeGreaterThan(0);
+  });
+
+  it.each(workflowPaths)("%s", (relPath) => {
+    const lines = fs.readFileSync(path.resolve(".bkit/templates", relPath), "utf-8").split("\n");
+    const offenders: string[] = [];
+    let open: { name: string; refs: Set<string>; ids: Set<string> } | null = null;
+    let compared = 0;
+    for (const line of lines) {
+      const start = START.exec(line);
+      if (start) {
+        open = start[2] ? null : { name: start[1] ?? "(default)", refs: new Set(), ids: new Set() };
+        continue;
+      }
+      if (END.test(line)) {
+        if (open) {
+          compared++;
+          for (const ref of open.refs) {
+            if (!open.ids.has(ref)) offenders.push(`${open.name}: steps.${ref}`);
+          }
+        }
+        open = null;
+        continue;
+      }
+      if (!open || line.trim().startsWith("#")) continue;
+      for (const m of line.matchAll(/\bsteps\.([A-Za-z_][\w-]*)\./g)) open.refs.add(m[1]!);
+      const id = /^\s*(?:-\s+)?id:\s*["']?([\w-]+)/.exec(line);
+      if (id) open.ids.add(id[1]!);
+    }
+    expect(compared, `${relPath} has no compared block`).toBeGreaterThan(0);
+    expect(offenders).toEqual([]);
   });
 });
 

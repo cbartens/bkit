@@ -929,6 +929,20 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     };
 }
 /**
+ * Consumer files whose bkit-managed blocks `detectTier2TextDrift` compares: Group B files
+ * (partial-ownership) and key Group A files. Husky hooks are Tier 3 (seed-or-print) as of
+ * v2.0.4 — their drift is handled by writeTier3's `tier3-merge-suggested-*` advisory in
+ * runGitHooksModule, not here. Exported so tests can reference it without duplication.
+ */
+export const MARKERED_TEXT_DRIFT_PATHS = [
+    ".github/workflows/ci.yml",
+    ".vale.ini",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".gitignore",
+    ".prettierignore",
+];
+/**
  * Blocker: consumer's .bkit-version pinnedVersion < 0.8.0 AND no __bkit__ envelope.
  * This means the consumer is on a pre-envelope Tier-1 install and must route
  * through bkit v1.x before upgrading directly to v2.0.0.
@@ -1402,18 +1416,7 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
             advisories.push(driftAdvisory);
     }
     // Phase 2: markered-text block drift advisory (BAR-167)
-    // Check Group B files (partial-ownership) and key Group A files.
-    // Husky hooks are Tier 3 (seed-or-print) as of v2.0.4 — their drift is handled
-    // by writeTier3's `tier3-merge-suggested-*` advisory in runGitHooksModule, not here.
-    const markeredTextPaths = [
-        ".github/workflows/ci.yml",
-        ".vale.ini",
-        "AGENTS.md",
-        "CLAUDE.md",
-        ".gitignore",
-        ".prettierignore",
-    ];
-    for (const relPath of markeredTextPaths) {
+    for (const relPath of MARKERED_TEXT_DRIFT_PATHS) {
         const textDriftAdvisory = detectTier2TextDrift(cwd, relPath, pkgRoot);
         if (textDriftAdvisory)
             advisories.push(textDriftAdvisory);
