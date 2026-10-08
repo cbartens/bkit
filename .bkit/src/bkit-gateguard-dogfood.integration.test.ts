@@ -5,26 +5,30 @@
 // The hooks fire a path-scoped advisory at the moment of the edit, which a test
 // cannot do — a test only complains afterwards.
 //
-// This region lives OUTSIDE the bkit:start/bkit:end markers in this repo's three
+// This region lives OUTSIDE the bkit:start/bkit:end markers in this repo's four
 // installed hooks. It must therefore satisfy two opposite guarantees, both asserted
 // here because nothing else can:
 //   1. it survives `bkit install` / `bkit upgrade` (outside the managed block), and
 //   2. it NEVER reaches a consumer — no template may contain it, since
 //      `.bkit/workflows/` and `.bkit/prompts/` exist only in this repo.
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const CLAUDE = path.resolve(".claude/hooks/gateguard.cjs");
 const CURSOR = path.resolve(".cursor/hooks/gateguard.cjs");
 const OPENCODE = path.resolve(".opencode/plugin/gateguard.js");
-const INSTALLED = { claude: CLAUDE, cursor: CURSOR, opencode: OPENCODE };
+const CODEX = path.resolve(".codex/hooks/gateguard.cjs");
+const INSTALLED = { claude: CLAUDE, cursor: CURSOR, opencode: OPENCODE, codex: CODEX };
 
 const TEMPLATES = [
   ".bkit/templates/.claude/hooks/gateguard.cjs",
   ".bkit/templates/.cursor/hooks/gateguard.cjs",
   ".bkit/templates/.opencode/plugin/gateguard.js",
+  ".bkit/templates/.codex/hooks/gateguard.cjs",
 ];
 
 let n = 0;
@@ -60,9 +64,41 @@ function cursorAdvisory(file: string): string {
   return String(out.additional_context ?? "");
 }
 
+function codexAdvisory(file: string): string {
+  const res = spawnSync("node", [CODEX], {
+    input: JSON.stringify({
+      tool_name: "apply_patch",
+      tool_input: {
+        command: `*** Begin Patch\n*** Update File: ${file}\n@@\n-a\n+b\n*** End Patch`,
+      },
+      session_id: session(),
+      cwd: process.cwd(),
+    }),
+    encoding: "utf-8",
+  });
+  const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
+  return String(out.hookSpecificOutput?.additionalContext ?? "");
+}
+
+function opencodeAdvisory(file: string): string {
+  // The plugin is an ES module whose advisory channel is stderr: run it in a child
+  // that captures stderr and prints it to stdout.
+  const code = [
+    `const { default: plugin } = await import(${JSON.stringify(pathToFileURL(OPENCODE).href)});`,
+    `let out = "";`,
+    `process.stderr.write = (s) => { out += s; return true; };`,
+    `await plugin({})["tool.execute.before"]({ tool: "edit", sessionID: ${JSON.stringify(session())} }, { args: { path: ${JSON.stringify(file)} } });`,
+    `process.stdout.write(out);`,
+  ].join("\n");
+  const res = spawnSync("node", ["--input-type=module", "-e", code], { encoding: "utf-8" });
+  return res.stdout;
+}
+
 const RUNNERS: Record<string, (f: string) => string> = {
   claude: claudeAdvisory,
   cursor: cursorAdvisory,
+  codex: codexAdvisory,
+  opencode: opencodeAdvisory,
 };
 
 describe("dogfood authoring advisories — fire on the right paths", () => {
@@ -226,13 +262,14 @@ describe("dogfood region — placement guarantees", () => {
     expect(bullets("bkitDocAuthoringAdvisory")).toEqual(shipped);
   });
 
-  it("the three installed copies carry byte-identical dogfood regions", () => {
+  it("the four installed copies carry byte-identical dogfood regions", () => {
     const region = (f: string) => {
       const s = fs.readFileSync(f, "utf-8");
       return s.slice(s.indexOf("// DOGFOOD ONLY"), s.indexOf("function dogfoodAuthoringAdvisory"));
     };
     expect(region(CURSOR)).toBe(region(CLAUDE));
     expect(region(OPENCODE)).toBe(region(CLAUDE));
+    expect(region(CODEX)).toBe(region(CLAUDE));
   });
 
   it("NO template contains it — it must never reach a consumer install", () => {
@@ -383,5 +420,118 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
       expect(a).toContain("Every byte is paid on every run");
       expect(a).toContain("Advisory — proceed once satisfied.");
     }
+  });
+});
+
+describe("dogfood advisories — shared rules read from their section at hook time", () => {
+  const SHARED = [
+    {
+      host: ".bkit/workflows/bkit-build.md",
+      doc: ".bkit/workflows.md",
+      leads: [
+        "Dense instructions only",
+        "Cross-workflow alignment",
+        "Self-contained",
+        "Removal = delete",
+      ],
+    },
+    {
+      host: ".bkit/prompts/bkit-plan-generate.md",
+      doc: ".bkit/prompts.md",
+      leads: [
+        "Dense instructions only",
+        "Cross-prompt alignment",
+        "Self-contained",
+        "Removal = delete",
+      ],
+    },
+  ];
+
+  for (const c of SHARED) {
+    for (const [host, run] of Object.entries(RUNNERS)) {
+      it(`${host}: ${c.host} carries each shared rule exactly as ${c.doc} states it`, () => {
+        const advisory = run(c.host);
+        const src = fs.readFileSync(c.doc, "utf-8");
+        for (const lead of c.leads) {
+          const prefix = `- **${lead}:** `;
+          const line = src.split("\n").find((l) => l.startsWith(prefix));
+          expect(line, `${c.doc} :: ${lead}`).toBeTruthy();
+          expect(advisory, lead).toContain(`- ${lead}: ${line!.slice(prefix.length)}`);
+        }
+      });
+    }
+  }
+
+  it("a hook that cannot read the doc still fires, naming where to read the rule", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "gg-dogfood-"));
+    try {
+      const hook = path.join(tmp, ".claude", "hooks", "gateguard.cjs");
+      fs.mkdirSync(path.dirname(hook), { recursive: true });
+      fs.copyFileSync(CLAUDE, hook);
+      const res = spawnSync("node", [hook], {
+        input: JSON.stringify({
+          tool_name: "Edit",
+          tool_input: { file_path: ".bkit/prompts/x.md" },
+          session_id: session(),
+        }),
+        encoding: "utf-8",
+      });
+      expect(res.status).toBe(0);
+      const advisory = String(JSON.parse(res.stdout).hookSpecificOutput.additionalContext);
+      expect(advisory).toContain(
+        "- Self-contained: unreadable here; read `.bkit/prompts.md` § Prompt Authoring Rules.",
+      );
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("dogfood advisories — .agents/rules.md § Repo Authoring", () => {
+  const REPO_AUTHORING = "`.agents/rules.md` § Repo Authoring applies";
+
+  for (const [host, run] of Object.entries(RUNNERS)) {
+    it(`${host}: every Prose edits path gets the prose advisory`, () => {
+      for (const f of [
+        ".agents/rules.md",
+        ".bkit/README.md",
+        "docs/testing.md",
+        "docs/plans/202605/x-plan.md",
+        ".bkit/templates/docs/testing.md",
+        "AGENTS.md",
+        "CLAUDE.md",
+      ]) {
+        expect(run(f), f).toContain("[bkit GateGuard] prose authoring:");
+      }
+    });
+
+    it(`${host}: workflow and prompt advisories carry the reference inline, no second block`, () => {
+      for (const f of [".bkit/workflows/bkit-build.md", ".bkit/prompts/bkit-plan-generate.md"]) {
+        const a = run(f);
+        expect(a, f).toContain(REPO_AUTHORING);
+        expect(a, f).not.toContain("prose authoring:");
+      }
+    });
+
+    it(`${host}: non-markdown gets no prose advisory`, () => {
+      for (const f of ["src/foo.ts", ".bkit/version", "docs/decisions.jsonl"]) {
+        expect(run(f), f).not.toContain(REPO_AUTHORING);
+      }
+    });
+  }
+
+  it("every file and section the Repo Authoring rules name exists", () => {
+    const rules = fs.readFileSync(".agents/rules.md", "utf-8");
+    expect(rules).toContain("#### Repo Authoring");
+    for (const [doc, heading] of [
+      [".bkit/workflows.md", "Workflow Authoring Rules"],
+      [".bkit/prompts.md", "Prompt Authoring Rules"],
+    ]) {
+      expect(rules).toContain(`\`${doc}\` § ${heading}`);
+      expect(fs.readFileSync(doc!, "utf-8")).toContain(`\n## ${heading}\n`);
+    }
+    const compress = ".bkit/prompts/bkit-utility-compress-markdown.md";
+    expect(rules).toContain(`\`${compress}\``);
+    expect(fs.existsSync(compress)).toBe(true);
   });
 });

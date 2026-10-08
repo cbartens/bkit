@@ -242,11 +242,13 @@ function emit(decision) {
 }
 
 // ---------------------------------------------------------------------------
-// DOGFOOD ONLY — bkit's own authoring rules for its own execution surfaces.
-// This region exists ONLY in this repo's .claude/hooks/gateguard.cjs; it ships
-// in no template and reaches no consumer install (.bkit/workflows/ and
-// .bkit/prompts/ never exist outside this repo). Lives outside the managed
-// block so it survives every `bkit install` / `bkit upgrade`.
+// DOGFOOD ONLY — bkit's own authoring rules for its own files.
+// Present in this repo's four installed GateGuard hooks (Claude Code, Cursor,
+// Codex, opencode); ships in no template and reaches no consumer install
+// (.bkit/workflows/ and .bkit/prompts/ never exist outside this repo). Lives
+// outside the managed block so it survives every `bkit install` / `bkit upgrade`.
+// Rules the advisories share with .bkit/workflows.md and .bkit/prompts.md are read
+// from those sections at hook time, never copied, so they cannot drift.
 // ---------------------------------------------------------------------------
 
 function isBkitWorkflowPath(filePath) {
@@ -259,28 +261,54 @@ function isBkitPromptPath(filePath) {
   return p.endsWith(".md") && (p.startsWith(".bkit/prompts/") || p.includes("/.bkit/prompts/"));
 }
 
+const REPO_AUTHORING_RULE =
+  "- `.agents/rules.md` § Repo Authoring applies: authoring rules, index update in the same change, prose per `.bkit/prompts/bkit-utility-compress-markdown.md`.";
+
+/**
+ * One rule from a doc section as an advisory bullet: its `- **Lead:** text` line with
+ * the bold unwrapped. First line only — sub-bullets are test-enforced or shown by the
+ * corpus. Missing doc, section, or rule → a bullet naming where to read it instead.
+ */
+function sectionRule(doc, heading, lead) {
+  const file = path.join(bkitRepoRoot(), doc);
+  const src = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  const start = src.indexOf(`\n## ${heading}\n`);
+  const rest = start >= 0 ? src.slice(start + heading.length + 5) : "";
+  const end = rest.indexOf("\n## ");
+  const body = end >= 0 ? rest.slice(0, end) : rest;
+  const prefix = `- **${lead}:** `;
+  const line = body.split("\n").find((l) => l.startsWith(prefix));
+  return line
+    ? `- ${lead}: ${line.slice(prefix.length)}`
+    : `- ${lead}: unreadable here; read \`${doc}\` § ${heading}.`;
+}
+
 function workflowAuthoringAdvisory() {
-  return (
-    "[bkit GateGuard] .bkit/workflows/*.md authoring:\n" +
-    "- These files ARE their own template: ALWAYS `grep .bkit/workflows/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, routes, jump targets, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (subagent invocations, `bash` blocks, conditional routes, comment fences, gate checklists). Bash decides, prose routes; `→` is intentional process glyph, adopt do NOT convert; 1 process branch → inline; 2+ branches → labeled decision / route block.\n" +
-    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline behaviour justification. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/workflows.md`.\n" +
-    "- Cross-workflow alignment: Check for shared instructions and change in ALL workflows using them.\n" +
-    "- Self-contained: every file MUST stand alone; inline ALL instructions; NO file references. Exceptions: subagent context.\n" +
-    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
-    "Advisory — proceed once satisfied."
-  );
+  const rule = (lead) => sectionRule(".bkit/workflows.md", "Workflow Authoring Rules", lead);
+  return [
+    "[bkit GateGuard] .bkit/workflows/*.md authoring:",
+    "- These files ARE their own template: ALWAYS `grep .bkit/workflows/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, routes, jump targets, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (subagent invocations, `bash` blocks, conditional routes, comment fences, gate checklists). Bash decides, prose routes; `→` is intentional process glyph, adopt do NOT convert; 1 process branch → inline; 2+ branches → labeled decision / route block.",
+    rule("Dense instructions only"),
+    rule("Cross-workflow alignment"),
+    rule("Self-contained"),
+    rule("Removal = delete"),
+    REPO_AUTHORING_RULE,
+    "Advisory — proceed once satisfied.",
+  ].join("\n");
 }
 
 function promptAuthoringAdvisory() {
-  return (
-    "[bkit GateGuard] .bkit/prompts/*.md authoring:\n" +
-    "- These files ARE their own template: ALWAYS `grep .bkit/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.\n" +
-    "- Dense instructions only: NO rationale, NO commentary, NO parentheticals explaining why, NO inline comments justifying behaviour. Every byte is paid on every run; ANY explanations, decisions, trade-offs, history, commentary lives in `.bkit/prompts.md`.\n" +
-    "- Cross-prompt alignment: Check for shared instructions and change in ALL prompts using them.\n" +
-    "- Self-contained: every prompt MUST stand alone; inline ALL instructions; NO file references. Exceptions: `.agents/docs.md`, `*.jsonl` ledgers.\n" +
-    "- Removal = delete: drop instruction outright; NEVER leave removal explanations.\n" +
-    "Advisory — proceed once satisfied."
-  );
+  const rule = (lead) => sectionRule(".bkit/prompts.md", "Prompt Authoring Rules", lead);
+  return [
+    "[bkit GateGuard] .bkit/prompts/*.md authoring:",
+    "- These files ARE their own template: ALWAYS `grep .bkit/prompts/` for closest existing cases and copy shapes verbatim BEFORE inventing wording / formatting (phrasing, variables, operators, conditionals, bolding, backticks, indentation, line breaks, punctuation, spacing). Match shapes for repeated sections (contract clauses, process steps, output format blocks, verdict mappings). `→` is intentional process glyph, adopt do NOT convert.",
+    rule("Dense instructions only"),
+    rule("Cross-prompt alignment"),
+    rule("Self-contained"),
+    rule("Removal = delete"),
+    REPO_AUTHORING_RULE,
+    "Advisory — proceed once satisfied.",
+  ].join("\n");
 }
 
 function bkitDocAuthoringAdvisory() {
@@ -291,6 +319,14 @@ function bkitDocAuthoringAdvisory() {
     "- Describe current state / rules, NOT reasons / history; state what to do, NOT why. ONLY exceptions: Docs where purpose IS the record.\n" +
     "Advisory — proceed once satisfied."
   );
+}
+
+function proseAuthoringAdvisory() {
+  return [
+    "[bkit GateGuard] prose authoring:",
+    REPO_AUTHORING_RULE,
+    "Advisory — proceed once satisfied.",
+  ].join("\n");
 }
 
 function isBkitDocPath(filePath) {
@@ -310,12 +346,28 @@ function isBkitDocPath(filePath) {
   );
 }
 
-/** Returns the authoring advisory for a bkit execution-surface path, else null. */
+/** Rest of the `.agents/rules.md` § Repo Authoring prose scope: `docs/**` (plans included), `AGENTS.md`, `CLAUDE.md`. */
+function isProsePath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (!p.endsWith(".md")) return false;
+  const base = p.slice(p.lastIndexOf("/") + 1);
+  return (
+    p.startsWith("docs/") || p.includes("/docs/") || base === "AGENTS.md" || base === "CLAUDE.md"
+  );
+}
+
+/** Returns the bkit-repo authoring advisory for a path, else null. */
 function dogfoodAuthoringAdvisory(filePath) {
   if (isBkitWorkflowPath(filePath)) return workflowAuthoringAdvisory();
   if (isBkitPromptPath(filePath)) return promptAuthoringAdvisory();
-  if (isBkitDocPath(filePath)) return bkitDocAuthoringAdvisory();
+  if (isBkitDocPath(filePath)) return `${bkitDocAuthoringAdvisory()}\n\n${proseAuthoringAdvisory()}`;
+  if (isProsePath(filePath)) return proseAuthoringAdvisory();
   return null;
+}
+
+/** Repo root: this hook lives at `<root>/.<host>/hooks/`. */
+function bkitRepoRoot() {
+  return path.resolve(__dirname, "..", "..");
 }
 
 /**
