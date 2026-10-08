@@ -16,6 +16,8 @@
 #                               — counter_count + 1 (position 1, derive-at-START)
 #   counter_current STATUS_FILE WORKFLOW STEP [--sub-plan N] [--since FIELD]
 #                               — counter_count, refuses 0 (position 2, post-own-write)
+#   run_number STATUS_FILE WORKFLOW
+#                               — this invocation's run of WORKFLOW (1-based)
 #   check_max NAME VALUE MAX    — exit 0 if VALUE <= MAX, exit 1 if exceeded
 #   decide_next NAME VALUE MAX CONTINUE_STEP EXCEEDED_STEP
 #                               — print next step id; exit code = branch
@@ -176,6 +178,43 @@ counter_current() {
   [ "$_ccu_rc" -eq 0 ] || return 2
   [ "$_ccu_val" -eq 0 ] && return 2
   printf '%s\n' "$_ccu_val"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# run_number STATUS_FILE WORKFLOW
+# Prints which run of WORKFLOW this invocation is: the number of WORKFLOW runs
+# in the fold, plus 1 unless the latest run overall is a WORKFLOW run still
+# IN_PROGRESS (a resume). That is the same test the worktree-setup block uses
+# to decide whether to write a new `workflow-started` row, so the answer is
+# the same before and after that row is written. Names the per-run input file
+# `{workflow}-input-{RUN}.md` (#277). Requires BKIT_STATUS_FOLD to be sourced.
+# Returns 2 (nothing on stdout) on a missing/unreadable file, a jq failure, or
+# a non-integer result.
+# ---------------------------------------------------------------------------
+run_number() {
+  _rn_file="$1"
+  _rn_workflow="$2"
+  if [ -z "$BKIT_STATUS_FOLD" ]; then
+    echo "[bkit-telemetry] run_number: BKIT_STATUS_FOLD not sourced — run '. bkit-status-fold.sh' first" >&2
+    return 2
+  fi
+  [ -f "$_rn_file" ] && [ -r "$_rn_file" ] || return 2
+  _rn_result=$(
+    jq -s -r --arg w "$_rn_workflow" \
+      "$BKIT_STATUS_FOLD"'
+        fold
+        | (map(select(.workflow==$w)) | length) as $n
+        | (.[-1] // {}) as $latest
+        | if $latest.workflow==$w and $latest.status=="IN_PROGRESS" then $n else $n + 1 end
+      ' "$_rn_file" 2>/dev/null
+  ) || return 2
+  case "$_rn_result" in
+    '' | *[!0-9]*)
+      return 2
+      ;;
+  esac
+  printf '%s\n' "$_rn_result"
   return 0
 }
 

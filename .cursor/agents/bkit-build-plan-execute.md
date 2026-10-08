@@ -40,7 +40,7 @@ tools:
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
-4. Read plan (`[x]` = done, `[ ]` = pending) → resume at first `[ ]` task. **If** no plan file exists → `build-input.md` is the plan; tasks = its requested outcomes, in order; NEVER create plan file.
+4. Read plan (`[x]` = done, `[ ]` = pending) → resume at first `[ ]` task. **If** no plan file exists → `build-input-*.md` is the plan; tasks = its requested outcomes, in order; NEVER create plan file.
 5. Satisfy each task `Done when` before next task. Missing `Done when` in plan file → set `Verdict` = `FAIL` via `Edit`. **If** no plan file exists → outcome as worded is the bar.
 6. **If** plan-currency report supplied → ONLY apply to tasks it names; NEVER edit plan file:
    - `Reword` → implement at current paths.
