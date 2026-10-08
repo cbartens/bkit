@@ -123,9 +123,9 @@ Row vanishing from `.bkit/friction.jsonl` = `bkit harvest` banked it centrally.
 Prune gates (in order):
 
 - **Durability first** — prune ONLY after exact row fsync'd to store AND read back.
-- **Content, never identity** — gate byte-for-byte; `fold` collapses same-identity rows — identity gate deletes rows store never kept; fold loser STAYS in consumer, reported.
+- **Content, never identity** — gate byte-for-byte; `fold` collapses same-identity rows — identity gate deletes rows store does not hold.
 - **Malformed lines** — NEVER pruned.
-- **Store accumulates**, never cleared. `harvest` NEVER commits, either repo.
+- **Store accumulates** — every distinct row, deduped by content only; never cleared, never rewritten from `fold` (winners shift between runs). Readers fold it. `harvest` NEVER commits, either repo.
 
 `stats.jsonl` = COPY-only; `deferrals` / `failures` = COUNT-only (envelope metadata; prose never leaves consumer). Contract: `.bkit/src/bkit-harvest.ts`.
 

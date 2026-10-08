@@ -158,9 +158,9 @@ describe("Harvest dedup by per-kind composite identity (WS4-T2)", () => {
     expect(result.dedupedRows).toBe(2);
   });
 
-  it("later row (higher ts) wins for same composite key", () => {
+  it("store keeps both same-key rows; the fold reads the later one (higher ts)", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
-    // Two friction rows with the SAME key — only later ts should survive
+    // Two friction rows with the SAME key — both are history, the later one is current
     const row1 = frictionRow(1_700_000_001_000, "same-key");
     const row2WithUpdate = JSON.stringify({
       ...JSON.parse(frictionRow(1_700_000_001_999, "same-key")),
@@ -171,12 +171,15 @@ describe("Harvest dedup by per-kind composite identity (WS4-T2)", () => {
     });
 
     const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
-    runHarvest(bkitRoot);
+    const result = runHarvest(bkitRoot);
 
     const frictionPath = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
     const lines = fs.readFileSync(frictionPath, "utf-8").trim().split("\n").filter(Boolean);
-    expect(lines.length).toBe(1); // Deduped to 1
-    const surviving = JSON.parse(lines[0]!) as TelemetryEvent & { description: string };
+    expect(lines.length).toBe(2);
+    expect(result.dedupedRows).toBe(1);
+    const surviving = [...result.mergedState.values()][0] as TelemetryEvent & {
+      description: string;
+    };
     expect(surviving.ts).toBe(1_700_000_001_999);
     expect(surviving.description).toBe("updated description");
   });

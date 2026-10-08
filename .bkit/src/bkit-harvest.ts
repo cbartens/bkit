@@ -3,7 +3,7 @@
 // MOVES consumer `.bkit/friction.jsonl` and COPIES `.bkit/stats.jsonl` into bkit's
 // central store at `harvest/`. COUNT-ONLY aggregates `docs/{deferrals,failures}.jsonl`
 // (dimensional counts from envelope metadata; prose NOT copied). Deduplicates by
-// per-kind composite identity.
+// row content; entity counts fold by per-kind composite identity.
 //
 // INVARIANTS (PII guard + move/copy contract):
 //   - Touches ONLY the named .jsonl ledgers — never any .env/secret files.
@@ -13,9 +13,13 @@
 //     after that exact row is durably fsync'd + read back from the central store (#343).
 //   - The prune gate is byte-for-byte CONTENT, never identity: `fold` collapses rows
 //     sharing an identity, so an identity gate deletes colliding rows the store never
-//     kept. A row that loses the fold stays in the consumer and is reported.
-//   - The central store ACCUMULATES across runs (never cleared) — it is the only
-//     record of pruned consumer friction until the caller commits it.
+//     kept.
+//   - The central store ACCUMULATES across runs (never cleared) and holds every
+//     DISTINCT row, deduped by content only. It is never rewritten from the fold: a
+//     fold winner can change between runs (a newer same-key row, a legacy `ts`), and
+//     a store that kept only winners dropped rows an earlier run had already pruned
+//     (#343). It is the only record of pruned consumer friction until the caller
+//     commits it; readers fold it.
 //   - Malformed consumer lines are NEVER pruned (not ours to delete).
 //   - Per-consumer timeout + continue-on-stall.
 //   - Grep-able [bkit-harvest] log lines.
@@ -221,8 +225,8 @@ export function harvestConsumer(consumerPath: string, bkitRoot: string): Harvest
 
 /**
  * Stamp `repo` on an event when the consumer wrote the row without one.
- * MUST be applied before `identity()` on both the store side and the prune side,
- * or the two identities diverge and a stored row is never recognised as prunable.
+ * MUST be applied on both the store side and the prune side, or the two contents
+ * diverge and a stored row is never recognised as prunable.
  */
 export function stampRepo(event: TelemetryEvent, consumerSlug: string): TelemetryEvent {
   return {
@@ -231,49 +235,26 @@ export function stampRepo(event: TelemetryEvent, consumerSlug: string): Telemetr
   };
 }
 
-/**
- * Identity of an event, or undefined when the row's kind is unknown to the codec.
- *
- * `identity()` is a pure switch over `kind` that builds a template string — it
- * cannot throw for anything `parse()` yields, and both callers pass parsed rows.
- * The real case is an UNKNOWN kind (a row from a newer bkit): the switch has no
- * default, so it falls through and returns undefined at runtime despite its
- * `string` type. That is what this narrows — no catch needed.
- */
-function identityOrUndefined(event: TelemetryEvent): string | undefined {
-  const id: string | undefined = identity(event);
-  return typeof id === "string" ? id : undefined;
-}
-
 /** What the store durably holds, read back off disk after fsync. */
 export interface DurableStore {
   /** Canonical JSON of every confirmed row. THE prune gate — content, not identity. */
   rows: Set<string>;
-  /** Identities of confirmed rows. Used ONLY to report collision-losers, never to prune. */
-  identities: Set<string>;
 }
 
 export interface PruneResult {
   removed: number;
-  /**
-   * Rows kept because a DIFFERENT row shares their identity in the store — i.e. this
-   * row lost the dedup fold and was never actually stored. Retaining it is the whole
-   * point; see the collision note on pruneConsumerFile.
-   */
-  collisionRetained: number;
+  /** Lines left in the consumer: malformed, or appended after the copy. */
+  kept: number;
 }
 
 /**
  * Remove from `srcPath` exactly those rows whose CONTENT is durably in the store.
  *
  * Gated on byte-for-byte content, NOT on identity. This distinction is load-bearing and
- * was a real data-loss bug (#343): `fold()` collapses rows sharing an identity and keeps
- * only the last, so an identity-gated prune deletes every colliding row from the consumer
- * while the store retains just one — silently destroying the losers. Real consumer data
- * hit this: friction `key`s are truncated to ~68 chars, so two distinct entries
- * ("...rejects protocol-mandated `docs/pending.md` edit" and "...`docs/decisions.md` +
- * `docs/pending.md` edits") produced byte-identical keys and thus one identity.
- * Content-gating keeps the loser in the consumer, where it stays recoverable.
+ * was a real data-loss bug (#343): `fold()` collapses rows sharing an identity, so an
+ * identity-gated prune deletes every colliding row from the consumer when the store
+ * holds only one of them. Real consumer data hit this: friction `key`s were truncated
+ * to ~68 chars, so two distinct entries produced byte-identical keys and one identity.
  *
  * Line-level, NOT event-level: a line that does not parse is kept verbatim. The tolerant
  * `parse` exists so a half-written tail does not abort a harvest — pruning that same tail
@@ -292,7 +273,6 @@ export function pruneConsumerFile(
   const raw = fs.readFileSync(srcPath, "utf-8");
   const kept: string[] = [];
   let removed = 0;
-  let collisionRetained = 0;
 
   for (const line of raw.split("\n")) {
     if (line.trim() === "") continue;
@@ -303,27 +283,20 @@ export function pruneConsumerFile(
       kept.push(line); // malformed — never ours to delete
       continue;
     }
-    const stamped = stampRepo(event, consumerSlug);
-    if (durable.rows.has(canonicalRow(stamped))) {
+    if (durable.rows.has(canonicalRow(stampRepo(event, consumerSlug)))) {
       removed++;
       continue;
-    }
-    // Not stored. If something else with this identity IS stored, this row lost the
-    // dedup fold — keep it and let the caller surface it rather than deleting it.
-    const id = identityOrUndefined(stamped);
-    if (id !== undefined && durable.identities.has(id)) {
-      collisionRetained++;
     }
     kept.push(line);
   }
 
-  if (removed === 0) return { removed: 0, collisionRetained };
+  if (removed === 0) return { removed: 0, kept: kept.length };
 
   const next = kept.length > 0 ? kept.join("\n") + "\n" : "";
   const tmpPath = `${srcPath}.bkit-harvest.tmp`;
   fs.writeFileSync(tmpPath, next, "utf-8");
   fs.renameSync(tmpPath, srcPath);
-  return { removed, collisionRetained };
+  return { removed, kept: kept.length };
 }
 
 /**
@@ -352,7 +325,7 @@ function fsyncFile(filePath: string): void {
 
 /**
  * Run harvest across all consumers listed in `docs/consumers.md`.
- * Deduplicates by per-kind composite identity after collecting all rows.
+ * Deduplicates the store by row content after collecting all rows.
  */
 export function runHarvest(bkitRoot: string): HarvestResult {
   const consumerPaths = readConsumerPaths(bkitRoot);
@@ -365,7 +338,7 @@ export function runHarvest(bkitRoot: string): HarvestResult {
   // The central store ACCUMULATES — it is NEVER cleared between runs. Harvest prunes
   // the consumer once a row is stored, so the store is the only remaining record of
   // that row until the caller commits it. Clearing here would delete the originals'
-  // only copy on the very next run. Re-copied rows collapse via the dedup fold below.
+  // only copy on the very next run. Re-copied rows collapse via the content dedup below.
   const destDir = path.join(bkitRoot, HARVEST_DEST_DIR);
 
   for (const consumerPath of consumerPaths) {
@@ -380,7 +353,8 @@ export function runHarvest(bkitRoot: string): HarvestResult {
     }
   }
 
-  // Deduplicate: read all harvested files, fold, rewrite deduplicated
+  // Deduplicate by content: drop exact re-copies, keep every distinct row in first-seen
+  // order. Entity counts come from the fold, which is a read — never what is written.
   let mergedState: FoldedState = new Map();
   let dedupedRows = 0;
   /** Per-file durable content read BACK OFF DISK — the prune gate. */
@@ -395,25 +369,21 @@ export function runHarvest(bkitRoot: string): HarvestResult {
     mergedState = new Map([...mergedState, ...folded]);
     dedupedRows += folded.size;
 
-    // Rewrite deduped
-    const dedupedLines = [...folded.values()].map((ev) => JSON.stringify(ev)).join("\n");
-    fs.writeFileSync(destPath, dedupedLines + (dedupedLines.length > 0 ? "\n" : ""), "utf-8");
+    const distinctLines = [...new Set(parsed.events.map((ev) => canonicalRow(ev)))].join("\n");
+    fs.writeFileSync(destPath, distinctLines + (distinctLines.length > 0 ? "\n" : ""), "utf-8");
 
     // Durability gate: fsync, then read the rows BACK OFF DISK. Pruning against the
-    // in-memory fold would trust a write we never confirmed landed.
+    // in-memory rows would trust a write we never confirmed landed.
     fsyncFile(destPath);
     const verified = parse(fs.readFileSync(destPath, "utf-8"));
     durableByFile[filename] = {
       rows: new Set(verified.events.map((ev) => canonicalRow(ev))),
-      identities: new Set(
-        verified.events.map((ev) => identityOrUndefined(ev)).filter((id): id is string => !!id),
-      ),
     };
   }
 
   // Prune ONLY now — every row below is confirmed byte-for-byte in the store on disk.
   let totalPruned = 0;
-  let totalCollisionRetained = 0;
+  let totalKept = 0;
   for (const res of consumerResults) {
     if (res.skipped) continue;
     const consumerSlug = consumerPathToSlug(res.consumerPath);
@@ -422,7 +392,7 @@ export function runHarvest(bkitRoot: string): HarvestResult {
       if (!fs.existsSync(srcPath)) continue;
       const durable = durableByFile[filename];
       if (!durable || durable.rows.size === 0) continue;
-      const { removed, collisionRetained } = pruneConsumerFile(srcPath, consumerSlug, durable);
+      const { removed, kept } = pruneConsumerFile(srcPath, consumerSlug, durable);
       if (removed > 0) {
         res.prunedRows[filename] = removed;
         totalPruned += removed;
@@ -430,17 +400,17 @@ export function runHarvest(bkitRoot: string): HarvestResult {
           `[bkit-harvest] ${res.consumerPath}/.bkit/${filename} — pruned ${removed} harvested row(s)`,
         );
       }
-      if (collisionRetained > 0) {
-        totalCollisionRetained += collisionRetained;
+      if (kept > 0) {
+        totalKept += kept;
         console.error(
-          `[bkit-harvest] ${res.consumerPath}/.bkit/${filename} — RETAINED ${collisionRetained} row(s): identity collides with a different stored row, so they were never stored. Not pruned (they would be unrecoverable). Fix the colliding key upstream — see #343.`,
+          `[bkit-harvest] ${res.consumerPath}/.bkit/${filename} — kept ${kept} line(s) not in the store (malformed, or appended after the copy)`,
         );
       }
     }
   }
 
   console.error(
-    `[bkit-harvest] Done — total rows collected: ${totalCopied}, after dedup: ${dedupedRows}, pruned from consumers: ${totalPruned}, retained on collision: ${totalCollisionRetained}`,
+    `[bkit-harvest] Done — total rows collected: ${totalCopied}, entities after fold: ${dedupedRows}, pruned from consumers: ${totalPruned}, kept in consumers: ${totalKept}`,
   );
   if (totalPruned > 0) {
     console.error(

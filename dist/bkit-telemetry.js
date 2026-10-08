@@ -428,13 +428,34 @@ export function parse(raw) {
     return result;
 }
 /**
+ * `ts` as a sortable number. Legacy rows carry an ISO-string `ts` or none at all;
+ * `a.ts - b.ts` on those is NaN, which voids the whole sort and makes every fold
+ * winner depend on file order. ISO strings parse; anything else sorts oldest.
+ */
+function tsOrder(ts) {
+    if (typeof ts === "number" && Number.isFinite(ts))
+        return ts;
+    if (typeof ts === "string") {
+        const ms = Date.parse(ts);
+        if (Number.isFinite(ms))
+            return ms;
+    }
+    return Number.NEGATIVE_INFINITY;
+}
+/** Ascending `ts` comparator that stays consistent on legacy rows. Ties keep input order. */
+export function compareTs(a, b) {
+    const x = tsOrder(a.ts);
+    const y = tsOrder(b.ts);
+    return x < y ? -1 : x > y ? 1 : 0;
+}
+/**
  * Fold events into a Map keyed by per-kind composite identity.
  * Later rows (higher ts) win for the same key — last-write-wins fold.
  * Mirrors bkit-status.ts's dedupe approach but with per-kind composite tuples.
  */
 export function fold(events) {
     // Sort by ts ascending so later rows overwrite earlier ones
-    const sorted = [...events].sort((a, b) => a.ts - b.ts);
+    const sorted = [...events].sort(compareTs);
     const state = new Map();
     for (const event of sorted) {
         const key = identity(event);
@@ -588,7 +609,7 @@ export function workflowTelemetry(result, workflow) {
     // This workflow's run rows (generalized outcome), oldest → newest.
     const runs = events
         .filter((e) => e.kind === "outcome" && e.workflow === workflow)
-        .sort((a, b) => a.ts - b.ts);
+        .sort(compareTs);
     const cur = runs.at(-1);
     // Baseline only against runs of the same plan source — a brief run (no plan)
     // has no tasks and a different shape, so mixing them skews every median.
@@ -642,7 +663,7 @@ export function workflowTelemetry(result, workflow) {
     // DON'T match on the run row's parentSha: we take the newest same-workflow
     // compliance group (its parentSha) as "this run".
     const complianceRows = events.filter((e) => e.kind === "compliance" && e.workflow === workflow);
-    const compSha = complianceRows.slice().sort((a, b) => b.ts - a.ts)[0]?.parentSha;
+    const compSha = complianceRows.slice().sort((a, b) => compareTs(b, a))[0]?.parentSha;
     if (compSha) {
         const comp = complianceRows.filter((c) => c.parentSha === compSha);
         const pass = comp.filter((c) => c.result === "pass").length;
@@ -655,7 +676,7 @@ export function workflowTelemetry(result, workflow) {
     // Attempts — the newest same-workflow *_ATTEMPT counter (this run).
     const attempt = events
         .filter((e) => e.kind === "counter" && e.workflow === workflow && /_ATTEMPT$/.test(e.counterName))
-        .sort((a, b) => b.ts - a.ts)[0];
+        .sort((a, b) => compareTs(b, a))[0];
     if (attempt)
         row("attempts", `${attempt.counterName} ${attempt.counterValue}`, "—");
     if (tableRows.length > 0) {

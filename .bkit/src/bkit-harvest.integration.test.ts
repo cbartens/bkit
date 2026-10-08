@@ -231,7 +231,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     runHarvest(bkitRoot);
 
     // fk-late was harvested by the runHarvest pass, so both are legitimately pruned;
-    // the point is that the prune is identity-matched, never a blanket truncate.
+    // the point is that the prune is content-matched, never a blanket truncate.
     const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8");
     expect(store).toContain("fk-1");
     expect(store).toContain("fk-late");
@@ -249,10 +249,7 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
     const { removed } = pruneConsumerFile(
       path.join(consumerPath, ".bkit", "friction.jsonl"),
       consumerSlug,
-      {
-        rows: new Set([frictionRow(1_700_000_000_009, "fk-SOMETHING-ELSE")]),
-        identities: new Set(["friction test-owner/consumer-app fk-SOMETHING-ELSE"]),
-      },
+      { rows: new Set([frictionRow(1_700_000_000_009, "fk-SOMETHING-ELSE")]) },
     );
 
     expect(removed).toBe(0);
@@ -263,10 +260,10 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
 
   // Regression for a real data-loss bug found against live consumer data (#343).
   // Friction `key`s are truncated (~68 chars), so two genuinely different entries can
-  // share a key -> one identity. `fold` keeps only the last, so an identity-gated prune
-  // deleted BOTH from the consumer while the store kept ONE — destroying the loser.
-  // The prune gate is therefore content, not identity.
-  it("never prunes a row that lost the dedup fold to an identity collision", () => {
+  // share a key -> one identity. An identity-gated prune deleted BOTH from the consumer
+  // while a fold-written store kept ONE — destroying the loser. The store now keeps
+  // every distinct row, so both are banked and both drain.
+  it("stores and prunes both rows that share an identity", () => {
     const consumerPath = path.join(tmpDir, "consumer-app");
     // Same key + same repo => same identity, but genuinely different rows.
     const earlier = JSON.stringify({
@@ -284,19 +281,74 @@ describe("Harvest boundary: stats copy-only, friction moved (WS4-T1, #343)", () 
 
     const result = runHarvest(bkitRoot);
 
-    // The store keeps only the fold winner...
     const store = fs.readFileSync(path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl"), "utf-8");
     expect(store).toContain("second distinct entry");
-    expect(store).not.toContain("first distinct entry");
+    expect(store).toContain("first distinct entry");
 
-    // ...so the loser MUST still be in the consumer. It exists nowhere else.
     const consumerAfter = fs.readFileSync(
       path.join(consumerPath, ".bkit", "friction.jsonl"),
       "utf-8",
     );
-    expect(consumerAfter).toContain("first distinct entry");
-    expect(consumerAfter).not.toContain("second distinct entry"); // stored, so pruned
-    expect(result.totalPrunedRows).toBe(1);
+    expect(consumerAfter.trim()).toBe("");
+    expect(result.totalPrunedRows).toBe(2);
+  });
+
+  // #343 harvest-2: the store was rewritten from the fold, so a newer same-key row
+  // appended to the consumer later evicted a row an earlier run had already pruned.
+  // That row then existed nowhere.
+  it("a newer same-key row never evicts a row an earlier run already pruned", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
+    const first = JSON.stringify({
+      ...JSON.parse(frictionRow(1_700_000_000_001, "same-key")),
+      description: "first run entry",
+    });
+    makeConsumerRepo(consumerPath, { ".bkit/friction.jsonl": first + "\n" });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const storePath = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
+
+    runHarvest(bkitRoot);
+    expect(fs.readFileSync(frictionPath, "utf-8").trim()).toBe("");
+
+    const later = JSON.stringify({
+      ...JSON.parse(frictionRow(1_700_000_000_002, "same-key")),
+      description: "second run entry",
+    });
+    fs.appendFileSync(frictionPath, later + "\n", "utf-8");
+    runHarvest(bkitRoot);
+
+    const store = fs.readFileSync(storePath, "utf-8");
+    expect(store).toContain("first run entry");
+    expect(store).toContain("second run entry");
+  });
+
+  // #343 harvest-1: legacy rows with an ISO-string or missing `ts` made the fold's sort
+  // NaN-driven, so which same-key row the store kept flipped with file order between
+  // runs — and rows pruned on run 1 were dropped from the store on run 2.
+  it("keeps every pruned row across re-runs when same-key rows carry legacy ts", () => {
+    const consumerPath = path.join(tmpDir, "consumer-app");
+    const frictionPath = path.join(consumerPath, ".bkit", "friction.jsonl");
+    const variant = (ts: unknown, description: string): string =>
+      JSON.stringify({ ...JSON.parse(frictionRow(1, "legacy-key")), ts, description });
+    const rows = [
+      variant(1_700_000_000_005, "numeric ts"),
+      variant("2026-07-15T10:29:57Z", "iso ts"),
+      variant(undefined, "missing ts"),
+    ];
+    makeConsumerRepo(consumerPath, { ".bkit/friction.jsonl": rows.join("\n") + "\n" });
+    const bkitRoot = makeBkitRoot(tmpDir, [consumerPath]);
+    const storePath = path.join(bkitRoot, HARVEST_DEST_DIR, "friction.jsonl");
+
+    runHarvest(bkitRoot);
+    // Same rows again in a different order — what a later consumer write looks like.
+    fs.writeFileSync(frictionPath, [rows[2], rows[0], rows[1]].join("\n") + "\n", "utf-8");
+    runHarvest(bkitRoot);
+
+    const store = fs.readFileSync(storePath, "utf-8");
+    for (const description of ["numeric ts", "iso ts", "missing ts"]) {
+      expect(store).toContain(description);
+    }
+    expect(fs.readFileSync(frictionPath, "utf-8").trim()).toBe("");
   });
 
   it("does not write to missing consumer paths (skips gracefully)", () => {

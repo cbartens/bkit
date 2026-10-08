@@ -1724,7 +1724,7 @@ async function main() {
             const cwd = process.cwd();
             console.log("[bkit-harvest] Starting cross-repo harvest...");
             const result = runHarvest(cwd);
-            console.log(`[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, after dedup: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`);
+            console.log(`[bkit-harvest] Harvest complete — consumers: ${result.consumers.length}, rows copied: ${result.totalCopiedRows}, entities after fold: ${result.dedupedRows}, pruned from consumers: ${result.totalPrunedRows}`);
             const countOnlyEntries = Object.entries(result.totalCountOnly);
             if (countOnlyEntries.length > 0) {
                 for (const [file, count] of countOnlyEntries) {

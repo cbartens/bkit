@@ -64,7 +64,8 @@ Inline-jq workflow writers: `[bkit-telemetry] append failed: {path}`.
 - `[bkit-harvest] {path}/docs/{file} — count-only: N rows` — COUNT-ONLY ledger per-file.
 - `[bkit-harvest] {path}/.bkit/{file} — pruned N harvested row(s)` — rows REMOVED from consumer after durable store (friction only).
 - `[bkit-harvest] SKIP {path} — {reason}` — consumer skipped.
-- `[bkit-harvest] Done — total rows collected: N, after dedup: M, pruned from consumers: P` — summary.
+- `[bkit-harvest] {path}/.bkit/{file} — kept N line(s) not in the store (malformed, or appended after the copy)` — consumer lines left in place by the prune.
+- `[bkit-harvest] Done — total rows collected: N, entities after fold: M, pruned from consumers: P, kept in consumers: K` — summary.
 - `[bkit-harvest] N row(s) now exist ONLY in harvest/ — commit it to make them durable.` — when P > 0; uncommitted store is sole copy.
 - `[bkit-harvest] harvest error (fail-open): {message}` — unhandled harvest error (exit 0).
 

@@ -424,6 +424,40 @@ describe("updating a row — supersede by same-key append", () => {
     expect(current.status).toBe("CLOSED");
   });
 
+  // Legacy consumer rows carry an ISO-string `ts`, or none at all. `a.ts - b.ts` on
+  // those is NaN, which voids the sort: the winner then depended on file order, and
+  // two harvest runs over the same rows kept different ones (#343 harvest-1).
+  it("fold orders ISO-string and missing ts deterministically, whatever the file order", () => {
+    const missing = frictionEvent("k", { status: "OPEN" } as Partial<TelemetryEvent>);
+    delete (missing as { ts?: number }).ts;
+    const iso = frictionEvent("k", {
+      ts: "2026-07-15T10:29:57Z" as unknown as number,
+      status: "TRIAGED",
+    } as Partial<TelemetryEvent>);
+    const numeric = frictionEvent("k", {
+      ts: Date.parse("2026-07-15T10:30:00Z"),
+      status: "CLOSED",
+    } as Partial<TelemetryEvent>);
+    const orders = [
+      [missing, iso, numeric],
+      [numeric, iso, missing],
+      [iso, numeric, missing],
+      [missing, numeric, iso],
+    ];
+    for (const order of orders) {
+      const current = [...fold(order).values()][0] as TelemetryEvent & { status?: string };
+      expect(current.status).toBe("CLOSED");
+    }
+    const withoutNumeric = [
+      [missing, iso],
+      [iso, missing],
+    ];
+    for (const order of withoutNumeric) {
+      const current = [...fold(order).values()][0] as TelemetryEvent & { status?: string };
+      expect(current.status).toBe("TRIAGED");
+    }
+  });
+
   it("a reworded key forks the entry instead of updating it", () => {
     const a = frictionEvent("ship-blocked-by-hook", { ts: 1_000 } as Partial<TelemetryEvent>);
     const b = frictionEvent("ship-blocked-by-precommit-hook", {
