@@ -83,15 +83,27 @@ describe("audit templates — managed block plus consumer stub", () => {
     expect(content.slice(end + "<!-- bkit:end -->".length)).toBe("\n\n## Project Instructions\n");
   });
 
-  it.each(audits)("%s dogfood copy differs only by the managed-version stamp", (relPath) => {
-    const template = readTemplate(relPath);
-    const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
-    const stamp = dogfood.match(
-      /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/m,
-    )?.[0];
-    expect(stamp, relPath).toBeTruthy();
-    expect(dogfood).toBe(template.replace("{{BKIT_MANAGED_MARKER}}", stamp!));
-  });
+  // Below `bkit:end` is consumer-owned, and bkit is a consumer of its own templates:
+  // its copy may carry Project Instructions (bkit-audit-generate also refines them each
+  // run), so only the managed part has to match.
+  it.each(audits)(
+    "%s dogfood managed block differs only by the managed-version stamp",
+    (relPath) => {
+      const template = readTemplate(relPath);
+      const dogfood = fs.readFileSync(path.resolve(relPath), "utf-8");
+      const stamp = dogfood.match(
+        /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/m,
+      )?.[0];
+      expect(stamp, relPath).toBeTruthy();
+      const upToEnd = (s: string) => s.slice(0, s.indexOf("<!-- bkit:end -->"));
+      expect(upToEnd(dogfood), relPath).toBe(
+        upToEnd(template.replace("{{BKIT_MANAGED_MARKER}}", stamp!)),
+      );
+      expect(dogfood.slice(dogfood.indexOf("<!-- bkit:end -->")), relPath).toMatch(
+        /^<!-- bkit:end -->\n\n## Project Instructions\n/,
+      );
+    },
+  );
 });
 
 describe("Group A templates — html-comment markers (md/mdc files)", () => {
