@@ -22,7 +22,30 @@ export interface RetiredFile {
 }
 
 /** Files bkit owned and no longer ships. Append when a file is dropped; never remove an entry. */
-export const RETIRED_OWNED_FILES: readonly RetiredFile[] = [];
+export const RETIRED_OWNED_FILES: readonly RetiredFile[] = [
+  {
+    path: ".bkit/scripts/bkit-book-commit.sh",
+    replacement: "bkit ledgers commit|union|only-bookkeeping",
+  },
+  { path: ".bkit/scripts/bkit-context-clamp.sh", replacement: "bkit context clamp|clamp-log" },
+  { path: ".bkit/scripts/bkit-counter-bus.sh", replacement: "bkit counters derive|run|route|max" },
+  { path: ".bkit/scripts/bkit-protect-main.sh", replacement: "bkit setup protect-main" },
+  { path: ".bkit/scripts/bkit-rebase-resolve.sh", replacement: "bkit branches rebase" },
+  { path: ".bkit/scripts/bkit-roadmap-fold.sh", replacement: "bkit roadmap fold" },
+  {
+    path: ".bkit/scripts/bkit-runtime.sh",
+    replacement: "bkit runtime, runs, prs, branches and tests commands",
+  },
+  { path: ".bkit/scripts/bkit-ship-gate.sh", replacement: "bkit runs gate" },
+  {
+    path: ".bkit/scripts/bkit-ship-timeouts.sh",
+    replacement: "the timeouts built into bkit runs and bkit locks",
+  },
+  { path: ".bkit/scripts/bkit-slop-delta.sh", replacement: "bkit ci slop" },
+  { path: ".bkit/scripts/bkit-status-fold.sh", replacement: "bkit status fold" },
+  { path: ".bkit/scripts/bkit-status-route.sh", replacement: "bkit status route" },
+  { path: ".bkit/scripts/bkit-workflow-telemetry.sh", replacement: "bkit workflows close" },
+];
 
 export const isRetiredOwned = (
   relPath: string,

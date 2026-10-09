@@ -13,7 +13,7 @@
 // the consumer has modified from the bkit default.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getManagedPackageJsonKeys, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, TYPECHECK_NO_TSCONFIG_SCRIPT, } from "./bkit-manifest.js";
+import { getManagedPackageJsonKeys, LINT_PROSE_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, LEGACY_SLOP_DELTA_SCRIPTS, TYPECHECK_NO_TSCONFIG_SCRIPT, } from "./bkit-manifest.js";
 /**
  * Re-point a superseded bkit `lint:prose` at the current default.
  *
@@ -116,6 +116,7 @@ export function stripManagedKeys(modules = [], dryRun = false) {
     // seeded the noop.
     const legacyScriptValues = {
         "lint:prose": LEGACY_LINT_PROSE_SCRIPTS,
+        "slop:delta": LEGACY_SLOP_DELTA_SCRIPTS,
         typecheck: [TYPECHECK_NO_TSCONFIG_SCRIPT],
     };
     // Scripts

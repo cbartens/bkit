@@ -11,7 +11,7 @@ import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } fro
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAgent, parseFrontmatter, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, SLOP_DELTA_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, LEGACY_SLOP_DELTA_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, resolveClaudeDerivedAllows, extractMcpServers, networkAllowlistBases, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "./bkit-cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
@@ -2413,7 +2413,7 @@ export function runLintModule(ctx) {
         "lint:prose": LINT_PROSE_SCRIPT,
         "lint:slop": "slop-scan scan .",
         // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
-        "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+        "slop:delta": SLOP_DELTA_SCRIPT,
         // The local gate every workflow and prompt now dispatches through (#437).
         // Same single-source-of-truth rule as lint:prose above, enforced structurally
         // here: both this call and the manifest default spread the SAME object.
@@ -2422,7 +2422,7 @@ export function runLintModule(ctx) {
     // Re-point a superseded bkit lint:prose at the current one. add-if-missing
     // alone would leave every existing consumer on the version that silently
     // self-disables in worktrees and fresh checkouts.
-    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS });
+    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS, "slop:delta": LEGACY_SLOP_DELTA_SCRIPTS });
     if (lintScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
     }

@@ -502,7 +502,7 @@ jobs:
       #          contents: read
       #          pull-requests: write     # required to post/update the sticky PR coverage comments
       #   SEPARATE LANES: this stub wires both reports into bkit-tests-unit (the combined starter). If you run
-      #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + gether/fraser run; see the
+      #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + consumer repos run; see the
       #   FULL CI SCAFFOLD REFERENCE below), move the integration coverage run + its Report step + a pull-requests: write
       #   permissions block into THAT lane instead. Each lane posts its own comment; the distinct name: keeps them apart.
       #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so the steps fail — the head.repo == repo guard in the
@@ -672,7 +672,7 @@ jobs:
 # Long logic → a script. deployments.md § Workflow-file limits.
 #
 # ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
-# shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
+# shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumer repos run;
 # NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo.
 #
 # The graph is FLAT AND WIDE for static/unit/build/integration: scope fans out, capstone joins.
@@ -808,7 +808,7 @@ jobs:
 # === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
 # bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
 # step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra
-# boundaries). Mirrors bkit's own bkit-tests-integration lane + consumers gether/fraser. Self-contained
+# boundaries). Mirrors bkit's own bkit-tests-integration lane + consumer repos. Self-contained
 # (own checkout/setup/install); gate heavy steps on web_affected; emit integration_ran; the
 # bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
 #   bkit-tests-integration:  needs:[bkit-tests-scope]; if: run_level != 'none'; timeout-minutes: 20

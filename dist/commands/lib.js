@@ -8,6 +8,7 @@
 // text cannot drift from what the command accepts.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../bkit-telemetry.js";
 // ---------------------------------------------------------------------------
@@ -50,14 +51,24 @@ export class CommandError extends Error {
 // Flags
 // ---------------------------------------------------------------------------
 const camel = (kebab) => kebab.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-/** Parse `--flag=value` / `--flag value` / `--bool` against the verb's spec. */
+/**
+ * Parse `--flag=value` / `--flag value` / `--bool` against the verb's spec. Keys
+ * are filled in argv order, so a verb may render repeated or free-form flags in
+ * the order the caller gave them.
+ */
 export function parseFlags(argv, specs) {
     const byName = new Map(specs.map((s) => [s.name, s]));
+    const positional = specs.find((s) => s.positional);
     const out = {};
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         if (!arg.startsWith("--")) {
-            throw new CommandError(EXIT.USAGE, `unexpected argument "${arg}" — commands take flags only`);
+            const key = positional && camel(positional.name);
+            if (!key || out[key] !== undefined) {
+                throw new CommandError(EXIT.USAGE, `unexpected argument "${arg}" — commands take flags only`);
+            }
+            out[key] = arg;
+            continue;
         }
         const eq = arg.indexOf("=");
         const name = arg.slice(2, eq === -1 ? undefined : eq);
@@ -133,7 +144,11 @@ export function verbHelp(cmd, verb) {
     const spec = cmd.verbs[verb];
     const flags = spec.flags.map((f) => {
         const usage = f.type === "boolean" ? `--${f.name}` : `--${f.name}=<value>`;
-        const notes = [f.required ? "required" : "", f.repeatable ? "repeatable" : ""].filter(Boolean);
+        const notes = [
+            f.required ? "required" : "",
+            f.repeatable ? "repeatable" : "",
+            f.positional ? "or as the one bare argument" : "",
+        ].filter(Boolean);
         return [usage, notes.length ? `${f.help} (${notes.join(", ")})` : f.help];
     });
     return [
@@ -232,6 +247,52 @@ export function git(cwd, args) {
     const res = runGit(cwd, args);
     return res.ok ? res.stdout : null;
 }
+/** `JSON.parse` as a result instead of a throw; each caller says what bad input means for it. */
+export function parseJson(raw) {
+    try {
+        return { ok: true, value: JSON.parse(raw) };
+    }
+    catch {
+        // Not JSON: the result says so, and the caller reports it in its own terms.
+        return { ok: false };
+    }
+}
+/**
+ * Run a tool other than git, never throwing. Hook-exported GIT_* vars are scrubbed
+ * so gh and friends answer for `cwd`; `input` goes to stdin.
+ */
+export function runTool(cmd, args, cwd, opts = {}) {
+    const res = spawnSync(cmd, args, {
+        cwd,
+        encoding: "utf-8",
+        env: gitEnv(),
+        input: opts.input,
+        maxBuffer: 1 << 26,
+    });
+    if (res.error) {
+        return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
+    }
+    return {
+        found: true,
+        status: res.status ?? 128 + signalNumber(res.signal),
+        stdout: res.stdout ?? "",
+        stderr: res.stderr ?? "",
+    };
+}
+const signalNumber = (signal) => (signal ? os.constants.signals[signal] : undefined) ?? 1;
+/** `gh <args>` in `cwd`, never throwing; `input` goes to stdin. */
+export function runGh(cwd, args, input) {
+    const res = runTool("gh", args, cwd, { input });
+    return {
+        ok: res.found && res.status === 0,
+        stdout: res.stdout.trim(),
+        stderr: res.stderr.trim(),
+        missing: !res.found,
+        status: res.status,
+    };
+}
+/** gh cannot serve this call here: not installed, or exit 4 (not logged in). */
+export const ghUnavailable = (res) => res.missing || res.status === 4;
 /**
  * The main checkout's root, from any worktree. `--git-common-dir` points at the
  * shared `.git`, so a linked worktree resolves to the same root as the main one.
@@ -270,3 +331,20 @@ export function statusLocation(opts) {
 }
 /** The tokens GitHub Actions honours to skip every workflow run for a commit. */
 export const SKIP_CI_TOKEN = /\[(?:skip ci|ci skip|no ci|skip actions|actions skip)\]/i;
+/** A commit's full message, or null when it cannot be read (`%B` is never empty for a real commit). */
+export function commitMessage(cwd, sha) {
+    const res = runGit(cwd, ["log", "-1", "--format=%B", sha]);
+    return res.ok && res.stdout !== "" ? res.stdout : null;
+}
+/**
+ * The skip-CI token in a commit's BODY, or null; undefined when the commit cannot
+ * be read. The subject is excluded on purpose: a docs-only commit carries
+ * `[skip ci]` in its subject by convention, while the defect is a squash body that
+ * concatenates branch subjects and so inherits a token nobody meant for the shared branch.
+ */
+export function bodySkipToken(cwd, sha) {
+    const msg = sha === "" ? null : commitMessage(cwd, sha);
+    if (msg === null)
+        return undefined;
+    return SKIP_CI_TOKEN.exec(msg.split("\n").slice(1).join("\n"))?.[0] ?? null;
+}

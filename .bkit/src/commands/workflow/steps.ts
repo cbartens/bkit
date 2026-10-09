@@ -12,7 +12,7 @@ import * as path from "node:path";
 
 import { activeDoneSteps, appendLine, statusTimestamp, type Step } from "../../bkit-status.js";
 import { getPromptsRoot } from "../../bkit-paths.js";
-import { CommandError, EXIT, runGit, type CommandSpec, type FlagSpec } from "../lib.js";
+import { CommandError, EXIT, parseJson, runGit, type CommandSpec, type FlagSpec } from "../lib.js";
 import {
   EXIT_NO_STATUS,
   FILE_FLAG,
@@ -178,13 +178,10 @@ function extraField(spec: string): [string, unknown] {
   return [key, parseJsonOrString(raw)];
 }
 
+/** Not JSON: a plain-text value, kept as written. */
 function parseJsonOrString(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // Not JSON: a plain-text value, kept as written.
-    return raw;
-  }
+  const parsed = parseJson(raw);
+  return parsed.ok ? parsed.value : raw;
 }
 
 const CORE_ROW_KEYS = new Set([

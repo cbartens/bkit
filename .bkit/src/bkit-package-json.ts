@@ -18,6 +18,7 @@ import {
   getManagedPackageJsonKeys,
   LINT_PROSE_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
+  LEGACY_SLOP_DELTA_SCRIPTS,
   TYPECHECK_NO_TSCONFIG_SCRIPT,
   type ModuleName,
 } from "./bkit-manifest.js";
@@ -159,6 +160,7 @@ export function stripManagedKeys(
   // seeded the noop.
   const legacyScriptValues: Record<string, readonly string[]> = {
     "lint:prose": LEGACY_LINT_PROSE_SCRIPTS,
+    "slop:delta": LEGACY_SLOP_DELTA_SCRIPTS,
     typecheck: [TYPECHECK_NO_TSCONFIG_SCRIPT],
   };
 

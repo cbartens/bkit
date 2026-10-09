@@ -141,8 +141,12 @@ export function parseStatus(raw: string): WorkflowRun[] {
   return fold(events);
 }
 
+// Any status.jsonl row. The fold reads only StatusEvent types; the log also carries
+// rows it skips (runtime-resolved, transport-fallback, close-transport, ...).
+export type StatusRow = { type: string } & Record<string, unknown>;
+
 // Serialize one event to the NDJSON line appended to `status.jsonl`, newline included.
-export function appendLine(event: StatusEvent): string {
+export function appendLine(event: StatusEvent | StatusRow): string {
   return `${JSON.stringify(event)}\n`;
 }
 

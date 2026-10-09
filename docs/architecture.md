@@ -80,13 +80,13 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ Blocker detectors  → exit 1 before any writes if triggered
     │   └─ Advisory detectors → accumulate in ctx.advisories
     │
-    ├─ Phase 2: Dispatch (writes — STAGED, v0.9.0+)
-    │   ├─ Each module writes to .bkit-staging/<module>/  (atomic-rename on commit)
+    ├─ Phase 2: Dispatch (writes — direct to destinations, NOT atomic across modules)
+    │   ├─ .bkit-staging/<module>/ = per-run scratch for derived files; discardAllStaging in finally
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
     │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+)
     │   ├─ byte-equal-text → seed-or-print (write only if absent; print diff otherwise)
-    │   └─ On any error    → discardAllStaging removes .bkit-staging/ — consumer files untouched
+    │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
     └─ Phase 3: Post-install re-detection + commit
         ├─ Token-surface detectors (BKIT_GH_TOKEN_INSTALL at 4 surfaces)

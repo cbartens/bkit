@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { activeDoneSteps, appendLine, statusTimestamp } from "../../bkit-status.js";
 import { getPromptsRoot } from "../../bkit-paths.js";
-import { CommandError, EXIT, runGit } from "../lib.js";
+import { CommandError, EXIT, parseJson, runGit } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, statusFile, str, } from "./status.js";
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
@@ -156,14 +156,10 @@ function extraField(spec) {
         throw new CommandError(EXIT.USAGE, `--field key ${key} is not camelCase`);
     return [key, parseJsonOrString(raw)];
 }
+/** Not JSON: a plain-text value, kept as written. */
 function parseJsonOrString(raw) {
-    try {
-        return JSON.parse(raw);
-    }
-    catch {
-        // Not JSON: a plain-text value, kept as written.
-        return raw;
-    }
+    const parsed = parseJson(raw);
+    return parsed.ok ? parsed.value : raw;
 }
 const CORE_ROW_KEYS = new Set([
     "type",

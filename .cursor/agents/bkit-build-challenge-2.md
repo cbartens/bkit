@@ -44,15 +44,15 @@ tools:
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
    - Auth & AuthZ: missing checks, role / permission gaps, session / token handling, privilege escalation.
-   - RLS / tenancy: RLS bypasses, missing `deleted_at` filters, tenant-id leaks, cross-tenant exposure, policies stale vs new schema.
+   - Data-access control / tenancy: row- or tenant-policy bypasses (e.g. Postgres RLS), missing soft-delete filters (e.g. `deleted_at`), tenant-id leaks, cross-tenant exposure, policies stale vs new schema.
    - Input validation: injection (SQL / NoSQL / command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
    - Secrets: hardcoded keys / tokens, secrets in logs / errors / repo.
    - Data exposure: PII in logs / responses, internal IDs, over-fetching, sensitive serialized fields, missing redaction.
    - OWASP Top 10 catch-all: cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification / integrity / logging failures.
    - Supply chain: new dependencies — CVEs, maintainer trust, install scripts.
 7. Per finding, ALL five required: `severity` (`CRITICAL|HIGH|MEDIUM|LOW`), `class` (`mechanical|architectural`), `location` (`file:line`), exploit scenario, suggested fix. **If** incomplete → not counted in `Failures`.
-   - `class: mechanical` = surgical edit, NO redesign (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
-   - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, RLS policy structurally broken, requires plan / design rework).
+   - `class: mechanical` = surgical edit, NO redesign (missing soft-delete filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
+   - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, data-access policy structurally broken, requires plan / design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md` but specifically `docs/security.md`.
 9. Update **Create** — set `Failures` via `Edit` = `CRITICAL` count; do NOT count incomplete findings.
 10. Update **Create** — set `Verdict` via `Edit`; mapping:
@@ -70,7 +70,7 @@ Failures: <integer >= 0>
 
 # Build Challenge
 
-Lens: Security — auth, secrets, input validation, data exposure, OWASP, RLS / tenancy.
+Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-access policies / tenancy.
 
 ## Findings Log
 

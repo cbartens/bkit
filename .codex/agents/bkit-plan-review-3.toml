@@ -33,10 +33,10 @@ developer_instructions = """
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
    - Files / modules edited (direct).
    - Symbols exported / changed and their consumers (language-server references when configured + text search for callers).
-   - Schemas / tables touched and downstream readers (RLS policies, indexes, FK constraints).
+   - Schemas / tables touched and downstream readers (access policies e.g. RLS, indexes, foreign keys).
    - Public endpoints / event names / queue topics modified and their producers / consumers.
 6. Risk classification per surface:
-   - High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, RLS policies, multi-subscriber event payloads, public type exports. Flag explicitly.
+   - High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, data-access policies (e.g. RLS), multi-subscriber event payloads, public type exports. Flag explicitly.
    - Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → `CRITICAL`.
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → `CRITICAL`.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → `CRITICAL`.

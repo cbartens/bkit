@@ -65,6 +65,22 @@ describe("parseFlags", () => {
   ])("%j is a usage error", (argv, message) => {
     expect(usage(() => parseFlags(argv, FLAGS))).toBe(message);
   });
+
+  it("fills a positional flag from one bare argument, and only once", () => {
+    const specs: FlagSpec[] = [{ name: "base", type: "string", positional: true, help: "ref" }];
+    expect(parseFlags(["abc123"], specs)).toEqual({ base: "abc123" });
+    expect(parseFlags(["--base=abc123"], specs)).toEqual({ base: "abc123" });
+    expect(usage(() => parseFlags(["a", "b"], specs))).toBe(
+      'unexpected argument "b" — commands take flags only',
+    );
+    expect(usage(() => parseFlags(["--base=a", "b"], specs))).toBe(
+      'unexpected argument "b" — commands take flags only',
+    );
+  });
+
+  it("fills keys in argv order", () => {
+    expect(Object.keys(parseFlags(["--sub-plan=2", "--fid=1"], FLAGS))).toEqual(["subPlan", "fid"]);
+  });
 });
 
 const CMD: CommandSpec = {

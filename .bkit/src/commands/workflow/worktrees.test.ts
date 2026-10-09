@@ -1,0 +1,324 @@
+// Everything `bkit worktrees` does without a remote: flag validation, adopt
+// mode, ship's branch choice, the plain-directory guard, list and remove. The
+// cases that fetch, mint and rebase are in worktrees.integration.test.ts.
+
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import { runCommand } from "../lib";
+import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
+
+const FID = "42-thing";
+const MONTH = "202610";
+const dirs: string[] = [];
+afterEach(() => {
+  for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+});
+
+const git = (cwd: string, ...args: string[]) =>
+  spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+    cwd,
+    encoding: "utf-8",
+  }).stdout.trim();
+
+/** A local repo with one commit on `branch` and a `.env`, no remote. */
+function repo(branch = "dev") {
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-unit-")));
+  dirs.push(cwd);
+  git(cwd, "init", "-q", "-b", branch);
+  git(cwd, "commit", "-q", "--allow-empty", "-m", "init");
+  fs.writeFileSync(path.join(cwd, ".env"), "SECRET=1\n");
+  return cwd;
+}
+
+/** A linked worktree at `.worktrees/{fid}`, marked as workflow-created when `owned`. */
+function linked(cwd: string, fid = FID, owned = false) {
+  git(cwd, "worktree", "add", "-q", worktreeDir(cwd, fid), "-b", `feat/${fid}`);
+  if (owned) {
+    const marker = ownershipMarker(cwd, fid);
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, "");
+  }
+  return worktreeDir(cwd, fid);
+}
+
+async function run(cwd: string, argv: string[]) {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runCommand(["worktrees", ...argv], [worktreesCommand], {
+    classicVerbs: new Set(),
+    cwd,
+    io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+  });
+  return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+}
+
+const setup = (cwd: string, workflow: string, ...extra: string[]) =>
+  run(cwd, ["setup", `--workflow=${workflow}`, `--fid=${FID}`, `--month=${MONTH}`, ...extra]);
+const remove = (cwd: string, ...extra: string[]) => run(cwd, ["remove", `--fid=${FID}`, ...extra]);
+
+describe("bkit worktrees setup — usage", () => {
+  it.each([
+    [["--workflow=deploy", `--fid=${FID}`, `--month=${MONTH}`], "--workflow must be"],
+    [["--workflow=build", "--fid=../x", `--month=${MONTH}`], "is not a feature id"],
+    [["--workflow=build", "--fid=a/b", `--month=${MONTH}`], "is not a feature id"],
+    [["--workflow=build", `--fid=${FID}`, "--month=2026-10"], "YYYYMM"],
+    [["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--branch=x"], "ship only"],
+    [
+      ["--workflow=ship", `--fid=${FID}`, `--month=${MONTH}`, "--branch=a..b"],
+      "not a valid branch",
+    ],
+    [["--workflow=build", `--month=${MONTH}`], "missing required flag --fid"],
+    [
+      ["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--worktrees=true"],
+      "takes no value",
+    ],
+  ])("refuses %j", async (flags, problem) => {
+    const r = await run(repo(), ["setup", ...flags]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(problem);
+  });
+
+  it("refuses outside a git repository", async () => {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-nogit-")));
+    dirs.push(cwd);
+    const r = await setup(cwd, "build");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("not inside a git repository");
+  });
+});
+
+describe("bkit worktrees setup — adopt in place", () => {
+  it("works in the main checkout on its own branch: no worktree, no copy, no install", async () => {
+    const cwd = repo("claude/session");
+    const r = await setup(cwd, "build");
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      worktreePath: cwd,
+      repoRoot: cwd,
+      branch: "claude/session",
+      mode: "adopted",
+      owned: false,
+      rebaseConflict: false,
+      sentinel: null,
+      logDir: path.join(cwd, "docs/plans", MONTH, "logs", FID),
+      baseSha: null,
+      copied: [],
+      copyMissing: [],
+      installed: false,
+    });
+    expect(fs.existsSync(path.join(cwd, ".worktrees"))).toBe(false);
+    expect(fs.existsSync(r.json.logDir)).toBe(true);
+  });
+
+  it("adopts the main checkout even when called from a linked worktree", async () => {
+    const cwd = repo("claude/session");
+    const wt = linked(cwd, "9-other");
+    expect((await setup(wt, "plan")).json.worktreePath).toBe(cwd);
+  });
+
+  it.each(["design", "plan", "build", "ship"])(
+    "%s refuses to work in place on dev",
+    async (workflow) => {
+      const cwd = repo("dev");
+      git(cwd, "branch", `feat/${FID}`);
+      // Ship adopts by switching to its branch, so it only refuses when that lands on dev.
+      const r = await setup(cwd, workflow, ...(workflow === "ship" ? ["--branch=dev"] : []));
+      expect(r.code).toBe(7);
+    },
+  );
+
+  it("refuses a detached HEAD", async () => {
+    const cwd = repo("claude/session");
+    git(cwd, "switch", "-q", "--detach");
+    const r = await setup(cwd, "build");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("detached HEAD");
+  });
+});
+
+describe("bkit worktrees setup — debug", () => {
+  it("may debug in place on dev", async () => {
+    const r = await setup(repo("dev"), "debug");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ branch: "dev", mode: "adopted" });
+  });
+
+  it("never in place on main", async () => {
+    const r = await setup(repo("main"), "debug");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("refusing to work in place on main");
+  });
+
+  it("refuses a detached HEAD before anything else", async () => {
+    const cwd = repo("fix/ci");
+    git(cwd, "switch", "-q", "--detach");
+    const r = await setup(cwd, "debug", "--worktrees");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("check out a branch");
+  });
+
+  it("adopts in place when the session is already on feat/{fid}", async () => {
+    const cwd = repo(`feat/${FID}`);
+    const r = await setup(cwd, "debug", "--worktrees");
+    expect(r.json).toMatchObject({ mode: "adopted", worktreePath: cwd });
+    expect(fs.existsSync(path.join(cwd, ".worktrees"))).toBe(false);
+  });
+});
+
+describe("bkit worktrees setup — ship branch", () => {
+  it("ships the prompt-named branch, else feat/{fid} when it exists, else the session branch", async () => {
+    const cwd = repo("claude/work");
+    git(cwd, "branch", "named");
+    expect((await setup(cwd, "ship", "--branch=named")).json.branch).toBe("named");
+    git(cwd, "switch", "-q", "claude/work");
+    expect((await setup(cwd, "ship")).json.branch).toBe("claude/work");
+    git(cwd, "branch", `feat/${FID}`);
+    expect((await setup(cwd, "ship")).json.branch).toBe(`feat/${FID}`);
+  });
+
+  it("falls back to feat/{fid} from a dev session and refuses when it cannot switch there", async () => {
+    const r = await setup(repo("dev"), "ship");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain(`cannot switch to feat/${FID}`);
+  });
+
+  it("refuses dev / main as the ship branch", async () => {
+    const r = await setup(repo("claude/work"), "ship", "--branch=main");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("refusing to ship main");
+  });
+
+  it("adopts in place when the session is already on the ship branch, even with --worktrees", async () => {
+    const cwd = repo(`feat/${FID}`);
+    const r = await setup(cwd, "ship", "--worktrees");
+    expect(r.json).toMatchObject({ mode: "adopted", worktreePath: cwd, branch: `feat/${FID}` });
+  });
+});
+
+describe("bkit worktrees setup — resume guard", () => {
+  it("refuses a plain directory at .worktrees/{fid} rather than rebasing the main checkout", async () => {
+    const cwd = repo("dev");
+    fs.mkdirSync(worktreeDir(cwd, FID), { recursive: true });
+    const before = git(cwd, "rev-parse", "HEAD");
+    const r = await setup(cwd, "build", "--worktrees");
+    expect(r.code).toBe(10);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(before);
+  });
+
+  it("fails with a fetch error when there is no origin to rebase onto", async () => {
+    const cwd = repo("dev");
+    linked(cwd);
+    expect((await setup(cwd, "build", "--worktrees")).code).toBe(4);
+  });
+
+  it("ship resumes without fetching or rebasing, and copies the configured list", async () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { worktree: { install: false } } }),
+    );
+    const wt = linked(cwd);
+    const r = await setup(cwd, "ship", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      worktreePath: wt,
+      mode: "resumed",
+      owned: false,
+      copied: [".env"],
+      copyMissing: [".env.local"],
+      installed: false,
+    });
+    expect(r.err).toContain(".env.local is not in the main checkout");
+    expect(fs.readFileSync(path.join(wt, ".env"), "utf-8")).toBe("SECRET=1\n");
+  });
+
+  it("narrates a copy entry that points outside the main checkout and skips it", async () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { worktree: { copy: ["../secrets"], install: false } } }),
+    );
+    linked(cwd);
+    const r = await setup(cwd, "ship", "--worktrees");
+    expect(r.json).toMatchObject({ copied: [], copyMissing: [] });
+    expect(r.err).toContain("outside the main checkout");
+  });
+});
+
+describe("paths", () => {
+  it("puts the worktree under .worktrees and the marker in the git common dir's outbox", () => {
+    const cwd = repo();
+    expect(worktreeDir(cwd, FID)).toBe(path.join(cwd, ".worktrees", FID));
+    expect(ownershipMarker(cwd, FID)).toBe(
+      path.join(cwd, ".git", "bkit-outbox", FID, ".worktree-owned"),
+    );
+  });
+
+  it("resolves the same marker from inside the worktree", () => {
+    const cwd = repo();
+    expect(ownershipMarker(linked(cwd), FID)).toBe(ownershipMarker(cwd, FID));
+  });
+});
+
+describe("bkit worktrees remove", () => {
+  it("answers absent when there is no worktree", async () => {
+    const r = await remove(repo(), "--owned-only");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ removed: false, reason: "absent" });
+  });
+
+  it("--owned-only leaves a worktree without the marker in place", async () => {
+    const cwd = repo();
+    const wt = linked(cwd);
+    const r = await remove(cwd, "--owned-only");
+    expect(r.json).toMatchObject({ removed: false, reason: "not-owned" });
+    expect(r.err).toContain("not ours");
+    expect(fs.existsSync(wt)).toBe(true);
+  });
+
+  it("--owned-only removes a marked worktree with uncommitted changes and clears the marker", async () => {
+    const cwd = repo();
+    const wt = linked(cwd, FID, true);
+    fs.writeFileSync(path.join(wt, "dirty.txt"), "x\n");
+    const r = await remove(cwd, "--owned-only");
+    expect(r.json).toEqual({ removed: true, reason: null, worktreePath: wt, repoRoot: cwd });
+    expect(fs.existsSync(wt)).toBe(false);
+    expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(false);
+    expect(git(cwd, "worktree", "list")).not.toContain(".worktrees");
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+  });
+
+  it("without --owned-only removes any worktree at the path", async () => {
+    const cwd = repo();
+    linked(cwd);
+    expect((await remove(cwd)).json.removed).toBe(true);
+  });
+
+  it("keeps the marker when the worktree directory was deleted by hand, and prunes its entry", async () => {
+    const cwd = repo();
+    fs.rmSync(linked(cwd, FID, true), { recursive: true, force: true });
+    const r = await remove(cwd, "--owned-only");
+    expect(r.json.reason).toBe("absent");
+    expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(true);
+    expect(git(cwd, "worktree", "list")).not.toContain(".worktrees");
+  });
+
+  it("tells a caller inside the removed worktree where to cd", async () => {
+    const cwd = repo();
+    const wt = linked(cwd, FID, true);
+    const r = await remove(wt, "--owned-only");
+    expect(r.json.removed).toBe(true);
+    expect(r.err).toContain(`cd to ${cwd}`);
+  });
+
+  it("fails with its own exit code when git cannot remove it", async () => {
+    const cwd = repo();
+    fs.mkdirSync(worktreeDir(cwd, FID), { recursive: true });
+    expect((await remove(cwd)).code).toBe(11);
+  });
+});

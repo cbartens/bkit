@@ -66,7 +66,7 @@ Both clouds run Ubuntu 24.04 (4 vCPU / 16 GB RAM / 30 GB disk class). Pre-instal
 <!-- prettier-ignore -->
 | Pre-installed | Claude Code on the web | Cursor Cloud Agents (after bkit Dockerfile) |
 | --- | --- | --- |
-| Node | 20 + 22 | 24 (matches `.nvmrc` + CI; bump in lockstep) |
+| Node | 20 + 22 | 20 (template default; pin to your `engines.node` / `.nvmrc`) |
 | Package manager | pnpm + bun (latest) | pnpm (corepack-pinned in `.cursor/Dockerfile`; each repo's `packageManager` honored in-repo) |
 | Python | Yes + ruff | Yes (system `python3` only) |
 | Databases | Postgres 16, Redis 7 | Not installed (add to Dockerfile if needed) |
@@ -74,7 +74,7 @@ Both clouds run Ubuntu 24.04 (4 vCPU / 16 GB RAM / 30 GB disk class). Pre-instal
 | Utilities | git, jq, ripgrep | git, jq |
 | `gh` CLI | **Not pre-installed** — setup script adds it | Added via Dockerfile |
 | `vale` | **Not pre-installed** — setup script adds 3.9.1 | Added via Dockerfile (3.9.1) |
-| Playwright | Not pre-installed | Chromium installed (drop the line in your fork if unused) |
+| Playwright | Not pre-installed | Not installed (commented example in the consumer section of `.cursor/Dockerfile`) |
 
 Two halves of customisation:
 
@@ -292,7 +292,7 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 <!-- prettier-ignore -->
 | File | Role | bkit ownership |
 | --- | --- | --- |
-| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 + pnpm (corepack-pinned) + Playwright chromium | Tier 3 seed; consumer-owned after first install |
+| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 20 (template default) + pnpm (corepack-pinned); browsers etc. added by the consumer | Tier 3 seed; consumer-owned after first install |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm config set …:_authToken=$BKIT_GH_TOKEN_INSTALL` + `pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |

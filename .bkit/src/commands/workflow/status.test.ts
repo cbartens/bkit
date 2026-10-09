@@ -250,7 +250,24 @@ describe("bkit status meta", () => {
     expect(r.json).toMatchObject({ debugMode: "SOAK", debugAttempt: 2 });
   });
 
+  it("records soakEntryAt at the row's own time, openedPr and planSource", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z")]);
+    const w = await run([
+      "status",
+      "meta",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--soak-entry",
+      "--opened-pr",
+      "--plan-source=brief",
+    ]);
+    expect(w.code).toBe(0);
+    expect(w.json.row).toMatchObject({ openedPr: true, planSource: "brief" });
+    expect(w.json.row.soakEntryAt).toBe(w.json.row.at);
+  });
+
   it.each([
+    [["--plan-source=guess"], 2],
     [["--debug-mode=TURBO"], 2],
     [["--push-mode=REMOTE"], 2],
     [["--debug-attempt=0"], 2],

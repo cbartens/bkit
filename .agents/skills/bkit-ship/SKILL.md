@@ -803,11 +803,13 @@ description: "Ship Feature — Autonomous merge and archive"
    fi
    if [ "$VALIDATED_HEAD" != "$ENTRY_HEAD" ] || [ "$REVALIDATE_REASON" = "gate-refusal" ]; then
      . "$REPO_ROOT/.bkit/scripts/bkit-ship-timeouts.sh"
+     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ship] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+     bkit_ci_declared || :
      PROBE="none"
      PROBE_ATTEMPTS=0
      while [ "$PROBE_ATTEMPTS" -lt "${SHIP_PROBE_ATTEMPTS:-6}" ]; do
        PROBE_ATTEMPTS=$((PROBE_ATTEMPTS + 1))
-       if RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json headSha 2>/dev/null); then
+       if RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 20 --json headSha 2>/dev/null); then
          printf '%s' "$RUNS" | jq -e --arg h "$VALIDATED_HEAD" 'any(.[]; .headSha == $h)' >/dev/null 2>&1 && { PROBE="found"; break; }
          PROBE="none"
        else
@@ -822,7 +824,7 @@ description: "Ship Feature — Autonomous merge and archive"
        DISPATCHED="true"
        VALIDATED_HEAD="$CURRENT_HEAD"
        echo "[bkit-ship] no run at the validated head after $PROBE_ATTEMPTS probes (probe=$PROBE) — dispatching at $CURRENT_HEAD"
-       gh workflow run ci.yml --ref "{SHIP_BRANCH}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
+       gh workflow run "$CI_DECLARED_WORKFLOW" --ref "{SHIP_BRANCH}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
      fi
      jq -nc --arg t "$(date -u +%FT%TZ)" --arg h "$VALIDATED_HEAD" --arg r "$PROBE" \
        --arg rr "${REVALIDATE_REASON:-head-move}" --argjson d "$DISPATCHED" --argjson a "$PROBE_ATTEMPTS" \
@@ -833,7 +835,7 @@ description: "Ship Feature — Autonomous merge and archive"
      ATTEMPT=0
      while [ "$(date +%s)" -lt "$DEADLINE" ]; do
        ATTEMPT=$((ATTEMPT + 1))
-       RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json status,conclusion,headSha 2>/dev/null)
+       RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 20 --json status,conclusion,headSha 2>/dev/null)
        RUN_STATE=$(printf '%s' "$RUNS" | jq -c --arg h "$VALIDATED_HEAD" '[.[] | select(.headSha == $h)] | .[0] // empty' 2>/dev/null)
        RUN_STATUS=$(printf '%s' "$RUN_STATE" | jq -r '.status // empty' 2>/dev/null)
        [ "$RUN_STATUS" = "completed" ] && break
@@ -876,10 +878,13 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    OUTBOX="{OUTBOX}"
    VALIDATED_HEAD="{VALIDATED_HEAD}"
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ship] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
+   bkit_ci_declared || :
    GATE_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
    DEV_SHA=$(git rev-parse origin/dev)
    ANCESTOR=$(git merge-base --is-ancestor origin/dev "$GATE_HEAD" 2>/dev/null && echo true || echo false)
-   CAPSTONE_RUN=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 1 --json databaseId,url --jq '.[0] // {}' 2>/dev/null)
+   CAPSTONE_RUN=$(gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 1 --json databaseId,url --jq '.[0] // {}' 2>/dev/null)
    MERGEABLE_STATE=$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)
    jq -nc \
      --arg gateHead "$GATE_HEAD" --arg validatedHead "$VALIDATED_HEAD" --arg devSha "$DEV_SHA" --arg ancestor "$ANCESTOR" \

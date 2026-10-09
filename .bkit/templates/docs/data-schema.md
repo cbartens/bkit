@@ -5,7 +5,7 @@
 # Data Schema
 
 > [!CAUTION]
-> **Purpose:** Active production database schema — tables, columns, RLS, indices, triggers.
+> **Purpose:** Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, triggers.
 >
 > **Rules:**
 >

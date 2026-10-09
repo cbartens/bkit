@@ -56,8 +56,10 @@ import {
   type CloudAgents,
   LINT_SCRIPT,
   LINT_PROSE_SCRIPT,
+  SLOP_DELTA_SCRIPT,
   TYPECHECK_NO_TSCONFIG_SCRIPT,
   LEGACY_LINT_PROSE_SCRIPTS,
+  LEGACY_SLOP_DELTA_SCRIPTS,
   BKIT_GATE_SCRIPTS,
   BKIT_OPTIONAL_GATES,
   GATEGUARD_CJS_WIRING_INSTRUCTIONS,
@@ -2855,7 +2857,7 @@ export function runLintModule(ctx: ModuleContext): void {
       "lint:prose": LINT_PROSE_SCRIPT,
       "lint:slop": "slop-scan scan .",
       // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
-      "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+      "slop:delta": SLOP_DELTA_SCRIPT,
       // The local gate every workflow and prompt now dispatches through (#437).
       // Same single-source-of-truth rule as lint:prose above, enforced structurally
       // here: both this call and the manifest default spread the SAME object.
@@ -2866,7 +2868,7 @@ export function runLintModule(ctx: ModuleContext): void {
     // Re-point a superseded bkit lint:prose at the current one. add-if-missing
     // alone would leave every existing consumer on the version that silently
     // self-disables in worktrees and fresh checkouts.
-    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS },
+    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS, "slop:delta": LEGACY_SLOP_DELTA_SCRIPTS },
   );
   if (lintScripts.added.length > 0) {
     console.log(

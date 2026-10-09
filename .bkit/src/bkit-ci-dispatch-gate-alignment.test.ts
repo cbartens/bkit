@@ -330,17 +330,26 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 // poll and `bkit-ship-gate.sh assert` at Gate 10 still own the verdict.
 // ---------------------------------------------------------------------------
 describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run)", () => {
-  const dispatchIdx = shipMd.indexOf("gh workflow run ci.yml --ref");
+  const dispatchIdx = shipMd.indexOf('gh workflow run "$CI_DECLARED_WORKFLOW" --ref');
 
   it("has exactly one gh workflow run dispatch site", () => {
     expect(dispatchIdx).toBeGreaterThan(-1);
-    expect(shipMd.indexOf("gh workflow run ci.yml --ref", dispatchIdx + 1)).toBe(-1);
+    expect(shipMd.indexOf('gh workflow run "$CI_DECLARED_WORKFLOW" --ref', dispatchIdx + 1)).toBe(
+      -1,
+    );
+  });
+
+  it("targets the bkit.ciWorkflow file, never a hard-coded ci.yml", () => {
+    // A consumer that renamed its CI workflow would otherwise poll and dispatch the wrong file.
+    expect(shipMd).not.toMatch(/--workflow ci\.yml|gh workflow run ci\.yml/);
+    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
+    expect(preceding).toContain("bkit_ci_declared || :");
   });
 
   it("probes for a run at VALIDATED_HEAD before that dispatch", () => {
     const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
     expect(preceding).toContain(
-      'gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json headSha',
+      'gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 20 --json headSha',
     );
     expect(preceding).toContain(`jq -e --arg h "$VALIDATED_HEAD" 'any(.[]; .headSha == $h)'`);
     // Bounded: the presence probe gives up after a fixed number of polls.
@@ -365,7 +374,7 @@ describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run
     // a COMPLETED run from a head the rebase superseded.
     expect(shipMd).toContain("select(.headSha == $h)");
     expect(shipMd).not.toContain(
-      'gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 1 --json status,conclusion --jq',
+      'gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 1 --json status,conclusion --jq',
     );
   });
 

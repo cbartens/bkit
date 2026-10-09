@@ -396,6 +396,17 @@ export const LEGACY_LINT_PROSE_SCRIPTS: readonly string[] = [
   'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
 ];
 
+// The enforcing slop gate: `bkit ci slop` runs the delta against the PR base. CI
+// passes the base sha as the one bare argument (`pnpm slop:delta "$BASE_SHA"`).
+export const SLOP_DELTA_SCRIPT = "bkit ci slop";
+
+// Same rule as LEGACY_LINT_PROSE_SCRIPTS: a value byte-matching an entry is bkit's
+// own, so install / upgrade re-point it and uninstall reclaims it. Append the
+// outgoing string whenever SLOP_DELTA_SCRIPT changes.
+export const LEGACY_SLOP_DELTA_SCRIPTS: readonly string[] = [
+  "bash .bkit/scripts/bkit-slop-delta.sh",
+];
+
 // ---------------------------------------------------------------------------
 // bkit:gate:* — the local gate workflows, prompts and hooks run (#437)
 //
@@ -736,7 +747,6 @@ const LINT_MANIFEST: ManifestEntry[] = [
     format: "byte-equal-text",
     module: "lint",
   },
-  { path: ".bkit/scripts/bkit-slop-delta.sh", format: "byte-equal-text", module: "lint" },
   {
     path: "package.json",
     format: "markered-text",
@@ -751,7 +761,7 @@ const LINT_MANIFEST: ManifestEntry[] = [
         "format:check": "prettier --check .",
         "lint:prose": LINT_PROSE_SCRIPT,
         "lint:slop": "slop-scan scan .",
-        "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+        "slop:delta": SLOP_DELTA_SCRIPT,
         // The local gate (#437). Lives with the lint module because that is
         // where its constituents already live (typecheck, format:check,
         // lint:prose, lint:slop, slop:delta are all seeded above) — a consumer

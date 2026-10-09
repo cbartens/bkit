@@ -45,6 +45,8 @@ function conventionProblems(cmd: CommandSpec): string[] {
       if (!KEBAB.test(f.name)) problems.push(`${where(verb)}: flag --${f.name} is not kebab-case`);
       if (!f.help) problems.push(`${where(verb)}: flag --${f.name} has no help`);
     }
+    if (spec.flags.filter((f) => f.positional).length > 1)
+      problems.push(`${where(verb)}: more than one positional flag`);
     if (Object.keys(spec.output).length === 0)
       problems.push(`${where(verb)}: declares no output keys`);
     for (const key of Object.keys(spec.output)) {

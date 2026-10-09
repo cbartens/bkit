@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { activeDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runOrStepField, statusTimestamp, } from "../../bkit-status.js";
-import { CommandError, EXIT, statusLocation, } from "../lib.js";
+import { CommandError, EXIT, parseJson, statusLocation, } from "../lib.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
 // ---------------------------------------------------------------------------
@@ -32,7 +32,8 @@ export const SUB_PLAN_FLAG = {
 /** Exit code: status.jsonl missing, unreadable, or not valid NDJSON. */
 export const EXIT_NO_STATUS = 3;
 /** Parse every line of `status.jsonl`. Missing, unreadable or malformed is an error, never "no rows". */
-export function readStatusEvents(file) {
+/** Every row of status.jsonl, whatever its type; exit 3 when the file is missing or a line is not JSON. */
+export function readStatusRows(file) {
     if (!fs.existsSync(file))
         throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
     return fs
@@ -41,22 +42,17 @@ export function readStatusEvents(file) {
         .map((l) => l.trim())
         .filter((l) => l !== "")
         .map((l, i) => {
-        const parsed = parseJsonLine(l);
+        const parsed = parseJson(l);
         if (!parsed.ok)
             throw new CommandError(EXIT_NO_STATUS, `${file} line ${i + 1} is not JSON`);
+        if (typeof parsed.value !== "object" || parsed.value === null) {
+            throw new CommandError(EXIT_NO_STATUS, `${file} line ${i + 1} is not a JSON object`);
+        }
         return parsed.value;
     });
 }
-function parseJsonLine(line) {
-    try {
-        const value = JSON.parse(line);
-        return { ok: true, value };
-    }
-    catch {
-        // Malformed line: the caller reports it with its line number.
-        return { ok: false };
-    }
-}
+/** The rows as the fold reads them; the fold skips types it does not model. */
+export const readStatusEvents = (file) => readStatusRows(file);
 export const readRuns = (file) => fold(readStatusEvents(file));
 /** `--file`, resolved against the command's working directory. */
 export const statusFile = (ctx) => path.resolve(ctx.cwd, String(ctx.flags.file));
@@ -140,7 +136,16 @@ const META_FIELDS = {
     "debug-mode": { key: "debugMode", check: (v) => oneOf(v, DEBUG_MODES, "--debug-mode") },
     "push-mode": { key: "pushMode", check: (v) => oneOf(v, PUSH_MODES, "--push-mode") },
     "debug-attempt": { key: "debugAttempt", check: (v) => positiveInt(v, "debug-attempt") },
+    "plan-source": { key: "planSource", check: (v) => oneOf(v, PLAN_SOURCES, "--plan-source") },
 };
+/** Markers that record the row's own time or a fact, not a value. */
+const META_MARKS = {
+    "soak-entry": (at) => ({ soakEntryAt: at }),
+    "opened-pr": () => ({ openedPr: true }),
+};
+/** `brief` = the run had no plan file and works from its input file. */
+const PLAN_SOURCES = ["brief", "plan"];
+const camelFlag = (kebab) => kebab.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
 function oneOf(v, allowed, flag) {
     if (!allowed.includes(v))
         throw new CommandError(EXIT.USAGE, `${flag} must be ${allowed.join("|")}`);
@@ -272,19 +277,31 @@ export const statusCommand = {
                 { name: "debug-mode", type: "string", help: "NORMAL|SOAK" },
                 { name: "push-mode", type: "string", help: "PR|LOCAL" },
                 { name: "debug-attempt", type: "string", help: "positive integer" },
+                { name: "plan-source", type: "string", help: "brief|plan" },
+                {
+                    name: "soak-entry",
+                    type: "boolean",
+                    help: "record soakEntryAt (the soak budget counts from here)",
+                },
+                { name: "opened-pr", type: "boolean", help: "record openedPr: this run opened the PR" },
             ],
             output: { row: "the appended workflow-meta row" },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (meta never starts a log)" },
             run: (ctx) => {
                 const file = statusFile(ctx);
+                const at = statusTimestamp();
                 const fields = {};
                 for (const { key, check } of Object.values(META_FIELDS)) {
                     const v = str(ctx.flags[key]);
                     if (v !== undefined)
                         fields[key] = check(v);
                 }
+                for (const [flag, mark] of Object.entries(META_MARKS)) {
+                    if (ctx.flags[camelFlag(flag)] === true)
+                        Object.assign(fields, mark(at));
+                }
                 if (Object.keys(fields).length === 0) {
-                    throw new CommandError(EXIT.USAGE, `give at least one of ${Object.keys(META_FIELDS)
+                    throw new CommandError(EXIT.USAGE, `give at least one of ${[...Object.keys(META_FIELDS), ...Object.keys(META_MARKS)]
                         .map((f) => `--${f}`)
                         .join(", ")}`);
                 }
@@ -293,7 +310,7 @@ export const statusCommand = {
                 const row = {
                     type: "workflow-meta",
                     workflow: String(ctx.flags.workflow),
-                    at: statusTimestamp(),
+                    at,
                     ...fields,
                 };
                 fs.appendFileSync(file, appendLine(row));

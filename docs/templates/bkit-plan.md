@@ -109,7 +109,7 @@ _notation, e.g._ **WHEN** a user submits the form with a valid file **→ THEN**
 | --- | --- | --- |
 | **Static** | every change — type / lint / format / prose / drift (global gate, not a per-feature row) | `tsc`, lint, and `bkit check` pass on the changed files |
 | **Unit** | pure function / single module, no I/O | service parses a payload correctly |
-| **Integration** | crosses a LOCAL stateful boundary (own DB / API), no mocks at the boundary, fresh instance | API endpoint enforces RLS against a fresh local DB |
+| **Integration** | crosses a LOCAL stateful boundary (own DB / API), no mocks at the boundary, fresh instance | API endpoint enforces tenant isolation against a fresh local instance |
 | **@live (golden)** | crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model, payment, deployed schema, RLS) — reach it, assert a ground-truth signal | a real 3rd-party API returns content AND a boundary-only identity |
 | **E2E** | user-visible UI flow / DOM state | user creates an event and sees it in the list |
 | **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migration`) | migration replays from empty and the seed loads |
@@ -120,11 +120,11 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| [e.g., Happy path: user creates event, sees it in list] | E2E (Playwright) | `apps/web/e2e/[feature].spec.ts` |
-| [e.g., Service correctly parses payload] | Unit (Vitest) | `packages/[pkg]/[module].test.ts` |
-| [e.g., API endpoint enforces RLS] | Integration (Vitest) | `packages/api/[feature].integration.test.ts` |
-| [e.g., Real 3rd-party API returns expected shape AND a boundary-only identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
-| [e.g., New migration replays from empty and seed loads] | fresh-DB replay (bkit-tests-migration) | `supabase/migrations/*` (replayed by `bkit-tests-migration`) |
+| [e.g., Happy path: user creates event, sees it in list] | E2E | [e.g. `apps/web/e2e/[feature].spec.ts`] |
+| [e.g., Service correctly parses payload] | Unit | [e.g. `packages/[pkg]/[module].test.ts`] |
+| [e.g., API endpoint enforces tenant isolation] | Integration | [e.g. `packages/api/[feature].integration.test.ts`] |
+| [e.g., Real 3rd-party API returns expected shape AND a boundary-only identity — not "did not throw"] | @live (golden) | [e.g. `packages/[pkg]/[feature].live.test.ts`] |
+| [e.g., New migration replays from empty and seed loads] | fresh-DB replay | [e.g. `supabase/migrations/*`] (replayed by `bkit-tests-migration`) |
 
 ### 👤 ✅ Human Confirmation
 
@@ -210,8 +210,8 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 > Reference: `docs/security.md`. Check all that apply; skip inapplicable rows.
 
 - [ ] **New API Route** — auth guard applied (e.g. a `requireMember`-style check)? Rate-limited if auth-adjacent?
-- [ ] **New DB Table/Column** — row-level security enabled deny-by-default? Tenant-scoped (e.g. via a membership join)?
-- [ ] **Role-Gated Mutation** — role checked at the API layer (not RLS alone)?
+- [ ] **New DB Table/Column** — row / tenant access policy deny-by-default (e.g. RLS)? Tenant-scoped (e.g. via a membership join)?
+- [ ] **Role-Gated Mutation** — role checked at the API layer (not data-layer policy alone)?
 - [ ] **User Input** — validated by a schema (e.g. Zod) with `parse()` called in the handler?
 - [ ] **PII** — absent from logs? Audit/CDC trigger updated if a new column lands on a monitored table?
 - [ ] **Redirect URL** — validated against an allow-list?
@@ -228,8 +228,8 @@ _If none apply: "None — no new routes, DB writes, secrets, or user input."_
 
 Always verify.
 
-- [ ] **Package Management:** Verify `package.json` for required packages. Ensure `pnpm-lock.yaml` syncs cleanly.
-- [ ] **Dependency Versions:** Run `pnpm outdated`; spot-check CLI versions (`npx tsc --version`, `pnpm --version`, stack CLIs — e.g. `npx supabase --version`). Flag outdated deps that may silently block implementation — infra errors often = CLI vs backend version mismatch.
+- [ ] **Package Management:** Required packages declared; dependency manifest + lockfile in sync (e.g. `package.json` + `pnpm-lock.yaml`, `pyproject.toml` + `uv.lock`).
+- [ ] **Dependency Versions:** Run `pnpm bkit:deps:outdated`; spot-check toolchain + stack CLI versions (e.g. `npx tsc --version`, `pnpm --version`, `npx supabase --version`). Flag outdated deps that may silently block implementation — infra errors often = CLI vs backend version mismatch.
 - [ ] **Existing-Solution Search (reuse over duplicate):** per capability, three sweeps → `Reuse Inventory`: in-repo (text search for names / strings / near-miss helpers / sibling modules; symbol references via language server when configured; `docs/capabilities.md` when present), dependency (`{framework} {capability} built-in`), ecosystem (`{problem} best practice {current year}`). Empty language-server / capability-map result = inconclusive — absence needs text search. Unrecorded = unsearched. Drives `[MODIFY]` vs `[NEW]`.
 - [ ] **User Context:** Verify read / write access to required files. Request missing user information up front.
 - [ ] **Project Context:** Fold `docs/knowledge.jsonl` and `docs/decisions.jsonl` each by `key`, highest `ts` wins → read ONLY winning rows where `status` is `ACTIVE` or absent; NEVER read any other rows. Check for relevant patterns, decisions, gotchas.
@@ -243,7 +243,7 @@ Verify only when applicable.
 - [ ] **Secrets & Env Vars:** New API keys or third-party credentials → verify the project's secret store (e.g. GCP Secret Manager, Vercel env vars) and any service-account / IAM roles.
 - [ ] **Schema State:** Any DB reads or writes → confirm exact database state against `docs/data-schema.md` before finalizing data-access logic.
 - [ ] **Architecture & UI:** New files / routes / UI → `docs/architecture.md` topology; UI/mobile → `docs/design.md`; consult named reference repos.
-- [ ] **Observability:** New logs / audit tables / traces → align with `docs/observability.md` (structured `console.error`, correlation IDs, CDC/OTel).
+- [ ] **Observability:** New logs / audit tables / traces → align with `docs/observability.md` (e.g. structured logger calls, correlation IDs, CDC / OTel).
 - [ ] **Notifications:** Alerts / toasts → notifications doc via `.agents/docs.md` for tier (e.g. 1=inline, 2=toast, 3=bell).
 
 ### 🔒 Gate 1: Prerequisites Check
@@ -307,12 +307,12 @@ Verify only when applicable.
 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
 **CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: find callers/importers/schemas/consumers (language-server references when configured + text search), list blast radius.
 **CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
-**CRITICAL:** NEVER weaken gate to pass: no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / deleted assertions / empty `catch` / error-swallowing / mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
-**CRITICAL:** Automated observability (log drains / CDC) still mandates `console.error("[Context] Message", payload)` for edge cases escaping auto-capture. See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.
+**CRITICAL:** NEVER weaken gate to pass: no type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, empty `catch` / error-swallowing, mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
+**CRITICAL:** Auto-capture (e.g. log drains / CDC) does NOT replace explicit logging — log edge cases escaping auto-capture with the project's structured logger (e.g. `console.error("[Context] Message", payload)`). See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.
 
 ### Database Migrations
 
-[Define new tables/columns/RLS (`db:diff`). **Do not run `db push` to Dev/Main.** Migrations are applied by your migration/branching integration (e.g. the Supabase GitHub branching app) upon PR merge — follow `docs/deployments.md`; initially set to `PENDING`.]
+[Define new tables / columns / access policies (e.g. RLS) with your migration tool (e.g. `db:diff`). **NEVER apply to shared remotes by hand** (e.g. `db push` to Dev/Main) — CI's migration lane applies them; see `docs/deployments.md` § Applying migrations at deploy time; initially set to `PENDING`.]
 
 > [!WARNING]
 > **If adding/removing columns on CDC/audit-monitored tables (e.g. `users` and the other tenant tables your project monitors):**
@@ -333,7 +333,7 @@ Verify only when applicable.
 #### [NEW] `path/to/file.ext`
 
 - **Reuse Check:** [`Reuse Inventory` row + reason (a)/(b)/(c) — why no existing artifact can be evolved.]
-- [Detail purpose, access/RLS policies, input validation (e.g. Zod), naming.]
+- [Detail purpose, access policies (e.g. RLS), input validation (e.g. Zod), naming.]
 
 #### [DELETE] `path/to/file.ext`
 
@@ -382,7 +382,7 @@ _Delete rows with no change; add a row per other affected doc (resolve via `.age
 <!-- prettier-ignore -->
 | Axis | Action | Notes |
 | --- | --- | --- |
-| **DB** | [Migration to revert; safe if additive-only] | re-apply via your migration CLI (e.g. `npx supabase db push --linked`) after reverting the file |
+| **DB** | [Corrective migration that undoes the change; safe if additive-only] | merged migrations are immutable — ship the corrective migration through CI's migration lane; dev full reset → `docs/deployments.md` § Dev rollback runbook |
 | **Code** | [Git revert SHA or feature flag to disable] | `git revert {COMMIT}` |
 | **Risk window** | [Gap between DB migration merge and code deploy] | [e.g., "~2 min Vercel build — migration must be additive"] |
 
@@ -413,7 +413,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **DO NOT stop for user permission.** Proceed to `Testing & Documentation`.
 
-- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row and its search still holds — reusable artifact found mid-build → add a row, fold code into it; every `EXTEND` landed as a modification of the named artifact, NOT a parallel file. No `as any` / `as unknown as` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to make a gate pass.
+- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row and its search still holds — reusable artifact found mid-build → add a row, fold code into it; every `EXTEND` landed as a modification of the named artifact, NOT a parallel file. No type-system escapes (e.g. TS `as any` / `as unknown as` / `@ts-ignore`, Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), empty `catch` / error-swallowing introduced to make a gate pass.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off against the plan.
 
 > [!IMPORTANT]
@@ -421,16 +421,16 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 >
 > - **Backend / pipeline logic** — test at the unit/integration tier (e.g. Vitest), not through a browser. Mock HTTP and assert against the real datastore natively.
 > - **End-to-end integration** — core data paths need at least 1 integration test firing the real API against a local DB _without_ ORM/DB mocking.
-> - **Browser E2E for UI only** (e.g. Playwright) — don't drive a browser for non-visual logic.
+> - **UI E2E (browser or device) for UI only** (e.g. Playwright) — don't drive a UI for non-visual logic.
 >
-> **Browser E2E Conventions** — test-auth + data-factory per `docs/testing.md`: shared `setup` logs in once, reuses auth state (sign-in / sign-up / account-deletion tests opt out); typed factories with per-test overrides, not inline strings.
+> **UI E2E Conventions** — test-auth + data-factory per `docs/testing.md`: shared `setup` logs in once, reuses auth state (sign-in / sign-up / account-deletion tests opt out); typed factories with per-test overrides, not inline strings.
 
 **Mandatory Tasks (Testing & Documentation):**
 
 - [ ] **Verify test coverage against Derived Test Matrix:** Each `Acceptance Scenario → Derived Test Matrix` row → one runbook task whose `Done when` carries its test; gaps → add to that task, not here.
 - [ ] **Sweep existing tests:** Each task fixed the tests it broke; full suite green per `docs/testing.md`. Fix only what tasks missed.
-- [ ] **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — NOT where tests are first written. Reuse data factories + auth conventions (above) for browser tests.
-- [ ] **Verify observability:** Observable per `docs/observability.md` — structured `console.error("[Context] Message", payload)` on errors, correlation IDs through pipeline, audit triggers on monitored tables; update doc for new log names / labels / tracing scopes.
+- [ ] **Sweep new tests:** Each task's `Done when` tests exist and pass per Testing Strategy; add only what tasks missed — NOT where tests are first written. Reuse data factories + auth conventions (above) for UI E2E tests.
+- [ ] **Verify observability:** Observable per `docs/observability.md` — errors logged via the project's structured logger (e.g. `console.error("[Context] Message", payload)`), correlation IDs through pipeline, audit coverage on monitored tables where the project has it (e.g. audit / CDC triggers); update doc for new log names / labels / tracing scopes.
 - [ ] **Update documentation:** Integrate logic/schemas into affected docs — `docs/architecture.md`, `docs/data-schema.md`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, others via `.agents/docs.md`. Rewrite ground-truth prose; DO NOT append lazy bullet points.
 
 ### 🔒 Gate 3: Testing & Documentation Check
@@ -447,9 +447,9 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 ### Automated Tests
 
-- [ ] **Full Local Gate Suite:** Full local gates — `tsc --noEmit`, lint, `format:check`, prose, `slop:delta`, `bkit check` — plus unit + in-process integration. Do NOT weaken gates (anti-suppression CRITICAL under Architecture & Component Changes).
+- [ ] **Full Local Gate Suite:** Full local gates — deepest declared `bkit:gate:*` script up to integration (`pnpm bkit:gate:static-unit-integration`, else `pnpm bkit:gate:static-unit`; e.g. typecheck, lint, `format:check`, prose, `slop:delta`, unit, in-process integration) + `bkit check`. Do NOT weaken gates (anti-suppression CRITICAL under Architecture & Component Changes).
 - [ ] **Test Synchronization:** [List existing E2E tests (e.g. Playwright) to update synchronously to prevent CI failures.]
-- [ ] **Build Configuration:** [Add new mock files/test configs to `exclude` array in `tsconfig.json` to protect production builds.]
+- [ ] **Build Configuration:** [Keep new test-only files (mocks, test configs) out of the production build (e.g. `tsconfig.json` `exclude`).]
 - [ ] **[Test Type] (`path/to/test.spec.ts`):** [Describe flows/unit/E2E additions. Note data hygiene needs.]
 - [ ] **Apply local migrations:** New migrations → apply locally (e.g. `npx supabase db push --local`); else integration tests fail on stale schema.
 - [ ] **Run all tests:** Local unit + integration (e.g. `pnpm test`, `pnpm test:integration`); fix failures before Gate 4.

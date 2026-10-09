@@ -16,7 +16,7 @@
 
 ## Production rollback runbook
 
-> Bad commit on `main` (production) → unwind to prior known-good SHA. Vercel assumed; adjust deploy step for other hosting.
+> Bad commit on `main` (production) → unwind to prior known-good SHA. Steps 1-4 are host-agnostic; step 5 re-points the host (commands = Vercel example).
 
 ### Preconditions
 
@@ -42,7 +42,7 @@
    ```bash
    gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
    ```
-5. **Re-point production deployment** (Vercel does NOT auto-rollback on git ref rewrites — alias stays on most-recent push until manually promoted). Look up prior good deployment by commit SHA and promote:
+5. **Re-point production deployment** at the host. A host that aliases production to its latest build does NOT auto-rollback on git ref rewrites — alias stays on most-recent push until manually promoted. Look up prior good deployment by commit SHA and promote it. e.g. Vercel:
    ```bash
    vercel ls --meta githubCommitSha=<green-sha>
    vercel promote <prior-deployment-url>
@@ -63,49 +63,44 @@
 
 ## Dev rollback runbook
 
-> Bad commit on `dev` → unwind to prior known-good SHA. Use when rolled-out range included applied migrations — code-only rollback leaves dev DB ahead of code; schema-aware tests (cdc-schema, schema-introspection, RLS integration) fail on otherwise-clean tree. Supabase assumed; adjust DB step for other providers.
+> Bad commit on `dev` → unwind to prior known-good SHA. Use when rolled-out range included applied migrations — code-only rollback leaves dev DB ahead of code; schema-aware tests (schema introspection, access-policy integration) fail on otherwise-clean tree. Steps are DB-agnostic; commands = Supabase example.
 
 ### Preconditions
 
 - Known-good SHA on `dev`. Confirm: `gh run list --branch dev --status success --limit 5` (target SHA green).
 - Local repo on `dev`, clean tree, `gh auth status` green.
-- `supabase` CLI linked to dev project (`supabase link --project-ref <dev-ref>`).
-- Dev DB service-role connection string in local env (`SUPABASE_DB_URL` or equivalent).
+- `bkit-tests-migration` adopted — it owns the remote apply (§ Applying migrations at deploy time).
+- Dev DB admin connection string in local env (e.g. Supabase: service-role `SUPABASE_DB_URL`).
 
 ### Playbook
 
-1. **Force-reset `dev` ref** to known-good SHA. `dev` typically unprotected; if protected → production-rollback save/disable/restore pattern.
+1. **Revert the bad range locally.** NEVER `git reset` or force-push `dev` (`.agents/rules.md` § Git, CI & Merges). Do NOT push yet — CI on the push must meet the reset DB. Merge commit in range → revert it with `-m 1`.
    ```bash
-   git reset --hard <green-sha>
-   git push --force-with-lease origin dev
+   git revert --no-edit <green-sha>..HEAD
+   git diff --stat <green-sha> HEAD   # empty = tree matches known-good
    ```
-2. **Reset linked dev DB.** Drop consumer-managed schemas `CASCADE`, truncate migrations ledger, replay surviving migration files. Substitute schema names for consumer's managed set.
+2. **Reset the dev DB.** Drop every schema your migrations create (`CASCADE`), truncate the migration ledger. Name ONLY your own app-managed schemas. e.g. Supabase (`public` shown; add each schema your migrations create):
    ```bash
-   psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS stripe CASCADE;'
+   psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE;'
    psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
-   supabase db push --linked --include-all
    ```
-3. **Re-seed fixtures** (if consumer runs seed script on dev).
+3. **Push the revert.** The push run's `bkit-tests-migration` re-applies every migration on the reverted tree (empty ledger → all new); never apply by hand. `dev` protected → push the revert on a `revert-*` branch and merge its PR; the apply runs on the merge push to `dev`.
    ```bash
-   pnpm db:seed
-   ```
-4. **Re-trigger CI** on rolled-back `dev` ref → confirm green-on-rollback baseline.
-   ```bash
-   git commit --allow-empty -m "chore: trigger CI after dev rollback"
    git push origin dev
    ```
+4. **Re-seed fixtures** (if the dev DB is seeded) once `bkit-tests-migration` is green, with your seed command (e.g. `pnpm db:seed`). Then re-run lanes that read seed data: `gh run rerun <run-id> --failed`.
 
 ### Why code-only rollback is not enough
 
-- `git reset` rewinds source tree; migrations from rolled-out range stay materialised — DB has no "unapply" for code-driven migrations.
-- Schema-introspection tests (columns, RLS, table presence) see structure code no longer declares → drift failure.
-- `supabase db push --linked --include-all` after ledger truncate reapplies only rolled-back-tree migrations → DB aligns with code.
+- Revert removes the range's migration files from the tree; their migrations stay materialised — DB has no "unapply" for code-driven migrations.
+- Schema-introspection tests (columns, access policies e.g. RLS, table presence) see structure code no longer declares → drift failure.
+- Apply after ledger truncate re-applies only the reverted tree's migrations → DB aligns with code.
 
 ### Post-rollback verification
 
-- `git rev-parse origin/dev` must equal the green SHA.
-- `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` must match `ls supabase/migrations/` on the rolled-back tree.
-- Re-run the schema-aware test suite (`pnpm test:integration` or the consumer's equivalent) to confirm DB and code agree.
+- `git diff --stat <green-sha> origin/dev` must print nothing.
+- Migration ledger must match the reverted tree's migration files. e.g. Supabase: `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` vs `ls supabase/migrations/`.
+- Re-run the schema-aware test suite (e.g. `pnpm test:integration`) to confirm DB and code agree.
 
 ## Commit-message force tags
 
@@ -121,23 +116,23 @@ Bkit `ci.yml` recognises tags below. Case-sensitive, literal `[...]` form; may a
 <!-- prettier-ignore -->
 | Tag | Effect | Scope |
 | --- | --- | --- |
-| `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
+| `[force cache]` | Busts the task-runner cache for the run — recompute instead of replaying cache hits (e.g. turbo: `TURBO_FORCE=1`). No effect without a cached task runner. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
 | `[force build]` | The lighter hammer. Exposes `should_force_build=true` + `run_level=full`; does **not** bypass `web_affected`, so no integration / e2e / @live unless web is genuinely affected. Rebuild without paying @live's side effects. No effect unless the consumer's deploy steps gate on the output. | Read by `Detect Direct Push` step |
 | `[force full]` | The hammer. `run_level=full` **and** it bypasses `web_affected`, so integration, `bkit-tests-e2e-web`, and `bkit-tests-live-web` run on any commit, including docs-only. The E2E spec set does not change — a PR already runs the full suite. `@live` stays **push-only** (a docs-only `[force full]` push reaches it through the effective `web_affected`; never a PR, never a dispatch). | Read by `Detect Direct Push` step |
-| `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key — never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` on `bkit-tests-static` (copy the same `env:` onto each lane) |
+| `[verbose ci]` | Escalates log detail for one run. Shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key — never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Add your stack's equivalents to the same `env:`. Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` on `bkit-tests-static` (copy the same `env:` onto each lane) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 
 **Two deploy-forcing markers only: `[force build]` + `[force full]`.** No granular `[force e2e]` / `[force live]` — they would be silent no-ops gated behind `web_affected`. `[force full]` = single gate-bypass ("validate everything") → one effective `web_affected` drives integration + e2e + @live uniformly.
 
 - **Precedence — `[skip ci]` / `[skip actions]` hard-vetoes any force marker.** `[skip ci]` commit never dispatches (native GitHub suppression, before `ci.yml`) — no force marker un-suppresses. To validate would-be-skipped commit: drop `[skip ci]`, push with `[force full]`.
-- **`[force cache]` orthogonal** — busts turbo _replay_ (`TURBO_FORCE=1`), different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
+- **`[force cache]` orthogonal** — busts task-runner _replay_ (e.g. turbo `TURBO_FORCE=1`), different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
 - **Marker parity (deploy-forcing set).** e2e / @live lanes resolve per-SHA deployment → marker that force-runs them MUST **also** force host build, or lane dies at "resolve deployment URL". Host build-cancel script (e.g. Vercel `ignoreCommand`) MUST honor **every** marker in the deploy-forcing set (`[force build]` + `[force full]` shipped, plus any consumer marker widening a deploy-backed lane); assert in CI (`grep -qF` over cancel script). `[force cache]` / `[verbose ci]` / `[skip ci]` test-plane-only — NOT honored by cancel script.
 - **Match a signature, not a spelling.** Value-list marker (`[platform web ios]`) is invisible to a substring test for `[platform web]` → match the opening token (`[platform `) on BOTH sides. Assertion pinned to one spelling stays green while the cancel script kills the build the marker asked for.
 - **A widening marker is an OR term, never a condition.** Marker that ADDS a lane the affected graph missed must only widen. As a condition (`contains(plan.platforms, 'web')` in a lane `if:`) it also **removes** — `[platform ios]` on a web-touching commit silently drops the web lane, run green. Guard the direction over the workflow text; mutation-prove both ways. Intent does not hold this shape.
 - **Widen job gate + step gates together, or not at all.** Job-level `if:` alone → lane starts, every step inside skips: green lane that ran nothing — the capstone's own failure mode, arriving where the capstone cannot see it. One consumer found 25 step-level readers of `web_affected` behind 4 job-level ones; count them before widening a shared plan value. Forcing a **subset** (builds without their tests) → do NOT widen the shared value: derive a **new** boolean beside it (`build_forced` next to `web_affected`), gate only the lanes it owns. Valid ONLY for a lane with **no** step-level reader of that value — assert it directly, error message naming what breaks when someone adds one.
 - **Invoke the marker parser unconditionally.** Substring pre-gate in front of a parser = silent no-op: consumer gated on the literal `[screenshots ` **with a trailing space** → bare `[screenshots]` never reached the parser, step exited 0 with an empty plan, run green having captured nothing. Parser runs every time and owns every failure class (unknown value, invalid combination, arguments to a bare flag) — loudly, in the planner, before any lane starts.
 
-Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
+Direct push to `dev` (no merged PR ancestry) auto-busts the task-runner cache (e.g. turbo `TURBO_FORCE=1`) regardless of tags. See `bkit-debug` runbook for cache-bust rationale.
 
 ## Autonomous phase-close prerequisites
 
@@ -150,7 +145,7 @@ Confirm both before running phase closes from a cloud agent session.
 
 ## Run-level decision matrix
 
-Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote `db push`, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `ci.yml` are the any-repo starter. The **FULL CI SCAFFOLD REFERENCE** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
+Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; reads markers once, computes `run_level` / optional `run_migration` / `tenant_target`, emits `bkit-test-plan` JSON) fans out to every lane — `bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup` — and `bkit-tests-check` joins them. `bkit-tests-deploy` runs after the capstone, on a push to the default branch only, and is not required. Static/unit/integration/build wait only on the planner. **Ordering edges:** when `bkit-tests-migration` owns the shared-remote migration apply, every lane that hits that database `needs:` it with `result != 'failure'`. `bkit-tests-reset` sits after migration and before those lanes. Do **not** gate `bkit-tests-live-web` behind static/unit/integration/e2e. Adopt only the lanes this repo has. Lane names and the adopt order: `testing.md` § CI test tiers. Before CI speed spend: **measure job graph, find pole**. The jobs above the reference in `ci.yml` are the any-repo starter. The **FULL CI SCAFFOLD REFERENCE** names each target job's `needs`, `if`, and step order. When a starter stub disagrees with that reference, follow the reference.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -170,7 +165,7 @@ cancel-in-progress: true
 
 A newer run cancels the older one on every event. A pull request keys on its number; a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
 
-A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run or it is no longer an ancestor. A `workflow_dispatch` has no base commit: short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on dispatch — steer with inputs (§ Commit-message force tags). The planner parses markers once; every lane reads `plan.markers_present`. The only re-read of the commit or PR text is workflow-level `TURBO_FORCE`. Plan JSON: validate with `has()` / `!= null`. jq `//` treats `false` as absent and drops a real `run_live: false`.
+A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run or it is no longer an ancestor. A `workflow_dispatch` has no base commit: short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on dispatch — steer with inputs (§ Commit-message force tags). The planner parses markers once; every lane reads `plan.markers_present`. The only re-read of the commit or PR text is the workflow-level task-runner cache bust (e.g. `TURBO_FORCE`). Plan JSON: validate with `has()` / `!= null`. jq `//` treats `false` as absent and drops a real `run_live: false`.
 
 Migration-immutability and slop-delta run on every event against that same base. The starter's copies of those steps are still `pull_request`-only; that `if:` is the pre-planner shape. Point them at the planner base once `bkit-tests-scope` exists.
 
@@ -178,13 +173,13 @@ Composition guidance:
 
 - `cache.outputs.skip` = `none` gate — every step: `if: steps.cache.outputs.skip != 'true'`.
 - `steps.detect.outputs.should_force_build` / `should_run_full` = escalation into `full`.
-- No merged PR on `dev` push (auto `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
+- No merged PR on `dev` push (auto cache bust, e.g. `TURBO_FORCE=1`) = recovery signal — partial CI with cache busted.
 - Health (or smoke, when the probe is a script rather than a health URL): separate workflow, `workflow_run` after CI success — not a required check. One of the two, unless the probes differ (§ Smoke trigger plumbing).
 - Capstone `bkit-tests-check` = SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`). Green = expected tiers ran and passed (`green == validated`), not merely "tests job didn't fail". A `partial` or cache-skipped green is not a `full` validation.
 
 ### Parallel test lanes (one lane per tier)
 
-Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e-web` (+ `-migration` / `-live-web`, and optional `-build-ios` / `-e2e-ios` / `-build-android` / `-e2e-android`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumers gether/fraser run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout/install, shared infra e.g. local DB) — mitigate with turbo remote cache + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E full-suite parity + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
+Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-integration` / `-e2e-web` (+ `-migration` / `-live-web`, and optional `-build-ios` / `-e2e-ios` / `-build-android` / `-e2e-android`) — **not** monolithic `bkit-tests` steps. Proven shape: bkit CI + consumer repos run separate lanes. Wall-clock = `max(lane)` not **sum** of serial steps; each tier gets honest coverage + executed-count + job-level permissions; slow tier can't serialise fast ones. Cost: per-lane setup duplicate (checkout/install, shared infra e.g. local DB) — mitigate with a remote task-runner cache (e.g. turbo) + DB service container. Capstone `needs:` **all** lanes; each emits executed-count for non-hollow assertion (`testing.md` § Validated means executed). Starter: `-static` + `-unit`; add lane per tier. Tiny repo: collapse tiers into one lane steps — capstone must assert each tier count via step outputs. E2E full-suite parity + local-vs-preview DB routing → `testing.md` § "E2E on PRs".
 
 **Shared resource: reset first, clean up last** (optional). WHEN: 2+ lanes use ONE long-lived resource. `bkit-tests-reset` runs after scope + migration, takes a lease, and puts the resource in its known state before any of those lanes start. `bkit-tests-cleanup` runs last, `if: always()`, and releases the lease. The lease is what serialises an overlapping PR and `dev` push. The planner names at most one target; an empty target skips both jobs. Capstone reds if a planned reset skipped or either job failed. DROP both when the resource is provisioned fresh per run (`testing.md` § Provision backing services fresh — the preferred answer).
 
@@ -194,7 +189,7 @@ Each tier = **own parallel lane** (job) — `bkit-tests-static` / `-unit` / `-in
 
 **Phase-split before a bigger runner.** Fanned-out lanes failing together → find the contended resource before spending. Consumer's 12 concurrent E2E lanes: 0 unexpected / 6 flaky → 5 unexpected / 25 flaky when 2 more joined, **and** a lane on a separate machine reddened. That second fact is the diagnosis — a lane on its own runner cannot be starved by this runner's CPU/memory, so contention was the shared remote DB and a bigger runner buys zero. Lower **peak** concurrency, not total: order the groups into phases (wait on group 1's PIDs, then launch group 2), concurrency inside each group untouched, both groups' exit codes into ONE failure counter so a red in either still reds the step.
 
-### turbo `//` over-triggers `web_affected` on docs-only diffs
+### turbo `//` over-triggers `web_affected` on docs-only diffs (turbo monorepos)
 
 Capture turbo stdout and stderr separately. Merging with `2>&1` puts the banner in the JSON; jq falls back to `[]` and the lane ghost-greens. Error, missing base, or non-JSON → `web_affected=true`.
 
@@ -269,7 +264,7 @@ Undocumented, and invisible to the toolchain — file stays valid YAML, passes `
 
 **Auto-route contract:** the `bkit [auto route]` free-tier gate marker is threaded by `/bkit-ship` onto the squash-merge `--subject` (not just the sync-merge commit) whenever the issue carries `bkit:auto` — this is what admits `dev`-triggered runs through the existing `bkit-cloud.yml` gate; there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger. Trust surface, kill switch and the cap's tamper caveat → `docs/security.md` § CI Auto-Route Trust.
 
-**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `ci.yml` "Await Vercel Deployment" step neutralises a Vercel-CANCELED build (skip e2e, stay green) rather than reds it — if a consumer reds on Vercel-CANCELED, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
+**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. This is only correct for docs-only diffs if the consumer's `ci.yml` deploy-await step treats a host-cancelled build as skip, not red (skip e2e, stay green; e.g. Vercel `CANCELED`) — if a consumer reds on a host-cancelled build, every docs-only squash-merge to `dev` false-dispatches `/bkit-debug` and burns loop-cap budget. Verify this per consumer before relying on the `dev` trigger.
 
 **Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) is only exercisable on consumer repos with `bkit-cloud.yml` installed and its dispatch secrets wired (see `BKIT_GH_TOKEN_INSTALL` — presence matrix, below, and the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on — the feature degrades to a silent no-op, not a failure.
 
@@ -300,7 +295,7 @@ The ship gate + bookkeeping rework ship together in one `bkit upgrade` so no con
 1. **Pin the previous `@cbartens/bkit`** in `package.json` (the sliding `@v{N}` tag auto-receives patches; a regression lands via the tag, so pin to the last known-good immutable `v{N}.x.y` or `@<sha>` — see § Sliding major-version tag). Re-install and confirm `bkit check` reports no drift.
 2. **Hold `bkit upgrade` for ship surfaces** (`.bkit/workflows/bkit-ship.md`, `.bkit/scripts/bkit-ship-gate.sh`, `.bkit/scripts/bkit-ship-timeouts.sh`, the package-level `bkit.ship` config) until the regression is fixed upstream. Other bkit upgrades are independent.
 3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` written in the interim. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge — treat every row as a PR whose capstone was NOT green at the merged head and re-verify it against the pinned-good gate (`bkit-ship-gate.sh assert --head <sha>`). `[bkit-ship-gate] override honoured for head …` is the matching `docs/observability.md` grep key.
-4. **A per-workflow pin/revert affordance does not yet exist** (deferral `per-workflow-rollback-path-for-shipped-bkit-workflow-changes`); today the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
+4. **A per-workflow pin/revert affordance does not yet exist**; today the package pin + selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
 
 Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR: one `[skip ci]` commit on the feature branch before the merge — the only pre-merge push besides conflict-resolve. Status rows (`status.jsonl`) → dev tree from Step 1 when `RUNTIME_DEVPUSHES=true` (modes 1–2), current working branch tree when `false` (mode 3 — cloud); see `.bkit/workflows.md` § Ship `BOOK_ROOT`. Post-merge tail = one `[skip ci]` close commit → push `dev` from the dev checkout (modes 1–2), or built off `origin/dev` → push `dev`, refused → `ship-close/{FID}` PR (mode 3).
 
@@ -317,7 +312,7 @@ Smoke runs **after** deploy, in its own workflow, off the merge gate (what it ac
 
 The deploy-time **apply** and the test-time **replay** gate are different guarantees — keep both, preferably in the **same always-on lane** (`bkit-tests-migration`):
 
-- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed. Home: `bkit-tests-migration` on every push to `dev`/`main` (`db push --linked --include-all`), **not** inside `bkit-tests-e2e-web` (leaving it in e2e while live runs parallel is the schema-cache race). Un-gated by `run_migration` so it self-heals a remote left behind. AFTER the replay steps so a from-empty failure never reaches shared remote.
+- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed. Home: `bkit-tests-migration` on every push to `dev`/`main` (remote apply of new migrations, e.g. `supabase db push --linked --include-all`), **not** inside `bkit-tests-e2e-web` (leaving it in e2e while live runs parallel is the schema-cache race). Un-gated by `run_migration` so it self-heals a remote left behind. AFTER the replay steps so a from-empty failure never reaches shared remote.
 - **Replay (test path):** the fresh-DB gate proves from-empty replay + seed load (`testing.md` § Migration-replay + seed). Passing one is not passing the other.
 - **Immutability:** once a migration is merged, never edit it — ship a new corrective migration. Flag any modification to an already-merged migration file in review.
 - **Multiple chains:** apply **every** migration system (e.g. a SQL chain + an ORM / CMS chain), each idempotent and retried independently.
@@ -327,20 +322,20 @@ The deploy-time **apply** and the test-time **replay** gate are different guaran
 
 ## Build-vs-migration race
 
-If your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a **separate, unordered** step, the deploy's build and the migration race. A build-time DB read that lands **before** the migration creates its object hard-ERRORs the **first** deploy shipping it. Build-time reads come from: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. Postgres signatures: `42P01` (relation), `42703` (column), `42704` (type), `3F000` (schema).
+If your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a **separate, unordered** step, the deploy's build and the migration race. A build-time DB read that lands **before** the migration creates its object hard-ERRORs the **first** deploy shipping it. Build-time reads come from any statically rendered or build-generated route, e.g. Next.js: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. Missing-object error signatures, e.g. Postgres: `42P01` (relation), `42703` (column), `42704` (type), `3F000` (schema).
 
 **Fingerprint:** prod keeps serving the prior deployment, and a redeploy of the **same SHA** clears it — a genuine bad migration would not self-heal on redeploy.
 
 **Fix, strongest first:**
 
 1. **Serialise migrate → deploy.** Disable host auto-deploy for the production branch (keep preview auto-deploys); have CI trigger the prod deploy **after** the migration step succeeds. Schema-before-build by construction.
-2. **Belt-and-braces.** Narrowly catch those PG codes in build-time queries (return empty + `dynamicParams` / ISR so the route self-heals on first request) while keeping request-time reads strict (a missing object at request time is a real incident, not a race).
+2. **Belt-and-braces.** Narrowly catch those missing-object codes in build-time queries (return empty so the route self-heals on first request, e.g. Next.js `dynamicParams` / ISR) while keeping request-time reads strict (a missing object at request time is a real incident, not a race).
 
 Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migration` proves migrations _replay_ from empty **and** (on push) owns the remote apply; it still does nothing for build-vs-deploy _host_ ordering — this race is orthogonal to that gate (serialise migrate → deploy at the host).
 
 ## Promote after the capstone (`bkit-tests-deploy`)
 
-The host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment and leaves it un-promoted. The lanes test that URL. `bkit-tests-deploy` `needs: [bkit-tests-check, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published. It does not look the deployment up again by SHA. A red deploy job means the previous deployment stays live.
+With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment and leaves it un-promoted. The lanes test that URL. `bkit-tests-deploy` `needs: [bkit-tests-check, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published. It does not look the deployment up again by SHA. A red deploy job means the previous deployment stays live.
 
 Do not add a host-side "hold promotion until a named check passes" setting (e.g. Vercel Deployment Checks). That list stays empty. This job is the promotion. e.g. Vercel: `git.deploymentEnabled` for the default branch is false; auto-assign of production domains is off.
 
@@ -351,7 +346,7 @@ Health (optional, `.github/workflows/health.yml`) runs on `workflow_run` after t
 GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is free public-preview only until **GA on 2026-07-20**, after which it bills **per active committer + Actions minutes + AI credits** — and it is **opt-out**: repos with default setup enabled are billed silently unless it is turned off first.
 
 - **If your repo had Code Quality default setup enabled, disable it** — repo → **Settings → Code security → Code Quality** (turn off default setup) before the billing start date, or accept the per-committer charge.
-- **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions vitest coverage comment (`testing.md` § Coverage on PRs) with no third-party service. It does **not** replace **CodeQL security scanning** — keep or re-enable that separately if you rely on it (a distinct product/decision).
+- **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment (shipped stub targets Vitest; `testing.md` § Coverage on PRs) with no third-party service. It does **not** replace **CodeQL security scanning** — keep or re-enable that separately if you rely on it (a distinct product/decision).
 
 ## GitHub Actions pinning
 
@@ -446,9 +441,9 @@ When Renovate is the updater, leave alerts on and turn security updates and vers
 
 Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately against `dev`. If you also want to keep GitHub's Dependabot **alerts** on (Settings → Code security → Dependabot alerts), the Security tab continues to surface advisories — useful as a parallel signal, not required. Handle each alert against `dev`:
 
-1. Read the alert — note `vulnerable_version_range` and `first_patched_version`. Check `pnpm why <pkg>` to see the import chain (direct vs transitive; dev vs prod scope).
-2. **Direct dep**: bump in `package.json`, run `pnpm install` + `pnpm typecheck` + `pnpm test`.
-3. **Transitive dep**: bump the parent that pins it (e.g. bump `vitest` to pull in a CVE-fixed `vite`). If the parent itself cannot upgrade, add a `pnpm.overrides` entry pinning the transitive to a fixed version — or add the transitive directly to `devDependencies` to force the resolution.
+1. Read the alert — note `vulnerable_version_range` and `first_patched_version`. Trace the import chain with the package manager's why / explain command (e.g. `pnpm why <pkg>`): direct vs transitive; dev vs prod scope.
+2. **Direct dep**: bump in the dependency manifest (e.g. `package.json`), reinstall (e.g. `pnpm install`), run the deepest declared `bkit:gate:*` script (e.g. `pnpm bkit:gate:static-unit`).
+3. **Transitive dep**: bump the parent that pins it (e.g. bump `vitest` to pull in a CVE-fixed `vite`). If the parent itself cannot upgrade, override the transitive to a fixed version (e.g. a `pnpm.overrides` entry; Renovate: fence it, see **Fence a `pnpm.overrides` pin**) — or add the transitive as a direct dev dependency (e.g. `devDependencies`) to force the resolution.
 4. Open a PR against `dev` titled `fix(security): bump <pkg> >=<fixed-version> (CVE-XXXX-YYYY)`. After merge to `dev → main`, the alert auto-closes once GitHub re-scans the default branch.
 5. If a CVE has no impact on your usage pattern (e.g. dev-server-only vuln in a build tool that you never run as a server), dismiss in the GitHub UI with the **"Vulnerable code is not actually used"** reason and a one-line justification. Don't dismiss without documenting why.
 
