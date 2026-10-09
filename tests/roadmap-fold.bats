@@ -17,6 +17,15 @@ teardown() {
   rm -rf "$TMPD"
 }
 
+# Byte-compare two boards except the `_(refreshed …)_` wall-clock stamp, which
+# legitimately differs when the two folds straddle a second boundary. Each
+# board must still carry exactly one stamp line.
+_diff_unstamped() {
+  [ "$(grep -c '^_(refreshed ' "$1")" -eq 1 ]
+  [ "$(grep -c '^_(refreshed ' "$2")" -eq 1 ]
+  diff <(grep -v '^_(refreshed ' "$1") <(grep -v '^_(refreshed ' "$2")
+}
+
 # row 5 — bootstrap: absent roadmap.md -> created with marker blocks; notes-post is last
 @test "row 5: bootstrap creates docs/roadmap.md with both marker blocks; notes-post is last" {
   run bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
@@ -56,7 +65,7 @@ EOF
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   cp "$TMPD/docs/roadmap.md" "$TMPD/roadmap-1.md"
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
-  diff "$TMPD/roadmap-1.md" "$TMPD/docs/roadmap.md"
+  _diff_unstamped "$TMPD/roadmap-1.md" "$TMPD/docs/roadmap.md"
 
   # append a plan-close row for a DIFFERENT FID; the earlier BUILT row must survive
   echo '{"ts":3,"kind":"feature","repo":"x/y","bkitVersion":"1","workflow":"plan","step":"s","key":"418-rate-limit","category":"infra","summary":"rate limit","description":"d","status":"PLANNED"}' >> "$TMPD/.bkit/issues.jsonl"
@@ -230,7 +239,7 @@ EOF
   bash -c ". '$ROADMAP_FOLD_SH'; bkit_roadmap_fold '$TMPD'"
   # Rebuilt board's marker-status content matches (banner text is identical too
   # since there was no prior consumer scratchpad to lose).
-  diff "$TMPD/before-delete.md" "$TMPD/docs/roadmap.md"
+  _diff_unstamped "$TMPD/before-delete.md" "$TMPD/docs/roadmap.md"
 }
 
 # row 23 — Shipped caps at last 10 by ts desc; a FID mid-ship (BUILT, no
