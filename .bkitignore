@@ -1,5 +1,5 @@
 # .bkitignore — suppress `bkit check` drift findings for specific Tier-3 files
-# or JSON keys. See README.md § .bkitignore for syntax + examples.
+# or JSON keys. See .bkit/install.md § .bkitignore for syntax + examples.
 #
 # Scope: filters Tier-3 advisory drift only. Does NOT skip Tier-2 core template
 # writes or payload copies — those always reflect `.bkit/templates/`.

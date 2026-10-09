@@ -294,7 +294,7 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | --- | --- | --- |
 | Prompt Chaining | Already does | Every workflow is prompt chaining at slash-command granularity. |
 | Routing | Already does | `Verdict` routing (PASS/CONCERNS/FAIL), strategy escalation, CI-router dispatch to ship vs debug. |
-| Parallelization | Already does | Parallel pairs and triplets, with a tighter constraint than the book: cross-tier model diversity and no sibling reads. |
+| Parallelization | Already does | Parallel pairs and triplets, with a tighter constraint than the book: no sibling reads, plus cross-model pairing on design brainstorm / design review / plan scope-check. |
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
 | Planning | Already does | `/bkit-plan` is a first-class artifact with a template and durable checkbox state. |
@@ -313,12 +313,12 @@ Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Buildin
 | Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, and a catalog-parity drift check. No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
-| Prioritization | N/A by design | Single-feature-at-a-time via lock file; multi-task contention is out of scope. |
+| Prioritization | N/A by design | Features run in parallel, one worktree each; per-feature `.lock` blocks a second run of the same feature, repo-global `.dev.lock` serialises only `dev` writes. Ordering across features = human / tracker. |
 
 ### Where bkit goes beyond the catalogue
 
 - **Producer-critic with circular-reasoning guard.** Sibling reviewers cannot read each other's output. Book permits self-reflection.
-- **Cross-tier model diversity in parallel pairs.** Opus-high + Sonnet-medium (cross-family on Cursor) → two reasoners review same work.
+- **Cross-model diversity where breadth beats depth.** Design brainstorm, design review, plan scope-check groups pair Opus + Sonnet (Grok + Composer on Cursor) → two reasoners review same work. Depth-sensitive lenses (plan review, build challenge) stay on top tier.
 - **Resume-from-state as single source of truth.** `status.jsonl` makes every run inspectable and restartable; book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; book treats HITL as one option.
 - **Explicit per-agent model pins.** Immune to session-default drift.

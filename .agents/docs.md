@@ -65,7 +65,8 @@
 | `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
 | `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `bkit harvest`. |
 | `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |
-| `README.md` | — | — | — | — | ○ | Package page — pitch, first-time install / upgrade paste, token setup. |
+| `README.md` | — | — | — | — | ○ | Package page — pitch, what ships, quick start. Humans only. |
+| `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, token + CI + Vercel auth, install lifecycle, uninstall, `.bkitignore`. |
 | `.bkit/comparison.md` | — | — | — | — | — | Pipeline in execution order, plus peer comparison. Humans only. |
 | `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
 | `docs/consumers.md` | — | — | — | — | — | Maintainer-local dogfood checkout paths. `bkit harvest` reads it. Not shipped. |
