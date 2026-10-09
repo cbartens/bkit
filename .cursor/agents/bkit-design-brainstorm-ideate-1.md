@@ -7,6 +7,7 @@ tools:
   - Read
   - Grep
   - Glob
+  - mcp__serena__*
   - Write
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->

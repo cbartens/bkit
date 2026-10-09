@@ -7,6 +7,7 @@ tools:
   - Read
   - Grep
   - Glob
+  - mcp__serena__*
   - Write
   - Edit
 ---
@@ -41,7 +42,7 @@ tools:
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Per task surface-area trace — for each `Agent Execution Runbook` task:
    - Files / modules edited (direct).
-   - Symbols exported / changed and their consumers (`grep` for callers).
+   - Symbols exported / changed and their consumers (language-server references when configured + text search for callers).
    - Schemas / tables touched and downstream readers (RLS policies, indexes, FK constraints).
    - Public endpoints / event names / queue topics modified and their producers / consumers.
 6. Risk classification per surface:

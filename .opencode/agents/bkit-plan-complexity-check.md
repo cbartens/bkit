@@ -7,6 +7,7 @@ tools:
   read: true
   grep: true
   glob: true
+  serena_*: true
   write: true
 reasoningEffort: high
 ---

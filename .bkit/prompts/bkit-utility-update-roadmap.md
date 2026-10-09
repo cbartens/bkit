@@ -7,6 +7,7 @@ tools:
   - Read
   - Grep
   - Glob
+  - mcp__serena__*
   - Write
   - Edit
   # <!-- bkit:tracker github start -->

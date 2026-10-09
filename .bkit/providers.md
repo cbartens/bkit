@@ -126,7 +126,7 @@ Persistent variant: `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) wi
 | `name` | required | required | required | kebab-case, must match filename. Identical. |
 | `description` | required | required | required | Identical. |
 | `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | mapped to `reasoningEffort` | Drop on Cursor. Maps to opencode `reasoningEffort` via `applyOpencodeAgent`: `low`→`none`, `medium`→`low`, `high`→`medium`, `xhigh`→`high`, `max`→`max`. |
-| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | not supported | Identity mapping on Cursor (verified). Dropped on opencode. |
+| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | object map `{ <tool>: true }` | Identity mapping on Cursor (verified), NOT enforced by Cursor CLI 2026.10.01 (measured: a `tools: [Read]` subagent keeps `Shell` / `Write` / every MCP tool). opencode: built-ins lowercased; `mcp__<server>__<tool>` respelled `<server>_<tool>` (`mcp__serena__*` → `serena_*`). |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
 | `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `openrouter/moonshotai/kimi-k3`) | Pinned per-agent. Claude locks model. Cursor drives runner via T3. opencode: `<provider>/<model-id>` (see `prompts.md` § Models, columns `OpenRouter` / `Ollama` / …). |
@@ -200,7 +200,7 @@ Dashboard label-based routing.
 
 ### Architectural note — `readonly` reconciled
 
-**Decision:** Cursor **never emits `readonly:`**. Subagents write directly on both hosts, matching canonical Claude command shape. Safety net = `tools:` allowlist (pending verification; until then, Cursor subagents have full tool access).
+**Decision:** Cursor **never emits `readonly:`**. Subagents write directly on both hosts, matching canonical Claude command shape. Cursor subagents have full tool access: Cursor CLI 2026.10.01 ignores the `tools:` allowlist (measured).
 
 **Implementation:** T3 in `bkit-install.ts` emits only `name` / `description` / `model` — no `readonly:`. Generated `.cursor/agents/*.md` confirm zero `readonly:` lines.
 

@@ -7,11 +7,12 @@ tools:
   read: true
   grep: true
   glob: true
+  serena_*: true
   write: true
   edit: true
   bash: true
-  mcp__github__list_issues: true
-  mcp__github__issue_read: true
+  github_list_issues: true
+  github_issue_read: true
 reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->

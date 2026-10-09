@@ -288,7 +288,7 @@ describe("real prompt sources", () => {
     const fm = substituteWorkflow(src, tracker).output.split(/^---$/m)[1];
     const block = fm.match(/^tools:\n((?:.*\n)*?)(?=^\S)/m)?.[1] ?? "";
     for (const line of block.split("\n").filter(Boolean)) {
-      expect(line, `non-list line in ${tracker} tools block`).toMatch(/^ {2}- [\w]+$/);
+      expect(line, `non-list line in ${tracker} tools block`).toMatch(/^ {2}- [\w*]+$/);
     }
     return block
       .split("\n")
@@ -297,7 +297,7 @@ describe("real prompt sources", () => {
   };
 
   it("roadmap agent gets only the chosen tracker's read tools", () => {
-    const base = ["Read", "Grep", "Glob", "Write", "Edit", "Bash"];
+    const base = ["Read", "Grep", "Glob", "mcp__serena__*", "Write", "Edit", "Bash"];
     expect(roadmapTools("github")).toEqual([
       ...base,
       "mcp__github__list_issues",
