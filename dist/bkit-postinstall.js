@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync, spawnSync } from "node:child_process";
-import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
+import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, dedupeById, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
@@ -2696,17 +2696,5 @@ export function filterBkitIgnored(findings, cwd) {
         if (filePath === null)
             return true; // not a Tier-3 finding — always keep
         return !isFileIgnored(filePath, rules);
-    });
-}
-// ---------------------------------------------------------------------------
-// Dedup helper (exported for unit-testability; consumers should not rely on this)
-// ---------------------------------------------------------------------------
-export function dedupeById(findings) {
-    const seen = new Set();
-    return findings.filter((f) => {
-        if (seen.has(f.id))
-            return false;
-        seen.add(f.id);
-        return true;
     });
 }

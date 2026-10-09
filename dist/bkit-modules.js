@@ -6,7 +6,7 @@
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, ensureDir, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAgent, parseFrontmatter, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
@@ -50,10 +50,7 @@ function setConsumerBkitField(field, value, dryRun) {
         // non-fatal — file presence is the primary signal
     }
 }
-function ensureDir(dir) {
-    fs.mkdirSync(dir, { recursive: true });
-}
-function listMdFiles(dir, prefix) {
+export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
         return [];
     return fs
@@ -84,8 +81,19 @@ function installFile(srcPath, destPath, transform, dryRun) {
         fs.writeFileSync(destPath, transformed, "utf-8");
     return true;
 }
-function removeOrphans(destDir, sourceFiles, dryRun, prefix) {
-    const BKIT_PREFIX = "bkit-";
+// Hard allowlist: orphan pruning may ONLY remove files from these generated IDE
+// mirror dirs. Mirror SOURCES live package-side under `.bkit/{workflows,prompts}`.
+const ORPHAN_PRUNE_DIRS = [
+    ".claude/agents",
+    ".claude/commands",
+    ".cursor/agents",
+    ".cursor/commands",
+];
+export function removeOrphans(destDir, sourceFiles, dryRun, prefix) {
+    const resolved = path.resolve(destDir);
+    if (!ORPHAN_PRUNE_DIRS.some((d) => path.resolve(d) === resolved)) {
+        throw new Error(`removeOrphans: refusing orphan removal outside allowlist: ${destDir}`);
+    }
     if (!fs.existsSync(destDir))
         return [];
     const removed = [];

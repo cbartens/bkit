@@ -13,32 +13,15 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
-import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
+import { deepContains, detectMarkerStyle, stripManagedBlock, } from "./bkit-tiers.js";
 import { extractNamedBlocks } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
 // Internal helper
 // ---------------------------------------------------------------------------
-/**
- * Check whether a file's content contains bkit-managed block markers.
- * Recognises both HTML-comment style (`<!-- bkit:start -->`) and hash-comment
- * style (`# bkit:start`).
- *
- * Uses line-anchored matching (equivalent to `findLineAnchoredMarkers`): a marker
- * is only detected when it occupies its own line (possibly with a comment prefix
- * `# ` or `// `). Backtick-quoted prose mentions like `` `<!-- bkit:start -->` ``
- * in markdown are NOT detected. (BAR-142 §B1)
- */
-export function hasBkitMarkers(content) {
-    // Line-anchored: marker must be preceded only by start-of-line or a recognised
-    // comment prefix ("# " / "// "), and followed only by end-of-line.
-    const htmlPattern = /^(?:# |\/\/ )?<!-- bkit:start -->$/m;
-    const hashPattern = /^(?:# |\/\/ )?# bkit:start$/m;
-    return htmlPattern.test(content) || hashPattern.test(content);
-}
 // Deduplicate an array of findings by `id`, first occurrence wins.
-function dedupeById(findings) {
+export function dedupeById(findings) {
     const seen = new Set();
     return findings.filter((f) => {
         if (seen.has(f.id))
@@ -113,7 +96,7 @@ export function detectPrettierignoreNoMarkers(cwd) {
     if (!fs.existsSync(filePath))
         return null;
     const content = fs.readFileSync(filePath, "utf-8");
-    if (hasBkitMarkers(content))
+    if (detectMarkerStyle(content) !== null)
         return null;
     return {
         id: "prettierignore-no-markers",

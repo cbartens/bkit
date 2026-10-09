@@ -9,6 +9,7 @@ import {
   detectBlankDotenvKeys,
   detectDirenvMissing,
   detectDirenvNotAllowed,
+  dedupeById,
 } from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
@@ -2920,18 +2921,5 @@ export function filterBkitIgnored(findings: PreflightFinding[], cwd: string): Pr
     const filePath = extractTier3FilePath(f);
     if (filePath === null) return true; // not a Tier-3 finding — always keep
     return !isFileIgnored(filePath, rules);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Dedup helper (exported for unit-testability; consumers should not rely on this)
-// ---------------------------------------------------------------------------
-
-export function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
-  const seen = new Set<string>();
-  return findings.filter((f) => {
-    if (seen.has(f.id)) return false;
-    seen.add(f.id);
-    return true;
   });
 }

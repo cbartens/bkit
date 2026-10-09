@@ -5,6 +5,7 @@ import {
   extractManagedBlock,
   updateManagedBlock,
   findLineAnchoredMarkers,
+  selectMarkers,
   type MarkerStyle,
   type WriteEntry,
   type WriteSet,
@@ -374,24 +375,23 @@ function _detectSchemaFlip(
 // whitespace regexes are unsafe — use the anchored parser instead).
 // ---------------------------------------------------------------------------
 
-// Marker pair for a given style — html-comment (default), hash-comment (YAML/INI/shell),
-// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
-function selectMarkerPair(markerStyle: MarkerStyle): [string, string] {
-  switch (markerStyle) {
-    case "hash-comment":
-      return ["# bkit:start", "# bkit:end"];
-    case "slash-comment":
-      return ["// bkit:start", "// bkit:end"];
-    default:
-      return ["<!-- bkit:start -->", "<!-- bkit:end -->"];
+// Detect which marker style a file's managed block uses, or null when it has none.
+// Uses the same line-anchored finder as stripManagedBlock, so a detected style is
+// always one stripManagedBlock acts on: a marker alone on its line, bare or behind
+// a `# ` / `// ` prefix. Labelled, indented, or prose-quoted markers do not count.
+export function detectMarkerStyle(content: string): MarkerStyle | null {
+  for (const style of ["html-comment", "hash-comment", "slash-comment"] as const) {
+    const [startMarker] = selectMarkers(style);
+    if (findLineAnchoredMarkers(content, startMarker).length > 0) return style;
   }
+  return null;
 }
 
 export function stripManagedBlock(
   content: string,
   markerStyle: MarkerStyle = "html-comment",
 ): string {
-  const [startMarker, endMarker] = selectMarkerPair(markerStyle);
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
 
   const starts = findLineAnchoredMarkers(content, startMarker);
   const ends = findLineAnchoredMarkers(content, endMarker);
@@ -428,7 +428,7 @@ export function stripManagedBlock(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function ensureDir(dir: string): void {
+export function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -554,7 +554,7 @@ export function writeTier2(
     // extractManagedBlock returns null for BOTH "no markers" and "ambiguous markers"
     // (duplicates / inverted). Only the former should append — appending on the latter
     // compounds corruption (dogfood docs grew a second stamped block every install).
-    const [startMarker, endMarker] = selectMarkerPair(markerStyle);
+    const [startMarker, endMarker] = selectMarkers(markerStyle);
     const starts = findLineAnchoredMarkers(destContent, startMarker);
     const ends = findLineAnchoredMarkers(destContent, endMarker);
     if (starts.length > 0 || ends.length > 0) {
@@ -619,7 +619,7 @@ export function writeTier2(
   // by construction: once genuinely migrated, real driver content lives after the end
   // marker, this is permanently false, and every later run takes the ordinary path below.
   if (noMarkerMigration) {
-    const [, endMarker] = selectMarkerPair(markerStyle);
+    const [, endMarker] = selectMarkers(markerStyle);
     const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0]!;
     const endLineEnd = destContent.indexOf("\n", endIdx + endMarker.length);
     const afterBlock = endLineEnd === -1 ? "" : destContent.slice(endLineEnd + 1);

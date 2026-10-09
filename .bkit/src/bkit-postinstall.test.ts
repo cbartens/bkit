@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PreflightFinding } from "./bkit-preflight";
+import { dedupeById, type PreflightFinding } from "./bkit-preflight";
 import type { WriteSet } from "./bkit-tiers";
 import {
   detectShellToken,
@@ -47,7 +47,6 @@ import {
   isOnProtectedBranch,
   formatChecklist,
   runPostInstallCheck,
-  dedupeById,
   readChangelogVersionDelta,
   renderAdvisoriesMarkdown,
   writeAdvisoriesArtifact,

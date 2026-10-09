@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, findLineAnchoredMarkers, } from "./bkit-install.js";
+import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./bkit-install.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { hashFile } from "./bkit-version.js";
 export function deepContains(template, consumer, pathPrefix = "") {
@@ -264,20 +264,20 @@ function _detectSchemaFlip(before, after) {
 // Uses the line-anchored marker detection from BAR-138 (KN-8 lesson: greedy
 // whitespace regexes are unsafe — use the anchored parser instead).
 // ---------------------------------------------------------------------------
-// Marker pair for a given style — html-comment (default), hash-comment (YAML/INI/shell),
-// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
-function selectMarkerPair(markerStyle) {
-    switch (markerStyle) {
-        case "hash-comment":
-            return ["# bkit:start", "# bkit:end"];
-        case "slash-comment":
-            return ["// bkit:start", "// bkit:end"];
-        default:
-            return ["<!-- bkit:start -->", "<!-- bkit:end -->"];
+// Detect which marker style a file's managed block uses, or null when it has none.
+// Uses the same line-anchored finder as stripManagedBlock, so a detected style is
+// always one stripManagedBlock acts on: a marker alone on its line, bare or behind
+// a `# ` / `// ` prefix. Labelled, indented, or prose-quoted markers do not count.
+export function detectMarkerStyle(content) {
+    for (const style of ["html-comment", "hash-comment", "slash-comment"]) {
+        const [startMarker] = selectMarkers(style);
+        if (findLineAnchoredMarkers(content, startMarker).length > 0)
+            return style;
     }
+    return null;
 }
 export function stripManagedBlock(content, markerStyle = "html-comment") {
-    const [startMarker, endMarker] = selectMarkerPair(markerStyle);
+    const [startMarker, endMarker] = selectMarkers(markerStyle);
     const starts = findLineAnchoredMarkers(content, startMarker);
     const ends = findLineAnchoredMarkers(content, endMarker);
     // Safety guards: absent, duplicated, or inverted → no-op
@@ -309,7 +309,7 @@ export function stripManagedBlock(content, markerStyle = "html-comment") {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-function ensureDir(dir) {
+export function ensureDir(dir) {
     fs.mkdirSync(dir, { recursive: true });
 }
 // ---------------------------------------------------------------------------
@@ -361,7 +361,7 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
         // extractManagedBlock returns null for BOTH "no markers" and "ambiguous markers"
         // (duplicates / inverted). Only the former should append — appending on the latter
         // compounds corruption (dogfood docs grew a second stamped block every install).
-        const [startMarker, endMarker] = selectMarkerPair(markerStyle);
+        const [startMarker, endMarker] = selectMarkers(markerStyle);
         const starts = findLineAnchoredMarkers(destContent, startMarker);
         const ends = findLineAnchoredMarkers(destContent, endMarker);
         if (starts.length > 0 || ends.length > 0) {
@@ -420,7 +420,7 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
     // by construction: once genuinely migrated, real driver content lives after the end
     // marker, this is permanently false, and every later run takes the ordinary path below.
     if (noMarkerMigration) {
-        const [, endMarker] = selectMarkerPair(markerStyle);
+        const [, endMarker] = selectMarkers(markerStyle);
         const endIdx = findLineAnchoredMarkers(destContent, endMarker)[0];
         const endLineEnd = destContent.indexOf("\n", endIdx + endMarker.length);
         const afterBlock = endLineEnd === -1 ? "" : destContent.slice(endLineEnd + 1);

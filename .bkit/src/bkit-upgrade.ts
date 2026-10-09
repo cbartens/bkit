@@ -30,8 +30,12 @@ import {
   isConsumerModified,
   type BkitVersion,
 } from "./bkit-version.js";
-import { writeTier2, writeTier2JsonContained, type WriteSet } from "./bkit-tiers.js";
-import type { MarkerStyle } from "./bkit-install.js";
+import {
+  writeTier2,
+  writeTier2JsonContained,
+  detectMarkerStyle,
+  type WriteSet,
+} from "./bkit-tiers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";
@@ -99,22 +103,6 @@ export function planSelfBump(
   }
   if (target === installed.trim().replace(/^v/, "")) return { kind: "noop", target };
   return { kind: "bump", target };
-}
-
-/**
- * Detect a template's managed-block marker style from its content.
- * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed or
- * slash-prefixed in hash-comment/slash-comment files (`# <!-- bkit:start -->` in
- * `.gitignore`/`.gitattributes`, `// <!-- bkit:start -->` in JS/TS), so it is checked
- * FIRST; the slash-comment check is line-anchored so a prefixed HTML marker is never
- * mistaken for the bare `// bkit:start` slash style.
- * Returns null when the template carries NO bkit block (→ not a block-merge file).
- */
-function detectMarkerStyle(templateContent: string): MarkerStyle | null {
-  if (templateContent.includes("<!-- bkit:start -->")) return "html-comment";
-  if (templateContent.includes("# bkit:start")) return "hash-comment";
-  if (/^\/\/ bkit:start$/m.test(templateContent)) return "slash-comment";
-  return null;
 }
 
 export const LOG_PREFIX = "[bkit-upgrade]";

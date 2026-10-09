@@ -4,6 +4,7 @@ import { execSync } from "node:child_process";
 import { getPkgRoot } from "./bkit-paths.js";
 import { managedVersionMarker } from "./bkit-version.js";
 import { DEFAULT_RUNNER, parseRunnerLabel } from "./bkit-manifest.js";
+import { gitEnv, resolveRepoSlug } from "./bkit-telemetry.js";
 // Read the INSTALLING bkit version from the package root (NOT the consumer's
 // package.json — that is a different version). Mirrors readInstallingVersion
 // (bkit-modules) / readPkgVersion (bkit-postinstall); kept local to avoid a
@@ -55,16 +56,6 @@ function resolveNodeVersion(cwd, pkg) {
     }
     return "22";
 }
-// Strip git hook environment variables so child git processes use the repo at
-// `cwd` rather than whatever GIT_DIR/GIT_WORK_TREE the hook runner injected.
-function gitEnv() {
-    const env = { ...process.env };
-    delete env["GIT_DIR"];
-    delete env["GIT_WORK_TREE"];
-    delete env["GIT_INDEX_FILE"];
-    delete env["GIT_OBJECT_DIRECTORY"];
-    return env;
-}
 // Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
 function resolveDefaultBranch(cwd) {
     try {
@@ -84,29 +75,6 @@ function resolveDefaultBranch(cwd) {
         // not a git repo or no remote HEAD configured — fall back
     }
     return "main";
-}
-// Resolve REPO_SLUG: parse `owner/repo` from `git remote get-url origin`.
-// Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
-// (`git@github.com:owner/repo.git`), and ssh:// URLs. Returns "" on failure —
-// An empty slug only occurs before the repo has a remote.
-function resolveRepoSlug(cwd) {
-    try {
-        const url = execSync("git remote get-url origin", {
-            cwd,
-            encoding: "utf-8",
-            stdio: ["ignore", "pipe", "ignore"],
-            env: gitEnv(),
-        }).trim();
-        // Strip a trailing `.git`, then capture the final `owner/repo` segment after
-        // the last `/` or `:` (covers both URL and scp-style remotes).
-        const m = url.replace(/\.git$/, "").match(/[/:]([^/:]+\/[^/:]+)$/);
-        if (m?.[1])
-            return m[1];
-    }
-    catch {
-        // no remote / not a git repo — fall back to empty
-    }
-    return "";
 }
 // Resolve a bkit-managed workflow's `runs-on` label from `bkit.runners` config (#362).
 // Precedence: the per-workflow key (e.g. `runners.bkitCloud`) → `runners.default` →

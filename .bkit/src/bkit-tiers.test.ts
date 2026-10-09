@@ -15,6 +15,7 @@ import {
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
   stripManagedBlock,
+  detectMarkerStyle,
   type WriteSet,
   type JsonValue,
 } from "./bkit-tiers";
@@ -665,6 +666,54 @@ describe("ensurePackageJsonDevDeps", () => {
     const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws2);
     expect(result.added).toEqual([]);
     expect(ws2.writes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectMarkerStyle — same marker shapes stripManagedBlock acts on
+// ---------------------------------------------------------------------------
+
+describe("detectMarkerStyle", () => {
+  it.each([
+    ["bare html marker", "a\n<!-- bkit:start -->\nx\n<!-- bkit:end -->\n", "html-comment"],
+    [
+      "hash-prefixed html marker",
+      "# <!-- bkit:start -->\nx\n# <!-- bkit:end -->\n",
+      "html-comment",
+    ],
+    [
+      "slash-prefixed html marker",
+      "// <!-- bkit:start -->\nx\n// <!-- bkit:end -->\n",
+      "html-comment",
+    ],
+    ["hash marker", "a: 1\n# bkit:start\nx\n# bkit:end\n", "hash-comment"],
+    ["slash marker", "// bkit:start\nx\n// bkit:end\n", "slash-comment"],
+  ] as const)("%s → %s", (_label, content, style) => {
+    expect(detectMarkerStyle(content)).toBe(style);
+  });
+
+  it.each([
+    ["marker quoted in prose", "Wrap it in `<!-- bkit:start -->` markers.\n"],
+    ["hash marker with a trailing label", "# bkit:start — managed block\nx\n# bkit:end\n"],
+    ["indented hash marker", "jobs:\n    # bkit:start auto-route-gate\n    # bkit:end\n"],
+    ["marker embedded mid-line", "some text <!-- bkit:start --> more text\n"],
+    ["no markers", "plain content\n"],
+    ["empty content", ""],
+  ])("%s → null", (_label, content) => {
+    expect(detectMarkerStyle(content)).toBeNull();
+  });
+
+  it("every detected style is one stripManagedBlock can strip", () => {
+    for (const content of [
+      "a\n<!-- bkit:start -->\nx\n<!-- bkit:end -->\nb\n",
+      "a\n# <!-- bkit:start -->\nx\n# <!-- bkit:end -->\nb\n",
+      "a\n# bkit:start\nx\n# bkit:end\nb\n",
+      "a\n// bkit:start\nx\n// bkit:end\nb\n",
+    ]) {
+      const style = detectMarkerStyle(content);
+      expect(style).not.toBeNull();
+      expect(stripManagedBlock(content, style!)).toBe("a\nb\n");
+    }
   });
 });
 

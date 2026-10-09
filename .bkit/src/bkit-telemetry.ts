@@ -65,7 +65,7 @@ export function parseRemoteUrlToSlug(url: string): string {
 }
 
 /** git env with hook vars scrubbed — see resolveRepoSlug for why this is load-bearing. */
-function gitEnv(): NodeJS.ProcessEnv {
+export function gitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env["GIT_DIR"];
   delete env["GIT_WORK_TREE"];

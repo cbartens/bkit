@@ -10,6 +10,7 @@ import {
   scanForeignBkitUses,
   guardTemplatesRoot,
   enrichClaudeSettingsAllows,
+  removeOrphans,
   type WriteSet,
 } from "./bkit-modules";
 import { resolveNetworkAllowlist } from "./bkit-cloud-env";
@@ -477,5 +478,49 @@ describe("enrichClaudeSettingsAllows — recording contract and prune (T8, T15)"
     writeSettings(derived());
     const { ws } = run(true);
     expect(ws.writes).toHaveLength(0);
+  });
+});
+
+describe("removeOrphans — prune stale bkit mirror files, allowlisted dirs only", () => {
+  let tmpDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-orphans-"));
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function seed(dir: string, files: string[]): void {
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of files) fs.writeFileSync(path.join(dir, f), "x");
+  }
+
+  it("removes prefixed .md files absent from the source set and keeps the rest", () => {
+    seed(".claude/agents", ["bkit-keep.md", "bkit-stale.md", "custom.md", "bkit-notes.txt"]);
+    const removed = removeOrphans(".claude/agents", new Set(["bkit-keep.md"]), false, "bkit-");
+    expect(removed).toEqual(["bkit-stale.md"]);
+    expect(fs.readdirSync(".claude/agents").sort()).toEqual([
+      "bkit-keep.md",
+      "bkit-notes.txt",
+      "custom.md",
+    ]);
+  });
+
+  it("dry-run reports orphans without deleting them", () => {
+    seed(".cursor/commands", ["bkit-stale.md"]);
+    expect(removeOrphans(".cursor/commands", new Set(), true, "bkit-")).toEqual(["bkit-stale.md"]);
+    expect(fs.existsSync(".cursor/commands/bkit-stale.md")).toBe(true);
+  });
+
+  it("throws and deletes nothing for a dir outside the allowlist", () => {
+    seed("docs", ["bkit-stale.md"]);
+    expect(() => removeOrphans("docs", new Set(), false, "bkit-")).toThrow(/outside allowlist/);
+    expect(fs.existsSync("docs/bkit-stale.md")).toBe(true);
   });
 });

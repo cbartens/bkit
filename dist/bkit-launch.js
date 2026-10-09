@@ -8,6 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync, spawn } from "node:child_process";
+import { parseDotenv } from "./bkit-cloud-env.js";
 /**
  * Default binary paths. Override via BKIT_CURSOR_BIN / BKIT_OPENCODE_BIN env vars.
  */
@@ -19,36 +20,6 @@ const BINARY_OVERRIDE_ENV = {
     cursor: "BKIT_CURSOR_BIN",
     opencode: "BKIT_OPENCODE_BIN",
 };
-/**
- * Parse a .env file into a key→value map.
- * Handles:
- *   - Blank lines and `#` comments (skipped)
- *   - Quoted values: `KEY="val"` / `KEY='val'` (quotes stripped, not interpolated)
- *   - Trailing inline comments on unquoted values are NOT stripped (uncommon and
- *     would require full shell quoting semantics; leave as-is)
- */
-export function parseDotenv(content) {
-    const map = new Map();
-    for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#"))
-            continue;
-        const eqIdx = trimmed.indexOf("=");
-        if (eqIdx === -1)
-            continue;
-        const key = trimmed.slice(0, eqIdx).trim();
-        if (!key)
-            continue;
-        let value = trimmed.slice(eqIdx + 1);
-        // Strip surrounding quotes (single or double, must match)
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1);
-        }
-        map.set(key, value);
-    }
-    return map;
-}
 /**
  * Load .bkit/.env from `repoRoot`, merge into `baseEnv`, return merged env.
  * baseEnv wins over file values for keys already set (process.env takes priority;

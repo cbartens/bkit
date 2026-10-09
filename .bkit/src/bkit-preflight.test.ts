@@ -5,7 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  hasBkitMarkers,
   stripBkitBlock,
   detectNoPackageJson,
   detectMalformedPackageJson,
@@ -58,56 +57,6 @@ afterEach(() => {
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
   return new Set(flags) as Set<import("./bkit-cli").ModuleFlag>;
 }
-
-// ---------------------------------------------------------------------------
-// hasBkitMarkers
-// ---------------------------------------------------------------------------
-
-describe("hasBkitMarkers", () => {
-  it("returns true for HTML comment marker", () => {
-    expect(hasBkitMarkers("<!-- bkit:start -->\ncontent\n<!-- bkit:end -->")).toBe(true);
-  });
-
-  it("returns true for hash-comment marker", () => {
-    expect(hasBkitMarkers("# bkit:start\ncontent\n# bkit:end")).toBe(true);
-  });
-
-  it("returns false when no markers present", () => {
-    expect(hasBkitMarkers("just some content\nwith no markers")).toBe(false);
-  });
-
-  it("returns false for empty string", () => {
-    expect(hasBkitMarkers("")).toBe(false);
-  });
-
-  // B1 — line-anchored marker detection (BAR-142 §B1)
-  it("B1: returns false when marker appears only inside backtick-fenced prose (not line-anchored)", () => {
-    // e.g. in a markdown file that documents bkit markers:
-    const prose =
-      "## Usage\n\nBkit uses `<!-- bkit:start -->` and `<!-- bkit:end -->` markers.\n\nNo real marker here.";
-    expect(hasBkitMarkers(prose)).toBe(false);
-  });
-
-  it("B1: returns false for marker embedded mid-line (not at start of line)", () => {
-    const midLine = "some text <!-- bkit:start --> more text\n";
-    expect(hasBkitMarkers(midLine)).toBe(false);
-  });
-
-  it("B1: returns true when marker is on its own line (line-anchored, no prefix)", () => {
-    const realMarker = "above\n<!-- bkit:start -->\nbelow\n";
-    expect(hasBkitMarkers(realMarker)).toBe(true);
-  });
-
-  it("B1: returns true when marker has hash-comment prefix (shell files)", () => {
-    const shellContent = "#!/bin/sh\n# <!-- bkit:start -->\nset -e\n# <!-- bkit:end -->\n";
-    expect(hasBkitMarkers(shellContent)).toBe(true);
-  });
-
-  it("B1: returns true when hash-style marker is on its own line", () => {
-    const hashContent = "# bkit:start\ncontent\n# bkit:end\n";
-    expect(hasBkitMarkers(hashContent)).toBe(true);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // detectNoPackageJson
@@ -199,6 +148,15 @@ describe("detectPrettierignoreNoMarkers", () => {
       "utf-8",
     );
     expect(detectPrettierignoreNoMarkers(tmpDir)).toBeNull();
+  });
+
+  it("returns finding when the marker text appears only mid-line", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".prettierignore"),
+      "dist # see # bkit:start in docs\n",
+      "utf-8",
+    );
+    expect(detectPrettierignoreNoMarkers(tmpDir)?.id).toBe("prettierignore-no-markers");
   });
 
   it("returns null when .prettierignore is absent", () => {

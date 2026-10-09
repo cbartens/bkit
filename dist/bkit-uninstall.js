@@ -21,34 +21,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import { stripManagedBlock, } from "./bkit-tiers.js";
+import { stripManagedBlock, detectMarkerStyle, } from "./bkit-tiers.js";
 import { getInstallManifest, } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "./bkit-cloud-env.js";
-// ---------------------------------------------------------------------------
-// Tier-2 file strip helper
-// ---------------------------------------------------------------------------
-/**
- * Detect the marker style used in a file (html-comment, hash-comment, or slash-comment).
- * Returns null if none of the styles is present.
- */
-function detectMarkerStyle(content) {
-    // HTML markers may carry a `# ` / `// ` comment prefix so they survive inside
-    // shell / JS files (e.g. preflight.sh uses `# <!-- bkit:start -->`); match the
-    // same prefixes findAnchored/ALLOWED_PREFIXES allow. Checked FIRST so a prefixed
-    // HTML marker is never mistaken for the bare `# bkit:start` hash style, or a
-    // `// <!-- bkit:start -->` line for the bare `// bkit:start` slash style.
-    if (/^(?:# |\/\/ )?<!-- bkit:start -->$/m.test(content))
-        return "html-comment";
-    if (/^# bkit:start$/m.test(content))
-        return "hash-comment";
-    if (/^\/\/ bkit:start$/m.test(content))
-        return "slash-comment";
-    return null;
-}
 // ---------------------------------------------------------------------------
 // stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
 //

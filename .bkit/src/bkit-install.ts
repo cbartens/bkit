@@ -21,10 +21,11 @@ import {
   readBkitVersion,
 } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
-import { launchApp, parseDotenv } from "./bkit-launch.js";
+import { launchApp } from "./bkit-launch.js";
 import {
   dispatchModules,
   getPkgRoot,
+  listMdFiles,
   renderCloudWorkflow,
   renderOpencodeJson,
   reconcileOpencodeJson,
@@ -45,6 +46,7 @@ import {
   writeCursorCloudDoc,
   writeNetworkAllowlistArtifact,
   writeCursorCliPermissionsArtifact,
+  parseDotenv,
 } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { repointLegacyLintProse } from "./bkit-package-json.js";
@@ -181,18 +183,8 @@ export function discardAllStaging(cwd = process.cwd()): void {
   }
 }
 
-// Hard allowlist: install / host-pass prune may ONLY remove files from these
-// dirs. Mirror SOURCES live package-side under `.bkit/{workflows,prompts}`; only
-// the generated IDE mirror dirs below are consumer-writable.
-const WRITE_DIRS = [
-  ".claude/agents",
-  ".claude/commands",
-  ".cursor/agents",
-  ".cursor/commands",
-] as const;
-
-// Bkit-prefix filter — files in WRITE_DIRS not starting with this prefix are
-// project-managed and never written to, overwritten, or pruned by install.
+// Bkit-prefix filter — files not starting with this prefix are project-managed
+// and never removed by payload cleanup.
 const BKIT_PREFIX = "bkit-";
 
 // Log prefix — mutated by main() to "[bkit-check]" when verb === "check"
@@ -540,12 +532,14 @@ const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background
  * e.g. `- Read`/`- Write`) into opencode's `AgentConfig.tools` shape: an object map of
  * lowercase tool names → true (`tools:\n  read: true`). opencode REJECTS the array form
  * ("tools: Expected object | undefined, got [...]"), and its tool names are lowercase.
+ * MCP tools are `<server>_<tool>` on opencode, so Claude's `mcp__<server>__<tool>` (or
+ * `mcp__<server>__*`) is respelled rather than lowercased; the key may be a `*` pattern.
  * Returns "" when there are no tools (field omitted — also valid per the schema).
  */
 export function opencodeToolsBlock(toolsBlock: string | null): string {
   if (!toolsBlock) return "";
   const names: string[] = [];
-  for (const m of toolsBlock.matchAll(/^[ \t]*-[ \t]*([A-Za-z][\w-]*)/gm)) names.push(m[1]);
+  for (const m of toolsBlock.matchAll(/^[ \t]*-[ \t]*([A-Za-z][\w*-]*)/gm)) names.push(m[1]);
   if (names.length === 0) {
     // Fallback: inline array form `tools: [Read, Write]`.
     const inline = toolsBlock.match(/\[([^\]]*)\]/);
@@ -558,7 +552,10 @@ export function opencodeToolsBlock(toolsBlock: string | null): string {
   }
   if (names.length === 0) return "";
   let out = "tools:\n";
-  for (const n of names) out += `  ${n.toLowerCase()}: true\n`;
+  for (const n of names) {
+    const mcp = /^mcp__(.+?)__(.+)$/.exec(n);
+    out += `  ${mcp ? `${mcp[1]}_${mcp[2]}` : n.toLowerCase()}: true\n`;
+  }
   return out;
 }
 
@@ -877,70 +874,6 @@ export function applyT3(
   return newFm + afterFm;
 }
 
-function listMdFiles(dir: string, prefix?: string): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".md"))
-    .filter((f) => (prefix ? f.startsWith(prefix) : true));
-}
-
-function ensureDir(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-function installFile(
-  srcPath: string,
-  destPath: string,
-  transform: ((content: string) => string) | null,
-  dryRun: boolean,
-): boolean {
-  if (!transform) {
-    if (fs.existsSync(destPath)) {
-      const src = fs.readFileSync(srcPath);
-      const dest = fs.readFileSync(destPath);
-      if (src.equals(dest)) return false;
-    }
-    if (!dryRun) fs.copyFileSync(srcPath, destPath);
-    return true;
-  }
-
-  const src = fs.readFileSync(srcPath, "utf-8");
-  const transformed = transform(src);
-  if (fs.existsSync(destPath)) {
-    const existing = fs.readFileSync(destPath, "utf-8");
-    if (existing === transformed) return false;
-  }
-  if (!dryRun) fs.writeFileSync(destPath, transformed, "utf-8");
-  return true;
-}
-
-function removeOrphans(
-  destDir: string,
-  sourceFiles: Set<string>,
-  dryRun: boolean,
-  prefix?: string,
-): string[] {
-  const allowed = WRITE_DIRS.map((d) => path.resolve(d));
-  const resolved = path.resolve(destDir);
-  if (!allowed.includes(resolved)) {
-    console.error(`${LOG_PREFIX} Refusing orphan removal outside allowlist: ${destDir}`);
-    process.exit(1);
-  }
-
-  if (!fs.existsSync(destDir)) return [];
-  const removed: string[] = [];
-  for (const f of fs.readdirSync(destDir)) {
-    if (!f.endsWith(".md")) continue;
-    if (prefix && !f.startsWith(prefix)) continue;
-    if (!sourceFiles.has(f)) {
-      if (!dryRun) fs.rmSync(path.join(destDir, f));
-      removed.push(f);
-    }
-  }
-  return removed;
-}
-
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
 const HASH_START_MARKER = "# bkit:start";
@@ -970,7 +903,7 @@ export interface WriteSet {
 }
 
 // Select marker pair based on markerStyle.
-function selectMarkers(markerStyle: MarkerStyle): [string, string] {
+export function selectMarkers(markerStyle: MarkerStyle): [string, string] {
   switch (markerStyle) {
     case "hash-comment":
       return [HASH_START_MARKER, HASH_END_MARKER];
@@ -2261,7 +2194,7 @@ async function main() {
     // is the actionable fix. (#279/#280)
     const bkitEnvPath = path.join(process.cwd(), ".bkit", ".env");
     if (fs.existsSync(bkitEnvPath)) {
-      const fileVars = parseDotenv(fs.readFileSync(bkitEnvPath, "utf-8"));
+      const fileVars = new Map(parseDotenv(fs.readFileSync(bkitEnvPath, "utf-8")));
       const guiMissing: string[] = [];
       for (const [key, value] of fileVars) {
         if (!value || value.trim() === "") continue; // skip blank placeholders

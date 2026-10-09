@@ -1,5 +1,5 @@
 // bkit-launch.test.ts — unit tests for the bkit cursor / bkit opencode launcher.
-// Covers: parseDotenv, loadBkitEnv, resolveBinaryPath, isAlreadyRunning, launchApp.
+// Covers: loadBkitEnv (incl. .bkit/.env parsing), resolveBinaryPath, isAlreadyRunning, launchApp.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -14,13 +14,7 @@ vi.mock("node:child_process", () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
-import {
-  parseDotenv,
-  loadBkitEnv,
-  resolveBinaryPath,
-  isAlreadyRunning,
-  launchApp,
-} from "./bkit-launch.js";
+import { loadBkitEnv, resolveBinaryPath, isAlreadyRunning, launchApp } from "./bkit-launch.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,59 +49,53 @@ function makeFakeBin(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// parseDotenv
+// loadBkitEnv — .bkit/.env parsing
 // ---------------------------------------------------------------------------
 
-describe("parseDotenv — basic KEY=VALUE parsing", () => {
+function loadFile(content: string): NodeJS.ProcessEnv {
+  writeBkitEnv(content);
+  return loadBkitEnv(tmpDir, {});
+}
+
+describe("loadBkitEnv — .bkit/.env parsing", () => {
   it("parses a simple key=value", () => {
-    const m = parseDotenv("FOO=bar");
-    expect(m.get("FOO")).toBe("bar");
+    expect(loadFile("FOO=bar")).toEqual({ FOO: "bar" });
   });
 
   it("skips blank lines", () => {
-    const m = parseDotenv("\n\nFOO=bar\n\n");
-    expect(m.size).toBe(1);
-    expect(m.get("FOO")).toBe("bar");
+    expect(loadFile("\n\nFOO=bar\n\n")).toEqual({ FOO: "bar" });
   });
 
   it("skips comment lines", () => {
-    const m = parseDotenv("# comment\nFOO=bar");
-    expect(m.size).toBe(1);
-    expect(m.get("FOO")).toBe("bar");
+    expect(loadFile("# comment\nFOO=bar")).toEqual({ FOO: "bar" });
   });
 
   it("strips double-quoted value", () => {
-    expect(parseDotenv(`KEY="hello world"`).get("KEY")).toBe("hello world");
+    expect(loadFile(`KEY="hello world"`)["KEY"]).toBe("hello world");
   });
 
   it("strips single-quoted value", () => {
-    expect(parseDotenv(`KEY='hello world'`).get("KEY")).toBe("hello world");
+    expect(loadFile(`KEY='hello world'`)["KEY"]).toBe("hello world");
   });
 
   it("does NOT strip mismatched quotes", () => {
-    expect(parseDotenv(`KEY="hello'`).get("KEY")).toBe(`"hello'`);
-  });
-
-  it("handles empty value (blank placeholder)", () => {
-    expect(parseDotenv("KEY=").get("KEY")).toBe("");
+    expect(loadFile(`KEY="hello'`)["KEY"]).toBe(`"hello'`);
   });
 
   it("handles multiple keys", () => {
-    const m = parseDotenv("A=1\nB=2\nC=3");
-    expect(m.get("A")).toBe("1");
-    expect(m.get("B")).toBe("2");
-    expect(m.get("C")).toBe("3");
-    expect(m.size).toBe(3);
+    expect(loadFile("A=1\nB=2\nC=3")).toEqual({ A: "1", B: "2", C: "3" });
   });
 
   it("skips lines without '='", () => {
-    const m = parseDotenv("NOEQUALSSIGN\nFOO=bar");
-    expect(m.size).toBe(1);
-    expect(m.get("FOO")).toBe("bar");
+    expect(loadFile("NOEQUALSSIGN\nFOO=bar")).toEqual({ FOO: "bar" });
   });
 
   it("value may contain '=' characters", () => {
-    expect(parseDotenv("KEY=a=b=c").get("KEY")).toBe("a=b=c");
+    expect(loadFile("KEY=a=b=c")["KEY"]).toBe("a=b=c");
+  });
+
+  it("loads `export KEY=value` lines under KEY", () => {
+    expect(loadFile("export MY_TOKEN=secret\nOTHER=1")).toEqual({ MY_TOKEN: "secret", OTHER: "1" });
   });
 });
 

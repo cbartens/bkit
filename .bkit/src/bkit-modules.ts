@@ -16,6 +16,7 @@ import {
   migrateLegacyBkitEnvelope,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
+  ensureDir,
   type WriteSet,
   type JsonValue,
 } from "./bkit-tiers.js";
@@ -112,11 +113,7 @@ function setConsumerBkitField(field: string, value: string, dryRun: boolean): vo
   }
 }
 
-function ensureDir(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-}
-
-function listMdFiles(dir: string, prefix?: string): string[] {
+export function listMdFiles(dir: string, prefix?: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
@@ -150,13 +147,25 @@ function installFile(
   return true;
 }
 
-function removeOrphans(
+// Hard allowlist: orphan pruning may ONLY remove files from these generated IDE
+// mirror dirs. Mirror SOURCES live package-side under `.bkit/{workflows,prompts}`.
+const ORPHAN_PRUNE_DIRS = [
+  ".claude/agents",
+  ".claude/commands",
+  ".cursor/agents",
+  ".cursor/commands",
+] as const;
+
+export function removeOrphans(
   destDir: string,
   sourceFiles: Set<string>,
   dryRun: boolean,
   prefix?: string,
 ): string[] {
-  const BKIT_PREFIX = "bkit-";
+  const resolved = path.resolve(destDir);
+  if (!ORPHAN_PRUNE_DIRS.some((d) => path.resolve(d) === resolved)) {
+    throw new Error(`removeOrphans: refusing orphan removal outside allowlist: ${destDir}`);
+  }
   if (!fs.existsSync(destDir)) return [];
   const removed: string[] = [];
   for (const f of fs.readdirSync(destDir)) {

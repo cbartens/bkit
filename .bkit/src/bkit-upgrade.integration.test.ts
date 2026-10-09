@@ -823,9 +823,9 @@ describe("#334 — bkit upgrade migrates context-fetch blocks observability.md �
 
 // ---------------------------------------------------------------------------
 // #422 — gateguard.cjs/gateguard.js markered-text upgrade round-trip. This is the
-// regression test for the bkit-upgrade.ts detectMarkerStyle twin (site 9): if the
-// slash-comment marker style is added to the install engine only, `bkit upgrade`
-// silently stops managing these files with no error and no drift signal — nothing
+// regression test for detectMarkerStyle (bkit-tiers.ts, site 9): if the slash-comment
+// marker style is missing from its style list, `bkit upgrade` silently stops
+// managing these files with no error and no drift signal — nothing
 // else catches that. A real install, then a real upgrade, is the only way to prove it.
 // ---------------------------------------------------------------------------
 

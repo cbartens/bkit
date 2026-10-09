@@ -343,33 +343,6 @@ describe("parseModelLookup", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Orphan removal — bounded to 4 directories
-// ---------------------------------------------------------------------------
-
-describe("Orphan removal", () => {
-  it("orphan removal only operates on allowlisted dirs (source check)", () => {
-    // The WRITE_DIRS constant in bkit-install.ts must include exactly these 4
-    const allowedDirs = [
-      ".claude/agents",
-      ".claude/commands",
-      ".cursor/agents",
-      ".cursor/commands",
-    ];
-    // Verify expected dirs are present by checking the source uses them
-    const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
-    for (const dir of allowedDirs) {
-      expect(src).toContain(`"${dir}"`);
-    }
-  });
-
-  it("install never writes to out-of-allowlist paths (source check)", () => {
-    const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
-    // The removeOrphans fn must check against WRITE_DIRS before deleting
-    expect(src).toContain("Refusing orphan removal outside allowlist");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Managed-block writer
 // ---------------------------------------------------------------------------
 
@@ -1155,6 +1128,14 @@ describe("applyOpencodeAgent", () => {
     // No array-form items survive (would be "  - Read"), and no capitalized tool keys.
     expect(result).not.toMatch(/^\s*-\s*Read/m);
     expect(result).not.toContain("Read: true");
+  });
+
+  it("respells MCP tools as opencode's <server>_<tool> ids, wildcard included", () => {
+    const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - mcp__serena__*\n  - mcp__github__issue_read\n---\nBody.\n`;
+    const result = applyOpencodeAgent(input, opencodeModelLookup, effortMap, "ollama");
+    expect(result).toContain("  serena_*: true\n");
+    expect(result).toContain("  github_issue_read: true\n");
+    expect(result).not.toContain("mcp__");
   });
 
   it("maps effort: medium → reasoningEffort: high (OpenCode column ceilings out)", () => {
