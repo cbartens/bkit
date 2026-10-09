@@ -131,7 +131,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 - [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
-> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
+> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`.
 
 ---
 
@@ -148,7 +148,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 - [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
-> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
+> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`.
 
 ---
 
@@ -171,7 +171,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 - [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 > [!CAUTION]
-> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
+> **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`.
 
 ---
 
@@ -250,9 +250,9 @@ Verify only when applicable.
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all applicable boxes above. **DO NOT stop for user permission.** Proceed to `Data Schema Integration`.
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). Unchecked → Summary must issue `REVISE`.
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). Unchecked → Summary must issue `REVISE`.
-- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`). Unchecked → Summary must issue `REVISE`.
+- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
+- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
+- [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
 - [ ] **Security & Privacy checked:** All applicable `Security & Privacy` rows verified (or "None" justified).
 - [ ] **Reuse Inventory complete:** every capability has a row with non-empty `Search performed` + `Decision`; every `NEW` cites an allowed reason.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.

@@ -40,16 +40,15 @@ reasoningEffort: high
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Build task dependency graph from `Agent Execution Runbook` declared dependencies (`Requires:` / `Blocked by:` / `After:` fields).
-6. Per declared edge `A → B`: verify B consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → `CRITICAL`.
-7. Per task: identify what it reads / depends on (files, schemas, prior tasks outputs). Cross-check against declared deps; any missing prerequisites → `CRITICAL`. Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
-8. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
-9. Cycle detection: Any cyclic dep → `CRITICAL`.
-10. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.
-11. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
-12. Update **Create** — set `Verdict` via `Edit`; mapping:
+5. Build task dependency graph from `Agent Execution Runbook`: per task, artefacts it produces and consumes (file, schema migration, exported function, prior task output). Runbook order = build order per template.
+6. Per consumed artefact: produced by earlier task or already in repo. Produced only by later task → `CRITICAL` (reorder). Produced by no task and absent from repo → `CRITICAL` (missing prerequisite). Cross-reference related issues for open blockers / prerequisite issues plan ignores → OPTIONAL.
+7. Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design-implied dependencies (e.g. "X depends on the migration in §Y") reflected as task dependencies. Missing dependencies → `CRITICAL`. Respect declared sub-plan coverage scopes if produced.
+8. Cycle detection: tasks consuming each other's artefacts → `CRITICAL`.
+9. Verify strict adherence to `docs/templates/bkit-plan.md` — `Done when` criteria and template structure intact.
+10. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
+11. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
-    - `FAIL` = plan drifts from source or violates template.
+    - `FAIL` = template structure broken (sections missing / reordered); content gaps → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
 
 **Output format:**
@@ -66,7 +65,7 @@ Lens: Dependency correctness, design-coverage.
 
 ## CRITICAL
 
-[Dep-graph gaps that block plan progress — fabricated dep edges, missing prereqs, cycles, design-implied deps not reflected as task deps; initially set to `PENDING`.]
+[Dep-graph gaps that block plan progress — out-of-order tasks, missing prereqs, cycles, design-implied deps not reflected as task deps; initially set to `PENDING`.]
 
 ## OPTIONAL
 

@@ -53,7 +53,7 @@ tools:
 13. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
 14. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
-    - `FAIL` = plan drifts from source or violates template.
+    - `FAIL` = template structure broken (sections missing / reordered); content gaps → `CRITICAL`.
     - `CONCERNS` = `CRITICAL` items flagged for orchestrator merge.
 
 **Output format:**

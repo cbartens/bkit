@@ -88,7 +88,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Action Items
 
-[**If** `Verdict` = `CONCERNS` or `FAIL` → list all items and summarise each: specific revisions needed before planning (distinct from `Risks` above); initially set to `PENDING`.]
+[List all items and summarise each: specific revisions needed before planning, and unchecked human-confirmation gates (distinct from `Risks` above). **If** none → `None`; initially set to `PENDING`.]
 
 ## Outstanding Questions
 

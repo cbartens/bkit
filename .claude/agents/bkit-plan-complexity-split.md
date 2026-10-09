@@ -39,20 +39,20 @@ maxTurns: 100
 2. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 3. Treat proposed groupings in inputs as advisory ONLY — verify independently.
 4. Estimate total agent tokens to execute master plan end-to-end. Target sub-plan count = `ceil(total / 85K)`. Each sub-plan budget <= 85K tokens.
-5. Partition tasks, constraints, gates into sub-plans by domain (API / DB / web / mobile / infra) and dependency order. Each sub-plan <= 85K tokens. Order tasks so every sub-plan end leaves local gates green: add → switch → delete; signature change and all callers in one sub-plan; each task and its tests in one sub-plan. **If** no order keeps boundary green → merge adjacent sub-plans. **If** merged > 85K → `FAIL`.
+5. Partition tasks into sub-plans by domain (API / DB / web / mobile / infra) and dependency order. Each sub-plan <= 85K tokens. Order tasks so every sub-plan end leaves local gates green: add → switch → delete; signature change and all callers in one sub-plan; each task and its tests in one sub-plan. **If** no order keeps boundary green → merge adjacent sub-plans. **If** merged > 85K → `FAIL`.
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
-7. Copy ALL tasks (preserve `Done when` entry verbatim), constraints, gates from master into sub-plans. `Mandatory Tasks (Testing & Documentation)` → copy into EVERY sub-plan, scoped to its own tasks.
+7. Copy ALL tasks (preserve `Done when` entry verbatim) from master into sub-plans. Task-linked rows (`Derived Test Matrix`, `Reuse Inventory`, `Supersession Inventory`, `Documentation Updates`) → sub-plan holding linked task. Copy into EVERY sub-plan: gate checkpoints; `Mandatory Tasks (Testing & Documentation)` and remaining sections scoped to its own tasks.
 8. Each sub-plan self-contained per `docs/templates/bkit-plan.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master<->sub-plans. Relative paths.
 10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
-    - Confirm every task, constraint, and gate appears in exactly one sub-plan (`Mandatory Tasks (Testing & Documentation)` excepted: every sub-plan).
+    - Confirm every task and task-linked row appears in exactly one sub-plan; gate checkpoints and `Mandatory Tasks (Testing & Documentation)` in every sub-plan.
     - Confirm every task's `Done when` entry survived copy verbatim.
     - Confirm green boundaries: each task `Done when` tests in its own sub-plan; signature changes with all callers; no deletion before its replacement.
     - Confirm each sub-plan's estimated tokens <= 85K.
     - Confirm master is high-level index with correct bidirectional links.
     - Confirm each sub-plan references parent and is self-contained per `docs/templates/bkit-plan.md`.
-11. Once self-verify = `PASS` → remove ALL tasks, constraints, gates from master.
+11. Once self-verify = `PASS` → remove ALL tasks, task-linked rows, gates from master.
 12. Master retains context / goals / patterns; replace `Agent Execution Runbook` with sub-plan index (relative paths).
 13. `Verdict` mapping:
     - `PASS` = lossless split (task count, <= 85K cap, green boundaries, and template invariants self-verified).
