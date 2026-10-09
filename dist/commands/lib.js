@@ -218,17 +218,19 @@ export async function runCommand(argv, commands, options) {
 // ---------------------------------------------------------------------------
 // Repo facts
 // ---------------------------------------------------------------------------
+/** `git <args>` in `cwd`, never throwing: exit status plus trimmed stdout / stderr. */
+export function runGit(cwd, args) {
+    const res = spawnSync("git", args, { cwd, encoding: "utf-8", env: gitEnv() });
+    return {
+        ok: res.status === 0,
+        stdout: (res.stdout ?? "").trim(),
+        stderr: (res.stderr ?? "").trim(),
+    };
+}
 /** `git <args>` in `cwd`; stdout trimmed, or null on a non-zero exit. */
 export function git(cwd, args) {
-    const res = spawnSync("git", args, {
-        cwd,
-        encoding: "utf-8",
-        env: gitEnv(),
-        stdio: ["ignore", "pipe", "ignore"],
-    });
-    if (res.status !== 0 || typeof res.stdout !== "string")
-        return null;
-    return res.stdout.trim();
+    const res = runGit(cwd, args);
+    return res.ok ? res.stdout : null;
 }
 /**
  * The main checkout's root, from any worktree. `--git-common-dir` points at the

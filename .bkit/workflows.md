@@ -1320,7 +1320,7 @@ Inline definitions for workflow-file tokens. Keep synced with workflow bodies.
 
 ### Workflow commands
 
-Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag value`); `bkit <noun> --help` / `bkit <noun> <verb> --help` list verbs, flags, output keys, exit codes. Source `.bkit/src/commands/{workflow,ci,setup}/`, listed in `commands/registry.ts`; conventions enforced by `bkit-commands.test.ts`.
+Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag value`); `bkit help` lists the nouns, `bkit <noun> --help` / `bkit <noun> <verb> --help` list verbs, flags, output keys, exit codes. Source `.bkit/src/commands/{workflow,ci,setup}/`, listed in `commands/registry.ts`; conventions enforced by `bkit-commands.test.ts`.
 
 | Contract                | Rule                                                                                                                                                                    |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

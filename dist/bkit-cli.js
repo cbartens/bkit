@@ -722,13 +722,17 @@ Consumer CI auth:
   fine-grained PATs are not currently supported by GitHub Packages npm registry).
   See README.md ## Consumer CI auth for setup steps.
 
-Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
-    if (COMMANDS.length > 0) {
-        const width = Math.max(...COMMANDS.map((c) => c.noun.length));
-        console.log([
-            "",
-            "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
-            ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
-        ].join("\n"));
-    }
+Docs: https://github.com/cbartens/bkit/blob/main/README.md` + commandsUsage());
+}
+/** The `bkit <noun> <verb>` section of the usage text; empty while no command is registered. */
+function commandsUsage() {
+    if (COMMANDS.length === 0)
+        return "";
+    const width = Math.max(...COMMANDS.map((c) => c.noun.length));
+    return [
+        "",
+        "",
+        "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+        ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
+    ].join("\n");
 }

@@ -6,5 +6,8 @@
 // listed here, so a command cannot exist without being reachable.
 
 import type { CommandSpec } from "./lib.js";
+import { countersCommand } from "./workflow/counters.js";
+import { statusCommand } from "./workflow/status.js";
+import { stepsCommand } from "./workflow/steps.js";
 
-export const COMMANDS: readonly CommandSpec[] = [];
+export const COMMANDS: readonly CommandSpec[] = [statusCommand, countersCommand, stepsCommand];

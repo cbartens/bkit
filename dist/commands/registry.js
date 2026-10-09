@@ -4,4 +4,7 @@
 // `commands/ci/` (`bkit ci ...`) and `commands/setup/` (`bkit setup ...`).
 // `bkit-commands.test.ts` fails on a source file in those folders that is not
 // listed here, so a command cannot exist without being reachable.
-export const COMMANDS = [];
+import { countersCommand } from "./workflow/counters.js";
+import { statusCommand } from "./workflow/status.js";
+import { stepsCommand } from "./workflow/steps.js";
+export const COMMANDS = [statusCommand, countersCommand, stepsCommand];
