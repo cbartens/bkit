@@ -16,7 +16,7 @@ import { resolveTokens } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, parseDotenv, } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { runPreflight } from "./bkit-preflight.js";
-import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
+import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, findMissingOwnedHooks, detectOwnedHookMissing, describeMissingOwnedHook, } from "./bkit-postinstall.js";
 import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, migrateStrayGitattributes, migrateWarningsToNoise, planSelfBump, } from "./bkit-upgrade.js";
 import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, getInstallManifest, getModuleManifest, } from "./bkit-manifest.js";
@@ -2395,6 +2395,12 @@ async function main() {
         void err; // Non-fatal — changelog header is informational
     }
     const postFindings = runPostInstallCheck(ctx.advisories, effectiveModules, process.cwd());
+    // check only: install has just written every hook file of the modules it dispatched, and a
+    // missing cloud-bootstrap.sh after `install --claude` is not that run's fault.
+    const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
+    const missingHooksFinding = detectOwnedHookMissing(missingHooks);
+    if (missingHooksFinding)
+        postFindings.push(missingHooksFinding);
     const banner = formatChecklist(postFindings);
     if (banner)
         console.log(banner);
@@ -2411,7 +2417,9 @@ async function main() {
     // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
     // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
     // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
-    // docs (#256). Other Phase-3 blockers keep their historical install-only semantics.
+    // docs (#256). A missing owned hook file (owned-hook-missing) fails check too, by name: the
+    // hook commands skip an absent file silently, and cloud-bootstrap.sh is never in ws.writes.
+    // Other Phase-3 blockers keep their historical install-only semantics.
     //
     // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
     // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to
@@ -2421,7 +2429,7 @@ async function main() {
     if (dryRun) {
         const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale" && f.severity === "blocker");
         const docsStale = postFindings.some((f) => f.id === "bkit-managed-docs-stale" && f.severity === "blocker");
-        if (totalWrites > 0 || renderedStale || docsStale) {
+        if (totalWrites > 0 || renderedStale || docsStale || missingHooks.length > 0) {
             if (totalWrites > 0) {
                 console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
             }
@@ -2432,6 +2440,9 @@ async function main() {
             if (docsStale) {
                 console.error(`${LOG_PREFIX} check: managed docs are stale (managed-version marker drift) — ` +
                     `see the bkit-managed-docs-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`);
+            }
+            for (const hook of missingHooks) {
+                console.error(`${LOG_PREFIX} check: ${describeMissingOwnedHook(hook)}`);
             }
             process.exit(1);
         }

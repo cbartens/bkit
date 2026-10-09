@@ -19,6 +19,8 @@ import {
   parseCloudAgents,
   DEFAULT_CLOUD_AGENTS,
   type CloudAgents,
+  getModuleManifest,
+  CLOUD_MANIFEST_CLAUDE,
 } from "./bkit-manifest.js";
 import {
   readBkitVersion,
@@ -2453,6 +2455,68 @@ export function detectManagedDocsStale(
     detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
     action:
       "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The docs/*.md managed blocks (testing.md, deployments.md, templates/bkit-plan.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Owned hook files — `bkit check` fails when one is missing
+// ---------------------------------------------------------------------------
+
+/** A bkit-owned hook file the consumer's install needs but is absent on disk. */
+export interface MissingOwnedHook {
+  path: string;
+  /** The `bkit install` flag that writes it back. */
+  restoreFlag: string;
+}
+
+/** Host modules whose manifest hook files a host config runs, and the flag that installs each. */
+const HOOK_HOST_FLAGS: ReadonlyArray<["claude" | "cursor" | "codex" | "opencode", string]> = [
+  ["claude", "--claude"],
+  ["cursor", "--cursor"],
+  ["codex", "--codex"],
+  ["opencode", "--opencode=<provider>"],
+];
+
+/** Manifest paths a host runs as a hook: `.<host>/hooks/<file>` and `.opencode/plugin/<file>`. */
+const HOOK_FILE_RE = /\/(hooks|plugin)\/[^/]+$/;
+
+/**
+ * Owned hook files that are missing for what this repo has installed: the hook files in the
+ * manifest of each installed host module, plus `.claude/hooks/cloud-bootstrap.sh` when
+ * `bkit.cloudAgents` is `claude` (every claude settings.json wires cloud-bootstrap.sh, so the
+ * reference alone does not mean the cloud module is installed). The claude and codex hook
+ * commands skip a missing file (`test -f <file> && … || true`), so a deleted file turns its
+ * guard off without a word, which is why `bkit check` fails on it.
+ */
+export function findMissingOwnedHooks(cwd: string, modules: Set<ModuleFlag>): MissingOwnedHook[] {
+  const required: MissingOwnedHook[] = [];
+  for (const [host, restoreFlag] of HOOK_HOST_FLAGS) {
+    if (!modules.has(host)) continue;
+    for (const entry of getModuleManifest(host)) {
+      if (HOOK_FILE_RE.test(entry.path)) required.push({ path: entry.path, restoreFlag });
+    }
+  }
+  if (readConsumerCloudAgents(cwd) === "claude") {
+    for (const entry of CLOUD_MANIFEST_CLAUDE) {
+      required.push({ path: entry.path, restoreFlag: "--auto=claude" });
+    }
+  }
+  return required.filter((hook) => !fs.existsSync(path.join(cwd, hook.path)));
+}
+
+/** One-line description of a missing hook file, shared by the checklist and the check exit. */
+export function describeMissingOwnedHook(hook: MissingOwnedHook): string {
+  return `${hook.path} is missing, so the hook that runs it is off — restore it with \`pnpm bkit install ${hook.restoreFlag}\`.`;
+}
+
+/** The checklist blocker for `findMissingOwnedHooks` output, or null when nothing is missing. */
+export function detectOwnedHookMissing(missing: MissingOwnedHook[]): PreflightFinding | null {
+  if (missing.length === 0) return null;
+  return {
+    id: "owned-hook-missing",
+    severity: "blocker",
+    detect: `${missing.length} bkit-owned hook file(s) missing: ${missing.map((h) => h.path).join(", ")}. The host still has each hook wired, but the file it runs is gone, so the guard or setup step it holds no longer happens.`,
+    action: missing.map(describeMissingOwnedHook).join("\n"),
   };
 }
 

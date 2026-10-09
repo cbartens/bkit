@@ -67,6 +67,9 @@ import {
   formatChecklist,
   readChangelogVersionDelta,
   writeAdvisoriesArtifact,
+  findMissingOwnedHooks,
+  detectOwnedHookMissing,
+  describeMissingOwnedHook,
 } from "./bkit-postinstall.js";
 import {
   runUninstall,
@@ -2744,6 +2747,11 @@ async function main() {
     void err; // Non-fatal — changelog header is informational
   }
   const postFindings = runPostInstallCheck(ctx.advisories, effectiveModules, process.cwd());
+  // check only: install has just written every hook file of the modules it dispatched, and a
+  // missing cloud-bootstrap.sh after `install --claude` is not that run's fault.
+  const missingHooks = dryRun ? findMissingOwnedHooks(process.cwd(), effectiveModules) : [];
+  const missingHooksFinding = detectOwnedHookMissing(missingHooks);
+  if (missingHooksFinding) postFindings.push(missingHooksFinding);
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
@@ -2760,7 +2768,9 @@ async function main() {
   // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
   // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
   // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
-  // docs (#256). Other Phase-3 blockers keep their historical install-only semantics.
+  // docs (#256). A missing owned hook file (owned-hook-missing) fails check too, by name: the
+  // hook commands skip an absent file silently, and cloud-bootstrap.sh is never in ws.writes.
+  // Other Phase-3 blockers keep their historical install-only semantics.
   //
   // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
   // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to
@@ -2774,7 +2784,7 @@ async function main() {
     const docsStale = postFindings.some(
       (f) => f.id === "bkit-managed-docs-stale" && f.severity === "blocker",
     );
-    if (totalWrites > 0 || renderedStale || docsStale) {
+    if (totalWrites > 0 || renderedStale || docsStale || missingHooks.length > 0) {
       if (totalWrites > 0) {
         console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
       }
@@ -2789,6 +2799,9 @@ async function main() {
           `${LOG_PREFIX} check: managed docs are stale (managed-version marker drift) — ` +
             `see the bkit-managed-docs-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
         );
+      }
+      for (const hook of missingHooks) {
+        console.error(`${LOG_PREFIX} check: ${describeMissingOwnedHook(hook)}`);
       }
       process.exit(1);
     }
