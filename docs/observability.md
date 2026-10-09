@@ -40,7 +40,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-mirror-push-run]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-roadmap]`. Workflow commands log as `[bkit-<noun>]` on stderr (`[bkit-locks]`, `[bkit-worktrees]`, `[bkit-runs]`, `[bkit-ledgers]`, …); their stdout is one JSON object, never a log line. New prefix only alongside new module or command noun; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -128,9 +128,9 @@ The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EX
 
 The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` line per poll) and the CI-Dispatch Gate (`bkit runs dispatch`: `re-trigger commit or push failed — no verdict; route to the Failure Path`, `landed commit … inherited a CI-suppression token in its body`).
 
-### `[bkit-mirror-push-run]` prefix
+### `bkit runs mirror` (under `[bkit-runs]`)
 
-`bkit-mirror-push-run.sh` stderr — release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev commit). Polls `bkit runs gate --event push` (the main checkout's `node_modules/.bin/bkit`; missing → exit 2); on a red exit it replays the gate's `[bkit-runs]` block first. `bkit runs mirror` implements the same contract and exit codes, logging under `[bkit-runs]`.
+Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev commit). Polls `bkit runs gate --event push` at the PR head; on a red gate exit it logs the gate's own reason first.
 
 <!-- prettier-ignore -->
 | Exit | Meaning |
@@ -140,11 +140,11 @@ The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` lin
 | 2 | Usage error |
 | 3 | No push run at the PR head within `--absent-minutes` (gate 10/14 — `[skip ci]` tip) |
 | 4 | Push run still in progress at `--max-minutes` |
-| 20 | Gate API error 3× in a row |
+| 20 | Gate API error 3x in a row |
 
-- `[bkit-mirror-push-run] dev push run at %s passed its capstone — release PR mirrors green.` (stdout) — green.
-- `[bkit-mirror-push-run] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
-- `[bkit-mirror-push-run] no dev push run exists at %s after %sm.` — exit 3.
+- `[bkit-runs] dev push run at %s passed its capstone — release PR mirrors green.` — green.
+- `[bkit-runs] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
+- `[bkit-runs] no dev push run exists at %s after %sm.` — exit 3.
 
 ## Advisory Checklist Output
 

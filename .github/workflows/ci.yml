@@ -503,9 +503,9 @@ jobs:
           echo "ran=$UNIT_RAN" >> "$GITHUB_OUTPUT"
           echo "::notice::vitest executed $UNIT_RAN unit test(s)."
 
-      # Shell-level tests (bats) for the counter-bus retry-gating helpers and the telemetry
-      # fail-open contract — logic vitest can't reach (they source .bkit/scripts/*.sh). jq is
-      # preinstalled on ubuntu-latest; bats-core comes from npm via npx.
+      # Shell-level tests (bats) for the shipped hook scripts and the gh stub harness —
+      # shell logic vitest can't reach. jq is preinstalled on ubuntu-latest; bats-core
+      # comes from npm via npx.
       - name: Run Shell Tests (bats)
         if: steps.cache.outputs.skip != 'true'
         run: npx --yes bats tests/*.bats
@@ -613,7 +613,7 @@ jobs:
   # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-tests-scope
   # succeeded and, when run_level != none, ALL THREE test lanes (static / unit / integration)
   # succeeded AND unit + integration each executed >0 tests (not a vacuous green). bkit's SOLE
-  # branch-protection required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check)
+  # branch-protection required check (`bkit setup protect-main`, which reads bkit.capstoneJob = bkit-tests-check)
   # — green means "the planned suite ran and passed", not "nothing visibly failed".
   # NAMESPACE NOTE: bkit-tests-scope is the PLANNER, not a test lane, but it lives in the
   # bkit-tests-* namespace. Its SCOPE_RESULT assertion below is what makes it non-hollow — it is

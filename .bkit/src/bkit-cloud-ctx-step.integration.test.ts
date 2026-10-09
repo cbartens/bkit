@@ -25,7 +25,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const TEMPLATE_PATH = path.join(REPO_ROOT, ".bkit/templates/.github/workflows/bkit-cloud.yml");
-const COUNTER_CONFIG_PATH = path.join(REPO_ROOT, ".bkit/scripts/bkit-counter-bus-config.sh");
+// The workflow-level env the guards read; a missing declaration fails here, not at a silent 0.
+const DISPATCH_CAP = (() => {
+  const m = /^env:\n {2}MAX_DEV_DISPATCH_ATTEMPTS: (\d+)$/m.exec(
+    fs.readFileSync(TEMPLATE_PATH, "utf8"),
+  );
+  if (!m) throw new Error("bkit-cloud.yml declares no top-level MAX_DEV_DISPATCH_ATTEMPTS env");
+  return m[1]!;
+})();
 
 // The ctx step's dev-arm FID extraction relies on `sed -E ... \w+ ...`, a GNU
 // sed extension. GH Actions runners (ubuntu-latest) ship GNU sed, but macOS
@@ -144,11 +151,6 @@ function setupFixture(tmpRoot: string): Fixture {
   git(workspaceDir, "config", "user.name", "t");
   git(workspaceDir, "remote", "add", "origin", originDir);
 
-  fs.mkdirSync(path.join(workspaceDir, ".bkit/scripts"), { recursive: true });
-  fs.copyFileSync(
-    COUNTER_CONFIG_PATH,
-    path.join(workspaceDir, ".bkit/scripts/bkit-counter-bus-config.sh"),
-  );
   fs.mkdirSync(path.join(workspaceDir, "docs/plans"), { recursive: true });
   fs.writeFileSync(path.join(workspaceDir, "README.md"), "fixture\n");
   git(workspaceDir, "add", "-A");
@@ -201,6 +203,7 @@ function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
       GITHUB_WORKSPACE: fixture.workspaceDir,
       GITHUB_REPOSITORY: "owner/repo",
       GH_TOKEN: "dummy",
+      MAX_DEV_DISPATCH_ATTEMPTS: DISPATCH_CAP,
       ...env,
     },
   });
@@ -351,6 +354,23 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   // T5 — MAX_DEV_DISPATCH_ATTEMPTS cap (distinct headSha count, not row count)
   // -------------------------------------------------------------------------
   describe("dev path — cross-session loop cap (T5)", () => {
+    it("refuses to dispatch uncounted when the workflow env defines no whole-number cap", () => {
+      for (const cap of ["", "three"]) {
+        const result = runCtxStep(fixture, {
+          EVENT: "workflow_run",
+          CONCLUSION: "failure",
+          BRANCH: "dev",
+          COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#501) bkit [auto route]",
+          HEAD_SHA: "new-sha",
+          STUB_LATEST_CI_SHA: "new-sha",
+          STUB_ISSUE_LABELS: "bkit:auto",
+          MAX_DEV_DISPATCH_ATTEMPTS: cap,
+        });
+        expect(result.outputs.skip).toBe("true");
+        expect(`${result.stdout}${result.stderr}`).toContain("refusing to dispatch uncounted");
+      }
+    });
+
     it("3 dev-dispatch rows with the SAME headSha count as ONE cycle — cap not tripped", () => {
       seedDevDispatchRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger", [
         "same-sha",

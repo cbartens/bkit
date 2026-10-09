@@ -529,7 +529,7 @@ describe("bkit runs gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// bkit runs mirror (tests/mirror-push-run.bats)
+// bkit runs mirror
 // ---------------------------------------------------------------------------
 
 describe("bkit runs mirror", () => {

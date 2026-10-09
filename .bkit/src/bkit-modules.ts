@@ -431,9 +431,7 @@ function processCoreTemplateDir(
         // the drift comparison — `bkit check` exited 0 on a tampered script the merge gate
         // relied on. The upgrade engine already treats every one of them whole-file
         // (non-markdown, no manifest entry → diffFile/conflict), so Tier 1 here is what makes
-        // install, upgrade and check agree. The hash-comment `bkit:start` block in
-        // `bkit-counter-bus-config.sh` is a bkit-repo authoring marker, not a consumer
-        // ownership split.
+        // install, upgrade and check agree.
         writeTier1(srcPath, dstPath, tokens, dryRun, ws);
       } else {
         writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);

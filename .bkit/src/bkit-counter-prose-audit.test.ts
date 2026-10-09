@@ -191,8 +191,8 @@ describe("2. MAX_* thresholds: none dead, none unknown", () => {
   /**
    * Shell surfaces outside the markdown corpus that enforce a cap directly.
    * `bkit-cloud.yml` gates dev-triggered dispatch in its own `run:` shell
-   * (sourcing bkit-counter-bus-config.sh, whose parity with THRESHOLDS is
-   * pinned in counters.test.ts), so a cap consumed only there is live.
+   * (its workflow-level env, whose parity with THRESHOLDS is pinned in
+   * counters.test.ts), so a cap consumed only there is live.
    */
   const SHELL_ENFORCEMENT_FILES = [
     ".github/workflows/bkit-cloud.yml",

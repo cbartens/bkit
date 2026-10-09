@@ -248,7 +248,6 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.envrc` | core | `.bkit/templates/.envrc` | Tier 2 hash-comment |
 | `.mcp.json` | core | `.bkit/templates/.mcp.json` | Tier 2 JSON deep-containment (consumer servers preserved) |
 | `.bkit/{cloud,jsonl,providers,prompts,trackers,workflows,README}.md` | core | mirrored from the installed package | Tier 1 (canonical-overwrite). The reference docs agents read at runtime. |
-| `.bkit/scripts/*.sh` | core | `.bkit/templates/.bkit/scripts/` | Tier 1 (canonical-overwrite), executable. `bkit-counter-bus-config.sh` (`MAX_*` thresholds `bkit-cloud.yml` reads), `bkit-mirror-push-run.sh` (release-PR mirror) — bkit-owned, no consumer-editable region; drift is re-rendered, not merged. Workflow steps call `bkit <noun> <verb>` commands (`bkit help`), never a script. |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/prompts/` (byte-identical) | Host pass — always overwrite |
 | `.claude/settings.json` | claude | `.bkit/templates/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |

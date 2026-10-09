@@ -956,8 +956,8 @@ jobs:
 #   # !cancelled() not always(): a concurrency cancel must not stamp a failure.
 #     steps:
 #       - name: Mirror Push Run              # OPTIONAL (Decide Release Mirror in JOB 1). if: plan.mirror_push_run. Runs BEFORE
-#       #   the assert below; NEITHER continue-on-error. Needs a checkout (it runs a script) — ungated, not continue-on-error.
-#       #   run: bash .bkit/scripts/bkit-mirror-push-run.sh --head "$PR_HEAD_SHA" --branch dev --max-minutes 170
+#       #   the assert below; NEITHER continue-on-error. Needs a checkout and installed dependencies (it runs bkit) — ungated.
+#       #   run: pnpm bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170
 #       #   (PR_HEAD_SHA: github.event.pull_request.head.sha via env:; GH_TOKEN: github.token — needs actions: read.)
 #       #   Waits for the dev push run at the PR head and passes only when that run's capstone passed; reds when it
 #       #   failed, was cancelled, its capstone is absent/skipped, or no push run appears within 10 min (a [skip ci]
@@ -965,7 +965,7 @@ jobs:
 #       #   step IS the verdict — never \`run_level=none\` alone: a skipped required check can read as passed on the PR.
 #       #   Raise the job timeout ONLY in this mode, null-safe for a planner that failed before emitting a plan:
 #       #     timeout-minutes: \${{ needs.bkit-tests-scope.outputs.plan && fromJSON(needs.bkit-tests-scope.outputs.plan).mirror_push_run && 180 || 5 }}
-#       #   (180 > the script's --max-minutes 170 > your slowest push run, so a timeout names its cause.)
+#       #   (180 > the command's --max-minutes 170 > your slowest push run, so a timeout names its cause.)
 #       #   A red push run re-run to green does NOT update the PR: re-run this job afterwards.
 #       - name: Assert Test Plan Followed    # script, not a heredoc. testing.md § Validated means executed.
 #       #   scope==success always. run_level!=none => static+unit+build-web success.

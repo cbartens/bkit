@@ -501,7 +501,6 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | File | Tier | Scope |
 | --- | --- | --- |
 | `commands/workflow/runs.test.ts` | Unit (`tests/fixtures/gh/` stub + `PATH` shim) | `bkit runs gate`: every exit code (0/2/10/11/12/13/14/15/16/17/20/80); `--validated` carry-forward; override honoured-vs-ignored; config resolution; code 16 opt-in via `shipGateRequiredLanes`; `--event` filter. Also `runs mirror`, `runs wait`, `runs dispatch`, `runs declared` |
-| `tests/mirror-push-run.bats` | Shell (scripted gate via `BKIT_MIRROR_GATE_SH`; e2e cases run `bkit runs gate` behind `tests/fixtures/gh/`) | Release-PR mirror: every red route (push run red / cancelled / capstone absent / required lane skipped / unknown gate exit / no push run past the absent window / still running at `--max-minutes` / 3 API errors); polling to green and to red; override never reaches the gate |
 | `.bkit/src/bkit-ship-invariants.test.ts` | Unit (markdown-invariant) | No `git add -A`; staging only through `bkit ledgers`; `BOOK_ROOT` status writes; `--match-head-commit`; canonical 15 step keys; pre-merge pushes confined to B2 + Commit + Push Bookkeeping; `.dev.lock`/trap |
 | `.bkit/src/bkit-status-hole-detector.test.ts` | Unit | Expected set derived from source md (no parallel table); path-conditional sets; advisory exit 0 on holey fixture; invented names surface as delta |
 

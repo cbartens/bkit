@@ -34,6 +34,11 @@ export const RETIRED_OWNED_FILES = [
     { path: ".bkit/scripts/bkit-status-fold.sh", replacement: "bkit status fold" },
     { path: ".bkit/scripts/bkit-status-route.sh", replacement: "bkit status route" },
     { path: ".bkit/scripts/bkit-workflow-telemetry.sh", replacement: "bkit workflows close" },
+    {
+        path: ".bkit/scripts/bkit-counter-bus-config.sh",
+        replacement: "bkit counters max (bkit-cloud.yml sets MAX_DEV_DISPATCH_ATTEMPTS as a workflow env)",
+    },
+    { path: ".bkit/scripts/bkit-mirror-push-run.sh", replacement: "bkit runs mirror" },
 ];
 export const isRetiredOwned = (relPath, list = RETIRED_OWNED_FILES) => list.some((r) => r.path === relPath);
 /**

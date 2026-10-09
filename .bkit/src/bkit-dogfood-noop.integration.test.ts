@@ -102,13 +102,6 @@ describe("dogfood byte-identity — .bkit/scripts", () => {
     expect(fs.existsSync(root)).toBe(true);
     expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
   });
-
-  it("bkit-mirror-push-run.sh is executable in both homes (CI runs it via bash)", () => {
-    const root = path.join(pkgRoot, ".bkit/scripts/bkit-mirror-push-run.sh");
-    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-mirror-push-run.sh");
-    expect(fs.statSync(root).mode & 0o111).toBeTruthy();
-    expect(fs.statSync(tmpl).mode & 0o111).toBeTruthy();
-  });
 });
 
 // ---------------------------------------------------------------------------

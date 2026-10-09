@@ -12,7 +12,7 @@
 # Requires: bats >= 1.0
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-# Template-relative by default (same convention as tests/mirror-push-run.bats):
+# Template-relative by default:
 # edits land in .bkit/templates/.claude/hooks/;
 # the installed .claude/hooks/ mirror is produced by `bkit install`,
 # deferred to the batch mirror regen (Sub-Plan 6).

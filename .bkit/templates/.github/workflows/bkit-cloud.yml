@@ -89,6 +89,12 @@ concurrency:
   # status.jsonl row + `::warning::` when this happens, for operator review.
   cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
 
+# Cap on dev-triggered debug dispatches per FID (distinct failed dev CI SHAs).
+# The guards below run before bkit is installed, so the value lives here; a bkit
+# test holds it equal to MAX_DEV_DISPATCH_ATTEMPTS in `bkit counters max`.
+env:
+  MAX_DEV_DISPATCH_ATTEMPTS: 3
+
 jobs:
   # ---------------------------------------------------------------------------
   # claude job — dispatch via claude-code-action@v1 (ANTHROPIC_API_KEY required).
@@ -225,24 +231,17 @@ jobs:
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
               fi
-              # the caller invokes this function as `... || { skip }`,
-              # which suppresses `set -e` for the whole body — so a failed
-              # source (stale `bkit install`, partial checkout, renamed script)
-              # would fall through to `set -u` killing the entire step on an
-              # unbound MAX_DEV_DISPATCH_ATTEMPTS, making the designed
-              # `return 1` no-op unreachable. Fail closed explicitly instead.
-              # shellcheck source=/dev/null
-              if ! . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"; then
-                echo "::notice::counter-bus config unavailable — refusing to dispatch uncounted (fail-closed)."
-                return 1
-              fi
-              # NB: an explicit test, not `${VAR:?}` — the `:?` expansion exits
-              # the whole shell even from inside a `|| {}`-guarded function,
-              # reproducing the very abort this block exists to prevent.
-              if [ -z "${MAX_DEV_DISPATCH_ATTEMPTS:-}" ]; then
-                echo "::notice::counter-bus config defined no MAX_DEV_DISPATCH_ATTEMPTS — refusing to dispatch uncounted (fail-closed)."
-                return 1
-              fi
+              # The caller invokes this function as `... || { skip }`, which
+              # suppresses `set -e` for the whole body. An explicit test, not
+              # `${VAR:?}`: the `:?` expansion exits the whole shell even from
+              # inside a `|| {}`-guarded function. Fail closed when the
+              # workflow-level env no longer defines a whole-number cap.
+              case "${MAX_DEV_DISPATCH_ATTEMPTS:-}" in
+                '' | *[!0-9]*)
+                  echo "::notice::MAX_DEV_DISPATCH_ATTEMPTS is not set to a whole number — refusing to dispatch uncounted (fail-closed)."
+                  return 1
+                  ;;
+              esac
               local status_dir status_file dev_count parent_sha landed
               # `sort` makes the month-bucket choice deterministic. An
               # unsorted `find` takes readdir order, so a FID whose logs span
@@ -629,24 +628,17 @@ jobs:
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
               fi
-              # the caller invokes this function as `... || { skip }`,
-              # which suppresses `set -e` for the whole body — so a failed
-              # source (stale `bkit install`, partial checkout, renamed script)
-              # would fall through to `set -u` killing the entire step on an
-              # unbound MAX_DEV_DISPATCH_ATTEMPTS, making the designed
-              # `return 1` no-op unreachable. Fail closed explicitly instead.
-              # shellcheck source=/dev/null
-              if ! . "$GITHUB_WORKSPACE/.bkit/scripts/bkit-counter-bus-config.sh"; then
-                echo "::notice::counter-bus config unavailable — refusing to dispatch uncounted (fail-closed)."
-                return 1
-              fi
-              # NB: an explicit test, not `${VAR:?}` — the `:?` expansion exits
-              # the whole shell even from inside a `|| {}`-guarded function,
-              # reproducing the very abort this block exists to prevent.
-              if [ -z "${MAX_DEV_DISPATCH_ATTEMPTS:-}" ]; then
-                echo "::notice::counter-bus config defined no MAX_DEV_DISPATCH_ATTEMPTS — refusing to dispatch uncounted (fail-closed)."
-                return 1
-              fi
+              # The caller invokes this function as `... || { skip }`, which
+              # suppresses `set -e` for the whole body. An explicit test, not
+              # `${VAR:?}`: the `:?` expansion exits the whole shell even from
+              # inside a `|| {}`-guarded function. Fail closed when the
+              # workflow-level env no longer defines a whole-number cap.
+              case "${MAX_DEV_DISPATCH_ATTEMPTS:-}" in
+                '' | *[!0-9]*)
+                  echo "::notice::MAX_DEV_DISPATCH_ATTEMPTS is not set to a whole number — refusing to dispatch uncounted (fail-closed)."
+                  return 1
+                  ;;
+              esac
               local status_dir status_file dev_count parent_sha landed
               # `sort` makes the month-bucket choice deterministic. An
               # unsorted `find` takes readdir order, so a FID whose logs span

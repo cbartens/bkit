@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -324,25 +323,16 @@ describe("bkit counters max", () => {
     }
   });
 
-  it("bkit-counter-bus-config.sh (still sourced by bkit-cloud.yml) names the same thresholds with the same values", () => {
-    const config = path.resolve(
-      __dirname,
-      "../../../templates/.bkit/scripts/bkit-counter-bus-config.sh",
-    );
-    const names = Object.keys(THRESHOLDS);
-    const res = spawnSync(
-      "sh",
-      [
-        "-c",
-        `. "${config}"; ${names.map((n) => `echo ${n}=$${n}`).join("; ")}; set | grep -c '^MAX_'`,
-      ],
-      { encoding: "utf-8" },
-    );
-    const lines = res.stdout.trim().split("\n");
-    expect(
-      Object.fromEntries(lines.slice(0, -1).map((l) => [l.split("=")[0], Number(l.split("=")[1])])),
-    ).toEqual(THRESHOLDS);
-    expect(Number(lines.at(-1))).toBe(names.length);
+  it("bkit-cloud.yml (both copies) declares MAX_DEV_DISPATCH_ATTEMPTS equal to THRESHOLDS", () => {
+    for (const rel of [
+      "../../../../.github/workflows/bkit-cloud.yml",
+      "../../../templates/.github/workflows/bkit-cloud.yml",
+    ]) {
+      const yml = fs.readFileSync(path.resolve(__dirname, rel), "utf-8");
+      const m = /^env:\n {2}MAX_DEV_DISPATCH_ATTEMPTS: (\d+)$/m.exec(yml);
+      expect(m, rel).not.toBeNull();
+      expect(Number(m![1])).toBe(THRESHOLDS.MAX_DEV_DISPATCH_ATTEMPTS);
+    }
   });
 });
 
