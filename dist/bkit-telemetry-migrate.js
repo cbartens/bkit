@@ -25,7 +25,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveRepoSlug } from "./bkit-telemetry.js";
-import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 /**
  * Split a legacy `**Related:**` value into individual pointers.
  *

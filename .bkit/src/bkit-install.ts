@@ -38,6 +38,12 @@ import {
   type ModuleContext,
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
+import {
+  findLineAnchoredMarkers,
+  replaceManagedBlock,
+  selectMarkers,
+  type MarkerStyle,
+} from "./bkit-markers.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import {
   CLAUDE_CLOUD_RELPATH,
@@ -367,7 +373,7 @@ export function parseModelOverrides(
 ): Array<{ prompt: string; provider: string; model: string }> {
   if (!fs.existsSync(promptsMdPath)) return [];
   const content = fs.readFileSync(promptsMdPath, "utf-8");
-  const endIdx = findLineAnchoredMarkers(content, END_MARKER)[0];
+  const endIdx = findLineAnchoredMarkers(content, selectMarkers("html-comment")[1])[0];
   const region = endIdx === undefined ? "" : content.slice(endIdx);
   const ovIdx = region.indexOf("## Model Overrides");
   if (ovIdx === -1) return [];
@@ -875,17 +881,6 @@ export function applyT3(
   return newFm + afterFm;
 }
 
-const START_MARKER = "<!-- bkit:start -->";
-const END_MARKER = "<!-- bkit:end -->";
-const HASH_START_MARKER = "# bkit:start";
-const HASH_END_MARKER = "# bkit:end";
-const SLASH_START_MARKER = "// bkit:start";
-const SLASH_END_MARKER = "// bkit:end";
-
-// Marker style selector: html-comment (default, backward-compat), hash-comment (YAML/INI/shell),
-// or slash-comment (JS/TS ES modules, where HTML comments are a syntax error).
-export type MarkerStyle = "html-comment" | "hash-comment" | "slash-comment";
-
 // Shared WriteSet accumulator — both check and install paths populate this identically,
 // ensuring parity by construction (eliminates future dry-run divergence).
 export interface WriteEntry {
@@ -903,76 +898,8 @@ export interface WriteSet {
   writes: WriteEntry[];
 }
 
-// Select marker pair based on markerStyle.
-export function selectMarkers(markerStyle: MarkerStyle): [string, string] {
-  switch (markerStyle) {
-    case "hash-comment":
-      return [HASH_START_MARKER, HASH_END_MARKER];
-    case "slash-comment":
-      return [SLASH_START_MARKER, SLASH_END_MARKER];
-    default:
-      return [START_MARKER, END_MARKER];
-  }
-}
-
-// Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
-const ALLOWED_PREFIXES = ["", "# ", "// "];
-
-// Find line-anchored marker positions. A marker is line-anchored when:
-//   - The line before the marker is empty, "# ", or "// " (comment prefixes).
-//   - The character after the marker is end-of-line or end-of-file.
-// Backtick-quoted prose mentions are ignored.
-// markerStyle defaults to "html-comment" for backward compat.
-export function findLineAnchoredMarkers(
-  content: string,
-  markerOrStyle: string | MarkerStyle,
-  _markerStyle?: MarkerStyle,
-): number[] {
-  // Support both legacy call-site (content, markerString) and new call-site (content, markerStyle).
-  // If markerOrStyle is a known MarkerStyle literal, treat it as style; otherwise treat as marker string.
-  let marker: string;
-  if (
-    markerOrStyle === "html-comment" ||
-    markerOrStyle === "hash-comment" ||
-    markerOrStyle === "slash-comment"
-  ) {
-    // Called as findLineAnchoredMarkers(content, markerStyle) — internal helper path
-    // This overload is used only internally; callers pass marker string directly.
-    // Retain backward-compat: interpret as the START marker of the given style.
-    const [start] = selectMarkers(markerOrStyle as MarkerStyle);
-    marker = start;
-  } else {
-    marker = markerOrStyle;
-  }
-
-  const positions: number[] = [];
-  const len = marker.length;
-  let pos = 0;
-  while (true) {
-    const idx = content.indexOf(marker, pos);
-    if (idx === -1) break;
-    let lineStart = idx;
-    while (lineStart > 0 && content[lineStart - 1] !== "\n") lineStart--;
-    const beforeMarker = content.slice(lineStart, idx);
-    const after = idx + len >= content.length ? "\n" : content[idx + len];
-    const isLineEnd = after === "\n" || after === undefined;
-    if (ALLOWED_PREFIXES.includes(beforeMarker) && isLineEnd) positions.push(idx);
-    pos = idx + len;
-  }
-  return positions;
-}
-
-// Find the start of the line containing a position.
-function lineStartOf(content: string, idx: number): number {
-  let i = idx;
-  while (i > 0 && content[i - 1] !== "\n") i--;
-  return i;
-}
-
-// Managed-block writer: update content between markers.
-// markerStyle defaults to "html-comment" for backward compat.
-// Markers may be bare (markdown) or comment-prefixed (`# ` shell, `// ` JS/TS) — prefixes
-// are preserved on update. No-op (warn + skip) when markers absent, duplicated, or inverted.
+// Managed-block writer: update content between markers in a file on disk.
+// No-op (warn + skip) when markers absent, duplicated, or inverted.
 export function updateManagedBlock(
   filePath: string,
   newContent: string,
@@ -981,138 +908,19 @@ export function updateManagedBlock(
 ): boolean {
   if (!fs.existsSync(filePath)) return false;
   const existing = fs.readFileSync(filePath, "utf-8");
-  const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findLineAnchoredMarkers(existing, startMarker);
-  const ends = findLineAnchoredMarkers(existing, endMarker);
-  if (starts.length === 0 || ends.length === 0) {
-    console.warn(`${LOG_PREFIX} Managed block markers absent in ${filePath} — skipping`);
+  const result = replaceManagedBlock(existing, newContent, markerStyle);
+  if (!result.ok) {
+    const reason = {
+      absent: `Managed block markers absent in ${filePath} — skipping`,
+      multiple: `Multiple managed-block markers in ${filePath} — skipping (expected exactly one of each)`,
+      inverted: `Inverted managed-block markers in ${filePath} (end before start) — skipping`,
+    }[result.problem];
+    console.warn(`${LOG_PREFIX} ${reason}`);
     return false;
   }
-  if (starts.length > 1 || ends.length > 1) {
-    console.warn(
-      `${LOG_PREFIX} Multiple managed-block markers in ${filePath} — skipping (expected exactly one of each)`,
-    );
-    return false;
-  }
-  const startIdx = starts[0]!;
-  const endIdx = ends[0]!;
-  if (startIdx >= endIdx) {
-    console.warn(
-      `${LOG_PREFIX} Inverted managed-block markers in ${filePath} (end before start) — skipping`,
-    );
-    return false;
-  }
-  // Slice on line boundaries so any comment prefix on the marker lines is preserved.
-  const startLineEnd = existing.indexOf("\n", startIdx + startMarker.length);
-  const beforeBlock =
-    startLineEnd === -1
-      ? existing.slice(0, startIdx + startMarker.length)
-      : existing.slice(0, startLineEnd);
-  const afterBlock = existing.slice(lineStartOf(existing, endIdx));
-  const normalisedContent = newContent.replace(/^\n+/, "").replace(/\n+$/, "");
-  const updated = beforeBlock + "\n\n" + normalisedContent + "\n\n" + afterBlock;
-  if (updated === existing) return false;
-  if (!dryRun) fs.writeFileSync(filePath, updated, "utf-8");
+  if (result.content === existing) return false;
+  if (!dryRun) fs.writeFileSync(filePath, result.content, "utf-8");
   return true;
-}
-
-// Extract the bkit-managed block content from a file, stripping surrounding newlines.
-// markerStyle defaults to "html-comment" for backward compat.
-// Markers may be bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractManagedBlock(
-  content: string,
-  markerStyle: MarkerStyle = "html-comment",
-): string | null {
-  const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findLineAnchoredMarkers(content, startMarker);
-  const ends = findLineAnchoredMarkers(content, endMarker);
-  if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0]! >= ends[0]!) return null;
-  const startLineEnd = content.indexOf("\n", starts[0]! + startMarker.length);
-  const inner =
-    startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]!));
-  return inner.replace(/^\n+/, "").replace(/\n+$/, "");
-}
-
-/**
- * Parse EVERY named bkit-managed block in a file into `name -> { body, optional }`.
- *
- * Marker grammar (one style per file — auto-detected; HTML-comment wins if present):
- *   HTML:  <!-- bkit:start [name] [optional] -->  ...  <!-- bkit:end [name] -->
- *   hash:  # bkit:start [name] [optional]          ...  # bkit:end [name]
- * The default (unnamed) block uses a bare `# bkit:start` / `<!-- bkit:start -->` and is
- * keyed under "" — backward-compatible with extractManagedBlock's single-block model.
- *
- * Markers may be indented (leading whitespace); HTML markers may additionally carry a
- * `# ` / `// ` comment prefix (so they survive inside shell / JS files). `optional` after
- * the name flags the block as deletable — callers use it to suppress a "missing block"
- * finding (a block that is PRESENT but DIFFERS is still drift regardless of `optional`).
- *
- * `body` is the inner content with surrounding blank lines stripped (matching
- * extractManagedBlock). First occurrence of a name wins; an unterminated block (no
- * matching end) is dropped. Matching is line-anchored — the marker must be the whole
- * line (modulo indent + comment prefix) — so backtick-quoted prose mentions never match.
- * An end marker closes the open block when its name matches OR when it is bare (`# bkit:end`).
- */
-export function extractNamedBlocks(
-  content: string,
-): Map<string, { body: string; optional: boolean }> {
-  const NAME = "[A-Za-z0-9][A-Za-z0-9_-]*";
-  const hashStart = new RegExp(
-    `^[ \\t]*#[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*$`,
-  );
-  const hashEnd = new RegExp(`^[ \\t]*#[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*$`);
-  const htmlStart = new RegExp(
-    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*-->[ \\t]*$`,
-  );
-  const htmlEnd = new RegExp(
-    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*-->[ \\t]*$`,
-  );
-
-  const lines = content.split("\n");
-  const isHtml = lines.some((l) => htmlStart.test(l));
-  const startRe = isHtml ? htmlStart : hashStart;
-  const endRe = isHtml ? htmlEnd : hashEnd;
-
-  const result = new Map<string, { body: string; optional: boolean }>();
-  let open: { name: string; optional: boolean; bodyLines: string[] } | null = null;
-  for (const line of lines) {
-    if (open) {
-      const em = endRe.exec(line);
-      const endName = em ? (em[1] ?? "") : null;
-      if (em && (endName === open.name || endName === "")) {
-        const body = open.bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
-        if (!result.has(open.name)) result.set(open.name, { body, optional: open.optional });
-        open = null;
-      } else {
-        open.bodyLines.push(line);
-      }
-    } else {
-      const sm = startRe.exec(line);
-      if (sm) open = { name: sm[1] ?? "", optional: !!sm[2], bodyLines: [] };
-    }
-  }
-  return result;
-}
-
-// Extract the FULL bkit-managed block INCLUDING marker lines from a file.
-// markerStyle defaults to "html-comment" for backward compat.
-// Used to append a fresh block to a destination that has none. Markers may be
-// bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractFullManagedBlock(
-  content: string,
-  markerStyle: MarkerStyle = "html-comment",
-): string | null {
-  const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findLineAnchoredMarkers(content, startMarker);
-  const ends = findLineAnchoredMarkers(content, endMarker);
-  if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0]! >= ends[0]!) return null;
-  const startLineStart = lineStartOf(content, starts[0]!);
-  const endLineEnd = content.indexOf("\n", ends[0]! + endMarker.length);
-  return endLineEnd === -1
-    ? content.slice(startLineStart)
-    : content.slice(startLineStart, endLineEnd + 1);
 }
 
 function listFilesRecursive(dir: string): string[] {

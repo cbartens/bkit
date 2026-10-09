@@ -30,12 +30,8 @@ import {
   isConsumerModified,
   type BkitVersion,
 } from "./bkit-version.js";
-import {
-  writeTier2,
-  writeTier2JsonContained,
-  detectMarkerStyle,
-  type WriteSet,
-} from "./bkit-tiers.js";
+import { writeTier2, writeTier2JsonContained, type WriteSet } from "./bkit-tiers.js";
+import { detectMarkerStyle } from "./bkit-markers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";

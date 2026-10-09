@@ -26,7 +26,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveRepoSlug, type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
-import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 
 // ---------------------------------------------------------------------------
 // Types

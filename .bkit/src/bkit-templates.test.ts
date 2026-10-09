@@ -10,7 +10,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { extractManagedBlock } from "./bkit-install";
+import { extractManagedBlock } from "./bkit-markers";
 
 const TEMPLATES_ROOT = path.resolve(".bkit/templates");
 

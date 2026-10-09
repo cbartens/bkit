@@ -23,7 +23,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitVersion, writeBkitVersion, sha256, isConsumerModified, } from "./bkit-version.js";
-import { writeTier2, writeTier2JsonContained, detectMarkerStyle, } from "./bkit-tiers.js";
+import { writeTier2, writeTier2JsonContained } from "./bkit-tiers.js";
+import { detectMarkerStyle } from "./bkit-markers.js";
 import { applyTokens } from "./bkit-tokens.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS = {

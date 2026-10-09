@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./bkit-install.js";
+import { updateManagedBlock } from "./bkit-install.js";
+import { extractFullManagedBlock, extractManagedBlock, findLineAnchoredMarkers, selectMarkers, } from "./bkit-markers.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { hashFile } from "./bkit-version.js";
 export function deepContains(template, consumer, pathPrefix = "") {
@@ -249,62 +250,6 @@ function _detectSchemaFlip(before, after) {
             return true;
     }
     return false;
-}
-// ---------------------------------------------------------------------------
-// stripManagedBlock — pure-string transform (P2.T2)
-//
-// Remove the bkit-managed block (including marker lines) from a string,
-// preserving all consumer-owned content outside the block.
-//
-// Semantics:
-//   - Markers absent  → returns content unchanged (idempotent, safe for re-run)
-//   - Duplicated/inverted markers → returns content unchanged (error-safe)
-//   - Marker lines and surrounding blank lines are removed along with the block
-//
-// Uses the line-anchored marker detection from BAR-138 (KN-8 lesson: greedy
-// whitespace regexes are unsafe — use the anchored parser instead).
-// ---------------------------------------------------------------------------
-// Detect which marker style a file's managed block uses, or null when it has none.
-// Uses the same line-anchored finder as stripManagedBlock, so a detected style is
-// always one stripManagedBlock acts on: a marker alone on its line, bare or behind
-// a `# ` / `// ` prefix. Labelled, indented, or prose-quoted markers do not count.
-export function detectMarkerStyle(content) {
-    for (const style of ["html-comment", "hash-comment", "slash-comment"]) {
-        const [startMarker] = selectMarkers(style);
-        if (findLineAnchoredMarkers(content, startMarker).length > 0)
-            return style;
-    }
-    return null;
-}
-export function stripManagedBlock(content, markerStyle = "html-comment") {
-    const [startMarker, endMarker] = selectMarkers(markerStyle);
-    const starts = findLineAnchoredMarkers(content, startMarker);
-    const ends = findLineAnchoredMarkers(content, endMarker);
-    // Safety guards: absent, duplicated, or inverted → no-op
-    if (starts.length === 0 || ends.length === 0)
-        return content;
-    if (starts.length > 1 || ends.length > 1)
-        return content;
-    const startIdx = starts[0];
-    const endIdx = ends[0];
-    if (startIdx >= endIdx)
-        return content;
-    // Find start-of-line for the start marker
-    let startLineStart = startIdx;
-    while (startLineStart > 0 && content[startLineStart - 1] !== "\n")
-        startLineStart--;
-    // Find end-of-line for the end marker (include trailing newline)
-    const endMarkerEnd = endIdx + endMarker.length;
-    let blockEnd = endMarkerEnd;
-    if (blockEnd < content.length && content[blockEnd] === "\n")
-        blockEnd++;
-    const before = content.slice(0, startLineStart);
-    const after = content.slice(blockEnd);
-    // Trim one leading blank line from `after` to avoid double-blank after strip
-    const afterTrimmed = after.replace(/^\n/, "");
-    // Trim one trailing blank line from `before` to avoid double-blank before strip
-    const beforeTrimmed = before.replace(/\n\n$/, "\n");
-    return beforeTrimmed + afterTrimmed;
 }
 // ---------------------------------------------------------------------------
 // Internal helpers

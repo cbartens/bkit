@@ -18,10 +18,6 @@ import {
   parseModelOverrides,
   applyModelOverrides,
   parseModelLookupForColumn,
-  extractFullManagedBlock,
-  extractManagedBlock,
-  extractNamedBlocks,
-  findLineAnchoredMarkers,
   parseFrontmatter,
   remapTemplateDest,
   updateManagedBlock,
@@ -41,6 +37,12 @@ import {
   getInstallingVersion,
   runStatus,
 } from "./bkit-install";
+import {
+  extractFullManagedBlock,
+  extractManagedBlock,
+  extractNamedBlocks,
+  findLineAnchoredMarkers,
+} from "./bkit-markers";
 import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
 import type { IssueTracker } from "./bkit-manifest";
 import { DEFAULT_ISSUE_TRACKER } from "./bkit-manifest";

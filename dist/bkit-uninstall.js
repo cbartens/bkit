@@ -21,7 +21,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import { stripManagedBlock, detectMarkerStyle, } from "./bkit-tiers.js";
+import { stripManagedBlock, detectMarkerStyle } from "./bkit-markers.js";
 import { getInstallManifest, } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";

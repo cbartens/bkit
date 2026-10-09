@@ -22,7 +22,8 @@
     "!.bkit/version",
     "!.bkit/advisories.md",
     "!.bkit/friction.jsonl",
-    "!.bkit/stats.jsonl"
+    "!.bkit/stats.jsonl",
+    "!.bkit/wording.md"
   ],
   "engines": {
     "node": ">=20"
@@ -54,7 +55,7 @@
     "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "test": "vitest run",
-    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version}.ts' --coverage.thresholds.branches=70",
+    "test:coverage:unit": "vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/src/bkit-{analysis,bkitignore,cli,cloud-env,comply,config-migrate,harvest,install,launch,manifest,markers,package-json,paths,paths-policy,postinstall,preflight,status,telemetry,telemetry-lint,telemetry-normalise,tiers,tokens,trackers,uninstall,upgrade,version,wording}.ts' --coverage.thresholds.branches=70",
     "bkit:test:bats": "bash -c 'if command -v bats >/dev/null 2>&1; then bats tests/*.bats; else echo \"[bkit] bats missing - skipping bats suite (install bats to enable)\" >&2; fi'",
     "build": "tsc && chmod +x dist/bkit-install.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
@@ -67,6 +68,7 @@
     "graph:tree": "bash scripts/graphify/bkit-graphify.sh tree",
     "graph:update": "bash scripts/graphify/bkit-graphify.sh update",
     "bkit:audit:status": "tsx .bkit/src/bkit-status-hole-detector.ts docs/plans/*/logs/*/status.jsonl",
+    "wording:sync": "tsx .bkit/src/bkit-wording.ts --write",
     "prepare": "husky"
   },
   "dependencies": {

@@ -22,12 +22,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import {
-  stripManagedBlock,
-  detectMarkerStyle,
-  type JsonValue,
-  type WriteSet,
-} from "./bkit-tiers.js";
+import { type JsonValue, type WriteSet } from "./bkit-tiers.js";
+import { stripManagedBlock, detectMarkerStyle } from "./bkit-markers.js";
 import {
   getInstallManifest,
   type ManifestEntry,

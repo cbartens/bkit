@@ -28,7 +28,7 @@ import {
   MANAGED_MARKER_VERSION_RE,
 } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
-import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
 import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 

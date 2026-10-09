@@ -331,6 +331,8 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     // dropped from the advisory, so the invariant moved into a test instead of
     // vanishing: source prompts must carry no bkit:managed marker
     "Managed-version marker": "bkit-prompt-notation.test.ts",
+    // near-copies and hand-edited single copies fail the corpus check
+    "Shared wording": "bkit-wording.test.ts",
   };
 
   it("every exempted rule's enforcing test still exists", () => {

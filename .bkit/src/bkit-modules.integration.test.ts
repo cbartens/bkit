@@ -5,13 +5,8 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
-import {
-  extractFullManagedBlock,
-  extractManagedBlock,
-  parseModelLookup,
-  buildOpencodeModelLookup,
-  parseEffortMap,
-} from "./bkit-install";
+import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "./bkit-install";
+import { extractFullManagedBlock, extractManagedBlock } from "./bkit-markers";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
   runCoreModule,

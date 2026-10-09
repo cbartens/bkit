@@ -14,11 +14,10 @@ import {
   deepMergeJson,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
-  stripManagedBlock,
-  detectMarkerStyle,
   type WriteSet,
   type JsonValue,
 } from "./bkit-tiers";
+import { stripManagedBlock, detectMarkerStyle } from "./bkit-markers";
 
 // ---------------------------------------------------------------------------
 // Helpers

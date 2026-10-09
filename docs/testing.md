@@ -534,7 +534,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-permissions-parity.integration.test.ts` | Integration | One canonical permission-gate table asserted across Claude `settings.json`, opencode `opencode.json`, Cursor `guardrails.cjs` and Codex `guardrails.cjs` — same verdict for every destructive command on all four hosts (reads: three, see deferrals). Plus shell-as-edit-channel advisories, curl/wget host matching, and the documented per-host divergences. |
 | `bkit-permissions-prune.test.ts` | Unit | One-shot prune of retired `ask` rules from a consumer's `.claude/settings.json`: exact-match only, idempotent, dry-run aware, consumer rules untouched; plus a guard that the shipped settings never re-add them. |
 | `bkit-untrusted-fence.test.ts` | Unit | Untrusted-content fence: identical at every workflow write site, no second fence from shipped fetch blocks, `Context:` names untrusted `Read:` paths. |
-| `bkit-untrusted-input-coverage.test.ts` | Unit | Untrusted-input header bullet: run-time enumeration of `.bkit/prompts/` + `.bkit/workflows/`, three named clause constants, glob-scoped stale-variant deny, matcher negative controls. |
+| `bkit-wording.test.ts` | Unit | `.bkit/wording.md` against run-time enumeration of `.bkit/prompts/`, `.bkit/workflows/`, and the `.agents/rules.md` managed block: per-surface mode (required / where-used / forbidden / if-verdict), near-copies, retired wordings, header position, unlisted 5+ sentences, sync idempotence, `.agents/rules.md` group headings, external-input legs, checker negative controls. |
 
 ## Roadmap fold test coverage
 
@@ -548,7 +548,7 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-telemetry-migrate.integration.test.ts` (extended) | Integration | `docs/completed.md` → `.bkit/issues.jsonl` fifth migrate pair, parity gate + deletion, bootstrap seed, idempotent re-run. |
 | `bkit-ship-verdict.integration.test.ts` | Integration | `UPDATE_DOCS_VERDICT` resolves from a `SHIPPED`-status row only — a `BUILT`-only row must NOT green it. |
 | `bkit-roadmap-devwrite.integration.test.ts` | Integration (boundary: real temp git repo) | build/debug dev-lock ledger append returns the worktree to `feat/*`, lands the row on `dev`, fail-open when the lock is held. |
-| `bkit-catalog-parity.test.ts`, `bkit-untrusted-input-coverage.test.ts` | Unit | Cover the five `bkit-utility-review-*` agents generically: each needs a row in `.bkit/prompts.md` and the narrowest-scoped-token clause. No per-agent content assertions — that machinery is what this change removed. |
+| `bkit-catalog-parity.test.ts`, `bkit-wording.test.ts` | Unit | Cover the five `bkit-utility-review-*` agents generically: each needs a row in `.bkit/prompts.md` and the narrowest-scoped-token clause. No per-agent content assertions — that machinery is what this change removed. |
 
 ## Compliance grader test coverage
 

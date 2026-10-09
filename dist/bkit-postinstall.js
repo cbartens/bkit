@@ -7,7 +7,7 @@ import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
-import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
 import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 /**

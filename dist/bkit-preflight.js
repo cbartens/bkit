@@ -13,8 +13,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
-import { deepContains, detectMarkerStyle, stripManagedBlock, } from "./bkit-tiers.js";
-import { extractNamedBlocks } from "./bkit-install.js";
+import { deepContains } from "./bkit-tiers.js";
+import { detectMarkerStyle, extractNamedBlocks, stripManagedBlock } from "./bkit-markers.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
