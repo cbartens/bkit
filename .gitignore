@@ -97,3 +97,6 @@ playwright/.auth/
 # Python bytecode. Python helpers under scripts/ regenerate this on import.
 __pycache__/
 *.pyc
+
+# Secrets sync: fingerprint + time of each push.
+scripts/secrets/bkit-secrets-state.json

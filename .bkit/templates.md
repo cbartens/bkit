@@ -20,9 +20,10 @@
 | Dependabot | `.bkit/templates/.github/dependabot.yml` | `.github/dependabot.yml` | that file |
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
+| Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
-- No manifest key for Serena / graphify.
+- No manifest key for Serena / graphify / secrets sync.
 
 ## Dependabot and Renovate
 
@@ -135,3 +136,41 @@ Do not run:
 
 - Code-graph answer confirms what is present; does not prove what is absent. Missing edge looks like a real gap.
 - Ignore rules are load-bearing: a noise-only pattern can drop edges the tool needs; output still looks plausible → re-measure after changing `.graphifyignore`.
+
+## Secrets sync — one source, every store
+
+Local gitignored env files = source of truth; `bkit-secrets.mjs sync` makes every store match, `drift` proves it. Needs Node >= 20 plus the CLI of each store used (`gh`, `eas`, `gcloud`); Vercel and Supabase go through their REST APIs.
+
+- Copy both files. Edit `bkit-secrets.config.mjs` only; `bkit-secrets.mjs` stays byte-identical across repos.
+- Config = one row per secret naming every store holding a copy: `DATABASE_URL: ["vercel", "gcp"]`. Options per row: `from` (env key differs from store name), `derive` (`"${APP_URL}/path"`), `manual` (copies no API reaches), `"eas:secret"` (per-store option).
+- Delete unused entries under `stores`; a store no row names is skipped.
+- `.gitignore`: `scripts/secrets/bkit-secrets-state.json`.
+- `.bkit/.env` overlay → agent / bkit tooling secrets only; app and stack credentials stay in app env files.
+
+<!-- prettier-ignore -->
+| Command (`node scripts/secrets/bkit-secrets.mjs …`) | Does |
+| --- | --- |
+| `sync --dry-run` | Writes and deletes it would make; no value printed. |
+| `sync` | Writes values that differ or cannot be proven equal; deletes names not listed for a store, or empty in source. |
+| `drift` | Read-only. Per store and environment: `missing`, `extra`, `differs`, `not-pushed`, `changed-elsewhere`. Exit 2 on drift. |
+| `check [file]` | Local only: sources, env file vs example (exit 2 on a missing required key), every copy of every secret. |
+| `--store <name>` | Narrow `sync` / `drift` / `list` to one store. Every run covers both environments; no per-environment option. |
+
+`sync` deletes every live name not listed for that store → `--dry-run` before every sync. No listed key resolving to a value skips deletes for that store.
+
+How `drift` proves a value without printing it:
+
+<!-- prettier-ignore -->
+| Store | Read back | Proof |
+| --- | --- | --- |
+| Vercel (encrypted / plain) | per-variable API read (the list endpoint stays encrypted) | SHA-256 of live value vs source |
+| GCP Secret Manager | latest version | SHA-256 of live value vs source |
+| EAS (plaintext / sensitive) | `env:list --include-sensitive` | SHA-256 of live value vs source |
+| GitHub Actions, Supabase, Vercel sensitive, EAS `secret` | write-only | state-file fingerprint vs source (`not-pushed`); store's last-updated time after recorded push (`changed-elsewhere`) |
+
+- No recorded push → `unverified`, never `ok`. First sync records one.
+- `bkit-secrets-state.json` = fingerprints + times only, per machine. Push from another machine or by hand → `changed-elsewhere` until next sync here.
+- `manual` copies listed on every `check` / `drift`; update by hand on rotation.
+- Vercel: branch-scoped preview vars left alone; an entry shared across environments is split before a write.
+
+New store type → entry in `STORES` of the template's `bkit-secrets.mjs` (`open` → `list` / `write` / `remove`; contract above it), never in a copy only.

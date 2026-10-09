@@ -542,6 +542,8 @@ describe("copy-paste code-graph examples", () => {
       "scripts/graphify/bkit-graphify.sh",
       "scripts/graphify/bkit-graphify-rollup.py",
       "scripts/serena/bkit-serena-mcp.sh",
+      "scripts/secrets/bkit-secrets.mjs",
+      "scripts/secrets/bkit-secrets.config.mjs",
       "scripts/graphify/bkit-graph-drift-rules.json",
       ".graphifyignore",
       ".serena/project.yml",
