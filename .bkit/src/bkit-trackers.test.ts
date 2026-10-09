@@ -276,6 +276,13 @@ describe("real prompt sources", () => {
     });
   }
 
+  it("source frontmatter carries no bare HTML-comment line (invalid YAML)", () => {
+    for (const f of prompts) {
+      const fm = fs.readFileSync(path.join(PROMPTS_DIR, f), "utf-8").split(/^---$/m)[1] ?? "";
+      expect(fm, `bare <!-- line in ${f} frontmatter`).not.toMatch(/^[ \t]*<!--/m);
+    }
+  });
+
   const roadmapTools = (tracker: "github" | "linear" | "none"): string[] => {
     const src = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-utility-update-roadmap.md"), "utf-8");
     const fm = substituteWorkflow(src, tracker).output.split(/^---$/m)[1];

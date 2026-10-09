@@ -23,6 +23,19 @@
 /** Generic message rendered in place of a github/linear pair when no tracker is wired. */
 const NONE_STUB = "_No tracker connected, skip step._";
 /**
+ * Marker regex source. An optional `# ` prefix belongs to the marker: inside YAML
+ * frontmatter a marker line is written as a YAML comment
+ * (`  # <!-- bkit:tracker github start -->`) so the raw source stays valid YAML
+ * for tools that parse it unresolved (vale). The prefix is consumed with the marker.
+ */
+function marker(name, edge) {
+    return `(?:#[ \\t]*)?<!--\\s*bkit:tracker\\s+${name}\\s+${edge}\\s*-->`;
+}
+/** `start` marker, captured body, `end` marker. */
+function block(name) {
+    return `${marker(name, "start")}([\\s\\S]*?)${marker(name, "end")}`;
+}
+/**
  * Per-tracker group: a consecutive `github` → `linear` pair, each
  * `<!-- bkit:tracker {name} start -->` … `<!-- bkit:tracker {name} end -->`,
  * with an OPTIONAL trailing `false` block. The whitespace BEFORE the optional
@@ -37,26 +50,18 @@ const NONE_STUB = "_No tracker connected, skip step._";
  * `pr-body-marker`), use its body; otherwise emit the generic skip message.
  * (Standalone `false` blocks not attached to a pair are handled in pass 2.)
  */
-const PAIR_RE = new RegExp(/<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->/
-    .source +
-    "\\s*" +
-    /<!--\s*bkit:tracker\s+linear\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+linear\s+end\s*-->/
-        .source +
-    "(?:\\s*" +
-    /<!--\s*bkit:tracker\s+false\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+false\s+end\s*-->/
-        .source +
-    ")?", "g");
+const PAIR_RE = new RegExp(block("github") + "\\s*" + block("linear") + "(?:\\s*" + block("false") + ")?", "g");
 /** Conditional-keep block, KEEP form (markers stripped, content trimmed in place). */
 function condKeepRe(name) {
-    return new RegExp(`<!--\\s*bkit:tracker\\s+${name}\\s+start\\s*-->([\\s\\S]*?)<!--\\s*bkit:tracker\\s+${name}\\s+end\\s*-->`, "g");
+    return new RegExp(block(name), "g");
 }
 /** Conditional-keep block, REMOVE form (consumes the leading newline + indent). */
 function condDropRe(name) {
-    return new RegExp(`\\n?[ \\t]*<!--\\s*bkit:tracker\\s+${name}\\s+start\\s*-->[\\s\\S]*?<!--\\s*bkit:tracker\\s+${name}\\s+end\\s*-->`, "g");
+    return new RegExp(`\\n?[ \\t]*${block(name)}`, "g");
 }
 // Any tracker marker surviving resolution is an orphan (lone github/linear, or
 // unbalanced true/false).
-const ORPHAN_RE = /<!--\s*bkit:tracker\s+(github|linear|true|false)\s+(?:start|end)\s*-->/g;
+const ORPHAN_RE = new RegExp(marker("(github|linear|true|false)", "(?:start|end)"), "g");
 /**
  * When keeping in-place content, drop the newline (and its indentation)
  * immediately after `start -->` and immediately before the `end` marker, so the

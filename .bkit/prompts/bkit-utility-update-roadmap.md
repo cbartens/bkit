@@ -9,19 +9,19 @@ tools:
   - Glob
   - Write
   - Edit
-  <!-- bkit:tracker github start -->
+  # <!-- bkit:tracker github start -->
   - Bash
   - mcp__github__list_issues
   - mcp__github__issue_read
-  <!-- bkit:tracker github end -->
-  <!-- bkit:tracker linear start -->
+  # <!-- bkit:tracker github end -->
+  # <!-- bkit:tracker linear start -->
   - Bash
   - mcp__linear__list_issues
   - mcp__linear__get_issue
-  <!-- bkit:tracker linear end -->
-  <!-- bkit:tracker false start -->
+  # <!-- bkit:tracker linear end -->
+  # <!-- bkit:tracker false start -->
   - Bash
-  <!-- bkit:tracker false end -->
+  # <!-- bkit:tracker false end -->
 permissionMode: acceptEdits
 maxTurns: 100
 ---
