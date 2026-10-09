@@ -59,7 +59,7 @@ Performance numbers only matter beside the prior number, same method; unfixed me
 | --- | --- | --- |
 | Crawling, metadata, structured data | Search sweep; page speed stays here | `bkit-audit-aio-seo` |
 | Query plans, indexes, vacuum, pool sizing | Database sweep | `bkit-audit-database` |
-| Prompt quality | LLM sweep; latency stays here | `bkit-audit-llm` |
+| Prompt quality | Prompt sweep; latency stays here | `bkit-audit-prompts` |
 | Model choice | Model sweep; latency stays here | `bkit-audit-models` |
 | LLM spend | Cost sweep; latency stays here | `bkit-audit-cost` |
 | Third-party tag payloads, consent | Tracking sweep; main-thread cost stays here | `bkit-audit-analytics` |

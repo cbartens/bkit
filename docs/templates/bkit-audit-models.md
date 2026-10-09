@@ -56,7 +56,8 @@ Config ids look identical delisted vs choice day. Target failure: **a stale entr
 <!-- prettier-ignore -->
 | Excluded item | Why | Where it belongs |
 | --- | --- | --- |
-| Prompt text, what a model can do with hostile input, call limits, evals / golden sets | LLM sweep | `bkit-audit-llm` |
+| What a model can do with hostile input, call limits, evals / golden sets | LLM sweep | `bkit-audit-llm` |
+| Prompt text: clarity, structure, fit to the model that runs it | Prompt sweep | `bkit-audit-prompts` |
 | Spend, budgets, blended cost of a switch, fallback-rate dollars | Cost sweep | `bkit-audit-cost` |
 | User-facing latency outside model choice | Performance sweep | `bkit-audit-app-performance` |
 | Personal-data transfer, retention, children's-data borders | Privacy sweep | `bkit-audit-privacy` |
