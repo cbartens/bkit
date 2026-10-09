@@ -352,3 +352,35 @@ run_gate() {
   [[ "$output" == *"unsanitized SHA"* ]]
   [[ "$output" == *"rejected"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# --event — a release PR mirroring its dev push run must never read its own run
+# ---------------------------------------------------------------------------
+
+@test "--event push ignores a pull_request run at the head: no push run is code 10, not 11" {
+  run_gate --head release-pr-only --event push
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"no run of ci.yml (event=push) exists at head release-pr-only"* ]]
+}
+
+@test "without --event the in-flight pull_request run reads as in progress (code 11)" {
+  run_gate --head release-pr-only
+  [ "$status" -eq 11 ]
+}
+
+@test "--event push selects the green push run beside an in-flight pull_request run (exit 0)" {
+  run_gate --head release-push-green --event push --explain
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"run 1021"* ]]
+}
+
+@test "--event push reds on a failed push run even when a newer pull_request run is green (exit 12)" {
+  run_gate --head release-push-red-pr-green --event push
+  [ "$status" -eq 12 ]
+  [[ "$output" == *"selected run concluded FAILURE"* ]]
+}
+
+@test "without --event the newer green pull_request run masks the failed push run (exit 0)" {
+  run_gate --head release-push-red-pr-green
+  [ "$status" -eq 0 ]
+}

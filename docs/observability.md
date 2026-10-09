@@ -40,7 +40,7 @@ console.error("[bkit-telemetry] {Message}", {payload})
 
 `[{Context}]` brackets are load-bearing — consumer CI log-drain / grep alerting depends on this pattern. NEVER drop the brackets.
 
-One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-ship-gate]` · `[bkit-roadmap]`. New prefix only alongside new module; else reuse owning module's prefix.
+One prefix per verb/subsystem, named for module NOT phase: `[bkit-install]` · `[bkit-check]` · `[bkit-doctor]` · `[bkit-status]` · `[bkit-upgrade]` · `[bkit-uninstall]` · `[bkit-modules]` · `[bkit-tokens]` · `[bkit-comply]` · `[bkit-harvest]` · `[bkit-analysis]` · `[bkit-telemetry]` · `[bkit-ship-gate]` · `[bkit-mirror-push-run]` · `[bkit-roadmap]`. New prefix only alongside new module; else reuse owning module's prefix.
 
 ### `[bkit-comply]` prefix
 
@@ -113,11 +113,29 @@ Canonical grep patterns (the refusal itself is signalled by the process exit cod
 - `[bkit-ship-gate] capstone green at %s; %s skipped lane(s) carried a cache marker (cache_skip provenance — keyed to the exact commit SHA)` — green via the cache-skip short-circuit (still load-bearing — the sentinel is keyed to the exact SHA).
 - `[bkit-ship-gate] required head:  $HEAD_SHA` — refusal block header (every non-zero route emits this).
 - `[bkit-ship-gate] head tested:   $SHA  (SUPERSEDED)` — green run was at a superseded head (code 14).
-- `[bkit-ship-gate] no run of $WORKFLOW exists at head $HEAD_SHA (total_count=0)` — no CI run at head (code 10).
+- `[bkit-ship-gate] no run of $WORKFLOW[ (event=$EVENT)] exists at head $HEAD_SHA (total_count=0)` — no CI run at head (code 10); `(event=…)` when `--event` narrowed the query.
 - `[bkit-ship-gate] rate limit exhausted (...)` / `[bkit-ship-gate] API error (...)` — code 20 (rate-limit-shaped message distinguishes the dispatch path).
 - `[bkit-ship-gate] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row for audit.
 
 The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the EXACT head being refused — a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping). `--explain` is read-only and side-effect-free (the operator/`bkit-ship-gate.sh --explain` dry-run in Task 11 E2E uses it without writing).
+
+### `[bkit-mirror-push-run]` prefix
+
+`bkit-mirror-push-run.sh` stderr — release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev commit). Polls `bkit-ship-gate.sh assert --event push`; on a red exit it replays the gate's `[bkit-ship-gate]` block first.
+
+<!-- prettier-ignore -->
+| Exit | Meaning |
+| --- | --- |
+| 0 | `dev` push run's capstone `success` at the PR head |
+| 1 | Push run red / cancelled / capstone absent or skipped (gate 12/13/15/16/other) |
+| 2 | Usage error |
+| 3 | No push run at the PR head within `--absent-minutes` (gate 10/14 — `[skip ci]` tip) |
+| 4 | Push run still in progress at `--max-minutes` |
+| 20 | Gate API error 3× in a row |
+
+- `[bkit-mirror-push-run] dev push run at %s passed its capstone — release PR mirrors green.` (stdout) — green.
+- `[bkit-mirror-push-run] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
+- `[bkit-mirror-push-run] no dev push run exists at %s after %sm.` — exit 3.
 
 ## Advisory Checklist Output
 

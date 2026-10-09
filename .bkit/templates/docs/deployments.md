@@ -155,7 +155,7 @@ Bkit ships a **mostly flat, wide** scaffold: `bkit-tests-scope` (always-on; read
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
 | --- | --- | --- | --- |
-| `none` | `[skip ci]` / `[skip actions]`, or `cache.outputs.skip == 'true'` (this SHA went green in the last 7 days). | Planner, then stop. | Every test lane. |
+| `none` | `[skip ci]` / `[skip actions]`, or `cache.outputs.skip == 'true'` (this SHA went green in the last 7 days); or release-PR mirror mode (the capstone copies the `dev` push run — § One CI run per dev commit). | Planner, then stop. | Every test lane. |
 | `partial` | Push to `dev` that came from a merged PR, and no `[force build]` / `[force full]`. | Static, unit, integration when `web_affected`, build lanes, migration. `@live` (`bkit-tests-live-web`) still runs on this push when `web_affected`. | `bkit-tests-e2e-web`. Deploy (not the default branch). |
 | `full` | Pull request; `workflow_dispatch`; push to `{{DEFAULT_BRANCH}}`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. `bkit-tests-deploy` only on a default-branch push, after the capstone, and it is not required. Health runs as `workflow_run` after CI. |
 
@@ -213,6 +213,37 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 `Check Default Branch Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
 Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
+
+### One CI run per dev commit (release PR mirrors the `dev` push run)
+
+Optional. A same-repo `dev` → `{{DEFAULT_BRANCH}}` PR's head IS the `dev` tip the `dev` push run already tests — a full PR run repeats the slowest run in the repo. Mirror mode runs it once.
+
+- **Planner** (`Decide Release Mirror`, `bkit-tests-scope`): `pull_request` + head repo == this repo + `head_ref == dev` + base == default branch → `mirror_push_run=true`, `run_level=none`, `run_e2e` / `run_live` / `run_migration` / `web_affected=false`. Every lane skips. Field is required in the plan (`false` otherwise). Fork PRs and every other head/base pair keep the normal plan.
+- **Capstone** (`Mirror Push Run`, `bkit-tests-check`, before `Assert Test Plan Followed`): `bash .bkit/scripts/bkit-mirror-push-run.sh --head <PR head sha> --branch dev`. Waits for the `dev` push run at that SHA (`bkit-ship-gate.sh assert --event push`) and passes only when its capstone passed. Neither step `continue-on-error`; checkout ungated.
+- **Never skip the PR's required check instead.** A skipped required check can read as passed on the PR while the push run is red.
+
+<!-- prettier-ignore -->
+| Push run at PR head | PR `bkit-tests-check` | Script exit |
+| --- | --- | --- |
+| Capstone `success` | Green | `0` |
+| In progress | Waits (`--max-minutes 170`, job `timeout-minutes` 180 in this mode only) | `4` at the limit |
+| Failed / cancelled / capstone absent or skipped | Red | `1` |
+| None within 10 min (`[skip ci]` at the `dev` tip dispatches none) | Red — push a commit without it to `dev`, re-run the check | `3` |
+| GitHub API error 3× in a row | Red | `20` |
+
+**Preconditions — mirroring copies whatever the push run validated:**
+
+1. **A `dev` push resolves `run_level=full`.** Drop the merged-PR → `partial` arm from `Decide Run Level`; a `partial` push run skips E2E and the release PR inherits that.
+2. **A push run diffs against the last green push run's head**, not `github.event.before`. Else red run N, then an unrelated commit N+1, plans a green N+1 that never re-tests what N broke — and the mirror copies that green.
+3. **Promotion hangs off the push to `{{DEFAULT_BRANCH}}`** (`bkit-tests-deploy`; § Promote after the capstone), never off the PR check. Mirror = merge gate; default-branch push run = release gate.
+
+**Operating it:**
+
+- Open the release PR after `dev` is green → check passes within a minute. Open it earlier → check waits for the push run.
+- A red push run re-run to green does not update the PR — re-run the PR's `bkit-tests-check` afterwards.
+- A new `dev` push moves the PR head; `pull_request` concurrency cancels the old mirror and starts one for the new SHA.
+- Release PR gives up PR-only output (coverage comments, PR-only coverage measurement). None blocks a merge.
+- Feature → `dev` PRs are unaffected: `pull_request ⇒ run_level=full` (§ Consumer CI contract) still holds there, which is what `/bkit-ship`'s gate relies on.
 
 ## Workflow-file limits GitHub does not enforce visibly
 

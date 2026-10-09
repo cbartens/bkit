@@ -741,6 +741,22 @@ jobs:
 #       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
 #       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
 #       #     run_migration: true when migration/seed/seed-generator paths changed (or workflow_dispatch / no-usable-base → run-to-be-safe). Orthogonal to run_level — a run_level=none run can still need replay. Emits into the plan so migration-lane heavy steps gate per-step (job stays always-on).
+#       - name: Decide Release Mirror        # [U] OPTIONAL — one CI run per dev commit. mirror_push_run = pull_request
+#       #     && head.repo.full_name == github.repository && head_ref == 'dev' && base_ref == the default branch
+#       #     (head_ref via env:, injection-safe). True → LAST word in the plan: run_level=none, run_e2e/run_live/
+#       #     run_migration/web_affected=false, so every lane skips (migration lane included — it is always-on, so
+#       #     its replay steps must read run_migration) and the capstone copies the dev push run's verdict (JOB 4).
+#       #     The release PR head IS the dev tip that push run is testing; re-testing it doubles the slowest run.
+#       #     PRECONDITIONS — mirroring copies whatever the push run validated, so adopt only when:
+#       #       (1) a dev push resolves run_level=full — drop the merged-PR → partial arm above (a partial push run
+#       #           has no E2E, and the release PR would inherit that);
+#       #       (2) a push run's diff base is the head of the LAST GREEN push run on the branch, not
+#       #           github.event.before — else a red run followed by an unrelated commit plans a green run that
+#       #           never re-tests what the red one broke, and the mirror copies that green;
+#       #       (3) promotion hangs off the push to the default branch (bkit-tests-deploy, JOB 5), never off
+#       #           the PR check — the mirror is a merge gate, the default-branch push run is the release gate.
+#       #     Fork PRs and every other head/base pair keep the normal plan. Field is REQUIRED in the plan (false
+#       #     when off) so the capstone can read it. See docs/deployments.md § "One CI run per dev commit".
 #       - name: Generate Test Plan           # [U] id: scope. jq has()/!=null, never \`//\`. deployments.md § One run.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
 #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
@@ -934,16 +950,29 @@ jobs:
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
 # moment any tier is skippable. ~seconds; needs no checkout UNTIL you extract the gate (below).
-#   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build-web,bkit-tests-integration,bkit-tests-e2e-web,bkit-tests-migration,bkit-tests-live-web,bkit-tests-build-ios,bkit-tests-e2e-ios,bkit-tests-build-android,bkit-tests-e2e-android,bkit-tests-reset,bkit-tests-cleanup]; if: \${{ !cancelled() }}; timeout-minutes: 2
+#   bkit-tests-check:  needs:[bkit-tests-scope,bkit-tests-static,bkit-tests-unit,bkit-tests-build-web,bkit-tests-integration,bkit-tests-e2e-web,bkit-tests-migration,bkit-tests-live-web,bkit-tests-build-ios,bkit-tests-e2e-ios,bkit-tests-build-android,bkit-tests-e2e-android,bkit-tests-reset,bkit-tests-cleanup]; if: \${{ !cancelled() }}; timeout-minutes: 2 (mirror mode: see Mirror Push Run)
 #   # needs: EVERY lane you actually have — a lane missing from needs: is a lane whose failure
 #   # cannot red the capstone, which is the hollow-green this job exists to prevent.
 #   # !cancelled() not always(): a concurrency cancel must not stamp a failure.
 #     steps:
+#       - name: Mirror Push Run              # OPTIONAL (Decide Release Mirror in JOB 1). if: plan.mirror_push_run. Runs BEFORE
+#       #   the assert below; NEITHER continue-on-error. Needs a checkout (it runs a script) — ungated, not continue-on-error.
+#       #   run: bash .bkit/scripts/bkit-mirror-push-run.sh --head "$PR_HEAD_SHA" --branch dev --max-minutes 170
+#       #   (PR_HEAD_SHA: github.event.pull_request.head.sha via env:; GH_TOKEN: github.token — needs actions: read.)
+#       #   Waits for the dev push run at the PR head and passes only when that run's capstone passed; reds when it
+#       #   failed, was cancelled, its capstone is absent/skipped, or no push run appears within 10 min (a [skip ci]
+#       #   tip dispatches none). Every lane is skipped in this mode, so the assert below accepts the plan and this
+#       #   step IS the verdict — never \`run_level=none\` alone: a skipped required check can read as passed on the PR.
+#       #   Raise the job timeout ONLY in this mode, null-safe for a planner that failed before emitting a plan:
+#       #     timeout-minutes: \${{ needs.bkit-tests-scope.outputs.plan && fromJSON(needs.bkit-tests-scope.outputs.plan).mirror_push_run && 180 || 5 }}
+#       #   (180 > the script's --max-minutes 170 > your slowest push run, so a timeout names its cause.)
+#       #   A red push run re-run to green does NOT update the PR: re-run this job afterwards.
 #       - name: Assert Test Plan Followed    # script, not a heredoc. testing.md § Validated means executed.
 #       #   scope==success always. run_level!=none => static+unit+build-web success.
 #       #   web_affected => integration success. run_e2e && web_affected => e2e-web success.
 #       #   run_live => live-web success. plan.run_native_<platform> => that build + e2e success.
-#       #   planned reset skipped, or reset/cleanup failed => red. run_level==none asserts nothing.
+#       #   planned reset skipped, or reset/cleanup failed => red. run_level==none ([skip ci]; release mirror) asserts nothing —
+#       #   in mirror mode Mirror Push Run above owns the verdict.
 #       #   migration==success whenever scope succeeded.
 #       #   Declared + planned tier: <tier>_ran > 0. No entrypoint: assert nothing. Cache hit is not zero.
 #       #   Protect bkit-tests-check, not bkit-tests-scope.

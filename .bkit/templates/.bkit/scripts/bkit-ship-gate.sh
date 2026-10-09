@@ -11,7 +11,7 @@
 # Contract:
 #   bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>]
 #                                      [--repo <o/r>] [--branch <name>] [--explain]
-#                                      [--required-lanes <a,b,c>]
+#                                      [--required-lanes <a,b,c>] [--event <name>]
 #
 # Run selection (decided before exit codes can mean anything):
 #   gh api /repos/{o}/{r}/actions/workflows/{ciWorkflow}/runs?head_sha=<sha>
@@ -20,6 +20,10 @@
 #       none completed → code 11 (in progress, not absent). Selecting the most
 #       recent COMPLETED run — not merely the most recent run — is load-bearing:
 #       a re-dispatch still in flight must not mask a finished run at the head.
+#     - `--event <name>` keeps only runs fired by that event (`push`,
+#       `pull_request`, …), in the query AND client-side. A release PR mirroring
+#       its `dev` push run passes `--event push`, so the PR's own run at the
+#       same head is never counted (bkit-mirror-push-run.sh).
 #
 # Capstone resolution:
 #   gh api /repos/{o}/{r}/actions/runs/{id}/jobs --paginate --slurp
@@ -92,6 +96,7 @@ REQUIRED_LANES=""
 WORKFLOW=""
 REPO=""
 BRANCH=""
+EVENT=""
 EXPLAIN=0
 
 while [ "$#" -gt 0 ]; do
@@ -103,6 +108,7 @@ while [ "$#" -gt 0 ]; do
     --workflow) WORKFLOW="${2:-}"; shift ;;
     --repo) REPO="${2:-}"; shift ;;
     --branch) BRANCH="${2:-}"; shift ;;
+    --event) EVENT="${2:-}"; shift ;;
     --explain) EXPLAIN=1 ;;
     -h|--help)
       print_usage
@@ -117,7 +123,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$ACTION" != "assert" ]; then
-  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--branch <name>] [--explain]"
+  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--branch <name>] [--event <name>] [--explain]"
   exit 2
 fi
 
@@ -163,6 +169,27 @@ if [ -z "$REPO" ]; then
 fi
 
 OVERRIDE_SHA="${BKIT_SHIP_GATE_OVERRIDE:-}"
+
+# --event narrows both run queries. The query param saves payload; the jq filter
+# below is what the contract rests on, so a fixture or API that ignores the
+# param still cannot hand back another event's run.
+EVENT_QUERY=""
+EVENT_LABEL=""
+if [ -n "$EVENT" ]; then
+  EVENT_QUERY="&event=$EVENT"
+  EVENT_LABEL=" (event=$EVENT)"
+fi
+
+filter_event() {
+  if [ -z "$EVENT" ]; then
+    cat
+    return
+  fi
+  jq -c --arg ev "$EVENT" '
+    (.workflow_runs // []) | map(select(.event == $ev))
+    | {total_count: length, workflow_runs: .}
+  '
+}
 
 # ---------------------------------------------------------------------------
 # Refusal helpers
@@ -223,7 +250,7 @@ refuse() {
 # ---------------------------------------------------------------------------
 
 RUNS_JSON=""
-if ! RUNS_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?head_sha=$HEAD_SHA"); then
+if ! RUNS_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?head_sha=$HEAD_SHA$EVENT_QUERY"); then
   # API error — sample rate_limit to shape the code-20 message.
   err "workflow runs query failed for $REPO/$WORKFLOW at head $HEAD_SHA"
   if command -v gh >/dev/null 2>&1; then
@@ -243,6 +270,11 @@ if ! RUNS_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?head_sha=
   refuse 20
 fi
 
+if ! RUNS_JSON=$(printf '%s' "$RUNS_JSON" | filter_event); then
+  err "workflow runs response for $REPO/$WORKFLOW at head $HEAD_SHA is not valid JSON"
+  refuse 20
+fi
+
 TOTAL_COUNT=$(printf '%s' "$RUNS_JSON" | jq -r '.total_count // 0' 2>/dev/null || printf '0')
 
 if [ "${TOTAL_COUNT:-0}" = "0" ]; then
@@ -251,7 +283,7 @@ if [ "${TOTAL_COUNT:-0}" = "0" ]; then
   # that was never validated. Separating code 14 from code 10 therefore needs a
   # SECOND, branch-scoped query — only possible when the caller passed --branch.
   if [ -n "$BRANCH" ]; then
-    RECENT_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=$BRANCH&status=success&per_page=1" 2>/dev/null || printf '')
+    RECENT_JSON=$(gh api "/repos/$REPO/actions/workflows/$WORKFLOW/runs?branch=$BRANCH&status=success&per_page=1$EVENT_QUERY" 2>/dev/null | filter_event 2>/dev/null || printf '')
     STALE=$(printf '%s' "$RECENT_JSON" | jq -r '
       .workflow_runs // []
       | sort_by(.updated_at)
@@ -264,7 +296,7 @@ if [ "${TOTAL_COUNT:-0}" = "0" ]; then
       refuse 14 "$STALE_URL"
     fi
   fi
-  err "no run of $WORKFLOW exists at head $HEAD_SHA (total_count=0)"
+  err "no run of $WORKFLOW$EVENT_LABEL exists at head $HEAD_SHA (total_count=0)"
   refuse 10
 fi
 
