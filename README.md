@@ -148,16 +148,16 @@ GitHub Issues or Linear.
 
 ## Documentation
 
-| Read                                         | For                                                                     |
-| -------------------------------------------- | ----------------------------------------------------------------------- |
-| [`.bkit/install.md`](.bkit/install.md)       | Install, upgrade, token and CI auth, uninstall, recovery, `.bkitignore` |
-| [`.bkit/README.md`](.bkit/README.md)         | Day-to-day use: running workflows, environment, tracker setup, CLI      |
-| [`.bkit/workflows.md`](.bkit/workflows.md)   | Every workflow step, verdict and contract                               |
-| [`.bkit/providers.md`](.bkit/providers.md)   | Tool and provider differences, model pins                               |
-| [`.bkit/cloud.md`](.bkit/cloud.md)           | Cloud agents: Claude Code on the web, Cursor, opencode                  |
-| [`.bkit/templates.md`](.bkit/templates.md)   | Templates ready to adopt                                                |
-| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference and agentic-patterns comparison                 |
-| [`CHANGELOG.md`](CHANGELOG.md)               | What changed in each release                                            |
+| Read                                         | For                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| [`.bkit/install.md`](.bkit/install.md)       | Install, upgrade, token and CI auth, uninstall, recovery           |
+| [`.bkit/README.md`](.bkit/README.md)         | Day-to-day use: running workflows, environment, tracker setup, CLI |
+| [`.bkit/workflows.md`](.bkit/workflows.md)   | Every workflow step, verdict and contract                          |
+| [`.bkit/providers.md`](.bkit/providers.md)   | Tool and provider differences, model pins                          |
+| [`.bkit/cloud.md`](.bkit/cloud.md)           | Cloud agents: Claude Code on the web, Cursor, opencode             |
+| [`.bkit/templates.md`](.bkit/templates.md)   | Templates ready to adopt                                           |
+| [`.bkit/comparison.md`](.bkit/comparison.md) | Full pipeline reference and agentic-patterns comparison            |
+| [`CHANGELOG.md`](CHANGELOG.md)               | What changed in each release                                       |
 
 ## License
 

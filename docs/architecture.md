@@ -36,13 +36,12 @@ cbartens/bkit (this repo)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / byte-equal-text) + deepContains/writeTier2JsonContained
+│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / create-if-missing) + deepContains/writeTier2JsonContained
 │   ├── bkit-tokens.ts      # Token resolver (node version, pnpm major, git branch, etc.)
-│   ├── bkit-version.ts     # .bkit-version JSON schema (pinnedVersion, tier3Hashes, canonicalHashes)
+│   ├── bkit-version.ts     # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
 │   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + key stripping)
 │   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical format-aware removal
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
-│   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
 │   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
@@ -84,8 +83,9 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ .bkit-staging/<module>/ = per-run scratch for derived files; discardAllStaging in finally
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
-    │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+)
-    │   ├─ byte-equal-text → seed-or-print (write only if absent; print diff otherwise)
+    │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+); MCP configs → bkit's tracker entry only
+    │   ├─ create-if-missing → write once when absent (.agents/context.md, skills.md), never again
+    │   ├─ templates       → raw copies into .bkit/templates/ only; never applied to the repo
     │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
     └─ Phase 3: Post-install re-detection + commit
@@ -118,19 +118,20 @@ CLI verbs:
 Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
 ├── .npmrc                  # @cbartens:registry=npm.pkg.github.com (registry only; token in pnpm user-level config)
-├── .bkitignore             # (optional, v0.7.0+) consumer escape hatch — picomatch globs
 ├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer; v2.0.0+)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment (v2.0.0+)
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`
 │   ├── rules.md            # markered-text — bkit block + consumer Project section
 │   ├── docs.md             # markered-text — doc index
-│   ├── skills.md           # markered-text — installed-skill registry
+│   ├── context.md          # create-if-missing — project context (consumer-owned after first install)
+│   ├── skills.md           # create-if-missing — installed-skill registry
 │   └── skills/             # installed agent skills (cross-IDE)
 └── .bkit/                  # bkit install state + config (consumer-side)
-    ├── version             # JSON: { pinnedVersion, tier3Hashes, canonicalHashes }
+    ├── version             # JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
     ├── friction.md         # markered-text — friction log (consumer-owned outside block)
     ├── advisories.md       # generated artifact (gitignored) — last install/check findings
-    ├── .env.example        # byte-equal-text seed — token placeholders
+    ├── .env.example        # fully-managed — token placeholders
+    ├── templates/          # raw template copies (ci.yml, hooks, tool configs …) — copy and own
     └── .env                # consumer secrets (gitignored), auto-loaded via .envrc/direnv
 ```
 

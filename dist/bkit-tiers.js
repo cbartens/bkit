@@ -280,6 +280,21 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
     }
     ws.writes.push({ path: dstPath, action: "write" });
 }
+// ---------------------------------------------------------------------------
+// create-if-missing — write the src content (tokens applied) once, when dst is absent.
+//
+// The consumer owns the file from then on: a present dst is never read or touched.
+// Pushes nothing to the WriteSet in either mode, so the file gets no hash and
+// `bkit check` never reports it — dry-run and live stay in parity by construction.
+// Returns whether it wrote (always false on dry-run).
+// ---------------------------------------------------------------------------
+export function writeIfAbsent(srcPath, dstPath, tokens, dryRun) {
+    if (dryRun || fs.existsSync(dstPath))
+        return false;
+    ensureDir(path.dirname(dstPath));
+    fs.writeFileSync(dstPath, applyTokens(fs.readFileSync(srcPath, "utf-8"), tokens), "utf-8");
+    return true;
+}
 export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, noMarkerMigration) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
     if (!fs.existsSync(dstPath)) {
@@ -390,61 +405,6 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws, no
     if (updateManagedBlock(dstPath, appliedNewContent, dryRun, markerStyle)) {
         ws.writes.push({ path: dstPath, action: "update" });
     }
-}
-/**
- * `aiMessage`: when the destination already exists and content differs,
- * push a structured advisory to `advisories` instead of the default current-vs-suggested
- * dump. The message should be a self-contained instruction that any AI
- * agent (or human) can copy-paste into a coding assistant to apply the
- * required merge. Use {{TEMPLATE_CONTENT}} as a placeholder for the
- * suggested template content — it will be substituted automatically.
- *
- * `tokens`: optional. When provided, apply token substitution to BOTH the
- * file written on the absent path AND the {{TEMPLATE_CONTENT}} embedded in
- * the AI message. Used by callers whose templates contain {{TOKEN}}
- * placeholders (e.g. ci.yml).
- */
-export function writeTier3(srcPath, dstPath, dryRun, advisories, ws, aiMessage, tokens, transform) {
-    const srcRaw = fs.readFileSync(srcPath, "utf-8");
-    const srcTokens = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
-    // `transform` runs AFTER token substitution so it sees fully-resolved content
-    // (used by the ci.yml skeleton derivation for --ci-only installs, #265). It is
-    // applied to BOTH the written file and the {{TEMPLATE_CONTENT}} merge suggestion.
-    const srcContent = transform ? transform(srcTokens) : srcTokens;
-    const dstBasename = path.basename(dstPath);
-    if (fs.existsSync(dstPath)) {
-        // Present → suggest diff, don't write
-        const dstContent = fs.readFileSync(dstPath, "utf-8");
-        if (srcContent !== dstContent) {
-            if (aiMessage) {
-                advisories.push({
-                    id: `tier3-merge-suggested-${dstBasename}`,
-                    severity: "advisory",
-                    detect: `${dstPath} exists and differs from the bkit reference. Manual merge required.`,
-                    action: aiMessage.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => srcContent.trimEnd()),
-                });
-            }
-            else {
-                advisories.push({
-                    id: `tier3-merge-suggested-${dstBasename}`,
-                    severity: "advisory",
-                    detect: `${dstPath} exists and differs from the bkit reference.`,
-                    action: `File already exists. bkit suggests the following content:\n` +
-                        `--- current ---\n${dstContent}\n--- suggested ---\n${srcContent}`,
-                });
-            }
-        }
-        return { wrote: false, suggested: srcContent !== dstContent };
-    }
-    // Absent → write (or record in dry-run)
-    ensureDir(path.dirname(dstPath));
-    if (!dryRun) {
-        fs.writeFileSync(dstPath, srcContent, "utf-8");
-        const srcMode = fs.statSync(srcPath).mode;
-        fs.chmodSync(dstPath, srcMode);
-    }
-    ws.writes.push({ path: dstPath, action: "write" });
-    return { wrote: !dryRun, suggested: false };
 }
 // ---------------------------------------------------------------------------
 // Managed package.json scripts — add-if-missing with consumer ownership

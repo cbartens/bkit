@@ -1245,14 +1245,13 @@ describe("detectGhaFloatingTags", () => {
       path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
-        tier3Hashes: {},
         canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
     expect(detectGhaFloatingTags(tmpDir)).toBeNull();
   });
 
-  it("skips workflow files listed in .bkit-version tier3Hashes (issue #124)", () => {
+  it("skips workflow files a legacy .bkit/version lists under tier3Hashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
@@ -1285,7 +1284,6 @@ describe("detectGhaFloatingTags", () => {
       path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
-        tier3Hashes: {},
         canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
@@ -1312,22 +1310,10 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     expect(result?.id).toBe("dep-updater-both");
   });
 
-  it("updater config that omits bkit-cloud.yml → dep-updater-touches-bkit", () => {
+  it("an updater config that does not mention bkit-cloud.yml is quiet (the workflow is the consumer's)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), "name: cloud\n");
     fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{ enabled: false }\n");
-    const result = buildDepUpdaterSetupAdvisory(tmpDir);
-    expect(result?.id).toBe("dep-updater-touches-bkit");
-    expect(result?.action).toMatch(/ignorePaths/);
-  });
-
-  it("fenced config is quiet", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), "name: cloud\n");
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "renovate.json5"),
-      '{ ignorePaths: [".github/workflows/bkit-cloud.yml"] }\n',
-    );
     expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
   });
 

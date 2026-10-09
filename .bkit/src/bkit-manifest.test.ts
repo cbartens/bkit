@@ -18,6 +18,7 @@ import {
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
+import { isTemplate } from "./bkit-modules";
 
 // ---------------------------------------------------------------------------
 // CLAUDE.md ownership move core → claude (#252)
@@ -43,98 +44,51 @@ describe("CLAUDE.md ownership (#252: moved core → claude)", () => {
 });
 
 describe(".claude/hooks/gateguard.cjs ownership (markered-text: consumer owns the driver)", () => {
-  it("is owned by the claude module as markered-text, not seed-or-print", () => {
+  it("is owned by the claude module as markered-text", () => {
     const entry = getInstallManifest().find((e) => e.path === ".claude/hooks/gateguard.cjs");
     expect(entry).toBeDefined();
     expect(entry!.module).toBe("claude");
     expect(entry!.format).toBe("markered-text");
-    expect(entry!.seedOrPrint ?? false).toBe(false);
     // opts in to the no-marker migration policy (pre-markers consumer installs)
     expect(entry!.noMarkerMigration).toBeTruthy();
   });
 });
 
 // ---------------------------------------------------------------------------
-// CLOUD_MANIFEST_CLAUDE / CLOUD_MANIFEST_CURSOR — variant-split (T1.5 / DECISION-D)
-// Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
+// Cloud manifests — variant-split (T1.5 / DECISION-D). Only cloud=claude writes a file
+// (cloud-bootstrap.sh); the cloud workflow and the Cursor Background Agent files are
+// templates.
 // ---------------------------------------------------------------------------
 
-describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + cloud-bootstrap.sh", () => {
-  it("contains bkit-cloud.yml as byte-equal-text", () => {
-    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
-    expect(entry!.module).toBe("cloud");
+describe("cloud manifests", () => {
+  it("cloud=claude owns only cloud-bootstrap.sh (markered-text)", () => {
+    expect(CLOUD_MANIFEST_CLAUDE).toEqual([
+      { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
+    ]);
   });
 
-  it("contains cloud-bootstrap.sh as markered-text", () => {
-    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh");
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("markered-text");
-    expect(entry!.module).toBe("cloud");
-  });
-
-  it("does NOT contain .cursor/Dockerfile or .cursor/environment.json (cursor variant only)", () => {
-    expect(CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".cursor/Dockerfile")).toBeUndefined();
-    expect(
-      CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".cursor/environment.json"),
-    ).toBeUndefined();
-  });
-
-  it("contains exactly 2 entries (bkit-cloud.yml + cloud-bootstrap.sh)", () => {
-    expect(CLOUD_MANIFEST_CLAUDE.length).toBe(2);
+  it("cloud=opencode and cloud=cursor own no files", () => {
+    expect(CLOUD_MANIFEST_OPENCODE).toEqual([]);
+    expect(CLOUD_MANIFEST_CURSOR).toEqual([]);
   });
 });
 
-describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile + environment.json", () => {
-  it("contains .cursor/Dockerfile as markered-text", () => {
-    const entry = CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".cursor/Dockerfile");
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("markered-text");
-    expect(entry!.module).toBe("cloud");
+// ---------------------------------------------------------------------------
+// Templates are never manifest entries — install writes none of them, upgrade and
+// uninstall never touch a consumer's adopted copy.
+// ---------------------------------------------------------------------------
+
+describe("no manifest entry is a template path", () => {
+  it("every module's entries are owned or shared files, never a template", () => {
+    const templateEntries = getInstallManifest().filter((e) => isTemplate(e.path));
+    expect(templateEntries).toEqual([]);
   });
 
-  it("contains .cursor/environment.json as byte-equal-text with seedOrPrint=true", () => {
-    const entry = CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
-    expect(entry!.seedOrPrint).toBe(true);
-    expect(entry!.module).toBe("cloud");
-  });
-
-  it("does NOT contain bkit-cloud.yml or cloud-bootstrap.sh (claude/opencode variant only)", () => {
-    expect(
-      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-cloud.yml"),
-    ).toBeUndefined();
-    expect(
-      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
-    ).toBeUndefined();
-  });
-
-  it("contains exactly 2 entries (Dockerfile + environment.json)", () => {
-    expect(CLOUD_MANIFEST_CURSOR.length).toBe(2);
-  });
-});
-
-describe("CLOUD_MANIFEST_OPENCODE — cloud=opencode variant owns bkit-cloud.yml (same file as claude)", () => {
-  it("contains bkit-cloud.yml as byte-equal-text", () => {
-    const entry = CLOUD_MANIFEST_OPENCODE.find(
-      (e) => e.path === ".github/workflows/bkit-cloud.yml",
-    );
-    expect(entry).toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
-    expect(entry!.module).toBe("cloud");
-  });
-
-  it("does NOT contain cloud-bootstrap.sh (claude only) or cursor files", () => {
-    expect(
-      CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
-    ).toBeUndefined();
-    expect(CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".cursor/Dockerfile")).toBeUndefined();
-  });
-
-  it("contains exactly 1 entry (bkit-cloud.yml only)", () => {
-    expect(CLOUD_MANIFEST_OPENCODE.length).toBe(1);
+  it("the MCP configs are json (bkit owns one tracker entry) and .bkit/.env.example is owned", () => {
+    const byPath = new Map(getInstallManifest().map((e) => [e.path, e]));
+    expect(byPath.get(".mcp.json")?.format).toBe("json");
+    expect(byPath.get(".cursor/mcp.json")?.format).toBe("json");
+    expect(byPath.get(".bkit/.env.example")?.format).toBe("byte-equal-text");
   });
 });
 
@@ -197,9 +151,9 @@ describe("getInstallManifest", () => {
   });
 
   it("accepts a Set<string> as modules parameter", () => {
-    const entries = getInstallManifest(new Set(["ci", "lint"]));
+    const entries = getInstallManifest(new Set(["claude", "lint"]));
     const modules = new Set(entries.map((e) => e.module));
-    expect(modules.has("ci")).toBe(true);
+    expect(modules.has("claude")).toBe(true);
     expect(modules.has("lint")).toBe(true);
     expect(modules.has("core")).toBe(false);
   });
@@ -211,7 +165,7 @@ describe("getInstallManifest", () => {
     expect(versionEntry!.format).toBe("byte-equal-text");
   });
 
-  it("core manifest includes the canonical .bkit docs, non-seed (#218; prompts.md markered #245)", () => {
+  it("core manifest includes the canonical .bkit docs (#218; prompts.md markered #245)", () => {
     const entries = getInstallManifest(["core"]);
     // prompts.md is markered-text (carries the consumer-owned `## Model Overrides`
     // section below `bkit:end`); the rest are whole-file byte-equal.
@@ -227,63 +181,14 @@ describe("getInstallManifest", () => {
       const entry = entries.find((e) => e.path === `.bkit/${doc}`);
       expect(entry, `core manifest must list .bkit/${doc}`).toBeDefined();
       expect(entry!.format).toBe("byte-equal-text");
-      expect(entry!.seedOrPrint ?? false).toBe(false);
     }
     const promptsEntry = entries.find((e) => e.path === ".bkit/prompts.md");
     expect(promptsEntry, "core manifest must list .bkit/prompts.md").toBeDefined();
     expect(promptsEntry!.format).toBe("markered-text");
-    expect(promptsEntry!.seedOrPrint ?? false).toBe(false);
   });
 
-  it("ci manifest includes ci.yml as byte-equal-text", () => {
-    const entries = getInstallManifest(["ci"]);
-    const ciEntry = entries.find((e) => e.path.includes("ci.yml"));
-    expect(ciEntry).toBeDefined();
-    expect(ciEntry!.format).toBe("byte-equal-text");
-  });
-
-  it("ci manifest includes .vale.ini as byte-equal-text (vale is stack-agnostic, #265)", () => {
-    const entries = getInstallManifest(["ci"]);
-    const valeEntry = entries.find((e) => e.path === ".vale.ini");
-    expect(valeEntry).toBeDefined();
-    expect(valeEntry!.format).toBe("byte-equal-text");
-  });
-
-  it("lint manifest includes .prettierignore as markered-text", () => {
-    const entries = getInstallManifest(["lint"]);
-    const prettierEntry = entries.find((e) => e.path === ".prettierignore");
-    expect(prettierEntry).toBeDefined();
-    expect(prettierEntry!.format).toBe("markered-text");
-  });
-
-  // #255 P1-7 — files install writes that no uninstall path previously reclaimed.
-  it("lint manifest includes .lintstagedrc.json (seed-or-print) so uninstall reclaims it (#255)", () => {
-    const entry = getInstallManifest(["lint"]).find((e) => e.path === ".lintstagedrc.json");
-    expect(entry, ".lintstagedrc.json must be in the manifest").toBeDefined();
-    expect(entry!.format).toBe("byte-equal-text");
-    expect(entry!.seedOrPrint).toBe(true);
-  });
-
-  it("ci manifest enumerates every .vale/styles/House/*.yml file in the template (#255/#265)", () => {
-    const houseDir = path.resolve(".bkit/templates/.vale/styles/House");
-    const templateFiles = fs
-      .readdirSync(houseDir)
-      .filter((f) => f.endsWith(".yml"))
-      .map((f) => `.vale/styles/House/${f}`)
-      .sort();
-    expect(templateFiles.length).toBeGreaterThan(0);
-    const manifestHouse = getInstallManifest(["ci"])
-      .filter((e) => e.path.startsWith(".vale/styles/House/"))
-      .map((e) => e.path)
-      .sort();
-    // Exact parity: a House rule added to the template without a manifest entry would
-    // otherwise silently survive uninstall again. Vale moved lint→ci in #265.
-    expect(manifestHouse).toEqual(templateFiles);
-    for (const e of getInstallManifest(["ci"]).filter((x) =>
-      x.path.startsWith(".vale/styles/House/"),
-    )) {
-      expect(e.format).toBe("byte-equal-text");
-    }
+  it("the ci module owns no files (ci.yml and the Vale config are templates)", () => {
+    expect(getInstallManifest(["ci"])).toEqual([]);
   });
 
   it("cloud manifest includes cloud-bootstrap.sh as markered-text (moved out of claude — #119)", () => {
@@ -295,15 +200,6 @@ describe("getInstallManifest", () => {
       getInstallManifest(["claude"]).find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
     ).toBeUndefined();
   });
-
-  it("cloud manifest includes the phase-routed bkit-cloud.yml workflow (renamed from bkit-auto.yml — #245)", () => {
-    const entries = getInstallManifest(["cloud"]);
-    const wf = entries.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
-    expect(wf).toBeDefined();
-    expect(wf!.format).toBe("byte-equal-text");
-    expect(entries.find((e) => e.path === ".github/workflows/bkit-auto.yml")).toBeUndefined();
-    expect(entries.find((e) => e.path === ".github/workflows/bkit-ci-router.yml")).toBeUndefined();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -313,8 +209,8 @@ describe("getInstallManifest", () => {
 describe("getModuleManifest", () => {
   const ALL_MODULES: ModuleName[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 
-  it("every module has at least one entry", () => {
-    for (const m of ALL_MODULES) {
+  it("every module except ci has at least one entry", () => {
+    for (const m of ALL_MODULES.filter((m) => m !== "ci")) {
       const entries = getModuleManifest(m);
       expect(entries.length).toBeGreaterThan(0);
     }
@@ -353,8 +249,6 @@ describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("json");
     expect(entry!.module).toBe("opencode");
-    // opencode.json is ownership-mixed — must NOT be seed-or-print (KN-17: reconverged on upgrade)
-    expect(entry!.seedOrPrint ?? false).toBe(false);
   });
 
   it("contains .opencode/plugin/gateguard.js as markered-text (consumer owns the driver)", () => {
@@ -362,8 +256,6 @@ describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("markered-text");
     expect(entry!.module).toBe("opencode");
-    // gateguard.js is not seed-or-print — bkit reconverges its block on every upgrade
-    expect(entry!.seedOrPrint ?? false).toBe(false);
     // opts in to the no-marker migration policy (pre-markers consumer installs)
     expect(entry!.noMarkerMigration).toBeTruthy();
   });

@@ -6,7 +6,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { MARKERED_TEXT_DRIFT_PATHS } from "./bkit-preflight";
 import { isTemplate } from "./bkit-modules";
 import { listFilesRecursive } from "./bkit-install";
 
@@ -215,54 +214,6 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
   });
 });
 
-// `bkit check` compares each non-`optional` managed block against every consumer
-// (tier2-text-drift), so the block must be valid standalone in any job shape. Content outside
-// the markers is consumer-owned: a step id defined there is not guaranteed to exist, and
-// re-syncing a block that reads it injects an undefined-step reference that reds actionlint.
-// Walks every marker pair (not extractNamedBlocks, which keeps only the first block per name).
-describe("compared workflow blocks reference no step defined outside the block", () => {
-  const workflowPaths = MARKERED_TEXT_DRIFT_PATHS.filter((p) => /\.ya?ml$/.test(p));
-  const START = /^\s*#\s*bkit:start(?:\s+([A-Za-z0-9][A-Za-z0-9_-]*))?(?:\s+(optional))?\s*$/;
-  const END = /^\s*#\s*bkit:end(?:\s+[A-Za-z0-9][A-Za-z0-9_-]*)?\s*$/;
-
-  it("covers at least one workflow file", () => {
-    expect(
-      workflowPaths.length,
-      "no workflow file is block-compared any more — this guard has nothing to protect; delete it",
-    ).toBeGreaterThan(0);
-  });
-
-  it.each(workflowPaths)("%s", (relPath) => {
-    const lines = fs.readFileSync(path.resolve(".bkit/templates", relPath), "utf-8").split("\n");
-    const offenders: string[] = [];
-    let open: { name: string; refs: Set<string>; ids: Set<string> } | null = null;
-    let compared = 0;
-    for (const line of lines) {
-      const start = START.exec(line);
-      if (start) {
-        open = start[2] ? null : { name: start[1] ?? "(default)", refs: new Set(), ids: new Set() };
-        continue;
-      }
-      if (END.test(line)) {
-        if (open) {
-          compared++;
-          for (const ref of open.refs) {
-            if (!open.ids.has(ref)) offenders.push(`${open.name}: steps.${ref}`);
-          }
-        }
-        open = null;
-        continue;
-      }
-      if (!open || line.trim().startsWith("#")) continue;
-      for (const m of line.matchAll(/\bsteps\.([A-Za-z_][\w-]*)\./g)) open.refs.add(m[1]!);
-      const id = /^\s*(?:-\s+)?id:\s*["']?([\w-]+)/.exec(line);
-      if (id) open.ids.add(id[1]!);
-    }
-    expect(compared, `${relPath} has no compared block`).toBeGreaterThan(0);
-    expect(offenders).toEqual([]);
-  });
-});
-
 describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", () => {
   const content = fs.readFileSync(CONSUMER_RENOVATE_TEMPLATE, "utf-8");
 
@@ -316,20 +267,12 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/minimumReleaseAge:\s*"1 day"/);
   });
 
-  it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
-    // Bkit owns bkit-cloud.yml — consumer Renovate must not touch it.
-    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
-  });
-
   it("does not fence renovate.yml (the consumer owns that runner)", () => {
     expect(content).not.toMatch(/"\.github\/workflows\/renovate\.yml"/);
   });
 
-  it("ignores bkit-cloud.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
-    // `enabled: false` only suppresses version updates; the github-actions manager
-    // still scans the file and applies pinDigests, recreating a "Pin dependencies"
-    // PR on every scan. ignorePaths stops the scan outright (primary fence).
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/bkit-cloud\.yml"/);
+  it("does not fence bkit-cloud.yml (a template the consumer owns, so its pins refresh)", () => {
+    expect(content).not.toMatch(/"\.github\/workflows\/bkit-cloud\.yml"/);
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
@@ -483,8 +426,8 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
 describe("example dependabot template (.bkit/templates/.github/dependabot.yml)", () => {
   const content = fs.readFileSync(path.resolve(".bkit/templates/.github/dependabot.yml"), "utf-8");
 
-  it("excludes bkit-cloud.yml from version updates", () => {
-    expect(content).toMatch(/exclude-paths:[\s\S]*\.github\/workflows\/bkit-cloud\.yml/);
+  it("does not exclude bkit-cloud.yml (a template the consumer owns, so its pins refresh)", () => {
+    expect(content).not.toMatch(/exclude-paths:[\s\S]*bkit-cloud\.yml/);
   });
 });
 

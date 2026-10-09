@@ -32,7 +32,6 @@ function consumer(opts: { onDisk?: string; recorded?: boolean } = {}) {
   }
   writeBkitVersion(path.join(cwd, ".bkit", "version"), {
     pinnedVersion: "1.0.0",
-    tier3Hashes: {},
     canonicalHashes: {
       ".bkit/scripts/bkit-kept.sh": "abc",
       ...(opts.recorded === false ? {} : { [OLD]: sha256(BODY) }),

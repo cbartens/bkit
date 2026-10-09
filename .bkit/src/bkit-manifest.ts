@@ -25,21 +25,10 @@ export interface ManifestEntry {
    */
   module: ModuleName;
   /**
-   * Seed-or-print (Tier 3): bkit writes the file once when absent, then NEVER
-   * overwrites it — the consumer owns it thereafter (install uses `writeTier3`).
-   * Only meaningful for `byte-equal-text`; distinguishes these from canonical
-   * (`writeTier1`) byte-equal files that bkit auto-overwrites. `bkit upgrade` must
-   * refuse to overwrite a present seed-or-print file (surface a conflict instead),
-   * mirroring install — otherwise it eats consumer-owned content (issue #129).
-   */
-  seedOrPrint?: boolean;
-  /**
    * `byte-equal-text` only. bkit-GENERATED artefact: no file under `.bkit/templates/`
-   * backs it (install computes the bytes from consumer config), and its install-time
-   * hash lands in `canonicalHashes`, not `tier3Hashes`. The uninstall safe-delete guard
-   * consults `canonicalHashes` for these. Without the flag the generic Tier-3 guard sees
-   * no recorded hash, reports `skip-tier3-unknown`, and preserves a file that is 100%
-   * bkit-authored — leaving install residue behind after a full teardown.
+   * backs it (install computes the bytes from consumer config). Its install-time hash
+   * lands in `canonicalHashes` like every owned file's, so uninstall deletes it while
+   * it is unchanged.
    */
   generated?: boolean;
   /**
@@ -172,7 +161,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // Canonical bkit-authored reference docs. They live package-side under `.bkit/`
   // and are read from there at runtime (getBkitDocsRoot); these consumer copies are
   // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
-  // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
+  // file is bkit-owned → byte-equal-text (refreshed every install).
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
@@ -326,9 +315,11 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
   // so a default --full install without the script no-ops instead of erroring.
-  { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-  { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-  { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+  // bkit owns only its tracker entry under `mcpServers` (reconcileMcpJson); every other
+  // key is the consumer's.
+  { path: ".mcp.json", format: "json", module: "claude" },
+  // Owned (writeTier1): consumer edits are overwritten. Real values go in `.bkit/.env`.
+  { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude" },
   // Note: .bkit/scripts/bkit-mode.sh was removed in #245 (opencode host ships as additive
   // provider-agnostic host via `bkit install --opencode=<provider>`; the ccr router lane
   // and `bkit mode` surface are retired). Consumer copies are detected on upgrade and an
@@ -586,11 +577,8 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   // (bkit-cloud-env.ts) renders it from the consumer's `mcp-servers` block; same contract.
   { path: ".cursor/cli.json", format: "byte-equal-text", module: "cursor", generated: true },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
-  { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
-  // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module
-  // (CLOUD_MANIFEST) — they only matter for Cursor Background Agents (cloud), are read
-  // by Cursor's cloud infra (not in-repo hooks), and are inert for local Cursor use.
-  { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
+  // Same per-entry ownership as `.mcp.json` (reconcileMcpJson).
+  { path: ".cursor/mcp.json", format: "json", module: "cursor" },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 
@@ -600,8 +588,7 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 //
 // opencode.json is Tier-2 deep-contained (writeTier2JsonContained) — it is
 // ownership-mixed: consumers add their own provider keys, model lists, and mcp entries,
-// so bkit must reconverge only the bkit-managed keys on upgrade (KN-17). Seed-or-print
-// (Tier-3) would silently abandon bkit's managed keys on consumer-modified files.
+// so bkit must reconverge only the bkit-managed keys on upgrade (KN-17).
 //
 // gateguard.js is markered-text (slash-comment) — bkit owns only the advisory engine
 // between the markers; the exported plugin driver outside the block is consumer-owned
@@ -655,77 +642,39 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
   // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
 
-// --ci (#265): the stack-agnostic CI/quality foundation. NO package.json footprint —
-// a non-Node consumer can install this and stay green. ci.yml is seeded as the SKELETON
-// (Node/TS step bodies commented) when --typescript is absent, or WIRED when present
-// (see runCiModule + deriveCiSkeleton). Vale is stack-agnostic (external binary, lints
-// .md) so its config ships here; the `lint:prose` npm wrapper stays under --typescript.
-const CI_MANIFEST: ManifestEntry[] = [
-  // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
-  // duplicate top-level keys, so consumers own it after the initial seed.
-  { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-  // .vale.ini — Tier 3 (seed-or-print). Vale config (stack-agnostic prose lint).
-  { path: ".vale.ini", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-  // .vale/styles/House/*.yml — Tier 1 (fully managed, bkit-owned, force-overwritten).
-  // Keep in sync with .bkit/templates/.vale/styles/House/ (a parity test guards drift).
-  { path: ".vale/styles/House/Filler.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".vale/styles/House/Hedging.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".vale/styles/House/LLMSlop.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".vale/styles/House/Verbose.yml", format: "byte-equal-text", module: "ci" },
-];
+// --ci: writes no files. ci.yml and the Vale config ship as templates
+// (`.bkit/templates.md`); the consumer copies and owns them.
+const CI_MANIFEST: ManifestEntry[] = [];
 
 // Cloud agent integration is opt-in — NOT included in --full, so a default install
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
 //   cloud=claude (tracker=github):
-//   - bkit-cloud.yml        — phase-routed GitHub Action; carries BOTH claude + opencode jobs,
-//                              runtime-gated by secret presence. Requires BKIT_ANTHROPIC_API_KEY +
-//                              Claude GitHub App + Actions write perms (for claude job).
 //   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).
 //
-//   cloud=opencode (tracker=github):
-//   - bkit-cloud.yml        — same file as cloud=claude; the opencode job runs when
-//                              OPENCODE_PROVIDER_KEY is set. Requires local opencode host
-//                              (`bkit install --opencode=<provider>`). No OIDC.
+//   cloud=opencode (tracker=github), cloud=cursor (tracker=linear): no files.
 //
-//   cloud=cursor (tracker=linear):
-//   - .cursor/Dockerfile     — Cursor Background Agent container toolchain.
-//   - .cursor/environment.json — Cursor Background Agent env config (consumer-owned).
+// The cloud workflow (bkit-cloud.yml) and the Cursor Background Agent files
+// (.cursor/Dockerfile, .cursor/environment.json) ship as templates
+// (`.bkit/templates.md`); the consumer copies and owns them.
 //
-// Splitting per variant ensures uninstall removes ONLY the recorded variant's files —
-// a single manifest with conditional emission but unconditional uninstall listing would
-// orphan the unused variant's files. See issue #119 ("Managed Cloud Agents").
+// Splitting per variant ensures uninstall removes ONLY the recorded variant's files.
+// See issue #119 ("Managed Cloud Agents").
 export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [
-  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
   { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
 ];
 
-// opencode cloud variant ships the same bkit-cloud.yml (both jobs coexist, runtime-gated).
-export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [
-  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
-];
+export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [];
 
-export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
-  { path: ".cursor/Dockerfile", format: "markered-text", module: "cloud" },
-  {
-    path: ".cursor/environment.json",
-    format: "byte-equal-text",
-    module: "cloud",
-    seedOrPrint: true,
-  },
-];
+export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [];
 
 // Combined manifest used by MODULE_MANIFESTS.cloud (install dispatch + uninstall).
-// Uninstall intentionally removes the union (zero-footprint): each variant's files are
-// physically absent on an install of the other variant, so removing absent files is a no-op.
-// DECISION-D states the split exists for install EMISSION (variant-correct write), not for
-// variant-correct uninstall listing — union removal is the correct uninstall behaviour.
-// bkit-cloud.yml appears in both CLOUD_MANIFEST_CLAUDE and CLOUD_MANIFEST_OPENCODE; the
-// duplicate is deduplicated here so uninstall only attempts one removal.
+// Uninstall removes the union (zero-footprint): each variant's files are physically
+// absent on an install of another variant, so removing absent files is a no-op.
 const CLOUD_MANIFEST: ManifestEntry[] = [
   ...CLOUD_MANIFEST_CLAUDE,
-  // CLOUD_MANIFEST_OPENCODE shares bkit-cloud.yml with claude; skip duplicate workflow entry.
+  ...CLOUD_MANIFEST_OPENCODE,
   ...CLOUD_MANIFEST_CURSOR,
 ];
 
@@ -733,13 +682,9 @@ const CLOUD_MANIFEST: ManifestEntry[] = [
 // slop work on .js; only tsc + the cast/@ts-* rule are TS-exclusive). Always installed
 // alongside `ci` (--typescript implies --ci). Vale CONFIG lives under `ci` (agnostic); the
 // `lint:prose` npm wrapper stays here because it is a package.json/Node convenience.
+// slop-scan.config.json, .prettierignore and .lintstagedrc.json ship as templates
+// (`.bkit/templates.md`); the consumer copies and owns them.
 const LINT_MANIFEST: ManifestEntry[] = [
-  { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
-  { path: ".prettierignore", format: "markered-text", module: "lint" },
-  // .lintstagedrc.json — Tier 3 seed-or-print (consumer may customise; pairs with the
-  // lint-staged call in the pre-commit hook). Hash-guarded delete on uninstall: removed
-  // when still byte-equal to the seed, preserved once the consumer edits it (#255 P1-7).
-  { path: ".lintstagedrc.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
   // ONLY with the TS toolchain, never to a non-Node --ci consumer. Tier 1 (bkit-owned,
   // force-overwritten). Mirrors .bkit/templates/.bkit/scripts/. See CORE_TEMPLATE_PATH_EXCLUDE.
@@ -783,14 +728,9 @@ const LINT_MANIFEST: ManifestEntry[] = [
   },
 ];
 
-// v2.0.4: husky hooks switched from "markered-text" (Tier 2) to "byte-equal-text"
-// (Tier 3 seed-or-print). Hook scripts no longer carry bkit:start/bkit:end markers;
-// the canonical file IS the install-time template, and uninstall is hash-guarded
-// (delete only when consumer hasn't modified). See `runGitHooksModule` and
-// CHANGELOG 2.0.4 for the architecture rationale.
+// The husky hooks (.husky/pre-commit, .husky/pre-push) ship as templates
+// (`.bkit/templates.md`); the consumer copies and owns them.
 const GIT_HOOKS_MANIFEST: ManifestEntry[] = [
-  { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
-  { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
   {
     path: "package.json",
     format: "markered-text",

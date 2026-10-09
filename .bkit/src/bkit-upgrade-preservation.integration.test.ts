@@ -50,7 +50,7 @@ function writeTemplate(name: string, content: string): string {
 }
 
 function seedVersion(canonicalHashes: Record<string, string> = {}): void {
-  const v: BkitVersion = { pinnedVersion: "2.4.0", tier3Hashes: {}, canonicalHashes };
+  const v: BkitVersion = { pinnedVersion: "2.4.0", canonicalHashes, claudeAllowDerived: [] };
   writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
 }
 
@@ -367,118 +367,65 @@ describe("migrateWarningsToNoise", () => {
 });
 
 // ---------------------------------------------------------------------------
-// seed-or-print (Tier 3 byte-equal) — consumer owns it after seeding; upgrade
-// must never overwrite a present one, even when there is no whole-file drift.
+// whole-file (byte-equal) owned files — bkit owns them end-to-end
 // ---------------------------------------------------------------------------
 
-describe("upgrade never overwrites a present seed-or-print file (#129 §1)", () => {
-  it(".husky/pre-commit — consumer steps preserved even when current == canonical", () => {
-    // Consumer's pre-commit: their steps + an old bkit block. At a prior install bkit
-    // recorded THIS as canonical (their customisation IS the baseline) → no whole-file
-    // drift, which previously licensed a silent overwrite.
-    const consumer =
-      "#!/usr/bin/env sh\n" +
-      "pnpm lint-staged\n" +
-      "pnpm run test:placeholders   # consumer step — MUST survive\n" +
-      "# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n";
-    writeAbs(".husky/pre-commit", consumer);
-    seedVersion({ ".husky/pre-commit": sha256(consumer) }); // current == canonical
+describe("upgrade of an owned whole-file candidate", () => {
+  const REL = ".bkit/scripts/bkit-owned.sh";
 
-    const templatePath = writeTemplate(
-      "pre-commit",
-      "#!/usr/bin/env sh\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
-    );
+  it("auto-updates when there is no consumer drift", () => {
+    const old = "script v1\n";
+    writeAbs(REL, old);
+    seedVersion({ [REL]: sha256(old) }); // current == canonical
+    const templatePath = writeTemplate("bkit-owned.sh", "script v2\n");
 
-    const result = upgrade([
-      { relPath: ".husky/pre-commit", templatePath, format: "byte-equal-text", seedOrPrint: true },
-    ]);
+    const result = upgrade([{ relPath: REL, templatePath, format: "byte-equal-text" }]);
 
-    // File untouched — every consumer byte preserved.
-    expect(fs.readFileSync(path.join(tmpDir, ".husky/pre-commit"), "utf-8")).toBe(consumer);
-    // Surfaced as a conflict (for the consumer to review), never a silent update.
-    expect(result.conflicts.map((c) => c.relPath)).toContain(".husky/pre-commit");
-    expect(result.updated).not.toContain(".husky/pre-commit");
+    expect(result.updated).toContain(REL);
+    expect(fs.readFileSync(path.join(tmpDir, REL), "utf-8")).toBe("script v2\n");
   });
 
-  it("present seed-or-print already matching the template → skip (no spurious conflict)", () => {
-    const content = "#!/usr/bin/env sh\npnpm lint-staged\n";
-    writeAbs(".husky/pre-commit", content);
-    seedVersion({ ".husky/pre-commit": sha256(content) });
-    const templatePath = writeTemplate("pre-commit", content); // identical
-
-    const result = upgrade([
-      { relPath: ".husky/pre-commit", templatePath, format: "byte-equal-text", seedOrPrint: true },
-    ]);
-
-    expect(result.skipped).toContain(".husky/pre-commit");
-    expect(result.conflicts).toHaveLength(0);
-  });
-
-  it("canonical byte-equal (NOT seed-or-print) still auto-updates when no consumer drift", () => {
-    const old = "router v1\n";
-    writeAbs(".github/workflows/bkit-cloud.yml", old);
-    seedVersion({ ".github/workflows/bkit-cloud.yml": sha256(old) }); // current == canonical
-    const templatePath = writeTemplate("bkit-cloud.yml", "router v2\n");
-
-    const result = upgrade([
-      // no seedOrPrint → canonical, bkit owns it end-to-end
-      { relPath: ".github/workflows/bkit-cloud.yml", templatePath, format: "byte-equal-text" },
-    ]);
-
-    expect(result.updated).toContain(".github/workflows/bkit-cloud.yml");
-    expect(fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-cloud.yml"), "utf-8")).toBe(
-      "router v2\n",
-    );
-  });
-
-  it("honors contentOverride — writes rendered content, never the raw sentinel template (issue #138)", () => {
+  it("honors contentOverride — writes rendered content, never the raw template", () => {
     const old = "rendered v1\n";
-    writeAbs(".github/workflows/bkit-cloud.yml", old);
-    seedVersion({ ".github/workflows/bkit-cloud.yml": sha256(old) });
-    // Raw template carries an unresolved sentinel that must NEVER reach the consumer.
-    const templatePath = writeTemplate(
-      "bkit-cloud.yml",
-      "@@CLOUD_TRACKER_SECRET_ENV@@\nraw v2 with mcp__linear__*\n",
-    );
+    writeAbs(REL, old);
+    seedVersion({ [REL]: sha256(old) });
+    const templatePath = writeTemplate("bkit-owned.sh", "@@SENTINEL@@\nraw v2\n");
 
     const result = upgrade([
       {
-        relPath: ".github/workflows/bkit-cloud.yml",
+        relPath: REL,
         templatePath,
         format: "byte-equal-text",
-        // What renderCloudWorkflow(tracker) produced — install + upgrade share this.
-        contentOverride: "rendered v2 (github, no linear)\n",
+        contentOverride: "rendered v2\n",
       },
     ]);
 
-    expect(result.updated).toContain(".github/workflows/bkit-cloud.yml");
-    const written = fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-cloud.yml"), "utf-8");
-    expect(written).toBe("rendered v2 (github, no linear)\n");
-    expect(written).not.toContain("@@CLOUD_TRACKER"); // raw sentinel never written
-    expect(written).not.toContain("mcp__linear__*"); // raw template's Linear bits never written
+    expect(result.updated).toContain(REL);
+    const written = fs.readFileSync(path.join(tmpDir, REL), "utf-8");
+    expect(written).toBe("rendered v2\n");
+    expect(written).not.toContain("@@SENTINEL@@"); // raw template never written
   });
 });
 
 // ---------------------------------------------------------------------------
 // token substitution on upgrade (#129 §2) — upgrade must substitute {{TOKENS}}
-// like install (writeTier1/writeTier3), not write the literal placeholder.
+// like install (writeTier1), not write the literal placeholder.
 // ---------------------------------------------------------------------------
 
 describe("upgrade substitutes template tokens (#129 §2)", () => {
   it("seeds an absent byte-equal file with {{DEFAULT_BRANCH}} resolved, not literal", () => {
     seedVersion();
     const templatePath = writeTemplate(
-      "pre-commit",
+      "bkit-owned.sh",
       "#!/usr/bin/env sh\n# guard: dev|{{DEFAULT_BRANCH}}\npnpm lint-staged\n",
     );
 
     const result = runUpgrade(
       [
         {
-          relPath: ".husky/pre-commit",
+          relPath: ".bkit/scripts/bkit-owned.sh",
           templatePath,
           format: "byte-equal-text",
-          seedOrPrint: true,
         },
       ],
       {
@@ -494,9 +441,9 @@ describe("upgrade substitutes template tokens (#129 §2)", () => {
       },
     );
 
-    const after = fs.readFileSync(path.join(tmpDir, ".husky/pre-commit"), "utf-8");
+    const after = fs.readFileSync(path.join(tmpDir, ".bkit/scripts/bkit-owned.sh"), "utf-8");
     expect(after).toContain("dev|main");
     expect(after).not.toContain("{{DEFAULT_BRANCH}}");
-    expect(result.updated).toContain(".husky/pre-commit"); // seeded (new)
+    expect(result.updated).toContain(".bkit/scripts/bkit-owned.sh"); // written (new)
   });
 });

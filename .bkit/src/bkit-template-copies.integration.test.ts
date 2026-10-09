@@ -18,7 +18,7 @@ import {
 } from "./bkit-modules";
 import { listFilesRecursive, remapTemplateDest } from "./bkit-install";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths";
-import { readBkitVersion, writeBkitVersion } from "./bkit-version";
+import { readBkitVersion } from "./bkit-version";
 import { updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade";
 import { runUninstall } from "./bkit-uninstall";
 import type { WriteSet } from "./bkit-tiers";
@@ -126,7 +126,7 @@ describe("install copies the template set into .bkit/templates/", () => {
     expect(exec(path.join(tmpDir, COPIES, hook))).toBe(exec(path.join(getTemplatesRoot(), hook)));
 
     const version = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!;
-    const keys = [...Object.keys(version.canonicalHashes), ...Object.keys(version.tier3Hashes)];
+    const keys = Object.keys(version.canonicalHashes);
     expect(keys.filter((k) => k.startsWith(COPIES + path.sep))).toEqual([]);
   });
 
@@ -197,19 +197,26 @@ describe("hashes for paths that became templates are dropped once", () => {
     ".vale/styles/House/Filler.yml": "c".repeat(64),
   };
 
+  // Written raw so the record also carries the retired tier3Hashes field an older
+  // install left behind.
   function seedRetiredKeys(): void {
     const file = path.join(tmpDir, ".bkit", "version");
     const v = readBkitVersion(file)!;
-    writeBkitVersion(file, {
-      ...v,
-      canonicalHashes: { ...v.canonicalHashes, ...RETIRED },
-      tier3Hashes: { ...v.tier3Hashes, ".envrc": RETIRED[".envrc"] },
-    });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        ...v,
+        canonicalHashes: { ...v.canonicalHashes, ...RETIRED },
+        tier3Hashes: { ".envrc": RETIRED[".envrc"] },
+      }),
+      "utf-8",
+    );
   }
 
   function retiredKeysLeft(): string[] {
-    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!;
-    return [...Object.keys(v.canonicalHashes), ...Object.keys(v.tier3Hashes)].filter(
+    const raw = fs.readFileSync(path.join(tmpDir, ".bkit", "version"), "utf-8");
+    const v = JSON.parse(raw) as { canonicalHashes: object; tier3Hashes?: object };
+    return [...Object.keys(v.canonicalHashes), ...Object.keys(v.tier3Hashes ?? {})].filter(
       (k) => k in RETIRED,
     );
   }

@@ -97,20 +97,17 @@
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
   // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned. Scanning them
-  // produces onboarding noise. `bkit-cloud.yml` is bkit-owned and rewritten on
-  // install. It MUST be in ignorePaths, not only a packageRule `enabled: false`:
-  // `enabled: false` suppresses version bumps, but the github-actions manager
-  // still scans the file and applies tag->SHA pinDigests, recreating a
-  // "Pin dependencies" PR on every scan. ignorePaths stops the scan.
-  // Your own renovate.yml (if you copied the self-hosted example) is yours —
-  // leave it out of ignorePaths so action pins there can refresh.
+  // produces onboarding noise. To keep Renovate off a file entirely, list it here:
+  // a packageRule `enabled: false` suppresses version bumps, but the github-actions
+  // manager still scans the file and applies tag->SHA pinDigests. Workflows you
+  // copied from `.bkit/templates/` (ci.yml, bkit-cloud.yml, renovate.yml) are yours —
+  // leave them out of ignorePaths so their action pins refresh.
   ignorePaths: [
     "**/node_modules/**",
     "**/dist/**",
     "**/build/**",
     ".bkit/templates/**",
     ".agents/skills/**",
-    ".github/workflows/bkit-cloud.yml",
   ],
 
   // Private-registry read auth for `@cbartens/bkit` on npm.pkg.github.com.
@@ -133,17 +130,6 @@
   prHourlyLimit: 4,
 
   packageRules: [
-    // ─────────────────────────────────────────────────────────────────────
-    // bkit-managed workflow — DO NOT BUMP.
-    // `bkit install` rewrites `bkit-cloud.yml`. New SHAs arrive with the bkit
-    // package. The primary fence is `ignorePaths` above (stops the scan AND
-    // the tag->SHA pinning). This rule is a secondary guard.
-    // ─────────────────────────────────────────────────────────────────────
-    {
-      matchFileNames: [".github/workflows/bkit-cloud.yml"],
-      enabled: false,
-    },
-
     // ─────────────────────────────────────────────────────────────────────
     // The bkit package itself — DO NOT BUMP via Renovate.
     // bkit upgrades via `pnpm add -D @cbartens/bkit@latest && pnpm bkit upgrade`,

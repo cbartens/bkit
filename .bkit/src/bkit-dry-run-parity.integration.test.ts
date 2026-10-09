@@ -130,10 +130,11 @@ describe("check ≡ install writeset parity — cloud=claude (dry-run parity, T1
 
     expect(checkPaths).toEqual(installPaths);
     const writtenPaths = applied(installPaths);
-    // cloud=claude ships bkit-cloud.yml + cloud-bootstrap.sh (not .cursor/*)
-    expect(writtenPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(true);
+    // cloud=claude ships cloud-bootstrap.sh only; the cloud workflow is a template
     expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(true);
-    expect(writtenPaths.some((p) => p.includes("Dockerfile"))).toBe(false);
+    expect(
+      writtenPaths.some((p) => p === path.join(".github", "workflows", "bkit-cloud.yml")),
+    ).toBe(false);
   });
 });
 
@@ -151,10 +152,9 @@ describe("check ≡ install writeset parity — cloud=cursor (dry-run parity, T1
 
     expect(checkPaths).toEqual(installPaths);
     const writtenPaths = applied(installPaths);
-    // cloud=cursor ships .cursor/Dockerfile + .cursor/environment.json (not bkit-cloud.yml)
-    expect(writtenPaths.some((p) => p.includes("Dockerfile"))).toBe(true);
-    expect(writtenPaths.some((p) => p.includes("environment.json"))).toBe(true);
-    expect(writtenPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(false);
+    // cloud=cursor writes no files: .cursor/Dockerfile + environment.json are templates
+    expect(writtenPaths).not.toContain(path.join(".cursor", "Dockerfile"));
+    expect(writtenPaths).not.toContain(path.join(".cursor", "environment.json"));
   });
 });
 
@@ -172,10 +172,9 @@ describe("check ≡ install writeset parity — cloud=opencode (dry-run parity, 
 
     expect(checkPaths).toEqual(installPaths);
     const writtenPaths = applied(installPaths);
-    // cloud=opencode ships bkit-cloud.yml only (no bootstrap.sh, no cursor files)
-    expect(writtenPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(true);
+    // cloud=opencode writes no files: the cloud workflow is a template
     expect(writtenPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(false);
-    expect(writtenPaths.some((p) => p.includes("Dockerfile"))).toBe(false);
+    expect(writtenPaths).not.toContain(path.join(".github", "workflows", "bkit-cloud.yml"));
   });
 });
 

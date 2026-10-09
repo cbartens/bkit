@@ -32,7 +32,8 @@ import {
   listMdFiles,
   renderOpencodeJson,
   reconcileOpencodeJson,
-  buildMcpJson,
+  reconcileMcpJson,
+  CREATE_IF_MISSING_PATHS,
   renderManagedOutputs,
   enrichClaudeSettingsAllows,
   pruneRetiredClaudeAskRules,
@@ -1024,8 +1025,8 @@ const RELOCATED_AGENTS_FILES = [
 // Files that moved from `.agents/` to a consumer-side `.bkit/` directory and
 // carry consumer-owned or stateful content — MIGRATE (move) rather than delete,
 // so an upgrading consumer keeps their version pin, secrets, and friction log.
-// [oldRel, newRel]. `.env.example` is a seed but may carry consumer edits, so
-// move it too (install reseeds at the new path only if absent).
+// [oldRel, newRel]. `.env.example` is owned (the claude module overwrites it at the new
+// path), so the move only keeps the old path from lingering.
 const MIGRATED_AGENTS_FILES: ReadonlyArray<readonly [string, string]> = [
   [path.join(".agents", ".bkit-version"), path.join(".bkit", "version")],
   [path.join(".agents", ".env"), path.join(".bkit", ".env")],
@@ -1033,12 +1034,11 @@ const MIGRATED_AGENTS_FILES: ReadonlyArray<readonly [string, string]> = [
   [path.join(".agents", "friction.md"), path.join(".bkit", "friction.md")],
 ];
 
-export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
+export function runPayload(dryRun: boolean): { deletes: number } {
   let deletes = 0;
-  let writes = 0;
   const tag = dryRun ? "[dry-run] " : "";
 
-  if (isDogfood()) return { writes: 0, deletes: 0 };
+  if (isDogfood()) return { deletes: 0 };
 
   // 1. Relocated mirror-source dirs: remove bkit-prefix files, then the dir if empty.
   for (const subdir of ["workflows", "prompts"] as const) {
@@ -1090,34 +1090,7 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
     }
   }
 
-  // 4. Re-point a stale `.envrc` dotenv directive left behind by the
-  //    .agents/.env → .bkit/.env move in step 3. `.envrc` is Tier-3 seed-or-print,
-  //    so bkit never overwrites it — but the single line bkit itself authored
-  //    (`dotenv_if_exists .agents/.env`) now points at the path the migration just
-  //    emptied, silently breaking direnv auto-load for upgrading consumers. Rewrite
-  //    ONLY that exact, whole-line directive — never a consumer-appended sibling
-  //    such as `dotenv_if_exists .agents/.env.local` (anchored match, no leading/
-  //    trailing-newline capture). Idempotent: an `.envrc` already pointing at
-  //    .bkit/.env (fresh 3.x install or hand-fixed) has no match → no-op.
-  {
-    const envrcPath = ".envrc";
-    if (fs.existsSync(envrcPath)) {
-      const before = fs.readFileSync(envrcPath, "utf-8");
-      const after = before.replace(
-        /^([ \t]*)dotenv_if_exists[ \t]+\.agents\/\.env[ \t]*$/gm,
-        "$1dotenv_if_exists .bkit/.env",
-      );
-      if (after !== before) {
-        console.log(
-          `${LOG_PREFIX} ${tag}payload migrate: re-pointed .envrc directive .agents/.env → .bkit/.env`,
-        );
-        writes++;
-        if (!dryRun) fs.writeFileSync(envrcPath, after, "utf-8");
-      }
-    }
-  }
-
-  return { writes, deletes };
+  return { deletes };
 }
 
 // ---------------------------------------------------------------------------
@@ -1317,12 +1290,10 @@ export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   ) {
     mods.add("ci");
   }
-  // lint (#265, the --typescript toolchain): slop-scan + prettier. Vale config alone no
-  // longer implies lint — it moved to the ci module.
-  if (
-    fs.existsSync(path.join(cwd, "slop-scan.config.json")) ||
-    fs.existsSync(path.join(cwd, ".prettierignore"))
-  ) {
+  // lint (#265, the --typescript toolchain): the owned slop-scan plugin. Its configs
+  // (slop-scan.config.json, .prettierignore) are templates the consumer may adopt without
+  // the module, so they cannot be sentinels.
+  if (fs.existsSync(path.join(cwd, ".bkit", "scripts", "bkit-slop-type-suppression.mjs"))) {
     mods.add("lint");
   }
   if (
@@ -2089,8 +2060,7 @@ async function main() {
     // Manifest entry drives the per-file write strategy in runUpgrade:
     //   markered-text → block-merge, json → deep-merge (both preserve consumer
     //   content outside the managed region), byte-equal-text / unmanaged →
-    //   whole-file write with drift detection. `seedOrPrint` byte-equal files are
-    //   consumer-owned after seeding — upgrade must not overwrite a present one.
+    //   whole-file write with drift detection.
     const entryByPath = new Map<string, ManifestEntry>();
     for (const entry of getInstallManifest()) {
       entryByPath.set(entry.path, entry);
@@ -2137,12 +2107,8 @@ async function main() {
       ? requireOpencodeProvider(process.cwd(), "upgrade")
       : null;
 
-    // .mcp.json / .cursor/mcp.json are seeded tracker-FILTERED on install (buildMcpJson keeps only
-    // the selected tracker's mcpServers entry). The raw templates carry BOTH trackers, so without
-    // rendering them the same way here the upgrade walk compares the all-tracker template against
-    // the filtered on-disk seed → a false seed-or-print conflict on every same-version run (#255
-    // P3). Token-free, so the override is byte-identical to what install wrote — genuine consumer
-    // drift still differs and surfaces as a real conflict. (Same fix shape as bkit-cloud.yml #138.)
+    // .mcp.json / .cursor/mcp.json: bkit owns only its tracker entry, which the walk's json
+    // deep-merge cannot express. reconcileMcpJson handles them after runUpgrade, like install.
     const MCP_ROOT_RELPATH = ".mcp.json";
     const CURSOR_MCP_RELPATH = path.join(".cursor", "mcp.json");
 
@@ -2167,6 +2133,14 @@ async function main() {
             // Templates are never applied: upgrade refreshes the consumer's
             // `.bkit/templates/` copies instead (syncTemplateCopies below).
             if (isTemplate(relPath)) continue;
+            if (relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH) continue;
+            // Create-if-missing files are the consumer's once written: never merged.
+            if (
+              CREATE_IF_MISSING_PATHS.has(relPath) &&
+              fs.existsSync(path.join(process.cwd(), relPath))
+            ) {
+              continue;
+            }
             // Skip opt-in-module files the consumer hasn't opted into (dest absent).
             if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
               continue;
@@ -2187,14 +2161,11 @@ async function main() {
             const contentOverride =
               relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
                 ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
-                : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
-                  ? buildMcpJson(entAbs, upgradeTracker)
-                  : undefined;
+                : undefined;
             candidates.push({
               relPath,
               templatePath: entAbs,
               format: entry?.format,
-              seedOrPrint: entry?.seedOrPrint,
               contentOverride,
               noMarkerMigration: entry?.noMarkerMigration,
             });
@@ -2359,6 +2330,31 @@ async function main() {
     };
     const rendered = renderManagedOutputs(renderModules, renderCtx);
 
+    // MCP config: bkit's tracker entry only (reconcileMcpJson), for the hosts the consumer
+    // installed — the same pass install's claude/cursor modules run. Never force-creates the
+    // file for a host the consumer does not have.
+    const mcpWs: WriteSet = { writes: [] };
+    for (const [host, relPath] of [
+      ["claude", MCP_ROOT_RELPATH],
+      ["cursor", CURSOR_MCP_RELPATH],
+    ] as const) {
+      if (!renderModules.has(host)) continue;
+      const src = path.join(tplRoot, relPath);
+      if (!fs.existsSync(src)) continue;
+      reconcileMcpJson(
+        src,
+        path.join(process.cwd(), relPath),
+        upgradeTracker,
+        upgradeFlags.dryRun,
+        mcpWs,
+      );
+    }
+    for (const w of mcpWs.writes) {
+      console.log(
+        `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${path.relative(process.cwd(), w.path)} (tracker MCP entry)`,
+      );
+    }
+
     // Regenerate `.claude/cloud.md` (excluded from the template walk above — it is a
     // generated, untracked, secret-bearing OUTPUT file). Claude-host-gated so upgrade
     // never force-creates it for a non-claude repo; non-dry-run so `bkit check` never
@@ -2459,6 +2455,7 @@ async function main() {
           updated: [
             ...result.updated,
             ...renderedDocPaths,
+            ...mcpWs.writes.map((w) => path.relative(process.cwd(), w.path)),
             ...(migratedConfigMd || migratedContextFetch
               ? [path.join(".agents", "context.md")]
               : []),
@@ -2853,8 +2850,8 @@ async function main() {
         cwd: process.cwd(),
         dryRun: false,
         // force: true — auto-revert must delete byte-equal-text files (e.g. .bkit-version)
-        // that were just written in this install run. Without force, shouldDeleteTier3 skips
-        // them when tier3Hashes has no recorded hash (newly-written file).
+        // that were just written in this install run. Without force, the hash guard keeps
+        // any of them whose hash `.bkit/version` does not record.
         force: true,
         nuke: false,
         yes: true,

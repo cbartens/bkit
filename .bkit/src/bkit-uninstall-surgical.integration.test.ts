@@ -10,7 +10,7 @@
 //   - package.json with consumer-customised scripts/devDeps (Tier-2 equivalent)
 //
 // Post-uninstall assertions:
-//   - Consumer-customised Tier-1 files: PRESERVED (since tier3Hashes won't match — they're T1)
+//   - Consumer-customised Tier-1 files: PRESERVED (no recorded hash matches them)
 //     Actually Tier-1 files ARE deleted — the consumer customisation use case is handled
 //     by bkit-preflight.ts detectHooksConfigOverwriteRisk which blocks install, not by uninstall.
 //     Uninstall simply removes T1 files.
@@ -46,12 +46,12 @@ function makeCtx(overrides: Partial<UninstallContext> = {}): UninstallContext {
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-surgical-test-"));
 
-  // Write .bkit-version (no tier3Hashes → preserve-all for T3)
+  // Write .bkit-version (no hashes → preserve every hash-guarded file)
   const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(
     versionFilePath,
-    serializeBkitVersion({ pinnedVersion: "0.6.0", tier3Hashes: {} }),
+    serializeBkitVersion({ pinnedVersion: "0.6.0", canonicalHashes: {}, claudeAllowDerived: [] }),
     "utf-8",
   );
 
@@ -253,7 +253,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 
@@ -281,7 +281,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 
@@ -317,7 +317,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 
@@ -363,7 +363,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 
@@ -407,7 +407,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const versionPath = path.join(tmpDir, ".bkit", "version");
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "4.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "4.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 
@@ -624,7 +624,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     fs.mkdirSync(path.dirname(versionPath), { recursive: true });
     fs.writeFileSync(
       versionPath,
-      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      serializeBkitVersion({ pinnedVersion: "3.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
       "utf-8",
     );
 

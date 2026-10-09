@@ -44,11 +44,8 @@ function writeBkitVersionInDir(v: BkitVersion): void {
   writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
 }
 
-function makeVersion(
-  canonicalHashes: Record<string, string> = {},
-  tier3Hashes: Record<string, string> = {},
-): BkitVersion {
-  return { pinnedVersion: "0.8.0", tier3Hashes, canonicalHashes };
+function makeVersion(canonicalHashes: Record<string, string> = {}): BkitVersion {
+  return { pinnedVersion: "0.8.0", canonicalHashes, claudeAllowDerived: [] };
 }
 
 // ---------------------------------------------------------------------------

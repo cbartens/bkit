@@ -376,13 +376,7 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 
 Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
-**Hands off bkit-owned files.** `bkit install` rewrites `.github/workflows/bkit-cloud.yml`. An updater that bumps its action pins opens the same PR forever.
-
-- Renovate: list `.github/workflows/bkit-cloud.yml` in `ignorePaths`. A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file.
-- Also ignore `.bkit/templates/**` and `.agents/skills/**` (bkit-owned; scanning them is noise).
-- Dependabot: `exclude-paths: [".github/workflows/bkit-cloud.yml"]` on the `github-actions` block. That covers version updates. Security-update PRs for that file can still open; close them.
-- Your own `ci.yml` and, if you copied it, `renovate.yml` stay out of that list so their pins can refresh.
-- `bkit install` warns when `bkit-cloud.yml` exists and the updater config does not name it (`dep-updater-touches-bkit`).
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`ci.yml`, `bkit-cloud.yml`, `renovate.yml`) are yours: leave them out of that list so their pins refresh.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 

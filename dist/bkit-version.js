@@ -4,24 +4,22 @@
 //   v0.6.x schema: plain text "0.6.1\n"
 //   v0.7.x schema: JSON { pinnedVersion: string; tier3Hashes?: Record<string, string> }
 //   v0.9.x schema: JSON { pinnedVersion: string; tier3Hashes?: ...; canonicalHashes?: ... }
+//   current:       JSON { pinnedVersion, canonicalHashes, claudeAllowDerived }
 //
 // Backward-compat: if the file parses as plain text (not JSON), treat it as
-// { pinnedVersion: trimmedContent, tier3Hashes: {}, canonicalHashes: {} } —
-// no fields are required. This ensures `bkit uninstall` works on consumers
-// that installed with v0.6.x before the schema extension.
+// { pinnedVersion: trimmedContent, canonicalHashes: {} } — no fields are required.
+// This ensures `bkit uninstall` works on consumers that installed with v0.6.x
+// before the schema extension.
 //
-// `tier3Hashes`: map of consumer-relative path → sha256 hex of the file content
-// AT THE TIME of install. Used by `bkit uninstall` to decide whether a Tier-3
-// file was modified by the consumer (preserve) or still matches the default
-// bkit installed content (safe to delete).
+// `canonicalHashes`: map of consumer-relative path → sha256 hex of the file
+// content bkit wrote. Used by `bkit upgrade` to detect consumer drift and by
+// `bkit uninstall` to delete an owned file only when it is unchanged since bkit
+// wrote it. Absent means "unknown" → treat as consumer-modified (preserve).
 //
-// `canonicalHashes` (P4.T4 — additive, v0.9.x+):
-// Map of consumer-relative path → sha256 hex of the CANONICAL bkit-managed
-// file content AT THE TIME of install. Covers Tier-1 and Tier-2 managed files
-// (all files bkit writes during install). Used by `bkit upgrade` diff engine
-// to detect consumer drift: if on-disk hash differs from canonicalHash, the
-// consumer modified the file since install. Absent means "unknown" →
-// backward-compat: treat as no recorded hash (preserve-default).
+// `tier3Hashes` (retired): the hashes of the seed-or-print files bkit used to
+// write. Still parsed so an older `.bkit/version` keeps its hashes: they are
+// folded into `canonicalHashes` (a canonical entry wins), and the next install
+// or upgrade rewrites the file without the field.
 //
 // Security note: sha256 used for content identity only, not cryptographic
 // authentication. No secrets are stored here.
@@ -34,9 +32,10 @@ import * as crypto from "node:crypto";
 /**
  * Parse `.bkit/version` content into a BkitVersion object.
  * Handles all schema versions:
- *   - v0.9.x JSON:  { pinnedVersion, tier3Hashes, canonicalHashes }
- *   - v0.7.x JSON:  { pinnedVersion, tier3Hashes } → canonicalHashes defaults to {}
- *   - v0.6.x text:  "0.6.1\n" → { pinnedVersion: "0.6.1", tier3Hashes: {}, canonicalHashes: {} }
+ *   - current JSON: { pinnedVersion, canonicalHashes, claudeAllowDerived }
+ *   - v0.9.x JSON:  { pinnedVersion, tier3Hashes, canonicalHashes } → tier3Hashes folded in
+ *   - v0.7.x JSON:  { pinnedVersion, tier3Hashes } → canonicalHashes = tier3Hashes
+ *   - v0.6.x text:  "0.6.1\n" → { pinnedVersion: "0.6.1", canonicalHashes: {} }
  * Returns null if content is empty/whitespace-only (treat as absent).
  *
  * Backward-compat guarantee: absent `canonicalHashes` defaults to {} (upgrade engine
@@ -51,22 +50,22 @@ export function parseBkitVersion(content) {
         try {
             const parsed = JSON.parse(trimmed);
             const pinnedVersion = typeof parsed.pinnedVersion === "string" ? parsed.pinnedVersion : "";
-            const tier3Hashes = parsed.tier3Hashes &&
-                typeof parsed.tier3Hashes === "object" &&
-                !Array.isArray(parsed.tier3Hashes)
-                ? parsed.tier3Hashes
-                : {};
+            const hashMap = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : null;
+            // The retired seed-or-print hashes record what bkit wrote, exactly as canonicalHashes
+            // does, so they fold in underneath it (a canonical entry wins).
+            const tier3Hashes = hashMap(parsed.tier3Hashes);
             // P4.T4: canonicalHashes is additive — absent on old payloads → default {}
-            const canonicalHashes = parsed.canonicalHashes &&
-                typeof parsed.canonicalHashes === "object" &&
-                !Array.isArray(parsed.canonicalHashes)
-                ? parsed.canonicalHashes
-                : {};
+            const canonicalHashes = { ...tier3Hashes, ...hashMap(parsed.canonicalHashes) };
             // Additive, same shape of guard as canonicalHashes — absent on old payloads → [].
             // Older payloads carry the same record under its former name, `webFetchDerived`.
             const recorded = parsed.claudeAllowDerived ?? parsed.webFetchDerived;
             const claudeAllowDerived = Array.isArray(recorded) ? recorded : [];
-            return { pinnedVersion, tier3Hashes, canonicalHashes, claudeAllowDerived };
+            return {
+                pinnedVersion,
+                canonicalHashes,
+                claudeAllowDerived,
+                ...("tier3Hashes" in parsed ? { legacyTier3Hashes: true } : {}),
+            };
         }
         catch {
             // Fall through to plain-text parse
@@ -76,7 +75,7 @@ export function parseBkitVersion(content) {
     // KN-5 guard: reject NaN-producing inputs
     if (!trimmed)
         return null;
-    return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, claudeAllowDerived: [] };
+    return { pinnedVersion: trimmed, canonicalHashes: {}, claudeAllowDerived: [] };
 }
 /**
  * Read and parse `.bkit/version` from an absolute path.
@@ -93,10 +92,12 @@ export function readBkitVersion(versionFilePath) {
 // ---------------------------------------------------------------------------
 /**
  * Serialize a BkitVersion to JSON for writing to `.bkit/version`.
- * Always writes pretty-printed JSON with a trailing newline.
+ * Always writes pretty-printed JSON with a trailing newline. Writes the schema
+ * fields only, so the parser's `legacyTier3Hashes` flag never reaches disk.
  */
 export function serializeBkitVersion(v) {
-    return JSON.stringify(v, null, 2) + "\n";
+    const { pinnedVersion, canonicalHashes, claudeAllowDerived } = v;
+    return JSON.stringify({ pinnedVersion, canonicalHashes, claudeAllowDerived }, null, 2) + "\n";
 }
 /**
  * Write a BkitVersion to disk at `versionFilePath`.
@@ -137,11 +138,11 @@ export function isConsumerModified(relPath, absolutePath, canonicalHashes) {
     return current !== recorded;
 }
 // ---------------------------------------------------------------------------
-// sha256 — content hashing for tier3Hashes / canonicalHashes
+// sha256 — content hashing for canonicalHashes
 // ---------------------------------------------------------------------------
 /**
  * Compute the sha256 hex digest of a string or Buffer.
- * Used to record Tier-3 file content at install time.
+ * Used to record the content of the files bkit writes.
  */
 export function sha256(content) {
     return crypto.createHash("sha256").update(content).digest("hex");
@@ -154,34 +155,6 @@ export function hashFile(filePath) {
         return null;
     const content = fs.readFileSync(filePath);
     return sha256(content);
-}
-// ---------------------------------------------------------------------------
-// shouldDeleteTier3 — hash-guard decision for uninstall
-// ---------------------------------------------------------------------------
-/**
- * Decide whether a Tier-3 file is safe to delete during `bkit uninstall`.
- *
- * Returns true (safe to delete) when:
- *   1. `tier3Hashes` has a recorded hash for `relPath`, AND
- *   2. The current on-disk content matches that recorded hash.
- *
- * Returns false (preserve) when:
- *   - `tier3Hashes` has no entry for `relPath` (unknown — preserve by default)
- *   - The on-disk content differs from the recorded hash (consumer modified it)
- *   - The file is absent (nothing to delete)
- *
- * `relPath`: consumer-relative path (e.g. ".github/workflows/ci.yml")
- * `absolutePath`: absolute path to the file on disk
- * `tier3Hashes`: the hashes map from the BkitVersion record
- */
-export function shouldDeleteTier3(relPath, absolutePath, tier3Hashes) {
-    const recorded = tier3Hashes[relPath];
-    if (!recorded)
-        return false; // unknown → preserve
-    const current = hashFile(absolutePath);
-    if (!current)
-        return false; // absent → nothing to delete
-    return current === recorded;
 }
 // ---------------------------------------------------------------------------
 // Managed-version marker (#256) — single source of truth for the marker shape

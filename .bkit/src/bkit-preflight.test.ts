@@ -9,13 +9,11 @@ import {
   detectNoPackageJson,
   detectMalformedPackageJson,
   detectNotGitRepo,
-  detectPrettierignoreNoMarkers,
   detectCompletedMdUnmigrated,
   detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
-  detectPrettierignoreScopeBroadening,
   detectPlaywrightReporterHostile,
   detectContextFetchMissing,
   detectContextFetchProvisionMissing,
@@ -34,6 +32,7 @@ import {
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
+import { isTemplate } from "./bkit-modules";
 import { detectShellToken } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
@@ -121,46 +120,6 @@ describe("detectNotGitRepo", () => {
   it("returns null when --core NOT requested (even if .git/ absent)", () => {
     // No core flag — not-git-repo should NOT fire
     expect(detectNotGitRepo(tmpDir, makeModules("lint"))).toBeNull();
-  });
-});
-
-// detectHuskyNoMarkers tests removed in v2.0.4 — husky moved to Tier 3
-// (seed-or-print); markers are no longer expected. Tier-3 advisory emission
-// is exercised by bkit-modules.integration.test.ts via runGitHooksModule.
-
-// ---------------------------------------------------------------------------
-// detectPrettierignoreNoMarkers
-// ---------------------------------------------------------------------------
-
-describe("detectPrettierignoreNoMarkers", () => {
-  it("returns finding when .prettierignore exists without markers", () => {
-    fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules\ndist\n", "utf-8");
-    const result = detectPrettierignoreNoMarkers(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("prettierignore-no-markers");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("returns null when .prettierignore has bkit markers", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules\n# bkit:end\n",
-      "utf-8",
-    );
-    expect(detectPrettierignoreNoMarkers(tmpDir)).toBeNull();
-  });
-
-  it("returns finding when the marker text appears only mid-line", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".prettierignore"),
-      "dist # see # bkit:start in docs\n",
-      "utf-8",
-    );
-    expect(detectPrettierignoreNoMarkers(tmpDir)?.id).toBe("prettierignore-no-markers");
-  });
-
-  it("returns null when .prettierignore is absent", () => {
-    expect(detectPrettierignoreNoMarkers(tmpDir)).toBeNull();
   });
 });
 
@@ -340,7 +299,7 @@ describe("runPreflight", () => {
     expect(blockers).toHaveLength(0);
   });
 
-  it("does NOT emit husky-no-markers-* (Tier 3 husky has no markers, v2.0.4)", () => {
+  it("does NOT emit husky-no-markers-* (husky hooks are templates the consumer owns)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
@@ -441,19 +400,24 @@ describe("P3.T7 — detectHooksConfigOverwriteRisk deleted (v0.8.0)", () => {
   });
 });
 
-// detectHuskyBlockDuplicates tests removed in v2.0.4 — husky is Tier 3
-// (seed-or-print); there is no managed block to duplicate. Source-level
-// guard below asserts neither obsolete detector lingers in the source.
-describe("husky Tier-3 migration — removed detectors must not return in source", () => {
-  it("bkit-preflight.ts no longer exports detectHuskyNoMarkers or detectHuskyBlockDuplicates", () => {
-    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
-    expect(src).not.toMatch(/export function detectHuskyNoMarkers\b/);
-    expect(src).not.toMatch(/export function detectHuskyBlockDuplicates\b/);
+describe("templates are never drift-checked", () => {
+  it("MARKERED_TEXT_DRIFT_PATHS holds no template path", () => {
+    expect(MARKERED_TEXT_DRIFT_PATHS.filter((p) => isTemplate(p))).toEqual([]);
   });
 
-  it("runPreflight no longer drift-checks .husky/* as markered text (Tier 3 owns drift)", () => {
-    expect(MARKERED_TEXT_DRIFT_PATHS).not.toContain(".husky/pre-commit");
-    expect(MARKERED_TEXT_DRIFT_PATHS).not.toContain(".husky/pre-push");
+  it("an adopted .prettierignore, .vale.ini or ci.yml raises no drift or marker advisory", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".vale.ini"), "# bkit:start\nStylesPath = x\n# bkit:end\n");
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "# bkit:start main-lag-warning\nname: mine\n# bkit:end main-lag-warning\n",
+    );
+    const { advisories } = runPreflight(makeModules("lint"), tmpDir);
+    const ids = advisories.map((f) => f.id);
+    expect(ids).not.toContain("tier2-text-drift");
+    expect(ids.some((id) => id.startsWith("prettierignore-"))).toBe(false);
   });
 });
 
@@ -487,57 +451,6 @@ describe("detectGitignoreBlockDuplicates", () => {
 
   it("returns null when .gitignore does not exist", () => {
     const f = detectGitignoreBlockDuplicates(tmpDir);
-    expect(f).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectPrettierignoreScopeBroadening — Detector D (BAR-141 iter 2)
-// ---------------------------------------------------------------------------
-
-describe("detectPrettierignoreScopeBroadening", () => {
-  it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/find-skills/)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules/\n.agents/skills/find-skills/\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectPrettierignoreScopeBroadening(tmpDir);
-    expect(f).toBeDefined();
-    expect(f?.id).toBe("prettierignore-scope-broadening");
-    expect(f?.severity).toBe("advisory");
-    expect(f?.detect).toContain(".agents/skills/find-skills/");
-    expect(f?.detect).toContain(".agents/skills/");
-  });
-
-  it("does NOT flag when on-disk block matches new bkit paths exactly", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules/\ndist/\n.agents/skills/\n.claude/\n.cursor/\n.github/\n.husky/_/\n*.tsbuildinfo\npnpm-lock.yaml\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectPrettierignoreScopeBroadening(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("does NOT flag for the canonical template's .agents/skills/ entry (regression: BKIT_PRETTIERIGNORE_PATHS must mirror .bkit/templates/.prettierignore)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules/\n.agents/skills/\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectPrettierignoreScopeBroadening(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("returns null when no bkit block markers present", () => {
-    fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules/\n", "utf-8");
-    const f = detectPrettierignoreScopeBroadening(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("returns null when .prettierignore does not exist", () => {
-    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 });
@@ -1182,7 +1095,7 @@ describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectMissingMcpServers", () => {
-  it("returns empty array when file does not exist (Tier 3 scaffold will write it)", () => {
+  it("returns empty array when file does not exist (the next install writes it)", () => {
     expect(detectMissingMcpServers(tmpDir, ".mcp.json")).toEqual([]);
     expect(detectMissingMcpServers(tmpDir, ".cursor/mcp.json")).toEqual([]);
   });

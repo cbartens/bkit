@@ -513,12 +513,11 @@ The status-hole detector (`.bkit/src/bkit-status-hole-detector.ts`) is **advisor
 | `bkit-close-squash.integration.test.ts` | Integration | design / plan local close block run verbatim against a real remote + worktree: refused squash and conflict-dropped doc keep `feat/{FID}` and leave `dev` unmoved; another session's staged doc stays out of the close commit; clean close lands the branch copy, then deletes the branch. |
 | `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
 | `bkit-uninstall-surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
-| `bkit-bkitignore.test.ts` and `bkit-bkitignore.integration.test.ts` | Unit and Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
 | `bkit-modules-upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge and seeded `bkit-mode.sh` deletion advisory. |
 | `bkit-upgrade.test.ts` and `bkit-upgrade.integration.test.ts` | Unit and Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) and `canonicalHashes` (v0.9.0+) backward-compat reads. |
+| `bkit-version.test.ts` (extended) | Unit | `canonicalHashes` reads, including a legacy `tier3Hashes` map folded in and never written back. |
 | `bkit-gateguard-claude.integration.test.ts` | Integration | Claude GateGuard hook (`.claude/hooks/gateguard.cjs`, spawned as a real process): advisory/deny modes, dedup, docs/\*.md density advisory (path-scoped, segment match). |
 | `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagents included (exemption removed), advisory/deny modes, dedup, docs/\*.md density advisory, managed-block boundary (no `export` inside the marker region), twin parity vs the Claude hook. |
 | `bkit-gateguard-cursor.integration.test.ts` | Integration | Cursor GateGuard hook (`.cursor/hooks/gateguard.cjs`, spawned): advisory via `additional_context` on an allow, deny via `agent_message`, workspace-relative path resolution, managed-block parity with the Claude twin. |

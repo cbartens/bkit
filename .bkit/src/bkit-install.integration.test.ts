@@ -779,14 +779,12 @@ describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched",
 });
 
 // ---------------------------------------------------------------------------
-// MCP config Tier 3 scaffold + idempotency tests (BAR-260)
-//
-// .mcp.json (claude module) and .cursor/mcp.json (cursor module) are Tier 3
-// byte-equal-text files: seeded on first install, left untouched on re-install
-// when the consumer has modified them.
+// MCP config (BAR-260): .mcp.json (claude module) and .cursor/mcp.json (cursor
+// module). A fresh install writes the tracker-filtered config; after that bkit owns
+// only its tracker entry under `mcpServers`.
 // ---------------------------------------------------------------------------
 
-describe("MCP config Tier 3 scaffold — fresh install and consumer-modified idempotency", () => {
+describe("MCP config — fresh install and a consumer's own file", () => {
   it("fresh install via bkit install --full (no --tracker) scaffolds .mcp.json with empty mcpServers", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -910,7 +908,7 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     }
   });
 
-  it("re-install over a consumer-modified .mcp.json leaves the file byte-for-byte unchanged", () => {
+  it("re-install with no tracker (bkit owns no entry) leaves a consumer .mcp.json byte-for-byte unchanged", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
@@ -1198,8 +1196,8 @@ function makeClaudeContext(dryRun: boolean): ModuleContext {
   };
 }
 
-describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
-  it("first install seeds .bkit/.env.example when template exists", () => {
+describe("Scenario: .bkit/.env.example (owned) and .envrc (template)", () => {
+  it("first install writes .bkit/.env.example when template exists", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -1220,7 +1218,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     expect(content).toContain("BKIT_LINEAR_API_KEY=");
   });
 
-  it("first install seeds .envrc with dotenv_if_exists directive", () => {
+  it("install never writes .envrc (a template the consumer copies)", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -1228,17 +1226,13 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    const ctx = makeClaudeContext(false);
     process.chdir(tmpDir);
-    runClaudeModule(ctx);
+    runClaudeModule(makeClaudeContext(false));
 
-    const envrcPath = path.join(tmpDir, ".envrc");
-    expect(fs.existsSync(envrcPath)).toBe(true);
-    const content = fs.readFileSync(envrcPath, "utf-8");
-    expect(content).toContain("dotenv_if_exists .bkit/.env");
+    expect(fs.existsSync(path.join(tmpDir, ".envrc"))).toBe(false);
   });
 
-  it("second install is idempotent — does not overwrite consumer-modified .bkit/.env.example", () => {
+  it("re-install overwrites a consumer-edited .bkit/.env.example (owned), in dry-run and live alike", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -1257,15 +1251,17 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     const modified = original + "\n# custom consumer token\nMY_API_KEY=\n";
     fs.writeFileSync(envExamplePath, modified, "utf-8");
 
-    // Second install — Tier 3 seed-or-print: must NOT overwrite modified file
-    const ctx2 = makeClaudeContext(false);
-    process.chdir(tmpDir);
-    runClaudeModule(ctx2);
+    // `bkit check` reports the pending overwrite without touching the file...
+    const dry = makeClaudeContext(true);
+    runClaudeModule(dry);
+    expect(fs.readFileSync(envExamplePath, "utf-8")).toBe(modified);
+    expect(dry.ws.writes.map((w) => w.path)).toContain(path.join(".bkit", ".env.example"));
 
-    const after = fs.readFileSync(envExamplePath, "utf-8");
-    expect(after).toBe(modified); // unchanged
-    // An advisory should have been emitted (merge suggestion)
-    expect(ctx2.advisories.some((a) => a.id.startsWith("tier3-merge-suggested"))).toBe(true);
+    // ...and the second install puts the package bytes back.
+    const ctx2 = makeClaudeContext(false);
+    runClaudeModule(ctx2);
+    expect(fs.readFileSync(envExamplePath, "utf-8")).toBe(original);
+    expect(ctx2.ws.writes.map((w) => w.path)).toContain(path.join(".bkit", ".env.example"));
   });
 
   it(".gitignore marker block contains .bkit/.env after first install", () => {
@@ -1321,75 +1317,16 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: runPayload re-points a stale .envrc dotenv directive on upgrade
-//
-// Consumers who first installed on the .agents/ layout carry an .envrc seeded
-// with `dotenv_if_exists .agents/.env`. The .bkit/ move (3.0.0) relocates the
-// env file to .bkit/.env but, because .envrc is Tier-3 seed-or-print, never
-// rewrites the now-stale directive — silently breaking direnv auto-load. These
-// tests lock in the surgical line-migration that re-points ONLY bkit's own line.
-// The beforeEach chdir's into a fresh tmpDir, so isDogfood() is false and the
-// migration steps run (the bkit repo itself is guarded out).
+// Scenario: runPayload never touches .envrc — it is the consumer's file, even when it
+// still carries the pre-.bkit/ `dotenv_if_exists .agents/.env` directive.
 // ---------------------------------------------------------------------------
 
-describe("Scenario: runPayload .envrc directive migration (.agents/.env → .bkit/.env)", () => {
-  const STALE_ENVRC =
-    "# .envrc — direnv config shipped by bkit.\n" +
-    "dotenv_if_exists .agents/.env\n" +
-    "dotenv_if_exists .agents/.env.local\n";
-
-  it("re-points the stale bkit directive and counts a write", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
-
-    const result = runPayload(false);
-
-    const after = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
-    expect(after).toContain("dotenv_if_exists .bkit/.env");
-    // The bare .agents/.env directive is gone...
-    expect(after).not.toMatch(/^dotenv_if_exists \.agents\/\.env$/m);
-    // ...but the consumer-appended sibling is preserved untouched.
-    expect(after).toContain("dotenv_if_exists .agents/.env.local");
-    // The header comment is preserved.
-    expect(after).toContain("# .envrc — direnv config shipped by bkit.");
-    expect(result.writes).toBeGreaterThanOrEqual(1);
-  });
-
-  it("is idempotent — a second pass makes no further change", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
+describe("Scenario: runPayload leaves .envrc alone", () => {
+  it("a stale .agents/.env directive stays byte-identical", () => {
+    const stale = "dotenv_if_exists .agents/.env\n";
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), stale, "utf-8");
     runPayload(false);
-    const afterFirst = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
-
-    const result = runPayload(false);
-    const afterSecond = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
-
-    expect(afterSecond).toBe(afterFirst);
-    // No .envrc rewrite the second time (writes attributable to the directive == 0).
-    expect(result.writes).toBe(0);
-  });
-
-  it("leaves an already-migrated .envrc untouched (no false rewrite)", () => {
-    const fresh = "# header\ndotenv_if_exists .bkit/.env\n";
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), fresh, "utf-8");
-
-    const result = runPayload(false);
-
-    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(fresh);
-    expect(result.writes).toBe(0);
-  });
-
-  it("dry-run reports the write but does not touch the file on disk", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
-
-    const result = runPayload(true);
-
-    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(STALE_ENVRC);
-    expect(result.writes).toBeGreaterThanOrEqual(1);
-  });
-
-  it("no-op when .envrc is absent", () => {
-    const result = runPayload(false);
-    expect(fs.existsSync(path.join(tmpDir, ".envrc"))).toBe(false);
-    expect(result.writes).toBe(0);
+    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(stale);
   });
 });
 
@@ -1716,13 +1653,16 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
   });
 
-  it("`bkit install --tooling` ships ci.yml + .vale.ini; no host dirs", () => {
+  it("`bkit install --tooling` writes no ci.yml, .vale.ini or hooks (templates); no host dirs", () => {
     if (!fs.existsSync(tsxPath())) return;
     const r = run(["install", "--tooling"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
-    expect(fs.existsSync(path.join(tmp, ".github", "workflows", "ci.yml"))).toBe(true);
-    expect(fs.existsSync(path.join(tmp, ".vale.ini"))).toBe(true);
-    expect(fs.existsSync(path.join(tmp, ".husky", "pre-commit"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".github", "workflows", "ci.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, ".vale.ini"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, ".husky", "pre-commit"))).toBe(false);
+    expect(
+      fs.existsSync(path.join(tmp, ".bkit", "templates", ".github", "workflows", "ci.yml")),
+    ).toBe(true);
     expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".cursor"))).toBe(false);
   });

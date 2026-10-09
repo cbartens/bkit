@@ -117,23 +117,6 @@ export function detectNotGitRepo(cwd: string, modules: Set<ModuleFlag>): Preflig
 // Advisory detectors
 // ---------------------------------------------------------------------------
 
-// detectHuskyNoMarkers removed in v2.0.4 — husky hooks are Tier 3 (seed-or-print),
-// no markers expected. See runGitHooksModule + CHANGELOG 2.0.4 for the migration.
-
-export function detectPrettierignoreNoMarkers(cwd: string): PreflightFinding | null {
-  const filePath = path.join(cwd, ".prettierignore");
-  if (!fs.existsSync(filePath)) return null;
-  const content = fs.readFileSync(filePath, "utf-8");
-  if (detectMarkerStyle(content) !== null) return null;
-  return {
-    id: "prettierignore-no-markers",
-    severity: "advisory",
-    detect: ".prettierignore exists but has no bkit-managed block markers.",
-    action:
-      "Add `# bkit:start` / `# bkit:end` markers around the section bkit owns. Without markers, `bkit install` appends its block to EOF — fine for fresh installs but harder to merge cleanly on upgrade.",
-  };
-}
-
 /**
  * #380 rollout advisory: `docs/completed.md` still present — the consumer has
  * not yet run `bkit telemetry migrate` (which ports it to `.bkit/issues.jsonl`
@@ -228,13 +211,6 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
   };
 }
 
-// ---------------------------------------------------------------------------
-// (detectHuskyNoMarkers + detectHuskyBlockDuplicates removed in v2.0.4 along
-// with the Tier 2 → Tier 3 husky migration — the bkit hook no longer carries
-// markers, so neither the "missing markers" advisory nor the "managed block
-// duplicates consumer commands" advisory has anything to detect against.)
-// ---------------------------------------------------------------------------
-
 /**
  * Detect when a line bkit's .gitignore managed block contributes is already
  * present elsewhere in the file. Benign (git ignores duplicates) but worth
@@ -268,65 +244,6 @@ export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | 
     severity: "advisory",
     detect: `.gitignore lists [${dupes.join(", ")}] both inside the bkit-managed block and outside it (consumer-owned region).`,
     action: `Git ignores duplicates harmlessly, but cleaner to remove the consumer-side line(s) so the bkit-managed block is the single source of truth. Affected lines: ${dupes.join(", ")}.`,
-  };
-}
-
-/**
- * Detect when the consumer's installed `.prettierignore` bkit-managed block has
- * paths narrower than the canonical bkit list (BKIT_PRETTIERIGNORE_PATHS), i.e.
- * the new block broadens scope on this install.
- *
- * BKIT_PRETTIERIGNORE_PATHS MUST mirror the canonical block shipped in
- * `.bkit/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
- * If it drifts broader, this detector fires every install with a phantom
- * "broadening" that never actually happens.
- */
-const BKIT_PRETTIERIGNORE_PATHS = [
-  "node_modules/",
-  "dist/",
-  ".agents/skills/",
-  ".claude/",
-  ".cursor/",
-  ".github/",
-  ".husky/_/",
-  "*.tsbuildinfo",
-  "pnpm-lock.yaml",
-  ".mcp.json",
-  ".envrc",
-  ".bkit/.env.example",
-];
-
-export function detectPrettierignoreScopeBroadening(cwd: string): PreflightFinding | null {
-  const filePath = path.join(cwd, ".prettierignore");
-  if (!fs.existsSync(filePath)) return null;
-  const content = fs.readFileSync(filePath, "utf-8");
-
-  const blockMatch = content.match(/#\s*bkit:start([\s\S]*?)#\s*bkit:end/);
-  if (!blockMatch) return null;
-  const oldPaths = blockMatch[1]!
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#"));
-
-  const broadenings: string[] = [];
-  for (const oldPath of oldPaths) {
-    if (BKIT_PRETTIERIGNORE_PATHS.includes(oldPath)) continue;
-    const broaderParent = BKIT_PRETTIERIGNORE_PATHS.find(
-      (np) => np !== oldPath && oldPath.startsWith(np.endsWith("/") ? np : np + "/"),
-    );
-    if (broaderParent) {
-      broadenings.push(`${oldPath} → ${broaderParent}`);
-    }
-  }
-
-  if (broadenings.length === 0) return null;
-
-  return {
-    id: "prettierignore-scope-broadening",
-    severity: "advisory",
-    detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
-    action:
-      "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/rules.md, .agents/docs.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
   };
 }
 
@@ -904,14 +821,14 @@ export function detectTier2TextDrift(
   //   - consumer lacks it  → "missing"  (unless the template marks the block `optional`)
   //   - consumer has it but content differs → "drifted"
   // Content OUTSIDE bkit:start/bkit:end is consumer-owned and never compared, so a
-  // freely-edited Tier-3 file only trips on its bkit-owned regions — no false positives.
+  // freely-edited file only trips on its bkit-owned regions — no false positives.
   const templateBlocks = extractNamedBlocks(templateContent);
   if (templateBlocks.size === 0) return null; // template owns no marked region in this file
 
   const consumerBlocks = extractNamedBlocks(consumerContent);
   // Consumer carries no bkit markers at all → fully consumer-owned (markers-missing case),
   // or has only the bare wrapper of a different file shape. Never flag a file the consumer
-  // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
+  // wrote without bkit markers.
   if (consumerBlocks.size === 0) return null;
 
   // Significant lines = load-bearing block content: non-blank, non-comment, trimmed (indentation
@@ -939,9 +856,7 @@ export function detectTier2TextDrift(
   for (const [name, tBlock] of templateBlocks) {
     const label = name || "(default block)";
     // An `optional` block is fully consumer-owned: bkit seeds it but never flags missing OR drift.
-    // `ts-ci-steps` IS the consumer's Node/TS toolchain region (the template says "adapt these to
-    // your stack") — enforcing its content was perpetual noise on a Tier-3 file bkit never
-    // rewrites. A hand-maintained toolchain that dropped the block is opted out, not broken.
+    // A consumer that dropped the block is opted out, not broken.
     if (tBlock.optional) continue;
     const cBlock = consumerBlocks.get(name);
     if (!cBlock) {
@@ -974,18 +889,14 @@ export function detectTier2TextDrift(
 }
 
 /**
- * Consumer files whose bkit-managed blocks `detectTier2TextDrift` compares: Group B files
- * (partial-ownership) and key Group A files. Husky hooks are Tier 3 (seed-or-print) as of
- * v2.0.4 — their drift is handled by writeTier3's `tier3-merge-suggested-*` advisory in
- * runGitHooksModule, not here. Exported so tests can reference it without duplication.
+ * Consumer files whose bkit-managed blocks `detectTier2TextDrift` compares (partial
+ * ownership: bkit's block, the consumer's rest). Templates are the consumer's files and
+ * are never compared. Exported so tests can reference it without duplication.
  */
 export const MARKERED_TEXT_DRIFT_PATHS: readonly string[] = [
-  ".github/workflows/ci.yml",
-  ".vale.ini",
   "AGENTS.md",
   "CLAUDE.md",
   ".gitignore",
-  ".prettierignore",
 ];
 
 /**
@@ -1085,7 +996,7 @@ export function requiredMcpServersForTracker(tracker: IssueTracker): readonly st
  * Advisory: one finding per missing required MCP server key in a given mcp.json file.
  *
  * Semantics:
- *   - File absent      → return [] (Tier 3 scaffold will write it on next install)
+ *   - File absent      → return [] (the next install writes it)
  *   - File malformed   → return [] (parse-failure is a different advisory class)
  *   - File present, mcpServers missing a required key → one advisory per missing key
  *   - File present, all required keys present → return []
@@ -1521,12 +1432,6 @@ export function runPreflight(
   // #380 rollout: docs/completed.md still present -> not yet migrated
   const completedMdUnmigrated = detectCompletedMdUnmigrated(cwd);
   if (completedMdUnmigrated) advisories.push(completedMdUnmigrated);
-
-  const prettierBroad = detectPrettierignoreScopeBroadening(cwd);
-  if (prettierBroad) advisories.push(prettierBroad);
-
-  const prettierignore = detectPrettierignoreNoMarkers(cwd);
-  if (prettierignore) advisories.push(prettierignore);
 
   const lintProse = detectLintProseF9Vulnerable(cwd);
   if (lintProse) advisories.push(lintProse);

@@ -4,8 +4,14 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
-import { writeTier3, type WriteSet } from "./bkit-tiers";
-import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "./bkit-install";
+import type { WriteSet } from "./bkit-tiers";
+import {
+  parseModelLookup,
+  buildOpencodeModelLookup,
+  parseEffortMap,
+  listFilesRecursive,
+  remapTemplateDest,
+} from "./bkit-install";
 import { extractFullManagedBlock, extractManagedBlock } from "./bkit-markers";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
@@ -19,10 +25,10 @@ import {
   runOpencodeModule,
   renderOpencodeJson,
   reconcileOpencodeJson,
+  reconcileMcpJson,
   opencodeProviderId,
-  renderCloudWorkflow,
   dispatchModules,
-  deriveCiSkeleton,
+  isTemplate,
   type ModuleContext,
 } from "./bkit-modules";
 import { readBkitVersion, writeBkitVersion, sha256 } from "./bkit-version";
@@ -145,9 +151,8 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
 // Task 6.1b — Substituted ci.yml end-to-end integration test
 // ---------------------------------------------------------------------------
 
-describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
-  it("resolveTokens + applyTokens + writeTier3 produces substituted ci.yml on disk", async () => {
-    // Setup: pre-seed tmpdir per Acceptance Scenario
+describe("ci.yml template token substitution (Task 6.1b)", () => {
+  it("resolveTokens + applyTokens fill every placeholder the ci.yml template carries", async () => {
     fs.writeFileSync(path.join(tmpDir, ".nvmrc"), "22\n", "utf-8");
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -155,14 +160,12 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
       "utf-8",
     );
 
-    // Resolve tokens
     const tokens = await resolveTokens(tmpDir);
     expect(tokens.NODE_VERSION).toBe("22");
     expect(tokens.PROJECT_NAME).toBe("x");
-    // DEFAULT_BRANCH may be 'main' (fallback) since no git remote
+    // DEFAULT_BRANCH falls back to 'main' with no git remote
     expect(tokens.DEFAULT_BRANCH).toBe("main");
 
-    // Load the real ci.yml template
     const templatePath = path.resolve(
       import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
       "..",
@@ -171,103 +174,88 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
       "workflows",
       "ci.yml",
     );
-    expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
-
-    // Write via Tier 3 (since v0.2.1) into an absent dest in tmpDir
-    const destDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(destDir, { recursive: true });
-    const dstPath = path.join(destDir, "ci.yml");
-    const ws = makeWriteSet();
-    const advisories: PreflightFinding[] = [];
-
-    // Tier 3 needs the file pre-token-substituted (it copies bytes verbatim).
-    // applyTokens then writeTier3 isn't how runCiModule works — it just calls
-    // writeTier3 with the raw template. Token substitution is a Tier 1/Tier 2
-    // concern. Since the template still has placeholders we substitute the
-    // file in tmpdir for this test:
     const substituted = applyTokens(fs.readFileSync(templatePath, "utf-8"), tokens);
-    const stagedTemplate = path.join(tmpDir, "ci-staged.yml");
-    fs.writeFileSync(stagedTemplate, substituted, "utf-8");
 
-    writeTier3(stagedTemplate, dstPath, false, advisories, ws);
+    expect(substituted).toContain("node-version: 22");
+    expect(substituted).not.toContain("{{NODE_VERSION}}");
+    expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
+    expect(substituted).not.toContain("{{PROJECT_NAME}}");
+    // Registry-auth env var is present (BAR-138: replaced git auth-shim)
+    expect(substituted).toContain("BKIT_GH_TOKEN_INSTALL");
+    expect(substituted).not.toContain("git config --global url.");
+  });
+});
 
-    expect(ws.writes).toHaveLength(1);
-    expect(fs.existsSync(dstPath)).toBe(true);
+// ---------------------------------------------------------------------------
+// #489 — templates are the consumer's: install writes none outside .bkit/templates/
+// ---------------------------------------------------------------------------
 
-    const onDisk = fs.readFileSync(dstPath, "utf-8");
+describe("install writes no template path outside .bkit/templates/", () => {
+  const ALL = new Set<import("./bkit-cli").ModuleFlag>([
+    "core",
+    "claude",
+    "cursor",
+    "ci",
+    "lint",
+    "git-hooks",
+    "cloud",
+  ]);
+  const bkitDir = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+  );
+  // The cursor module renders agents, so it needs the real model catalog.
+  const promptsMd = path.join(bkitDir, "prompts.md");
+  const hostCtx = (overrides: Partial<ModuleContext>): ModuleContext =>
+    makeCtx({
+      modelLookup: parseModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+      ...overrides,
+    });
+  const templatePaths = (): string[] => {
+    const root = path.join(bkitDir, "templates");
+    return listFilesRecursive(root)
+      .map((abs) => remapTemplateDest(path.relative(root, abs)))
+      .filter((rel) => isTemplate(rel));
+  };
 
-    // Assert token substitution occurred
-    expect(onDisk).toContain("node-version: 22");
-    expect(onDisk).toContain("main"); // default branch
-
-    // Assert NO raw placeholders remain
-    expect(onDisk).not.toContain("{{NODE_VERSION}}");
-    expect(onDisk).not.toContain("{{DEFAULT_BRANCH}}");
-    expect(onDisk).not.toContain("{{PROJECT_NAME}}");
-
-    // Assert registry-auth env var is present (BAR-138: replaced git auth-shim)
-    expect(onDisk).toContain("BKIT_GH_TOKEN_INSTALL");
-    // BAR-138: the old git auth-shim has been removed from the template
-    expect(onDisk).not.toContain("git config --global url.");
+  it("a fresh install of every module (cloud=claude, then cursor) creates none of them", () => {
+    for (const cloudVariant of ["claude", "cursor"] as const) {
+      dispatchModules(ALL, hostCtx({ cloudVariant, issueTracker: "github" }));
+    }
+    const present = templatePaths().filter((rel) => fs.existsSync(path.join(tmpDir, rel)));
+    expect(present).toEqual([]);
+    // ...while their copies sit under .bkit/templates/.
+    expect(
+      fs.existsSync(path.join(tmpDir, ".bkit", "templates", ".github", "workflows", "ci.yml")),
+    ).toBe(true);
   });
 
-  it("existing ci.yml is left untouched and an AI merge instruction is printed (v0.2.1 Tier 3)", async () => {
-    // v0.2.1 changed ci.yml from Tier 2 (managed-block append) to Tier 3
-    // (seed-or-print) because appending a complete workflow to an existing
-    // ci.yml produced duplicate top-level YAML keys (invalid GHA workflow).
-    fs.writeFileSync(path.join(tmpDir, ".nvmrc"), "22\n", "utf-8");
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", packageManager: "pnpm@10.4.1" }),
-      "utf-8",
-    );
-
-    const templatePath = path.resolve(
-      import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-      "..",
-      "templates",
-      ".github",
-      "workflows",
-      "ci.yml",
-    );
-
-    const destDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(destDir, { recursive: true });
-    const dstPath = path.join(destDir, "ci.yml");
-    const consumerContent = `name: My CI
-on: push
-jobs:
-  consumer-job-1:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-  consumer-job-2:
-    runs-on: ubuntu-latest
-    steps:
-      - name: custom step
-        run: echo hello
-`;
-    fs.writeFileSync(dstPath, consumerContent, "utf-8");
-
+  it("an adopted copy of every template stays byte-identical, with no write and no advisory for it", () => {
+    const adopted = templatePaths();
+    for (const rel of adopted) {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), `consumer's own ${rel}\n`, "utf-8");
+    }
     const ws = makeWriteSet();
-    const advisories2: PreflightFinding[] = [];
-    const aiMessage =
-      "INSTRUCTIONS FOR AN AI AGENT: open .github/workflows/ci.yml and merge {{TEMPLATE_CONTENT}}";
-    const result = writeTier3(templatePath, dstPath, false, advisories2, ws, aiMessage);
+    const ctx = hostCtx({ ws, cloudVariant: "cursor", issueTracker: "linear" });
+    dispatchModules(ALL, ctx);
 
-    // Consumer file untouched
-    const onDisk = fs.readFileSync(dstPath, "utf-8");
-    expect(onDisk).toBe(consumerContent);
-
-    // No write recorded
-    expect(ws.writes).toHaveLength(0);
-
-    // AI merge instruction pushed as structured advisory with template content substituted in
-    expect(result.suggested).toBe(true);
-    expect(advisories2).toHaveLength(1);
-    expect(advisories2[0]!.action).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(advisories2[0]!.action).toContain("BKIT_GH_TOKEN_INSTALL");
-    expect(advisories2[0]!.action).not.toContain("{{TEMPLATE_CONTENT}}");
+    for (const rel of adopted) {
+      expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8"), rel).toBe(`consumer's own ${rel}\n`);
+    }
+    const adoptedSet = new Set(adopted);
+    expect(
+      ws.writes.filter((w) => adoptedSet.has(path.relative(tmpDir, path.resolve(w.path)))),
+    ).toEqual([]);
+    // No module advisory is about an adopted copy (no merge suggestion, no drift nag). The
+    // cloud setup advisories name the templates on purpose: they say what to copy.
+    const setupIds = new Set(["bkit-cloud-setup", "cloud-env-customize"]);
+    expect(
+      ctx.advisories.filter(
+        (a) => !setupIds.has(a.id) && adopted.some((rel) => a.detect.includes(rel)),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -335,91 +323,28 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
   });
 });
 
-describe("ci.yml skeleton vs wired + --ci/--typescript footprint (#265)", () => {
-  function readCi(): string {
-    return fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8");
-  }
-
-  it("--ci alone seeds the SKELETON: ts-ci-steps commented, vale config present, NO TS footprint", () => {
+describe("--ci/--typescript footprint (#265)", () => {
+  it("--ci alone writes nothing outside core and adds no package.json scripts", () => {
     dispatchModules(new Set(["core", "ci"]), makeCtx({}));
-    const ci = readCi();
-    // The Node/TS region body is commented out — no ACTIVE pnpm install step.
-    expect(ci).not.toMatch(/^\s+- name: Install Dependencies/m);
-    expect(ci).toMatch(/#\s*- name: Install Dependencies/);
-    expect(ci).toContain("# bkit:start ts-ci-steps"); // markers retained
-    // Vale config (stack-agnostic) ships with --ci.
-    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".vale", "styles", "House", "LLMSlop.yml"))).toBe(true);
-    // No Node/TS toolchain footprint.
-    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(false);
-    expect(
-      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
-    ).toBe(false);
-    // --ci adds NO package.json scripts (agnostic).
+    expect(fs.existsSync(path.join(tmpDir, ".github", "workflows", "ci.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(false);
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
     expect(pkg.scripts?.typecheck).toBeUndefined();
   });
 
-  it("--ci --typescript seeds the WIRED ci.yml: ts-ci-steps active + full TS footprint", () => {
+  it("--typescript writes the owned slop plugin and the package.json scripts, no tool configs", () => {
     dispatchModules(new Set(["core", "ci", "lint", "git-hooks"]), makeCtx({}));
-    const ci = readCi();
-    // The Node/TS region is ACTIVE (uncommented).
-    expect(ci).toMatch(/^\s+- name: Install Dependencies/m);
-    // Full Node/TS footprint present.
-    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(true);
     expect(
       fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
     ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".husky", "pre-push"))).toBe(false);
     // The slop gate is the `bkit ci slop` command now, not a seeded script.
     expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(false);
-    // Vale config still present (ci is co-installed under --typescript).
-    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
-    // typecheck added by the lint module (moved ci→lint).
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
     expect(pkg.scripts?.typecheck).toBeDefined();
     expect(pkg.scripts?.["slop:delta"]).toBe("bkit ci slop");
-  });
-});
-
-describe("deriveCiSkeleton (#265)", () => {
-  it("comments lines inside ts-ci-steps regions, leaves the spine untouched", () => {
-    const input = [
-      "jobs:",
-      "  build:",
-      "    steps:",
-      "      - name: Checkout",
-      "      # bkit:start ts-ci-steps",
-      "      - name: Install Dependencies",
-      "        run: pnpm install",
-      "      # bkit:end ts-ci-steps",
-      "      - name: Actionlint",
-    ].join("\n");
-    const out = deriveCiSkeleton(input);
-    expect(out).toContain("      - name: Checkout"); // spine untouched
-    expect(out).toContain("      - name: Actionlint"); // spine untouched
-    expect(out).toContain("      # - name: Install Dependencies"); // commented, indent kept
-    expect(out).toContain("        # run: pnpm install"); // commented, deeper indent kept
-    expect(out).toContain("      # bkit:start ts-ci-steps"); // marker line retained verbatim
-  });
-
-  it("is a no-op when there are no ts-ci-steps regions", () => {
-    const input = "jobs:\n  build:\n    steps:\n      - run: echo hi\n";
-    expect(deriveCiSkeleton(input)).toBe(input);
-  });
-
-  it("recognises the `optional` block flag on the start marker", () => {
-    const input = [
-      "    steps:",
-      "      # bkit:start ts-ci-steps optional",
-      "      - name: Install Dependencies",
-      "        run: pnpm install",
-      "      # bkit:end ts-ci-steps",
-    ].join("\n");
-    const out = deriveCiSkeleton(input);
-    expect(out).toContain("      # - name: Install Dependencies"); // body still commented
-    expect(out).toContain("      # bkit:start ts-ci-steps optional"); // marker retained verbatim
   });
 });
 
@@ -560,210 +485,132 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   const dockerRel = path.join(".cursor", "Dockerfile");
   const envRel = path.join(".cursor", "environment.json");
 
-  it("cloud=claude: writes bkit-cloud.yml + cloud-bootstrap.sh and emits bkit-cloud-setup advisory", () => {
+  it("cloud=claude: writes only cloud-bootstrap.sh and points the setup advisory at the workflow template", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, cloudVariant: "claude" });
     runCloudModule(ctx);
 
-    const routerPath = path.join(tmpDir, routerRel);
-    expect(fs.existsSync(routerPath)).toBe(true);
-    expect(fs.readFileSync(routerPath, "utf-8").length).toBeGreaterThan(0);
-
-    // cloud=claude ships: bkit-cloud.yml + cloud-bootstrap.sh (NOT .cursor/Dockerfile)
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(false);
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
+    expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
     expect(advisory!.action).toMatch(/Add `ANTHROPIC_API_KEY`/);
     expect(advisory!.action).toMatch(/install-github-app/);
-    expect(advisory!.action).toMatch(/required/);
     // Bare `Auto` must NOT appear in advisory text (migrated to bkit:auto)
     expect(advisory!.action).not.toMatch(/\bAuto\b(?! route)/);
     expect(advisory!.action).toMatch(/bkit:auto/);
+    expect(advisory!.action).not.toMatch(/BKIT_LINEAR_API_KEY/);
     // The env-scaffolding customisation advisory is emitted for cloud=claude too.
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
   });
 
-  it("cloud=opencode: writes bkit-cloud.yml and emits bkit-cloud-setup advisory (no bootstrap.sh)", () => {
+  it("cloud=opencode: writes no files and points the setup advisory at the workflow template", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, cloudVariant: "opencode", issueTracker: "github" });
     runCloudModule(ctx);
 
-    // cloud=opencode ships: bkit-cloud.yml only (no bootstrap.sh, no cursor files)
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(true);
+    expect(ws.writes).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
+    expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
     expect(advisory!.action).toMatch(/OPENCODE_PROVIDER_KEY/);
-    expect(advisory!.action).toMatch(/opencode\/opencode\.json/);
     expect(advisory!.action).not.toMatch(/BKIT_ANTHROPIC_API_KEY/);
-    expect(advisory!.action).not.toMatch(/bkit-auto\.yml/);
   });
 
-  it("cloud=opencode: persists bkit.cloudAgents = 'opencode' to package.json", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "opencode", issueTracker: "github" }));
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { cloudAgents?: string };
-    };
-    expect(pkg.bkit?.cloudAgents).toBe("opencode");
-  });
-
-  it("cloud=cursor: writes .cursor/Dockerfile + environment.json and emits bkit-cloud-setup advisory", () => {
+  it("cloud=cursor: writes no files and points the setup advisory at the .cursor templates", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, cloudVariant: "cursor", issueTracker: "linear" });
     runCloudModule(ctx);
 
-    // cloud=cursor ships: .cursor/Dockerfile + environment.json (NOT bkit-cloud.yml)
-    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(true);
+    expect(ws.writes).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
+    expect(advisory!.action).toContain(".bkit/templates/.cursor/Dockerfile");
+    expect(advisory!.action).toContain(".bkit/templates/.cursor/environment.json");
     expect(advisory!.action).toMatch(/BKIT_LINEAR_API_KEY/);
-    expect(advisory!.action).not.toMatch(/BKIT_ANTHROPIC_API_KEY/);
   });
 
-  it("cloud=claude: advisory does NOT reference BKIT_LINEAR_API_KEY (GitHub-only path)", () => {
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" });
-    runCloudModule(ctx);
-    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
-    expect(advisory!.action).not.toMatch(/BKIT_LINEAR_API_KEY/);
-    expect(advisory!.action).toMatch(/install-github-app/);
-    expect(advisory!.action).toMatch(/@claude/);
+  it("an adopted bkit-cloud.yml, Dockerfile and environment.json stay byte-identical", () => {
+    for (const rel of [routerRel, dockerRel, envRel]) {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), `mine: ${rel}\n`, "utf-8");
+    }
+    for (const cloudVariant of ["claude", "opencode", "cursor"] as const) {
+      runCloudModule(
+        makeCtx({ cloudVariant, issueTracker: cloudVariant === "cursor" ? "linear" : "github" }),
+      );
+    }
+    for (const rel of [routerRel, dockerRel, envRel]) {
+      expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8")).toBe(`mine: ${rel}\n`);
+    }
   });
 
-  it("cloud=claude: persists bkit.cloudAgents = 'claude' to package.json on success", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "claude" }));
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { cloudAgents?: string };
-    };
-    expect(pkg.bkit?.cloudAgents).toBe("claude");
-  });
-
-  it("cloud=cursor: persists bkit.cloudAgents = 'cursor' to package.json on success", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "cursor" }));
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-      bkit?: { cloudAgents?: string };
-    };
-    expect(pkg.bkit?.cloudAgents).toBe("cursor");
-  });
+  for (const variant of ["claude", "opencode", "cursor"] as const) {
+    it(`cloud=${variant}: persists bkit.cloudAgents = '${variant}' to package.json`, () => {
+      runCloudModule(makeCtx({ cloudVariant: variant }));
+      const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+        bkit?: { cloudAgents?: string };
+      };
+      expect(pkg.bkit?.cloudAgents).toBe(variant);
+    });
+  }
 
   it("dry-run: writes nothing to disk but still emits the setup advisory", () => {
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, dryRun: true, cloudVariant: "claude" });
+    const ctx = makeCtx({ dryRun: true, cloudVariant: "claude" });
     runCloudModule(ctx);
 
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
     expect(ctx.advisories.find((a) => a.id === "bkit-cloud-setup")).toBeDefined();
   });
 
-  it("--ci alone does NOT ship bkit-cloud.yml (split out of ci module per #119)", () => {
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
-    dispatchModules(new Set(["core", "ci"]), ctx);
-
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
-  });
-
-  it("the default module set does NOT ship bkit-cloud.yml or cloud scaffolding", () => {
+  it("the default module set does NOT ship cloud scaffolding", () => {
     // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
-    // modelLookup in this harness (see the dispatch tests above). The router only
-    // ever shipped via `ci`, so this set still proves it's gone from --full.
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
-    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
-
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    // modelLookup in this harness (see the dispatch tests above).
+    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), makeCtx({}));
     // claude is in the set — proves cloud-bootstrap.sh moved out of it into --cloud (#119).
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
-
-  // --- bkit-cloud.yml is GitHub-only (Linear render branch removed) ---
-
-  it("cloud=claude: renders bkit-cloud.yml with id-token: write and no Linear references", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
-    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
-    expect(yml).toContain("id-token: write");
-    expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
-    expect(yml).not.toContain("mcp__linear__*");
-    expect(yml).toContain("mcp__github__*");
-    expect(yml).not.toMatch(/@@CLOUD_TRACKER/); // all sentinels resolved
-  });
-
-  it("cloud=claude: {{CLOUD_RUNNER}} renders both jobs' runs-on from the token (#362)", () => {
-    const ws = makeWriteSet();
-    runCloudModule(
-      makeCtx({
-        ws,
-        cloudVariant: "claude",
-        issueTracker: "github",
-        tokens: { ...makeCtx().tokens, CLOUD_RUNNER: "depot-ubuntu-24.04" },
-      }),
-    );
-    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
-    // Both jobs (claude + opencode) share the one label; no raw token leaks through.
-    const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
-    expect(runsOn).toEqual(["depot-ubuntu-24.04", "depot-ubuntu-24.04"]);
-    expect(yml).not.toContain("{{CLOUD_RUNNER}}");
-  });
-
-  it("cloud=claude: unset runner defaults both jobs to ubuntu-latest (#362)", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
-    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
-    const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
-    expect(runsOn).toEqual(["ubuntu-latest", "ubuntu-latest"]);
-  });
-
-  it("cloud=claude: bkit-cloud.yml header states App required and bkit:auto label (no bare Auto)", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
-    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
-    expect(yml).toMatch(/bkit:auto/);
-    expect(yml).not.toMatch(/Required tracker label on the issue: `Auto`/);
-  });
-
-  it("cloud=cursor: does NOT install bkit-cloud.yml (Cursor path has no GHA workflow)", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, cloudVariant: "cursor", issueTracker: "linear" }));
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
-  });
 });
 
-describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", () => {
+describe("bkit-cloud.yml template — GitHub-only content", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..");
-  const template = fs.readFileSync(
+  const yml = fs.readFileSync(
     path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
     "utf-8",
   );
 
-  for (const tracker of ["github", "none", "linear"] as const) {
-    it(`${tracker} tracker → GitHub-only output (no Linear references, no sentinels)`, () => {
-      const out = renderCloudWorkflow(template, tracker);
-      expect(out).not.toContain("BKIT_LINEAR_API_KEY");
-      expect(out).not.toContain("mcp__linear__*");
-      expect(out).toContain("mcp__github__*");
-      expect(out).not.toMatch(/@@CLOUD_TRACKER/);
-      // Must have id-token: write (D1 fix)
-      expect(out).toContain("id-token: write");
-      // env block stays well-formed
-      expect(out).toMatch(
-        /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
-      );
-    });
-  }
+  it("carries id-token: write, GitHub MCP only and no tracker sentinels", () => {
+    expect(yml).toContain("id-token: write");
+    expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
+    expect(yml).not.toContain("mcp__linear__*");
+    expect(yml).toContain("mcp__github__*");
+    expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
+    expect(yml).toMatch(
+      /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
+    );
+  });
+
+  it("both jobs' runs-on are the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
+    const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
+    expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
+  });
+
+  it("header states App required and the bkit:auto label (no bare Auto)", () => {
+    expect(yml).toMatch(/bkit:auto/);
+    expect(yml).not.toMatch(/Required tracker label on the issue: `Auto`/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -794,7 +641,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   );
 
   it("concurrency.group dispatch path keys on inputs.issue (bare issue number)", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // Dispatch surface: group expression must use inputs.issue so concurrent dispatched
     // runs for the same issue cancel each other.
     expect(out).toMatch(/group:.*inputs\.issue/);
@@ -806,7 +653,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   });
 
   it("concurrency.group CI-completion path keys on head_branch (full slugged branch name)", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // CI-completion surface: group expression must use head_branch directly, so concurrent
     // CI runs for the same branch (e.g. feat/141-cloud-app) cancel each other.
     // A real slugged FID like feat/141-cloud-app must key on the full branch — not a
@@ -834,18 +681,14 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     expect(stripped).not.toBe("141");
   });
 
-  it("canonical .github/workflows/bkit-cloud.yml matches the token-rendered template (T3.1 + T2.7 invariant, #362)", () => {
+  it("bkit's own adopted bkit-cloud.yml is the template with {{CLOUD_RUNNER}} filled in (T3.1 + T2.7 invariant, #362)", () => {
     const canonical = fs.readFileSync(
       path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"),
       "utf-8",
     );
-    // bkit's own package.json sets no `bkit.runners`, so `{{CLOUD_RUNNER}}` resolves
-    // to the ubuntu-latest default (#362). The committed canonical is the RENDERED
-    // template, not the raw token — mirror the install/upgrade render here.
-    const rendered = renderCloudWorkflow(rawTemplate, "github").replace(
-      /\{\{CLOUD_RUNNER\}\}/g,
-      () => "ubuntu-latest",
-    );
+    // bkit's own adopted copy fills the `{{CLOUD_RUNNER}}` placeholder with
+    // ubuntu-latest and is otherwise the template byte for byte.
+    const rendered = rawTemplate.replace(/\{\{CLOUD_RUNNER\}\}/g, () => "ubuntu-latest");
     expect(canonical).toBe(rendered);
   });
 });
@@ -874,7 +717,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
   );
 
   it("(b) free-tier if: contains 'bkit [auto route]' — gate fires when marker is HEAD commit", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // The job-level if: must reference 'bkit [auto route]' in head_commit.message.
     // This closes the marker->HEAD->job-fires chain (positive, not just negative).
     expect(out).toContain(
@@ -889,7 +732,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
   });
 
   it("(b) dispatch path always proceeds (workflow_dispatch bypasses marker check)", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
     expect(out).toContain("github.event_name == 'workflow_dispatch'");
     // The if: uses || so dispatch path short-circuits the marker check.
@@ -900,7 +743,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
   });
 
   it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
     // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
     expect(out).toContain('gh issue view "$ISSUE"');
@@ -929,7 +772,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
   });
 
   it("(c) bkit:start/bkit:end markers wrap gate logic — shared-deriv inside auto-route-gate", () => {
-    const out = renderCloudWorkflow(rawTemplate, "github");
+    const out = rawTemplate;
     // Gate logic must be wrapped in bkit:start/end markers.
     expect(out).toContain("# bkit:start auto-route-gate");
     expect(out).toContain("# bkit:end auto-route-gate");
@@ -1149,7 +992,6 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.3",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
 
@@ -1167,7 +1009,6 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.8.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
 
@@ -1290,7 +1131,6 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.5.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
 
@@ -1344,7 +1184,6 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
 
@@ -1527,7 +1366,6 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.7.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
     const result = detectPreEnvelopeBkitVersion(tmpDir);
@@ -1540,7 +1378,6 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.8.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
     const result = detectPreEnvelopeBkitVersion(tmpDir);
@@ -1557,7 +1394,6 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.7.0",
-      tier3Hashes: {},
       canonicalHashes: {},
     });
     fs.writeFileSync(
@@ -1567,31 +1403,6 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
     );
     const result = detectPreEnvelopeBkitVersion(tmpDir);
     expect(result).toBeNull();
-  });
-});
-
-// bkit uninstall .cursor/Dockerfile safe-delete row (Task 10)
-// Tests that Tier-3 safe-delete logic functions through shouldDeleteTier3
-import { shouldDeleteTier3, sha256 } from "./bkit-version";
-
-describe("bkit uninstall Dockerfile safe-delete (Tier-3 hash guard)", () => {
-  it("hash matches → shouldDeleteTier3 returns true (safe to delete)", () => {
-    const content = "FROM node:22-alpine\n";
-    const hash = sha256(content);
-    const tier3Hashes = { ".cursor/Dockerfile": hash };
-    const dstPath = path.join(tmpDir, "Dockerfile");
-    fs.writeFileSync(dstPath, content, "utf-8");
-    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(true);
-  });
-
-  it("consumer modified → shouldDeleteTier3 returns false (preserve)", () => {
-    const installContent = "FROM node:22-alpine\n";
-    const hash = sha256(installContent);
-    const tier3Hashes = { ".cursor/Dockerfile": hash };
-    const dstPath = path.join(tmpDir, "Dockerfile");
-    // Consumer modified the file
-    fs.writeFileSync(dstPath, "FROM node:22-alpine\nRUN apt-get install -y curl\n", "utf-8");
-    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(false);
   });
 });
 
@@ -1735,11 +1546,12 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
 });
 
 // ---------------------------------------------------------------------------
-// Task 23 — Tier-3 drift regression: consumer ci.yml missing pnpm bkit check
-// step inside marker block → bkit check (detectTier2TextDrift) flags tier2-text-drift
+// Task 23 — detectTier2TextDrift named-block logic. The ci.yml template is the
+// fixture because it carries several named blocks, one of them `optional`. ci.yml
+// itself is a template and `bkit check` never drift-checks it (MARKERED_TEXT_DRIFT_PATHS).
 // ---------------------------------------------------------------------------
 
-describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => {
+describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as fixture)", () => {
   const relPath = path.join(".github", "workflows", "ci.yml");
   const pkgRoot = (() => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
@@ -1841,15 +1653,6 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
     expect(result?.detect ?? "").not.toContain("ts-ci-steps");
   });
 
-  it("no ts-ci-steps drift on the --ci skeleton (optional block fully commented)", () => {
-    // A `--ci`-only install comments the whole ts-ci-steps region (deriveCiSkeleton). That is
-    // opt-out, not drift — the optional block with no significant lines is skipped.
-    const consumer = deriveCiSkeleton(readTemplate());
-    writeConsumer(consumer);
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    expect(result?.detect ?? "").not.toContain("ts-ci-steps");
-  });
-
   it("no drift when a consumer adds an EXTRA line inside a managed block (subset — extras OK)", () => {
     // "All the content and more" stays quiet: an added env var is not drift.
     const consumer = readTemplate().replace(
@@ -1907,74 +1710,30 @@ describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => 
 });
 
 // ---------------------------------------------------------------------------
-// .husky/pre-push Tier 3 migration (v2.0.4)
-// Was Task 23b (BAR-167 Tier-2 marker survival). Husky moved Tier 2 → Tier 3
-// in v2.0.4: writeTier3 doesn't touch existing files, so consumer content is
-// preserved trivially. Test now asserts the Tier-3 contract: existing file
-// unchanged + tier3-merge-suggested-pre-push advisory emitted.
-// PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (still has
-// legacy markers — exercises the "consumer upgrading from <=2.0.3" path).
+// .husky/pre-push is a template: the git-hooks module never writes or reads it.
+// PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (a heavily
+// customised consumer hook carrying legacy bkit markers).
 // ---------------------------------------------------------------------------
 
-describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
+describe(".husky/pre-push is the consumer's file", () => {
   const PREPUSH_FIXTURE = path.resolve("tests/fixtures/heavy-customised-prepush/.husky/pre-push");
 
-  it("fixture file exists (legacy marker-block format, simulates upgrade-from-2.0.3 consumer)", () => {
-    expect(fs.existsSync(PREPUSH_FIXTURE)).toBe(true);
-  });
-
-  it("fixture has bkit:start / bkit:end markers (legacy Tier-2 shape)", () => {
-    const content = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-    expect(content).toContain("# bkit:start");
-    expect(content).toContain("# bkit:end");
-  });
-
-  it("runGitHooksModule leaves existing .husky/pre-push UNCHANGED and emits Tier-3 advisory", () => {
-    // Seed consumer's pre-push with the legacy-format fixture
+  it("runGitHooksModule leaves an existing .husky/pre-push byte-identical, with no advisory about it", () => {
     const fixtureContent = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-    const huskyDir = path.join(tmpDir, ".husky");
-    fs.mkdirSync(huskyDir, { recursive: true });
-    const prePushPath = path.join(huskyDir, "pre-push");
+    const prePushPath = path.join(tmpDir, ".husky", "pre-push");
+    fs.mkdirSync(path.dirname(prePushPath), { recursive: true });
     fs.writeFileSync(prePushPath, fixtureContent, "utf-8");
 
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
+    const ctx = makeCtx({});
     runGitHooksModule(ctx);
 
-    // File still exists AND content is byte-identical to the fixture (Tier 3
-    // never overwrites — consumer keeps every character including legacy markers
-    // and any bkit-repo-only lines below them).
-    expect(fs.existsSync(prePushPath)).toBe(true);
-    const resultContent = fs.readFileSync(prePushPath, "utf-8");
-    expect(resultContent).toBe(fixtureContent);
-
-    // tier3-merge-suggested-pre-push advisory must be emitted on the ctx
-    // advisories array (templates differ — fixture has markers, template doesn't).
-    const ids = ctx.advisories.map((f) => f.id);
-    expect(ids).toContain("tier3-merge-suggested-pre-push");
+    expect(fs.readFileSync(prePushPath, "utf-8")).toBe(fixtureContent);
+    expect(ctx.advisories.some((f) => f.detect.includes(".husky/pre-push"))).toBe(false);
   });
 
-  it("runGitHooksModule SEEDS .husky/pre-push when absent (Tier 3 first-install path)", () => {
-    const huskyDir = path.join(tmpDir, ".husky");
-    const prePushPath = path.join(huskyDir, "pre-push");
-    // Ensure file is absent (clean install path)
-    if (fs.existsSync(prePushPath)) fs.unlinkSync(prePushPath);
-
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
-    runGitHooksModule(ctx);
-
-    expect(fs.existsSync(prePushPath)).toBe(true);
-    const seeded = fs.readFileSync(prePushPath, "utf-8");
-    // Seeded content matches the canonical template (no bkit markers in Tier 3)
-    expect(seeded).not.toContain("# bkit:start");
-    // The hook dispatches through the shared gate scripts rather than carrying its
-    // own command list, so hooks and agent workflows cannot drift apart (#437).
-    expect(seeded).toContain("pnpm bkit:gate:static-unit");
-    expect(seeded).toContain("pnpm bkit:gate:static");
-    // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
-    const ids = ctx.advisories.map((f) => f.id);
-    expect(ids).not.toContain("tier3-merge-suggested-pre-push");
+  it("runGitHooksModule does not create .husky/pre-push when absent", () => {
+    runGitHooksModule(makeCtx({}));
+    expect(fs.existsSync(path.join(tmpDir, ".husky", "pre-push"))).toBe(false);
   });
 });
 
@@ -2842,6 +2601,93 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
 // install and upgrade then rendered a different order and `bkit check` never
 // settled (perpetual opencode.json + .bkit/version drift).
 // ---------------------------------------------------------------------------
+describe("reconcileMcpJson — bkit owns only its tracker entry", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const template = path.resolve(scriptsDir, "..", "templates", ".mcp.json");
+  const githubEntry = (
+    JSON.parse(fs.readFileSync(template, "utf-8")) as { mcpServers: Record<string, unknown> }
+  ).mcpServers.github;
+  const write = (doc: unknown) =>
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify(doc, null, 2) + "\n");
+  const read = () => JSON.parse(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8"));
+
+  it("absent file → writes the tracker-filtered render", () => {
+    const ws = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
+    expect(read()).toEqual({ mcpServers: { github: githubEntry } });
+    expect(ws.writes).toEqual([{ path: ".mcp.json", action: "write" }]);
+  });
+
+  it("keeps a consumer server and other keys, updates bkit's entry, keeps key order", () => {
+    const mine = { type: "stdio", command: "my-mcp" };
+    write({ theme: "x", mcpServers: { mine, github: { url: "https://edited" } } });
+    const ws = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, ws);
+    const after = read();
+    expect(after).toEqual({ theme: "x", mcpServers: { mine, github: githubEntry } });
+    expect(Object.keys(after.mcpServers)).toEqual(["mine", "github"]);
+    expect(ws.writes).toEqual([{ path: ".mcp.json", action: "update" }]);
+  });
+
+  it("in sync → no write; dry-run reports the same write as live without touching disk", () => {
+    write({ mcpServers: { github: githubEntry, mine: {} } });
+    const inSync = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, inSync);
+    expect(inSync.writes).toEqual([]);
+
+    write({ mcpServers: { github: { url: "https://edited" } } });
+    const before = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
+    const dry = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", true, dry);
+    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(before);
+    const live = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "github", false, live);
+    expect(live.writes).toEqual(dry.writes);
+  });
+
+  it("tracker none owns no entry → a present file is left alone", () => {
+    write({ mcpServers: { linear: { url: "https://mine" } } });
+    const ws = makeWriteSet();
+    reconcileMcpJson(template, ".mcp.json", "none", false, ws);
+    expect(ws.writes).toEqual([]);
+    expect(read()).toEqual({ mcpServers: { linear: { url: "https://mine" } } });
+  });
+
+  it("malformed JSON throws and leaves the file as it was", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ nope", "utf-8");
+    expect(() => reconcileMcpJson(template, ".mcp.json", "github", false, makeWriteSet())).toThrow(
+      /malformed JSON/,
+    );
+    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe("{ nope");
+  });
+});
+
+describe("create-if-missing core files (.agents/context.md, .agents/skills.md)", () => {
+  const files = [path.join(".agents", "context.md"), path.join(".agents", "skills.md")];
+
+  it("install writes them once, records no hash and no write; a second install leaves edits alone", () => {
+    const first = makeCtx();
+    runCoreModule(first);
+    flushPostDispatch(first);
+    for (const rel of files) expect(fs.existsSync(path.join(tmpDir, rel)), rel).toBe(true);
+    expect(first.ws.writes.filter((w) => files.includes(path.normalize(w.path)))).toEqual([]);
+    const hashes = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes;
+    for (const rel of files) expect(hashes[rel]).toBeUndefined();
+
+    for (const rel of files) fs.writeFileSync(path.join(tmpDir, rel), `edited ${rel}\n`, "utf-8");
+    const dry = makeCtx({ dryRun: true });
+    runCoreModule(dry);
+    const again = makeCtx();
+    runCoreModule(again);
+    for (const rel of files) {
+      expect(fs.readFileSync(path.join(tmpDir, rel), "utf-8")).toBe(`edited ${rel}\n`);
+    }
+    for (const ws of [dry.ws, again.ws]) {
+      expect(ws.writes.filter((w) => files.includes(path.normalize(w.path)))).toEqual([]);
+    }
+  });
+});
+
 describe("reconcileOpencodeJson — preserves existing provider order", () => {
   const DST = path.join(".opencode", "opencode.json");
 
@@ -2954,7 +2800,6 @@ describe("gateguard.cjs / gateguard.js markered-text migration — install engin
     fs.writeFileSync(path.join(tmpDir, CJS_REL), legacyContent, "utf-8");
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "4.10.0",
-      tier3Hashes: {},
       canonicalHashes: { [CJS_REL]: sha256(legacyContent) },
     });
 

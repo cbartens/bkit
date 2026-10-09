@@ -6,10 +6,6 @@
 # `main`). Merge it through to that branch before Dependabot opens PRs. PRs land
 # on `dev` (per `target-branch:` below).
 #
-# exclude-paths keeps bkit-cloud.yml out of version-update PRs. bkit rewrites that
-# file on install, so a pin PR for it never stays closed. exclude-paths does not
-# suppress security-update PRs; close those for bkit-cloud.yml.
-#
 # Repo settings (not in this file): enable the dependency graph and Dependabot
 # alerts. If this is your only updater, enable security updates. If you also run
 # Renovate, disable Dependabot version updates and security updates so the two
@@ -34,8 +30,6 @@ updates:
       github-actions:
         patterns:
           - "*"
-    exclude-paths:
-      - ".github/workflows/bkit-cloud.yml"
 
   # npm — opt-in. Uncomment and tune to your monorepo shape. For pnpm
   # workspaces, `directory: "/"` relies on hoisting; for explicit per-workspace

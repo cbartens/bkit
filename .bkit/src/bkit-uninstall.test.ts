@@ -159,30 +159,32 @@ describe("buildDecisionTable — markered-text format", () => {
   });
 
   it("core .agents/ doctrine files get a strip-block entry (they install via the templates pass, not the manifest)", () => {
-    // Regression: .agents/{config,docs,rules,skills}.md install via runCoreTemplates and were
-    // in no manifest, so uninstall/--nuke could not remove them — a full uninstall orphaned
+    // Regression: .agents/{docs,rules}.md install via runCoreTemplates and were in no
+    // manifest, so uninstall/--nuke could not remove them — a full uninstall orphaned
     // bkit's own doctrine. They carry a managed block, so strip-block (preserve consumer content
     // below bkit:end) is the treatment, matching AGENTS.md.
-    for (const rel of [
-      ".agents/context.md",
-      ".agents/docs.md",
-      ".agents/rules.md",
-      ".agents/skills.md",
-    ]) {
+    for (const rel of [".agents/docs.md", ".agents/rules.md"]) {
       writeFile(rel, "<!-- bkit:start -->\nbkit doctrine\n<!-- bkit:end -->\n# consumer note\n");
     }
     const table = buildDecisionTable(["core"], makeCtx());
-    for (const rel of [
-      ".agents/context.md",
-      ".agents/docs.md",
-      ".agents/rules.md",
-      ".agents/skills.md",
-    ]) {
+    for (const rel of [".agents/docs.md", ".agents/rules.md"]) {
       const entry = table.find((r) => r.file === rel);
       expect(entry, `${rel} should be in the decision table under core`).toBeDefined();
       expect(entry!.decision).toBe("strip-block");
       expect(entry!.format).toBe("markered-text");
     }
+  });
+
+  it("leaves the create-if-missing .agents/context.md and skills.md alone on a full uninstall", async () => {
+    const body = "<!-- bkit:start -->\nseeded once\n<!-- bkit:end -->\n";
+    writeFile(".agents/context.md", body);
+    writeFile(".agents/skills.md", body);
+    const table = buildDecisionTable(["core"], makeCtx());
+    expect(table.find((r) => r.file === ".agents/context.md")).toBeUndefined();
+    expect(table.find((r) => r.file === ".agents/skills.md")).toBeUndefined();
+    await runUninstall(["core"], makeCtx());
+    expect(readFile(".agents/context.md")).toBe(body);
+    expect(readFile(".agents/skills.md")).toBe(body);
   });
 
   it("core .agents/ doctrine files are NOT swept by a targeted (non-core) uninstall", () => {
@@ -195,71 +197,77 @@ describe("buildDecisionTable — markered-text format", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — byte-equal-text files (formerly Tier-3)
+// buildDecisionTable — byte-equal-text files (owned, hash-guarded)
 // ---------------------------------------------------------------------------
 
 describe("buildDecisionTable — byte-equal-text hash guard", () => {
-  it("byte-equal-text file: unknown hash (no tier3Hashes entry) → skip-tier3-unknown", () => {
-    writeFile(".cursor/environment.json", '{"build":{"dockerfile":"Dockerfile"}}\n');
-    // No .bkit-version file → no hash recorded
-    const table = buildDecisionTable(["cloud"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("skip-tier3-unknown");
+  // `.bkit/.env.example` is an owned byte-equal-text file (claude module).
+  const OWNED = ".bkit/.env.example";
+  const version = (canonicalHashes: Record<string, string>): BkitVersion => ({
+    pinnedVersion: "5.0.0",
+    canonicalHashes,
+    claudeAllowDerived: [],
   });
 
-  it("byte-equal-text file: hash matches → decision=delete", () => {
-    const content = '{"build":{"dockerfile":"Dockerfile"},"install":"pnpm install"}\n';
-    writeFile(".cursor/environment.json", content);
-    writeBkitVersionFile({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/environment.json": sha256(content) },
-    });
-    const table = buildDecisionTable(["cloud"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("delete");
+  it("byte-equal-text file: no recorded hash → skip-unknown", () => {
+    writeFile(OWNED, "BKIT_GH_TOKEN=\n");
+    // No .bkit/version file → no hash recorded
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-unknown");
   });
 
-  it("byte-equal-text file: hash mismatch (consumer modified) → skip-tier3-modified", () => {
-    const originalContent = '{"install":"pnpm install"}\n';
-    const modifiedContent = '{"install":"pnpm install && pnpm build"}\n';
-    writeFile(".cursor/environment.json", modifiedContent);
-    writeBkitVersionFile({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
-    });
-    const table = buildDecisionTable(["cloud"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("skip-tier3-modified");
+  it("byte-equal-text file: canonical hash matches → decision=delete", () => {
+    const content = "BKIT_GH_TOKEN=\n";
+    writeFile(OWNED, content);
+    writeBkitVersionFile(version({ [OWNED]: sha256(content) }));
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === OWNED)!.decision).toBe("delete");
+  });
+
+  it("byte-equal-text file: legacy tier3Hashes-only record still matches → decision=delete", () => {
+    const content = "BKIT_GH_TOKEN=\n";
+    writeFile(OWNED, content);
+    const versionFilePath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionFilePath,
+      JSON.stringify({ pinnedVersion: "4.0.0", tier3Hashes: { [OWNED]: sha256(content) } }),
+      "utf-8",
+    );
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === OWNED)!.decision).toBe("delete");
+  });
+
+  it("byte-equal-text file: hash mismatch (consumer modified) → skip-modified", () => {
+    writeFile(OWNED, "BKIT_GH_TOKEN=consumer\n");
+    writeBkitVersionFile(version({ [OWNED]: sha256("BKIT_GH_TOKEN=\n") }));
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-modified");
   });
 
   it("byte-equal-text with --force → decision=delete regardless of hash", () => {
-    const originalContent = '{"install":"pnpm install"}\n';
-    writeFile(".cursor/environment.json", '{"install":"consumer modified"}\n');
-    writeBkitVersionFile({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
-    });
-    const table = buildDecisionTable(["cloud"], makeCtx({ force: true }));
-    const entry = table.find((r) => r.file === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("delete");
-    expect(entry!.reason).toContain("--force");
+    writeFile(OWNED, "BKIT_GH_TOKEN=consumer\n");
+    writeBkitVersionFile(version({ [OWNED]: sha256("BKIT_GH_TOKEN=\n") }));
+    const table = buildDecisionTable(["claude"], makeCtx({ force: true }));
+    const entry = table.find((r) => r.file === OWNED)!;
+    expect(entry.decision).toBe("delete");
+    expect(entry.reason).toContain("--force");
   });
 
-  it("retro-fit: v0.6.x .bkit-version (plain text, no tier3Hashes) → skip-tier3-unknown", () => {
-    writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
-    // Simulate v0.6.x plain-text .bkit-version
+  it("retro-fit: v0.6.x .bkit-version (plain text, no hashes) → skip-unknown", () => {
+    writeFile(OWNED, "BKIT_GH_TOKEN=\n");
     const versionFilePath = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
+    const table = buildDecisionTable(["claude"], makeCtx());
+    expect(table.find((r) => r.file === OWNED)!.decision).toBe("skip-unknown");
+  });
 
-    const table = buildDecisionTable(["cloud"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/environment.json");
-    expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("skip-tier3-unknown");
+  it("an adopted template is never in the table, whatever its content", () => {
+    writeFile(".cursor/Dockerfile", "FROM node:22\n");
+    writeFile(".github/workflows/ci.yml", "name: ci\n");
+    const table = buildDecisionTable(["core", "claude", "cursor", "ci", "cloud"], makeCtx());
+    expect(table.find((r) => r.file === ".cursor/Dockerfile")).toBeUndefined();
+    expect(table.find((r) => r.file === ".github/workflows/ci.yml")).toBeUndefined();
   });
 });
 
@@ -271,10 +279,11 @@ describe("buildDecisionTable — nuke mode", () => {
   it("--nuke makes all present files decision=delete", () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
     writeFile("AGENTS.md", "# Consumer\n\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\n");
-    writeFile(".cursor/Dockerfile", "consumer modified\n");
+    writeFile(".bkit/.env.example", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256("different content\n") },
+      canonicalHashes: { ".bkit/.env.example": sha256("different content\n") },
+      claudeAllowDerived: [],
     });
 
     const table = buildDecisionTable(
@@ -369,32 +378,72 @@ describe("runUninstall — round-trip", () => {
     expect(readFile("AGENTS.md")).toBe(consumerContent);
   });
 
-  it("preserves byte-equal-text file when hash unknown (no tier3Hashes)", async () => {
-    writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
-    await runUninstall(["cloud"], makeCtx());
-    expect(fileExists(".cursor/environment.json")).toBe(true);
+  it("preserves byte-equal-text file when hash unknown", async () => {
+    writeFile(".bkit/.env.example", "BKIT_GH_TOKEN=\n");
+    await runUninstall(["claude"], makeCtx());
+    expect(fileExists(".bkit/.env.example")).toBe(true);
   });
 
-  it("deletes byte-equal-text file when hash matches install-time hash", async () => {
-    const content = '{"install":"pnpm install"}\n';
-    writeFile(".cursor/environment.json", content);
+  it("reclaims an unedited owned byte-equal file via canonicalHashes", async () => {
+    const content = "BKIT_GH_TOKEN=\n";
+    writeFile(".bkit/.env.example", content);
     writeBkitVersionFile({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/environment.json": sha256(content) },
+      pinnedVersion: "5.0.0",
+      canonicalHashes: { ".bkit/.env.example": sha256(content) },
+      claudeAllowDerived: [],
     });
-    await runUninstall(["cloud"], makeCtx());
-    expect(fileExists(".cursor/environment.json")).toBe(false);
+    await runUninstall(["claude"], makeCtx());
+    expect(fileExists(".bkit/.env.example")).toBe(false);
   });
 
   it("preserves byte-equal-text file when hash mismatches (consumer modified)", async () => {
-    writeFile(".cursor/environment.json", '{"install":"consumer modified"}\n');
+    writeFile(".bkit/.env.example", "BKIT_GH_TOKEN=consumer\n");
     writeBkitVersionFile({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/environment.json": sha256('{"install":"original"}\n') },
+      pinnedVersion: "5.0.0",
+      canonicalHashes: { ".bkit/.env.example": sha256("BKIT_GH_TOKEN=\n") },
+      claudeAllowDerived: [],
     });
-    await runUninstall(["cloud"], makeCtx());
-    expect(fileExists(".cursor/environment.json")).toBe(true);
-    expect(readFile(".cursor/environment.json")).toBe('{"install":"consumer modified"}\n');
+    await runUninstall(["claude"], makeCtx());
+    expect(readFile(".bkit/.env.example")).toBe("BKIT_GH_TOKEN=consumer\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runUninstall — .mcp.json / .cursor/mcp.json: only bkit's tracker entry goes
+// ---------------------------------------------------------------------------
+
+describe("runUninstall — MCP config keeps the consumer's servers", () => {
+  const templatesRoot = getTemplatesRoot();
+  const trackerEntry = (rel: string, tracker: string): unknown =>
+    (
+      JSON.parse(fs.readFileSync(path.join(templatesRoot, rel), "utf-8")) as {
+        mcpServers: Record<string, unknown>;
+      }
+    ).mcpServers[tracker];
+
+  it("removes bkit's entry and keeps a consumer server and top-level key", async () => {
+    const rel = ".mcp.json";
+    const consumer = { type: "stdio", command: "my-mcp" };
+    writeFile(
+      rel,
+      JSON.stringify(
+        { mcpServers: { github: trackerEntry(rel, "github"), mine: consumer }, extra: true },
+        null,
+        2,
+      ) + "\n",
+    );
+    await runUninstall(["claude"], makeCtx());
+    expect(JSON.parse(readFile(rel))).toEqual({ mcpServers: { mine: consumer }, extra: true });
+  });
+
+  it("deletes the file when bkit's entry was all it held", async () => {
+    const rel = path.join(".cursor", "mcp.json");
+    writeFile(
+      rel,
+      JSON.stringify({ mcpServers: { linear: trackerEntry(rel, "linear") } }, null, 2) + "\n",
+    );
+    await runUninstall(["cursor"], makeCtx());
+    expect(fileExists(rel)).toBe(false);
   });
 });
 
@@ -480,7 +529,7 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
   it("deletes .bkit/version on a full/core uninstall (bkit install-state, zero-footprint)", () => {
     // .bkit/version records no hash for itself, so the generic byte-equal hash-guard used to
     // preserve it as "consumer-modified" — leaving bkit state behind after a full teardown.
-    writeBkitVersionFile({ pinnedVersion: "1.0.0", tier3Hashes: {} });
+    writeBkitVersionFile({ pinnedVersion: "1.0.0", canonicalHashes: {}, claudeAllowDerived: [] });
     return runUninstall(["core"], makeCtx()).then(() => {
       expect(fileExists(".bkit/version")).toBe(false);
     });
@@ -488,7 +537,7 @@ describe("runUninstall — .bkit/version install-state (4.6.3)", () => {
 
   it("keeps .bkit/version on a targeted (non-core) uninstall", () => {
     // It is `module: core`, so a `--claude`-only uninstall never sees it and bkit keeps working.
-    writeBkitVersionFile({ pinnedVersion: "1.0.0", tier3Hashes: {} });
+    writeBkitVersionFile({ pinnedVersion: "1.0.0", canonicalHashes: {}, claudeAllowDerived: [] });
     return runUninstall(["claude"], makeCtx()).then(() => {
       expect(fileExists(".bkit/version")).toBe(true);
     });
@@ -571,10 +620,11 @@ describe("runUninstall — nuke", () => {
   it("--nuke --yes deletes all present files without interactive prompt", async () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
     writeFile("AGENTS.md", "# Consumer\n\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\n");
-    writeFile(".cursor/Dockerfile", "consumer modified\n");
+    writeFile(".bkit/.env.example", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256("different\n") },
+      canonicalHashes: { ".bkit/.env.example": sha256("different\n") },
+      claudeAllowDerived: [],
     });
 
     const result = await runUninstall(
@@ -586,7 +636,7 @@ describe("runUninstall — nuke", () => {
     const deletes = result.deleted;
     expect(deletes.some((f) => f.includes("settings.json"))).toBe(true);
     expect(fileExists(".claude/settings.json")).toBe(false);
-    expect(fileExists(".cursor/Dockerfile")).toBe(false);
+    expect(fileExists(".bkit/.env.example")).toBe(false);
   });
 });
 

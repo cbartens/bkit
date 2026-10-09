@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as os from "node:os";
 import {
-  scanForeignBkitUses,
   guardTemplatesRoot,
   enrichClaudeSettingsAllows,
   removeOrphans,
@@ -150,33 +149,6 @@ describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
   });
 });
 
-describe("CI_YML_MERGE_INSTRUCTIONS (in bkit-modules.ts — used for Tier 3 merge advisory)", () => {
-  const match = MODULES_SRC.match(/const CI_YML_MERGE_INSTRUCTIONS = `([\s\S]*?)`;/);
-  const body = match ? match[1] : "";
-
-  it("constant body is non-empty", () => {
-    expect(body.length).toBeGreaterThan(0);
-  });
-
-  it("contains .npmrc reference", () => {
-    expect(body).toContain(".npmrc");
-  });
-
-  it("contains BKIT_GH_TOKEN_INSTALL env block for install step", () => {
-    expect(body).toContain("BKIT_GH_TOKEN_INSTALL:");
-    expect(body).toContain("secrets.BKIT_GH_TOKEN_INSTALL");
-  });
-
-  it("contains read:packages scope reference", () => {
-    expect(body).toContain("read:packages");
-  });
-
-  it("tells AI to remove Configure private-repo auth step", () => {
-    expect(body).toContain("Remove");
-    expect(body).toContain("Configure private-repo auth");
-  });
-});
-
 describe("runCoreModule first-install advisory (BAR-141: structured finding)", () => {
   // The first-install message is now emitted as a structured PreflightFinding advisory.
   // Check the source uses advisories.push with the correct id.
@@ -237,30 +209,22 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     expect(paths).toContain(".cursor/hooks.json");
   });
 
-  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore, .prettierignore use format markered-text", () => {
+  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore use format markered-text", () => {
     const allEntries = getInstallManifest([]);
     const markedEntries = allEntries.filter((e) => e.format === "markered-text");
     const paths = markedEntries.map((e) => e.path);
     expect(paths).toContain("AGENTS.md");
     expect(paths).toContain("CLAUDE.md");
     expect(paths).toContain(".gitignore");
-    expect(paths).toContain(".prettierignore");
-    // ci.yml and .vale.ini are byte-equal-text (seed-or-print) since v2.0.0
-    expect(paths).not.toContain(".github/workflows/ci.yml");
-    expect(paths).not.toContain(".vale.ini");
-    // .husky/* moved to byte-equal-text (Tier 3 seed-or-print) in v2.0.4
-    expect(paths).not.toContain(".husky/pre-commit");
-    expect(paths).not.toContain(".husky/pre-push");
   });
 
-  it("byte-equal-text entries: .cursor/environment.json, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {
+  it("byte-equal-text entries: the owned .bkit files use format byte-equal-text", () => {
     const allEntries = getInstallManifest([]);
     const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
     const paths = byteEqualEntries.map((e) => e.path);
-    expect(paths).toContain(".cursor/environment.json");
-    expect(paths).toContain(".github/workflows/ci.yml");
-    expect(paths).toContain(".vale.ini");
-    expect(paths).toContain("slop-scan.config.json");
+    expect(paths).toContain(".bkit/version");
+    expect(paths).toContain(".bkit/.env.example");
+    expect(paths).toContain(".bkit/scripts/bkit-slop-type-suppression.mjs");
   });
 
   it("every entry has a valid format value", () => {
@@ -271,6 +235,17 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     }
   });
 });
+
+// Every `uses: cbartens/bkit/...@<ref>` line in a workflow.
+function scanForeignBkitUses(content: string): string[] {
+  const matches: string[] = [];
+  const re = /^\s*-?\s*uses:\s*(cbartens\/bkit\/[^\s@]+@\S+)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    matches.push(m[1]!);
+  }
+  return matches;
+}
 
 describe("BAR-164 — canonical CI template has no cross-org private `uses:` references", () => {
   it("scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines", () => {
@@ -381,7 +356,6 @@ describe("enrichClaudeSettingsAllows — recording contract and prune (T8, T15)"
       path.join(dir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "4.12.0",
-        tier3Hashes: {},
         canonicalHashes: {},
         claudeAllowDerived,
       }),

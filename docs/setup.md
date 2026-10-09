@@ -36,7 +36,7 @@ Optional, copy and own, never installed. Catalog and install steps: `.bkit/templ
 
 ## Local environment variables
 
-bkit ships `.bkit/.env.example` (placeholders) and `.envrc` (`dotenv_if_exists .bkit/.env`). Canonical local secrets: `.bkit/.env` (gitignored), auto-loaded via direnv on every `cd`.
+bkit writes `.bkit/.env.example` (placeholders) and ships `.envrc` (`dotenv_if_exists .bkit/.env`) as a template; this repo carries its own copy. Canonical local secrets: `.bkit/.env` (gitignored), auto-loaded via direnv on every `cd`.
 
 ```bash
 # One-time per machine

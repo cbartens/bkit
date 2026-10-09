@@ -329,12 +329,12 @@ Both hosts: same `mcpServers` shape; files differ:
 <!-- prettier-ignore -->
 | Host | File | Written by |
 | --- | --- | --- |
-| Claude Code | `.mcp.json` at repo root | `bkit install --tracker=github` seeds the `github` entry |
-| Cursor | `.cursor/mcp.json` | `bkit install --tracker=github` seeds this file with the same `mcpServers.github` block |
+| Claude Code | `.mcp.json` at repo root | `bkit install --tracker=github` writes the `github` entry |
+| Cursor | `.cursor/mcp.json` | `bkit install --tracker=github` writes the same `mcpServers.github` block |
 
 Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers": { "Authorization": "Bearer ${BKIT_GH_TOKEN}" }`. `${BKIT_GH_TOKEN}` at session start — must be in shell (local) or dashboard env (cloud). See `.bkit/cloud.md` § MCP issue-tracker integration for full JSON.
 
-**Tracker switch seed-only, not rewrite.** `.mcp.json` / `.cursor/mcp.json` Tier-3 seed-or-print: bkit writes tracker-filtered content only when absent. Existing file never overwritten — tracker switch (e.g. `--tracker=linear` → `--tracker=github`) leaves old entry. Advisories: `mcp-missing-server-<name>` (file lacks needed server), `mcp-extra-server-<name>` (bkit-managed server the configured tracker does not use). Consumer-added MCP servers never flagged.
+**bkit owns one entry per file.** In `.mcp.json` / `.cursor/mcp.json` bkit owns only `mcpServers.<tracker>`: an absent file gets the tracker-filtered render; in an existing file install and upgrade reset that one entry to the template and keep every other key, in its order (malformed JSON stops the install). `bkit check` reports a pending reset. Tracker `none` owns no entry. A tracker switch (e.g. `--tracker=linear` → `--tracker=github`) adds the new entry and leaves the old one. Uninstall removes bkit's entry while it still equals the template. Advisories: `mcp-missing-server-<name>` (file lacks needed server), `mcp-extra-server-<name>` (bkit-managed server the configured tracker does not use). Consumer-added MCP servers never flagged.
 
 > Note: `mcpServers` in `.claude/settings.json` silently ignored for server defs — only `.mcp.json` (project) or `claude mcp add` (user) take effect. Tool-permission `allow` (`mcp__github__*`) remain in settings.
 
@@ -356,7 +356,7 @@ Both: `"type": "http"`, `"url": "https://api.githubcopilot.com/mcp/"`, `"headers
 | Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
 | Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
 | Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
-| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (bkit Tier 3 keeps content byte-identical) |
+| Reusable across repos | Setup script yes (generic snapshot); environment no — one per repo (secrets / PAT scope are per-repo) | No — Dockerfile per repo (copied from the bkit template and owned by the repo) |
 | Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
 | Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
 

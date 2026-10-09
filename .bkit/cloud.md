@@ -32,7 +32,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 
 ### Reactive comment handlers (`claude.yml` + `opencode.yml`) — separately managed, NOT bkit
 
-`.github/workflows/claude.yml` (the `@claude` handler) and `.github/workflows/opencode.yml` (the `/oc` handler) are **not bkit's**. Each is generated — and re-generated — by its own vendor tool; bkit ships **no template** for either, and `bkit install` / `upgrade` never writes, rewrites, or drift-gates them (both are absent from the bkit manifest). They coexist **additively** with bkit's own `bkit-cloud.yml` (the CI-completion + `workflow_dispatch` lane, which _is_ bkit-managed): a comment fires the vendor handler; a CI run fires `bkit-cloud.yml`.
+`.github/workflows/claude.yml` (the `@claude` handler) and `.github/workflows/opencode.yml` (the `/oc` handler) are **not bkit's**. Each is generated — and re-generated — by its own vendor tool; bkit ships **no template** for either, and `bkit install` / `upgrade` never writes, rewrites, or drift-gates them (both are absent from the bkit manifest). They coexist **additively** with `bkit-cloud.yml` (the CI-completion + `workflow_dispatch` lane, which bkit ships as a template): a comment fires the vendor handler; a CI run fires `bkit-cloud.yml`.
 
 <!-- prettier-ignore -->
 | Reactive handler (not bkit) | Installed by (vendor tool) | Auth | Launch a bkit phase |
@@ -292,8 +292,8 @@ Everything in repo under `.cursor/`. bkit ships canonical content for all four f
 <!-- prettier-ignore -->
 | File | Role | bkit ownership |
 | --- | --- | --- |
-| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 20 (template default) + pnpm (corepack-pinned); browsers etc. added by the consumer | Tier 3 seed; consumer-owned after first install |
-| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm config set …:_authToken=$BKIT_GH_TOKEN_INSTALL` + `pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
+| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 20 (template default) + pnpm (corepack-pinned); browsers etc. added by the consumer | Template: copy from `.bkit/templates/.cursor/Dockerfile`; yours after |
+| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm config set …:_authToken=$BKIT_GH_TOKEN_INSTALL` + `pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Template: copy from `.bkit/templates/.cursor/environment.json`; yours after |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
 
@@ -378,15 +378,15 @@ Shared across repos (copy, don't re-derive) — non-secret only:
 
 Cursor environment-resolution order: (1) `.cursor/environment.json` in repo, (2) personal saved environment in Cursor account, (3) team saved environment. Three sharing patterns:
 
-1. **In-repo Tier 2 markered (bkit default).** Each consumer repo carries `.cursor/Dockerfile` + `.cursor/environment.json`. bkit owns toolchain block inside `# <!-- bkit:start -->` / `# <!-- bkit:end -->`; consumers customise outside. Functionally equivalent Cursor envs across consumers; bkit ships base-toolchain updates without trampling consumer changes.
+1. **In-repo copy (bkit default).** Each consumer repo carries `.cursor/Dockerfile` + `.cursor/environment.json`, copied from bkit's templates and owned by the repo. Functionally equivalent Cursor envs across consumers; bkit ships base-toolchain updates as template changes the consumer adopts.
 2. **Personal saved environment (cross-repo).** Don't commit `.cursor/environment.json`; configure single environment in Cursor account dashboard. Cursor falls back for any session. Like any cross-repo environment — one secret set for all repos; prefer per-repo default (#1) when repos have distinct secrets.
 3. **Multi-repo environment.** Cursor binds one environment to multiple repos cloned into same agent VM. Cross-repo work but agent sees all selected repos — different security boundary.
 
 When bkit reference Dockerfile changes (e.g. vale bump):
 
-- Consumer `.cursor/Dockerfile` **not** auto-overwritten (Tier 3 seed-only).
-- `pnpm bkit install` prints new reference with merge instructions.
-- Consumer merges manually (or deletes copy and lets bkit re-seed if no local edits).
+- Consumer `.cursor/Dockerfile` **never** written by bkit (it is the consumer's copy of a template).
+- `bkit upgrade` refreshes `.bkit/templates/.cursor/Dockerfile` and names it in its changed-templates list.
+- Consumer diffs the refreshed template against their copy and merges what they want.
 
 ## What every consumer repo needs to do
 

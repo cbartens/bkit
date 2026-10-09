@@ -40,7 +40,7 @@ Each agent host reads its own permissions, hooks, tool servers, model picks; nob
 - Tool-server specification authorization and security best practices (e.g. Model Context Protocol); record the specification date read.
 - OpenSSF Security-Focused Guide for AI Code Assistant Instructions.
 - Each host's settings, permission, sandbox, and hook reference (e.g. Claude Code, Cursor, Codex, opencode); record date read.
-- bkit, when installed: `.bkit/README.md` § Three-tier file ownership and § Ongoing CLI; release notes since pinned version.
+- bkit, when installed: `.bkit/README.md` § File ownership and § Ongoing CLI; release notes since pinned version.
 
 ### Scope
 

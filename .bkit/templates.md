@@ -31,8 +31,8 @@
 ## Dependabot and Renovate
 
 - Use one.
-- Examples already exclude `.github/workflows/bkit-cloud.yml`.
-- `enabled: false` on a Renovate package rule does not stop digest pinning.
+- Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.
+- `enabled: false` on a Renovate package rule does not stop digest pinning; use `ignorePaths` to keep Renovate off a file.
 - Land config on default branch before bot runs. Examples set `baseBranchPatterns: ["dev"]`.
 - App install, self-hosted token, private-package host rule, CVE handling → `docs/deployments.md` § Dependency updaters.
 

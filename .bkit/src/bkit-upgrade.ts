@@ -210,16 +210,10 @@ export interface UpgradeCandidate {
   templatePath: string;
   format?: ManifestEntry["format"];
   /**
-   * Seed-or-print (Tier 3): bkit seeds it once, consumer owns it after. Upgrade must
-   * never overwrite it when present — surface a conflict instead (mirrors install's
-   * writeTier3). Only meaningful for whole-file (byte-equal-text) candidates.
-   */
-  seedOrPrint?: boolean;
-  /**
    * Pre-rendered template content that overrides reading `templatePath`. Used for
    * files install writes via a transform the upgrade walk can't reproduce from the raw
-   * template — e.g. the tracker-conditional `bkit-cloud.yml` (issue #138), rendered with
-   * the consumer's `bkit.issueTracker` so install and upgrade emit byte-identical output.
+   * template — e.g. `opencode.json` (#245), rendered with the consumer's tracker and
+   * provider so install and upgrade emit byte-identical output.
    */
   contentOverride?: string;
   /**
@@ -264,22 +258,15 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
   // formats; the tier writers push exactly one entry per file they actually change.
   const ws: WriteSet = { writes: [] };
 
-  for (const {
-    relPath,
-    templatePath,
-    format,
-    seedOrPrint,
-    contentOverride,
-    noMarkerMigration,
-  } of candidates) {
+  for (const { relPath, templatePath, format, contentOverride, noMarkerMigration } of candidates) {
     if (contentOverride === undefined && !fs.existsSync(templatePath)) {
       console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
       continue;
     }
 
     const absolutePath = path.join(cwd, relPath);
-    // `contentOverride` (e.g. the tracker-rendered bkit-cloud.yml, #138) wins over the
-    // raw template so upgrade emits the same bytes install would.
+    // `contentOverride` (e.g. the rendered opencode.json, #245) wins over the raw
+    // template so upgrade emits the same bytes install would.
     const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
 
     // Resolve the write strategy the SAME way `bkit install` would — so install and
@@ -289,9 +276,9 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     //       markered-text → block-merge (writeTier2, preserves content outside markers)
     //       json          → deep-merge  (writeTier2JsonContained, preserves consumer keys)
     //       byte-equal-text → whole-file/diff — even when the template carries markers
-    //                         (e.g. `.vale.ini`, which install writes verbatim via
-    //                         writeTier1; block-merging it would reformat the block and
-    //                         churn forever against install).
+    //                         (install writes these verbatim via writeTier1; block-merging
+    //                         one would reformat the block and churn forever against
+    //                         install).
     //   - NO manifest entry: the install core-templates pass block-merges markered
     //       MARKDOWN it manages as a directory (`docs/*.md`, `.agents/*.md`) where the
     //       consumer's prose lives after `bkit:end`; everything else (e.g. canonical
@@ -371,28 +358,11 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     }
 
     // Whole-file formats (byte-equal-text, or unmanaged non-markered templates).
-    // Token-substitute FIRST (matching install's writeTier1/writeTier3 tokens) so
+    // Token-substitute FIRST (matching install's writeTier1 tokens) so
     // drift-detect compares like-for-like and a freshly-seeded file gets real values,
     // not a literal `{{DEFAULT_BRANCH}}` (#129 §2). Token-free templates are unchanged.
     const effectiveTemplate = applyTokens(templateContent, tokens);
     const diffAction = diffFile(relPath, absolutePath, effectiveTemplate, canonicalHashes);
-
-    // Seed-or-print (Tier 3) files are consumer-owned after the initial seed: install's
-    // writeTier3 never overwrites a present one, so neither may upgrade. A present seed
-    // file with no whole-file drift would otherwise be an "update" (silent overwrite) —
-    // but the consumer's customisation may BE the recorded canonical baseline, so
-    // "no drift" must NOT license clobbering it. Downgrade to a conflict (#129 §1).
-    if (seedOrPrint && diffAction.action === "update") {
-      result.conflicts.push({
-        relPath,
-        templateContent: effectiveTemplate,
-        diskContent: fs.readFileSync(absolutePath, "utf-8"),
-      });
-      console.error(
-        `${LOG_PREFIX} conflict: ${relPath} — seed-or-print file is consumer-owned, NOT overwriting`,
-      );
-      continue;
-    }
 
     switch (diffAction.action) {
       case "skip":
@@ -481,13 +451,13 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
 
-  // Drop the keys bkit no longer keeps (retired owned files, templates), exactly as
-  // install's postDispatch does, so a clean upgrade is followed by a zero-write check.
+  // Drop the keys bkit no longer keeps (retired owned files, templates) and the retired
+  // tier3Hashes field, exactly as install's postDispatch does, so a clean upgrade is
+  // followed by a zero-write check.
   const newCanonicalHashes = withoutRetiredHashes(bkitVersion.canonicalHashes);
-  const tier3Hashes = withoutRetiredHashes(bkitVersion.tier3Hashes);
   const droppedRetired =
     Object.keys(newCanonicalHashes).length !== Object.keys(bkitVersion.canonicalHashes).length ||
-    Object.keys(tier3Hashes).length !== Object.keys(bkitVersion.tier3Hashes).length;
+    bkitVersion.legacyTier3Hashes === true;
   for (const relPath of seedablePaths) {
     // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
     // .env.example etc.) from canonicalHashes — they are not consumer-facing files
@@ -522,7 +492,6 @@ export function updateCanonicalHashesAfterUpgrade(
   const updated: BkitVersion = {
     ...bkitVersion,
     pinnedVersion,
-    tier3Hashes,
     canonicalHashes: newCanonicalHashes,
     ...(options.claudeAllowDerived == null
       ? {}

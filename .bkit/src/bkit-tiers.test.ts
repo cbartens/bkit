@@ -7,7 +7,7 @@ import { sha256 } from "./bkit-version";
 import {
   writeTier1,
   writeTier2,
-  writeTier3,
+  writeIfAbsent,
   writeTier2JsonContained,
   migrateLegacyBkitEnvelope,
   deepContains,
@@ -352,55 +352,43 @@ describe("writeTier2 — noMarkerMigration policy (#422)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tier 3 — seed-or-print
+// create-if-missing
 // ---------------------------------------------------------------------------
 
-describe("writeTier3", () => {
-  it("writes file when dest is absent", () => {
-    const src = path.join(tmpDir, "slop-scan.config.json");
-    const dst = path.join(tmpDir, "slop-scan-out.json");
-    fs.writeFileSync(src, '{"patterns":[]}\n', "utf-8");
-    const advisories: PreflightFinding[] = [];
-    const ws = makeWriteSet();
+describe("writeIfAbsent", () => {
+  const tokens = {
+    NODE_VERSION: "22",
+    DEFAULT_BRANCH: "main",
+    PROJECT_NAME: "p",
+    REPO_SLUG: "o/p",
+  };
 
-    const result = writeTier3(src, dst, false, advisories, ws);
+  it("writes the file (tokens applied) when dest is absent", () => {
+    const src = path.join(tmpDir, "context.md");
+    const dst = path.join(tmpDir, "out", "context.md");
+    fs.writeFileSync(src, "branch {{DEFAULT_BRANCH}}\n", "utf-8");
 
-    expect(result.wrote).toBe(true);
-    expect(result.suggested).toBe(false);
-    expect(fs.existsSync(dst)).toBe(true);
-    expect(ws.writes).toHaveLength(1);
+    expect(writeIfAbsent(src, dst, tokens, false)).toBe(true);
+    expect(fs.readFileSync(dst, "utf-8")).toBe("branch main\n");
   });
 
-  it("does NOT write when dest exists; pushes suggested diff to advisories", () => {
-    const src = path.join(tmpDir, "slop-scan.config.json");
-    const dst = path.join(tmpDir, "slop-scan-out.json");
-    fs.writeFileSync(src, '{"patterns":["new"]}\n', "utf-8");
-    fs.writeFileSync(dst, '{"patterns":["existing"]}\n', "utf-8");
-    const advisories: PreflightFinding[] = [];
-    const ws = makeWriteSet();
+  it("leaves a present dest byte-identical, however it differs from the source", () => {
+    const src = path.join(tmpDir, "context.md");
+    const dst = path.join(tmpDir, "context-out.md");
+    fs.writeFileSync(src, "bkit version\n", "utf-8");
+    fs.writeFileSync(dst, "the consumer's version\n", "utf-8");
 
-    const result = writeTier3(src, dst, false, advisories, ws);
-
-    expect(result.wrote).toBe(false);
-    expect(result.suggested).toBe(true);
-    expect(fs.readFileSync(dst, "utf-8")).toBe('{"patterns":["existing"]}\n');
-    expect(advisories.length).toBeGreaterThan(0);
-    expect(ws.writes).toHaveLength(0);
+    expect(writeIfAbsent(src, dst, tokens, false)).toBe(false);
+    expect(fs.readFileSync(dst, "utf-8")).toBe("the consumer's version\n");
   });
 
-  it("dry-run: absent file → records would-be write in WriteSet without touching disk", () => {
-    const src = path.join(tmpDir, "cfg.json");
-    const dst = path.join(tmpDir, "cfg-out.json");
-    fs.writeFileSync(src, '{"a":1}\n', "utf-8");
-    const advisories: PreflightFinding[] = [];
-    const ws = makeWriteSet();
+  it("dry-run never touches disk", () => {
+    const src = path.join(tmpDir, "skills.md");
+    const dst = path.join(tmpDir, "nested", "skills.md");
+    fs.writeFileSync(src, "x\n", "utf-8");
 
-    const result = writeTier3(src, dst, true, advisories, ws);
-
-    expect(result.wrote).toBe(false); // dry-run: didn't actually write
-    expect(result.suggested).toBe(false);
-    expect(fs.existsSync(dst)).toBe(false);
-    expect(ws.writes).toHaveLength(1);
+    expect(writeIfAbsent(src, dst, tokens, true)).toBe(false);
+    expect(fs.existsSync(path.dirname(dst))).toBe(false);
   });
 });
 

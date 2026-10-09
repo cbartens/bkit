@@ -68,15 +68,15 @@ describe("runPayload() — zero writes when isDogfood() (in-repo install)", () =
 
     const after = snapshotMtimes(agentsDir);
 
-    expect(result.writes).toBe(0);
+    expect(result.deletes).toBe(0);
     expect(after).toStrictEqual(before);
   });
 
-  it("reports zero writes in dry-run mode when running inside the bkit repo", () => {
+  it("reports zero deletes in dry-run mode when running inside the bkit repo", () => {
     const pkgRoot = getPkgRoot();
     process.chdir(pkgRoot);
     const result = runPayload(true);
-    expect(result.writes).toBe(0);
+    expect(result.deletes).toBe(0);
   });
 });
 

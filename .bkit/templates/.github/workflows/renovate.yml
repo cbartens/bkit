@@ -13,8 +13,7 @@
 # → remove this repo. No `gh api` equivalent.
 #
 # SHA-pin the action. This file is yours, so Renovate may bump the pin. Do NOT add
-# this path to renovate.json5 `ignorePaths` (that list is for files bkit rewrites,
-# such as bkit-cloud.yml).
+# this path to renovate.json5 `ignorePaths`.
 name: Renovate
 
 on:

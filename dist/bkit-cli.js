@@ -375,7 +375,7 @@ export function parseArgs(argv) {
                 continue;
             }
             if (flag === "force") {
-                // Uninstall-only (#252): force-delete Tier-3 files even if consumer-modified.
+                // Uninstall-only (#252): force-delete whole-file owned files even if consumer-modified.
                 // The install-side tracker-switch override was dropped — tracker switching is
                 // now free, so `--force` no longer affects install.
                 uninstallFlags.force = true;
@@ -508,8 +508,8 @@ Usage:
                                  Hosts compose: --claude --cursor --codex --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 when a managed file needs
-                                 re-rendering; Tier-3 (seed-or-print, e.g. ci.yml) drift
-                                 is an advisory (non-blocking). The CI gate.
+                                 re-rendering. Templates (.bkit/templates/) are never
+                                 drift-checked once copied — the copy is yours. The CI gate.
   bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
@@ -614,11 +614,13 @@ Usage:
 
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + payload, .gitignore +
-  .gitattributes managed blocks, docs/, .bkit/*.md + .bkit/.env.example, .bkit/version.
+  .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies
+  in .bkit/templates/, and .agents/context.md + skills.md (written once, then yours).
 
 Module flags (composable; symmetric install ↔ uninstall):
   --claude        .claude/agents/ + .claude/commands/ (byte-identical mirror) + CLAUDE.md
-                  (root redirect to .agents/rules.md) + .claude settings/hooks.
+                  (root redirect to .agents/rules.md) + .claude settings/hooks + the
+                  tracker entry in .mcp.json + .bkit/.env.example.
   --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
                   .cursor/rules/00-shared-rules.mdc + .cursor settings.
   --opencode=<provider>
@@ -635,13 +637,12 @@ Module flags (composable; symmetric install ↔ uninstall):
                   + .codex/hooks.json + .codex/hooks/gateguard.cjs, plus the workflow skills
                   (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
                   .codex/ layer is trusted — until then GateGuard is installed and never fires.
-  --ci            Stack-agnostic CI/quality foundation: the ci.yml SKELETON (gate graph +
-                  capstone contract + branch-protection, with Node/TS build/test steps as
-                  commented examples) + Vale prose-lint. No Node/TS footprint — runs green
-                  on any repo. Tier-3 seed-or-print.
-  --typescript    Node/TS toolchain (implies --ci): tsc typecheck, slop-scan (+ the
-                  boundary/type-suppression rule), prettier, husky + lint-staged, and the
-                  WIRED ci.yml step bodies. Most of it is plain Node; name is colloquial.
+  --ci            Writes no files: ci.yml and the Vale config are templates
+                  (.bkit/templates.md).
+  --typescript    Node/TS toolchain (implies --ci): the tool package.json scripts and
+                  devDeps (tsc, slop-scan, prettier, husky, lint-staged) plus the owned
+                  slop-scan type-suppression plugin. The tool configs and hooks are
+                  templates (.bkit/templates.md).
   --tooling       Back-compat alias for \`--ci --typescript\` (the full ci+lint+git-hooks
                   bundle). Symmetric install↔uninstall (removes all three).
 
@@ -649,7 +650,6 @@ Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
   .bkit/templates/.github/workflows/renovate.yml   (self-hosted runner, optional)
   .bkit/templates/.github/dependabot.yml
-  The examples already keep .github/workflows/bkit-cloud.yml out of the updater.
   All templates and install steps: .bkit/templates.md
 
   --auto=<claude|cursor|opencode>
@@ -681,7 +681,7 @@ Uninstall flags:
                   agents/commands/gateguard. If the removed provider was active, re-render
                   agents by running bkit install --opencode=<remaining> or bkit upgrade.
                   Bare --opencode (no value) tears down the entire opencode host.
-  --force         Force-delete Tier-3 files even if consumer modified them.
+  --force         Delete owned whole-file files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
   --yes           Skip interactive confirm for --nuke.
   --package       Also strip managed package.json scripts/devDependencies.

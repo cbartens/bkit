@@ -4,13 +4,13 @@
 //   1. For each installed file — single dispatch on entry.format:
 //      - "json"            : stripTier2JsonScope (strip bkit-owned JSON scope)
 //      - "markered-text"   : stripManagedBlock, remove file if empty remainder
-//      - "byte-equal-text" : shouldDeleteTier3 — delete only if hash matches install-time hash
+//      - "byte-equal-text" : delete only if unchanged since bkit wrote it (canonicalHashes)
 //   2. package.json: stripManagedKeys for scripts/devDeps
 //   3. .agents/ mirror files (bkit-prefix .md files in .claude/ .cursor/)
 //
 // Flags:
 //   --dry-run       print decision table (FILE / DECISION / REASON) without writes
-//   --force         override byte-equal-text hash guard (force-delete even if consumer modified)
+//   --force         override the byte-equal-text hash guard (delete even if consumer modified)
 //   --nuke          confirm prompt then wipe ALL bkit-managed files regardless of format
 //   --yes           skip interactive confirm for --nuke
 //   --package       also strip managed package.json keys
@@ -23,7 +23,7 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { stripManagedBlock, detectMarkerStyle } from "./bkit-markers.js";
 import { getInstallManifest, } from "./bkit-manifest.js";
-import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
+import { isConsumerModified, readBkitVersion } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
@@ -126,6 +126,32 @@ function _stripScope(consumer, template) {
         }
     }
 }
+// `.mcp.json` / `.cursor/mcp.json`: bkit owns only its tracker entry under `mcpServers`
+// (reconcileMcpJson), so uninstall removes exactly that, never a leaf-by-leaf strip.
+const MCP_JSON_RELPATHS = new Set([".mcp.json", path.join(".cursor", "mcp.json")]);
+/**
+ * Remove each `mcpServers` entry that is identical to a tracker entry in the template — the
+ * entry bkit wrote. A consumer's own servers, and a bkit entry the consumer edited, stay. Drops
+ * `mcpServers` once empty, so a file bkit wrote alone strips to `{}` (deleted by the caller).
+ * Pure function — no file I/O.
+ */
+export function stripMcpTrackerEntries(consumer, template) {
+    const out = JSON.parse(JSON.stringify(consumer));
+    const servers = out.mcpServers;
+    const owned = template.mcpServers;
+    if (!isJsonObject(servers) || !isJsonObject(owned))
+        return out;
+    for (const [key, entry] of Object.entries(owned)) {
+        if (JSON.stringify(servers[key]) === JSON.stringify(entry))
+            delete servers[key];
+    }
+    if (Object.keys(servers).length === 0)
+        delete out.mcpServers;
+    return out;
+}
+function isJsonObject(v) {
+    return v !== null && typeof v === "object" && !Array.isArray(v);
+}
 // ---------------------------------------------------------------------------
 // Decision table builder (for --dry-run output and UninstallResult)
 // ---------------------------------------------------------------------------
@@ -135,11 +161,12 @@ function _stripScope(consumer, template) {
  */
 // Core doctrine files installed by the templates pass (runCoreTemplates), NOT the manifest —
 // so the manifest-driven table never sees them and a full uninstall would orphan bkit's own
-// rules/docs/skills/config. Each carries a bkit managed block (markered-text), so strip-block
-// preserves any consumer content added below `bkit:end`, exactly like the root AGENTS.md.
-// Removed only on a full/core uninstall (gated on core in moduleList below).
+// rules/docs. Each carries a bkit managed block (markered-text), so strip-block preserves any
+// consumer content added below `bkit:end`, exactly like the root AGENTS.md. Removed only on a
+// full/core uninstall (gated on core in moduleList below). `.agents/context.md` and
+// `.agents/skills.md` are absent on purpose: they are create-if-missing (the consumer owns
+// them from first install), so uninstall leaves them.
 const CORE_TEMPLATE_DOCTRINE = [
-    { path: ".agents/context.md", format: "markered-text", module: "core" },
     // Retired in #454 (renamed to context.md above). Kept here so a consumer who
     // uninstalls BEFORE ever upgrading is not left holding an orphaned managed block —
     // the migration only runs on install/upgrade, and uninstall may come first. A no-op
@@ -147,7 +174,6 @@ const CORE_TEMPLATE_DOCTRINE = [
     { path: ".agents/config.md", format: "markered-text", module: "core" },
     { path: ".agents/docs.md", format: "markered-text", module: "core" },
     { path: ".agents/rules.md", format: "markered-text", module: "core" },
-    { path: ".agents/skills.md", format: "markered-text", module: "core" },
 ];
 export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
@@ -170,13 +196,9 @@ export function buildDecisionTable(modules, ctx) {
         ...getInstallManifest(moduleList),
         ...(moduleList.includes("core") ? CORE_TEMPLATE_DOCTRINE : []),
     ];
-    // Read tier3Hashes from .bkit-version
+    // The hash of every owned file as bkit last wrote it.
     const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
-    const bkitVer = readBkitVersion(versionFilePath);
-    const tier3Hashes = bkitVer?.tier3Hashes ?? {};
-    // `generated` entries record their install-time hash here instead (no template backs
-    // them, so they are canonical rather than seed-or-print).
-    const canonicalHashes = bkitVer?.canonicalHashes ?? {};
+    const canonicalHashes = readBkitVersion(versionFilePath)?.canonicalHashes ?? {};
     const table = [];
     const seen = new Set();
     for (const entry of entries) {
@@ -239,12 +261,12 @@ export function buildDecisionTable(modules, ctx) {
                 break;
             }
             case "byte-equal-text": {
-                // .bkit/version is bkit's own install-state manifest (pinnedVersion + tier3Hashes), never
+                // .bkit/version is bkit's own install-state manifest (pinnedVersion + hashes), never
                 // consumer content. It records no hash for itself, so the generic hash-guard preserves it
                 // as "consumer-modified" — leaving bkit state behind after a full teardown. It is
                 // `module: core`, so it only reaches this table on a full/core uninstall; delete it there
                 // (zero-footprint). A targeted (non-core) uninstall never sees it, so the modules that
-                // remain keep working. Execution reads tier3Hashes into memory before the delete loop, so
+                // remain keep working. The hashes are read into memory before the delete loop, so
                 // removing this file mid-loop cannot affect any other file's decision.
                 if (entry.path === ".bkit/version") {
                     table.push({
@@ -264,17 +286,15 @@ export function buildDecisionTable(modules, ctx) {
                     });
                     break;
                 }
-                const hashes = entry.generated ? canonicalHashes : tier3Hashes;
-                const safe = shouldDeleteTier3(entry.path, absPath, hashes);
-                if (hashes[entry.path] === undefined) {
+                if (canonicalHashes[entry.path] === undefined) {
                     table.push({
                         file: entry.path,
-                        decision: "skip-tier3-unknown",
+                        decision: "skip-unknown",
                         reason: "byte-equal-text: no recorded install-time hash — preserve (consumer may have modified it)",
                         format: "byte-equal-text",
                     });
                 }
-                else if (safe) {
+                else if (!isConsumerModified(entry.path, absPath, canonicalHashes)) {
                     table.push({
                         file: entry.path,
                         decision: "delete",
@@ -285,7 +305,7 @@ export function buildDecisionTable(modules, ctx) {
                 else {
                     table.push({
                         file: entry.path,
-                        decision: "skip-tier3-modified",
+                        decision: "skip-modified",
                         reason: "byte-equal-text: content differs from install-time hash — consumer modified, preserve",
                         format: "byte-equal-text",
                     });
@@ -372,10 +392,6 @@ export async function runUninstall(modules, ctx) {
         console.log(`${ctx.logPrefix} [dry-run] Decision table:`);
         console.log(formatDecisionTable(table));
     }
-    // Read tier3Hashes for actual deletions
-    const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
-    const bkitVer = readBkitVersion(versionFilePath);
-    const tier3Hashes = bkitVer?.tier3Hashes ?? {};
     const seen = new Set();
     for (const summary of table) {
         if (seen.has(summary.file))
@@ -384,8 +400,8 @@ export async function runUninstall(modules, ctx) {
         const absPath = path.join(ctx.cwd, summary.file);
         switch (summary.decision) {
             case "skip-absent":
-            case "skip-tier3-modified":
-            case "skip-tier3-unknown":
+            case "skip-modified":
+            case "skip-unknown":
             case "preserve": {
                 result.preserved.push(summary.file);
                 if (!ctx.dryRun) {
@@ -452,7 +468,9 @@ export async function runUninstall(modules, ctx) {
                                     }
                                 }
                             }
-                            const stripped = stripTier2JsonScope(consumerDoc, templateDoc);
+                            const stripped = MCP_JSON_RELPATHS.has(summary.file)
+                                ? stripMcpTrackerEntries(consumerDoc, templateDoc)
+                                : stripTier2JsonScope(consumerDoc, templateDoc);
                             const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
                             if (Object.keys(stripped).length === 0) {
                                 // All keys were bkit-owned → delete file

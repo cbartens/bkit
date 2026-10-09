@@ -10,7 +10,6 @@ import {
   writeBkitVersion,
   sha256,
   hashFile,
-  shouldDeleteTier3,
   isConsumerModified,
   managedVersionMarker,
   stampManagedVersion,
@@ -33,22 +32,25 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("parseBkitVersion", () => {
-  it("parses new JSON format correctly", () => {
+  it("parses the current JSON format", () => {
     const json = JSON.stringify({
-      pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": "abc123" },
+      pinnedVersion: "5.0.0",
+      canonicalHashes: { ".bkit/README.md": "abc123" },
+      claudeAllowDerived: ["WebFetch(domain:example.com)"],
     });
     const result = parseBkitVersion(json);
-    expect(result).not.toBeNull();
-    expect(result!.pinnedVersion).toBe("0.7.0");
-    expect(result!.tier3Hashes).toEqual({ ".github/workflows/ci.yml": "abc123" });
+    expect(result).toEqual({
+      pinnedVersion: "5.0.0",
+      canonicalHashes: { ".bkit/README.md": "abc123" },
+      claudeAllowDerived: ["WebFetch(domain:example.com)"],
+    });
   });
 
   it("parses old plain-text format (v0.6.x backward-compat)", () => {
     const result = parseBkitVersion("0.6.1\n");
     expect(result).not.toBeNull();
     expect(result!.pinnedVersion).toBe("0.6.1");
-    expect(result!.tier3Hashes).toEqual({});
+    expect(result!.canonicalHashes).toEqual({});
   });
 
   it("returns null for empty content", () => {
@@ -56,37 +58,35 @@ describe("parseBkitVersion", () => {
     expect(parseBkitVersion("   \n  ")).toBeNull();
   });
 
-  it("handles JSON missing tier3Hashes field (defaults to empty object)", () => {
-    const json = JSON.stringify({ pinnedVersion: "0.7.0" });
-    const result = parseBkitVersion(json);
-    expect(result).not.toBeNull();
-    expect(result!.tier3Hashes).toEqual({});
-  });
-
-  it("handles JSON with empty tier3Hashes", () => {
-    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
-    const result = parseBkitVersion(json);
-    expect(result).not.toBeNull();
-    expect(result!.tier3Hashes).toEqual({});
-  });
-
   it("handles plain-text without trailing newline", () => {
     const result = parseBkitVersion("0.5.0");
     expect(result).not.toBeNull();
     expect(result!.pinnedVersion).toBe("0.5.0");
-    expect(result!.tier3Hashes).toEqual({});
+    expect(result!.canonicalHashes).toEqual({});
   });
 
-  it("retro-fit fixture: consumer with .bkit-version lacking tier3Hashes -> preserve-default (empty {})", () => {
-    // Simulates a consumer that installed with v0.6.x and has a plain-text version file
-    const oldFormatContent = "0.6.0\n";
-    const result = parseBkitVersion(oldFormatContent);
-    expect(result).not.toBeNull();
-    // shouldDeleteTier3 returns false when tier3Hashes is empty (unknown → preserve)
-    expect(result!.tier3Hashes).toEqual({});
-    expect(shouldDeleteTier3(".github/workflows/ci.yml", "/fake/path", result!.tier3Hashes)).toBe(
-      false,
-    );
+  it("folds a legacy tier3Hashes map into canonicalHashes, canonical entry winning", () => {
+    const json = JSON.stringify({
+      pinnedVersion: "4.0.0",
+      tier3Hashes: { ".bkit/.env.example": "seeded", ".bkit/README.md": "stale" },
+      canonicalHashes: { ".bkit/README.md": "current" },
+    });
+    const result = parseBkitVersion(json);
+    expect(result!.canonicalHashes).toEqual({
+      ".bkit/.env.example": "seeded",
+      ".bkit/README.md": "current",
+    });
+    expect(result!.legacyTier3Hashes).toBe(true);
+  });
+
+  it("v0.7.x JSON (tier3Hashes only) → canonicalHashes is the tier3 map", () => {
+    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: { "a.yml": "h" } });
+    expect(parseBkitVersion(json)!.canonicalHashes).toEqual({ "a.yml": "h" });
+  });
+
+  it("does not flag a file without the legacy field", () => {
+    const json = JSON.stringify({ pinnedVersion: "5.0.0", canonicalHashes: {} });
+    expect(parseBkitVersion(json)!.legacyTier3Hashes).toBeUndefined();
   });
 });
 
@@ -102,7 +102,7 @@ describe("readBkitVersion", () => {
 
   it("reads and parses JSON file", () => {
     const versionFile = path.join(tmpDir, ".bkit-version");
-    const v: BkitVersion = { pinnedVersion: "0.7.0", tier3Hashes: {} };
+    const v: BkitVersion = { pinnedVersion: "0.7.0", canonicalHashes: {}, claudeAllowDerived: [] };
     fs.writeFileSync(versionFile, JSON.stringify(v, null, 2) + "\n", "utf-8");
     const result = readBkitVersion(versionFile);
     expect(result).not.toBeNull();
@@ -115,7 +115,7 @@ describe("readBkitVersion", () => {
     const result = readBkitVersion(versionFile);
     expect(result).not.toBeNull();
     expect(result!.pinnedVersion).toBe("0.6.1");
-    expect(result!.tier3Hashes).toEqual({});
+    expect(result!.canonicalHashes).toEqual({});
   });
 });
 
@@ -125,24 +125,32 @@ describe("readBkitVersion", () => {
 
 describe("serializeBkitVersion", () => {
   it("serializes to pretty-printed JSON with trailing newline", () => {
-    const v: BkitVersion = { pinnedVersion: "0.7.0", tier3Hashes: {} };
+    const v: BkitVersion = { pinnedVersion: "0.7.0", canonicalHashes: {}, claudeAllowDerived: [] };
     const result = serializeBkitVersion(v);
     expect(result.endsWith("\n")).toBe(true);
-    const parsed = JSON.parse(result);
-    expect(parsed.pinnedVersion).toBe("0.7.0");
-    expect(parsed.tier3Hashes).toEqual({});
+    expect(JSON.parse(result).pinnedVersion).toBe("0.7.0");
+  });
+
+  it("never writes tier3Hashes, even when the record was parsed from a legacy file", () => {
+    const parsed = parseBkitVersion(
+      JSON.stringify({ pinnedVersion: "4.0.0", tier3Hashes: { "a.yml": "h" } }),
+    )!;
+    const written = JSON.parse(serializeBkitVersion(parsed)) as Record<string, unknown>;
+    expect(Object.keys(written).sort()).toEqual([
+      "canonicalHashes",
+      "claudeAllowDerived",
+      "pinnedVersion",
+    ]);
+    expect(written.canonicalHashes).toEqual({ "a.yml": "h" });
   });
 
   it("round-trips through parseBkitVersion", () => {
     const original: BkitVersion = {
-      pinnedVersion: "0.7.1",
-      tier3Hashes: { ".github/workflows/ci.yml": "deadbeef" },
+      pinnedVersion: "0.9.0",
+      canonicalHashes: { ".claude/agents/bkit-foo.md": "hash2" },
+      claudeAllowDerived: [],
     };
-    const serialized = serializeBkitVersion(original);
-    const parsed = parseBkitVersion(serialized);
-    expect(parsed).not.toBeNull();
-    expect(parsed!.pinnedVersion).toBe(original.pinnedVersion);
-    expect(parsed!.tier3Hashes).toEqual(original.tier3Hashes);
+    expect(parseBkitVersion(serializeBkitVersion(original))).toEqual(original);
   });
 });
 
@@ -182,90 +190,6 @@ describe("hashFile", () => {
 });
 
 // ---------------------------------------------------------------------------
-// shouldDeleteTier3 — hash-guard decision
-// ---------------------------------------------------------------------------
-
-describe("shouldDeleteTier3", () => {
-  it("returns false when tier3Hashes has no entry for the path (unknown → preserve)", () => {
-    expect(shouldDeleteTier3("some/file.yml", path.join(tmpDir, "file.yml"), {})).toBe(false);
-  });
-
-  it("returns false when file is absent (nothing to delete)", () => {
-    const hashes = { "some/file.yml": sha256("content") };
-    const result = shouldDeleteTier3("some/file.yml", path.join(tmpDir, "nonexistent"), hashes);
-    expect(result).toBe(false);
-  });
-
-  it("returns true when current file content matches recorded hash (safe to delete)", () => {
-    const content = "ci yaml content\n";
-    const filePath = path.join(tmpDir, "ci.yml");
-    fs.writeFileSync(filePath, content, "utf-8");
-    const hashes = { ".github/workflows/ci.yml": sha256(content) };
-    expect(shouldDeleteTier3(".github/workflows/ci.yml", filePath, hashes)).toBe(true);
-  });
-
-  it("returns false when current file content differs from recorded hash (consumer modified — preserve)", () => {
-    const originalContent = "original ci yaml\n";
-    const modifiedContent = "consumer modified ci yaml\n";
-    const filePath = path.join(tmpDir, "ci.yml");
-    fs.writeFileSync(filePath, modifiedContent, "utf-8");
-    const hashes = { ".github/workflows/ci.yml": sha256(originalContent) };
-    expect(shouldDeleteTier3(".github/workflows/ci.yml", filePath, hashes)).toBe(false);
-  });
-
-  it("preserve-default for retro-fit consumer (no tier3Hashes → empty obj → preserve all)", () => {
-    // A consumer with v0.6.x plain-text .bkit-version has tier3Hashes = {}
-    // All shouldDeleteTier3 calls must return false → preserve
-    const filePath = path.join(tmpDir, "ci.yml");
-    fs.writeFileSync(filePath, "yaml content\n", "utf-8");
-    expect(shouldDeleteTier3(".github/workflows/ci.yml", filePath, {})).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Phase 3 — Schema cleanup: tier3Hashes narrowing (BAR-167 sub-plan C Task 25)
-// ---------------------------------------------------------------------------
-
-describe("Phase 3 — tier3Hashes narrowing (backward-compat reader)", () => {
-  it("parseBkitVersion reads a v2.0.0 .bkit-version JSON missing tier3Hashes → returns tier3Hashes: {} (backward-compat for one minor version)", () => {
-    // Simulates a v2.0.0 consumer file that was written by the narrowed writer when
-    // no byte-equal-text files were installed yet (sparse map = {}).
-    const json = JSON.stringify({ pinnedVersion: "2.0.0", canonicalHashes: {} });
-    const result = parseBkitVersion(json);
-    expect(result).not.toBeNull();
-    expect(result!.pinnedVersion).toBe("2.0.0");
-    // Absent tier3Hashes field → default {} (backward-compat)
-    expect(result!.tier3Hashes).toEqual({});
-    // shouldDeleteTier3 with empty tier3Hashes → preserve-default (false for all paths)
-    expect(shouldDeleteTier3(".cursor/Dockerfile", "/fake/path", result!.tier3Hashes)).toBe(false);
-  });
-
-  it("writeBkitVersion emits tier3Hashes containing only byte-equal-text entries when explicitly narrowed", () => {
-    const versionFile = path.join(tmpDir, ".bkit-version");
-    // Only byte-equal-text path in the map (json/markered-text paths excluded).
-    const narrowedTier3: Record<string, string> = {
-      ".cursor/Dockerfile": sha256("dockerfile content\n"),
-    };
-    const v: BkitVersion = {
-      pinnedVersion: "2.0.0",
-      tier3Hashes: narrowedTier3,
-      canonicalHashes: {},
-    };
-    writeBkitVersion(versionFile, v);
-    const result = parseBkitVersion(fs.readFileSync(versionFile, "utf-8"));
-    expect(result).not.toBeNull();
-    // Only Dockerfile hash present — json/markered-text paths (e.g. .cursor/hooks.json) absent
-    expect(result!.tier3Hashes).toEqual(narrowedTier3);
-    expect(result!.tier3Hashes[".cursor/hooks.json"]).toBeUndefined();
-    expect(result!.tier3Hashes[".claude/settings.json"]).toBeUndefined();
-    // Dockerfile hash present → shouldDeleteTier3 can return true when on-disk matches
-    const dockerfilePath = path.join(tmpDir, "Dockerfile");
-    fs.writeFileSync(dockerfilePath, "dockerfile content\n", "utf-8");
-    expect(shouldDeleteTier3(".cursor/Dockerfile", dockerfilePath, result!.tier3Hashes)).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // P4.T4 — canonicalHashes: backward-compat read + isConsumerModified
 // ---------------------------------------------------------------------------
 
@@ -276,46 +200,14 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(result!.canonicalHashes).toEqual({});
   });
 
-  it("parseBkitVersion v0.7.x JSON (no canonicalHashes) → canonicalHashes defaults to empty object", () => {
-    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
-    const result = parseBkitVersion(json);
-    expect(result).not.toBeNull();
-    expect(result!.canonicalHashes).toEqual({});
-  });
-
   it("parseBkitVersion v0.9.x JSON with canonicalHashes → reads correctly", () => {
     const json = JSON.stringify({
       pinnedVersion: "0.9.0",
-      tier3Hashes: {},
       canonicalHashes: { ".claude/agents/bkit-foo.md": "abc123" },
     });
     const result = parseBkitVersion(json);
     expect(result).not.toBeNull();
     expect(result!.canonicalHashes).toEqual({ ".claude/agents/bkit-foo.md": "abc123" });
-  });
-
-  it("serializeBkitVersion includes canonicalHashes field", () => {
-    const v: BkitVersion = {
-      pinnedVersion: "0.9.0",
-      tier3Hashes: {},
-      canonicalHashes: { ".claude/agents/bkit-test.md": "deadbeef" },
-    };
-    const serialized = serializeBkitVersion(v);
-    const parsed = JSON.parse(serialized);
-    expect(parsed.canonicalHashes).toEqual({ ".claude/agents/bkit-test.md": "deadbeef" });
-  });
-
-  it("round-trip preserves canonicalHashes", () => {
-    const original: BkitVersion = {
-      pinnedVersion: "0.9.0",
-      tier3Hashes: { ".github/workflows/ci.yml": "hash1" },
-      canonicalHashes: { ".claude/agents/bkit-foo.md": "hash2" },
-    };
-    const serialized = serializeBkitVersion(original);
-    const parsed = parseBkitVersion(serialized);
-    expect(parsed).not.toBeNull();
-    expect(parsed!.canonicalHashes).toEqual(original.canonicalHashes);
-    expect(parsed!.tier3Hashes).toEqual(original.tier3Hashes);
   });
 
   it("isConsumerModified returns true when canonicalHashes has no entry for path (unknown → block silent overwrite)", () => {

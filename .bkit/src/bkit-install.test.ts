@@ -1737,14 +1737,15 @@ describe("detectInstalledModules — sentinel-file module detection", () => {
     expect(detectInstalledModules(cwd).has("ci")).toBe(true);
   });
 
-  it("detects lint via slop-scan.config.json", () => {
-    touch("slop-scan.config.json");
+  it("detects lint via the owned slop-scan plugin", () => {
+    touch(".bkit/scripts/bkit-slop-type-suppression.mjs");
     expect(detectInstalledModules(cwd).has("lint")).toBe(true);
   });
 
-  it("detects lint via .prettierignore alone (either sentinel)", () => {
+  it("does not detect lint from adopted templates (slop-scan.config.json, .prettierignore)", () => {
+    touch("slop-scan.config.json");
     touch(".prettierignore");
-    expect(detectInstalledModules(cwd).has("lint")).toBe(true);
+    expect(detectInstalledModules(cwd).has("lint")).toBe(false);
   });
 
   it("detects git-hooks via a husky pre-commit hook", () => {

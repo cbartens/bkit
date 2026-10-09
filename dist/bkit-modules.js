@@ -6,9 +6,8 @@
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, ensureDir, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeIfAbsent, writeTier2JsonContained, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, ensureDir, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
-import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAgent, parseFrontmatter, applyEffortRemap, applyOpencodeCommand, remapTemplateDest, listFilesRecursive, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, SLOP_DELTA_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, LEGACY_SLOP_DELTA_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
@@ -126,10 +125,19 @@ const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // redirect, the analog of Cursor's .cursor/rules/00-shared-rules.mdc) — runClaudeModule
 // emits it. AGENTS.md (cross-host dispatch router) stays core.
 const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]);
-// Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
-// owned by other modules — skip in the core Tier 2 templates pass to avoid
-// double-recording them in the WriteSet. These are written by their owning module.
-const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
+// Files inside the .agents/ and .bkit/ subtemplate dirs that another module writes —
+// skip in the core templates pass to avoid double-recording them in the WriteSet.
+// `.bkit/.env.example` is written by the claude module (writeTier1).
+const SUBTEMPLATE_MODULE_OWNED = new Set([".env.example"]);
+/**
+ * Core templates written once when absent and never again (writeIfAbsent): the consumer
+ * owns them from the first install. No hash, no `bkit check` drift, skipped by the
+ * upgrade walk when present, left in place by uninstall.
+ */
+export const CREATE_IF_MISSING_PATHS = new Set([
+    path.join(".agents", "context.md"),
+    path.join(".agents", "skills.md"),
+]);
 /**
  * Templates. Install and upgrade copy them into the consumer's `.bkit/templates/`
  * and never apply them. A consumer copies the file into the repo and owns it.
@@ -244,12 +252,10 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
     if (!fs.existsSync(srcDir))
         return;
     for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-        // Skip Tier 3 files inside subtemplate dirs (e.g. .bkit/.env.example) — they
-        // are owned by their respective modules and written via writeTier3
-        // (seed-or-print), not Tier 2.
+        // Skip subtemplate files another module writes (e.g. .bkit/.env.example).
         if (ent.isFile() &&
             (relBase === ".agents" || relBase === ".bkit") &&
-            AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
+            SUBTEMPLATE_MODULE_OWNED.has(ent.name)) {
             continue;
         }
         const srcPath = path.join(srcDir, ent.name);
@@ -265,6 +271,12 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
             if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath))
                 continue;
             const dstPath = relPath;
+            if (CREATE_IF_MISSING_PATHS.has(relPath)) {
+                if (writeIfAbsent(srcPath, dstPath, tokens, dryRun)) {
+                    console.log(`${logPrefix} ${tag}core: ${dstPath}`);
+                }
+                continue;
+            }
             const prevLen = ws.writes.length;
             if (relBase === path.join(".bkit", "scripts")) {
                 // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region.
@@ -309,11 +321,9 @@ const COPY_EXCLUDE = new Set([
     "docs.md",
     "skills.md",
     "context.md",
-    // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
-    // template at .bkit/templates/.bkit/.env.example). Including it in the
-    // payload copy would double-handle the same destination — Tier 3 sees the
-    // file already written by payload copy in live mode, skips its own write,
-    // and dry-run vs install writesets diverge. Tier 3 owns this file.
+    // .env.example is written by the claude module (writeTier1 from the template at
+    // .bkit/templates/.bkit/.env.example). Copying it here too would double-handle the
+    // same destination.
     ".env.example",
     // bkit-mode.sh was removed in #245 (opencode replaces the ccr router lane); this
     // entry is kept as a guard to prevent any future accidental re-addition.
@@ -827,22 +837,11 @@ export function runCoreModule(ctx) {
     postDispatch.push(() => {
         // Read existing file to check whether an update is needed.
         const existingVersion = readBkitVersion(versionFile);
-        const existingTier3Hashes = existingVersion?.tier3Hashes ?? {};
         const existingCanonical = existingVersion?.canonicalHashes ?? {};
-        // Build the set of consumer-relative paths that have format "byte-equal-text".
-        // tier3Hashes is narrowed (v2.0.0+) to only these paths — json and markered-text
-        // formats use deepContains / marker extraction for drift detection, so they do NOT
-        // need a hash entry. ".bkit/version" is excluded (it is the version file
-        // itself, not a consumer-facing file).
-        const byteEqualPaths = new Set(getInstallManifest()
-            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".bkit", "version"))
-            .map((e) => e.path));
         // Build new canonicalHashes entries from ws.writes (files written in this run).
         // ws.writes is fully populated by the time postDispatch runs.
         // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
         const newCanonicalEntries = {};
-        // Also record hashes for byte-equal-text files written in this run.
-        const newTier3Entries = {};
         for (const entry of ws.writes) {
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
@@ -858,38 +857,26 @@ export function runCoreModule(ctx) {
             if (!fs.existsSync(absPath))
                 continue;
             const hash = hashFile(absPath);
-            if (hash) {
+            if (hash)
                 newCanonicalEntries[relPath] = hash;
-                // Narrow tier3Hashes to byte-equal-text format only.
-                if (byteEqualPaths.has(relPath)) {
-                    newTier3Entries[relPath] = hash;
-                }
-            }
         }
-        // tier3Hashes: start from existing byte-equal-text entries only (drop any legacy wider entries),
-        // then merge new writes. Backward-compat: preserve existing entries for known byte-equal-text
-        // paths (uninstall safety — shouldDeleteTier3 needs the hash if the file was written before
-        // this narrowing landed).
-        const narrowedExistingTier3 = {};
-        for (const [p, h] of Object.entries(withoutRetiredHashes(existingTier3Hashes))) {
-            if (byteEqualPaths.has(p))
-                narrowedExistingTier3[p] = h;
-        }
-        const tier3Hashes = { ...narrowedExistingTier3, ...newTier3Entries };
         // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
         // Drop paths bkit no longer keeps (retired owned files, templates). A stale key
         // would keep exempting that file from checks such as the floating-tag check.
         const canonicalHashes = withoutRetiredHashes({ ...existingCanonical, ...newCanonicalEntries });
-        // Decide whether a write is needed: version mismatch, first install, or new
-        // canonical entries.
+        // Decide whether a write is needed: version mismatch, first install, new canonical
+        // entries, dropped keys, or a file still carrying the retired tier3Hashes field.
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
         const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
         const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
         const derivedChanged = JSON.stringify(claudeAllowDerived) !==
             JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
-        const droppedRetired = Object.keys(existingCanonical).some(isRetiredHashKey) ||
-            Object.keys(existingTier3Hashes).some(isRetiredHashKey);
-        const needsWrite = versionChanged || hasNewEntries || derivedChanged || droppedRetired;
+        const droppedRetired = Object.keys(existingCanonical).some(isRetiredHashKey);
+        const needsWrite = versionChanged ||
+            hasNewEntries ||
+            derivedChanged ||
+            droppedRetired ||
+            existingVersion?.legacyTier3Hashes === true;
         if (needsWrite) {
             console.log(`${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
             ws.writes.push({ path: versionFile, action: "write" });
@@ -897,7 +884,6 @@ export function runCoreModule(ctx) {
                 fs.mkdirSync(target, { recursive: true });
                 writeBkitVersion(versionFile, {
                     pinnedVersion: pkgVersion,
-                    tier3Hashes,
                     canonicalHashes,
                     claudeAllowDerived: [...claudeAllowDerived],
                 });
@@ -1064,58 +1050,36 @@ export function runClaudeModule(ctx) {
     // so a default --full install ships zero cloud footprint. The SessionStart hook
     // entry in .claude/settings.json is guarded (`test -f … || true`) so it no-ops
     // when the script is absent. The `cloud-env-customize` advisory moved with it.
-    // Byte-equal-text — .mcp.json root-level MCP config — Tier 3 seed-or-print.
-    // Content is filtered by issueTracker: only the selected tracker's mcpServers entry is seeded.
+    // .mcp.json — bkit owns only its tracker entry under `mcpServers`; every other key
+    // (the consumer's own servers) is kept as-is.
     {
         const mcpSrc = path.join(getTemplatesRoot(), ".mcp.json");
         const mcpDst = ".mcp.json";
-        const prevLen = ws.writes.length;
-        const result = seedMcpJson(mcpSrc, mcpDst, issueTracker, MCP_ROOT_MERGE_INSTRUCTIONS, dryRun, advisories, ws);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
-        }
-        else if (result.suggested) {
-            console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
+        if (fs.existsSync(mcpSrc)) {
+            const prevLen = ws.writes.length;
+            reconcileMcpJson(mcpSrc, mcpDst, issueTracker, dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
+            }
         }
     }
-    // Byte-equal-text — .bkit/.env.example — Tier 3 seed-or-print.
-    // Seeds the canonical token-placeholder file on first install; emits merge
-    // instructions if consumer has modified. Not claude-specific but the claude
-    // module is the default-runs-everywhere module — appropriate home for
-    // consumer-setup scaffolding that all environments need.
+    // .bkit/.env.example — owned (Tier 1): the token-placeholder reference, overwritten on
+    // every install. Real values go in `.bkit/.env`. Not claude-specific, but the claude
+    // module is the default-runs-everywhere module.
     {
         const envExampleSrc = path.join(getTemplatesRoot(), ".bkit", ".env.example");
-        const envExampleDst = ".bkit/.env.example";
+        const envExampleDst = path.join(".bkit", ".env.example");
         if (fs.existsSync(envExampleSrc)) {
             const prevLen = ws.writes.length;
-            const result = writeTier3(envExampleSrc, envExampleDst, dryRun, advisories, ws, ENV_EXAMPLE_MERGE_INSTRUCTIONS);
+            writeTier1(envExampleSrc, envExampleDst, tokens, dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${envExampleDst}`);
-            }
-            else if (result.suggested) {
-                console.log(`${logPrefix} ${tag}claude: ${envExampleDst} (exists; AI merge instructions printed)`);
-            }
-        }
-    }
-    // Byte-equal-text — .envrc — Tier 3 seed-or-print.
-    // Seeds a single-line dotenv_if_exists directive for direnv auto-load.
-    {
-        const envrcSrc = path.join(getTemplatesRoot(), ".envrc");
-        const envrcDst = ".envrc";
-        if (fs.existsSync(envrcSrc)) {
-            const prevLen = ws.writes.length;
-            const result = writeTier3(envrcSrc, envrcDst, dryRun, advisories, ws, ENVRC_MERGE_INSTRUCTIONS);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}claude: ${envrcDst}`);
-            }
-            else if (result.suggested) {
-                console.log(`${logPrefix} ${tag}claude: ${envrcDst} (exists; AI merge instructions printed)`);
             }
         }
     }
     // Task 6.3 — bkit-mode.sh deletion advisory (upgrade-migration drift detection).
-    // .bkit/scripts/bkit-mode.sh was a Tier-3 seed-or-print file (consumers edit it;
-    // upgrade never overwrites). Every prior consumer keeps a copy on disk even after
+    // .bkit/scripts/bkit-mode.sh was written once and then edited by consumers (upgrade
+    // never overwrote it). Every prior consumer keeps a copy on disk even after
     // upgrading to a bkit version that no longer ships the template. Detect the orphan
     // and advise deletion — the opencode host (additive, via `bkit install --opencode=<provider>`)
     // is the replacement; the `bkit mode` surface and ccr router are retired.
@@ -1261,44 +1225,16 @@ export function runCursorModule(ctx) {
             }
         }
     }
-    // Byte-equal-text — manifest format: "byte-equal-text" — seed-or-print for consumer infra.
-    // Uses writeTier3 semantics: seed if absent, emit AI-actionable advisory if present and
-    // differing. These files are consumer-configurable; bkit does not force-overwrite them.
-    // The manifest classifies them "byte-equal-text" for check/uninstall dispatch; install
-    // intentionally uses seed-or-print to preserve consumer modifications on upgrade.
-    //
-    // `.cursor/environment.json` moved to the opt-in `cloud` module (runCloudModule) — it
-    // configures Cursor Background Agents (cloud) and is inert for local Cursor use.
-    const tier3Files = [
-        [
-            path.join(cursorTemplates, "settings.json"),
-            ".cursor/settings.json",
-            CURSOR_SETTINGS_MERGE_INSTRUCTIONS,
-        ],
-    ];
-    for (const [src, dst, msg] of tier3Files) {
-        if (!fs.existsSync(src))
-            continue;
-        const prevLen = ws.writes.length;
-        const result = writeTier3(src, dst, dryRun, advisories, ws, msg);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}cursor: ${dst}`);
-        }
-        else if (result.suggested) {
-            console.log(`${logPrefix} ${tag}cursor: ${dst} (exists; AI merge instructions printed)`);
-        }
-    }
-    // .cursor/mcp.json — Tier 3 seed-or-print, filtered by issueTracker (same as .mcp.json).
+    // .cursor/mcp.json — same per-entry ownership as .mcp.json (reconcileMcpJson).
     {
         const cursorMcpSrc = path.join(cursorTemplates, "mcp.json");
-        const cursorMcpDst = ".cursor/mcp.json";
-        const prevLen = ws.writes.length;
-        const result = seedMcpJson(cursorMcpSrc, cursorMcpDst, issueTracker, CURSOR_MCP_MERGE_INSTRUCTIONS, dryRun, advisories, ws);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst}`);
-        }
-        else if (result.suggested) {
-            console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst} (exists; AI merge instructions printed)`);
+        const cursorMcpDst = path.join(".cursor", "mcp.json");
+        if (fs.existsSync(cursorMcpSrc)) {
+            const prevLen = ws.writes.length;
+            reconcileMcpJson(cursorMcpSrc, cursorMcpDst, issueTracker, dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst}`);
+            }
         }
     }
     // Cursor-only runtime curl/wget allowlist (guardrails.cjs reads `.cursor/allowlist.json`).
@@ -1798,23 +1734,6 @@ export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
     }
     ws.writes.push({ path: dst, action: "update" });
 }
-const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .opencode/opencode.json. Compare against the bkit reference below.
-  bkit owns: the \`permission\` block, the \`plugin\` array, and the \`mcp\` entries
-  it seeded. You own: any additional \`provider\` entries, model lists, and custom mcp servers.
-
-  Required merge actions:
-  1. Ensure the \`permission\` block contains the bkit reference entries.
-  2. Ensure the \`plugin\` array includes ".opencode/plugin/gateguard.js".
-  3. Preserve your provider configuration and any custom mcp servers.
-
-  --- begin bkit reference .opencode/opencode.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .opencode/opencode.json ---
-`;
 export function runOpencodeModule(ctx) {
     const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -1905,325 +1824,13 @@ export function runOpencodeModule(ctx) {
     });
 }
 // ---------------------------------------------------------------------------
-// AI-actionable Tier 3 merge instructions
-//
-// Each constant is a self-contained instruction block: any AI agent
-// (Claude/Cursor/Copilot/etc.) reading the install output can paste it as
-// a prompt and apply the required merge without referring back to bkit
-// docs. Use {{TEMPLATE_CONTENT}} as a placeholder — writeTier3 substitutes
-// the live template content at print time.
+// MCP config — `.mcp.json` (claude) and `.cursor/mcp.json` (cursor). bkit owns only
+// its tracker entry under `mcpServers`; the rest of the file is the consumer's.
 // ---------------------------------------------------------------------------
-// scanForeignBkitUses — BAR-164 installer guard. Returns every
-// `uses: cbartens/bkit/...@<ref>` line in the canonical CI template. While
-// `cbartens/bkit` stays private and consumers live in other GitHub orgs, such
-// references cannot be resolved by the runner's GITHUB_TOKEN. The canonical
-// install flow is the install step's `pnpm config set` + BKIT_GH_TOKEN_INSTALL env —
-// see README §"Consumer CI auth". `runCiModule` calls this and throws
-// before writing if any matches are found, so a regression is caught at
-// dev/CI time, never in a consumer repo.
-export function scanForeignBkitUses(content) {
-    const matches = [];
-    const re = /^\s*-?\s*uses:\s*(cbartens\/bkit\/[^\s@]+@\S+)\s*$/gm;
-    let m;
-    while ((m = re.exec(content)) !== null) {
-        matches.push(m[1]);
-    }
-    return matches;
-}
-const CI_YML_MERGE_INSTRUCTIONS = `[bkit] .github/workflows/ci.yml exists — bkit cannot safely YAML-merge jobs. Manual merge required.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .github/workflows/ci.yml. Compare it to the bkit reference workflow
-  below (which represents the complete recommended CI gates for any bkit
-  consumer). Your existing workflow likely has additional consumer-specific
-  jobs and triggers — preserve those.
-
-  Required merge actions:
-  1. Ensure a .npmrc file exists at the repo root with ONLY the registry mapping
-     (the auth token is NOT stored here):
-
-        @cbartens:registry=https://npm.pkg.github.com
-
-     Commit this .npmrc file — the CI runner reads it during pnpm install.
-
-  2. Ensure the install step writes the auth token into pnpm's user-level config
-     BEFORE install. pnpm >=10.34.3 no longer authenticates a project-.npmrc
-     \${BKIT_GH_TOKEN_INSTALL} env-substitution (it 401s on download):
-
-        - name: Install Dependencies
-          run: |
-            pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"
-            pnpm install --frozen-lockfile
-          env:
-            BKIT_GH_TOKEN_INSTALL: \${{ secrets.BKIT_GH_TOKEN_INSTALL }}
-
-  3. Remove any 'Configure private-repo auth' step (git config --global
-     url."...cbartens/bkit...".insteadOf "...") — this git auth-shim is
-     obsolete. The .npmrc + \`pnpm config set\` approach replaces it entirely.
-
-  4. Ensure the GitHub repo secret BKIT_GH_TOKEN_INSTALL is set with a PAT that has
-     read:packages scope (classic) or Packages: read permission (fine-grained).
-
-  5. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
-     pnpm/action-setup@v4 reads this as single source of truth and will
-     fail if it is missing or conflicts with a 'with: version:' block.
-
-  6. Ensure the package.json scripts referenced by the workflow exist:
-     "format:check", "lint:prose", "lint:slop", "slop:delta". Run 'bkit install
-     --lint' to seed them, or add manually.
-
-  7. The reference adds two gates an older workflow likely lacks:
-       - an 'Install Vale' step (pinned tarball + 'vale sync') before the prose
-         lint — without it 'pnpm lint:prose' silently skips (vale not installed)
-         and the prose gate enforces nothing.
-       - a 'Run Slop Delta' step (PR-only, 'pnpm slop:delta') — the enforcing
-         slop gate. 'lint:slop' ('slop-scan scan') is report-only and never fails.
-     Add both, and set 'fetch-depth: 0' on the checkout so slop:delta can
-     materialise the base ref as a worktree.
-
-  Do NOT remove or duplicate top-level 'name:', 'on:', or 'jobs:' keys.
-  YAML allows only one of each per file.
-
-  --- begin bkit reference workflow ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference workflow ---
-
-  After merging, push to a feature branch and verify the workflow runs to
-  green before merging to your default branch.
-`;
-// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-cloud.yml`
-// is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
-// logic lives in the mirrored slash-command orchestrator. No consumer-side
-// customisation surface, so no merge instructions are needed.
-// DEPENDABOT_YML_MERGE_INSTRUCTIONS removed — `.github/renovate.json5` is now
-// Tier 1 canonical-overwrite. bkit owns the config; consumers do not edit it.
-// Renovate's `extends: ["config:recommended"]` covers the customisation surface
-// that Dependabot required hand-editing for, so no merge advisory is needed.
-const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .vale.ini. Compare it to the bkit reference content below.
-
-  Required merge actions:
-  1. Ensure these three CORE options appear at the TOP of the file (above
-     any [glob] section). If they are already present with different
-     values, prefer the existing value:
-        StylesPath = .vale/styles
-        MinAlertLevel = warning
-        Packages = write-good
-  2. Ensure the SCOPED sections from the reference are present below the
-     core options. If a section header (e.g. '[.agents/**]' or '[*.md]')
-     already exists in the file, merge the rules into it rather than
-     duplicating the header.
-  3. Run 'vale sync' once after merging to install any newly-listed
-     Packages (e.g. 'write-good').
-
-  Vale will reject the file with error E201 if any core option appears
-  AFTER a [glob] section, so ordering matters.
-
-  --- begin bkit reference .vale.ini ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .vale.ini ---
-
-  After merging, run 'vale .agents/' (or your scoped path) to verify the
-  rules apply with no parse errors.
-`;
-const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge the build-output ignores (see below).
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open slop-scan.config.json. Compare against the bkit reference below.
-  Merge any new patterns/exclusions you find useful into the existing
-  file. Keep your existing project-specific entries.
-
-  IMPORTANT — build-output ignores: ensure your "ignores" array carries the
-  depth-agnostic build-output globs from the reference — "**/dist/**",
-  "**/coverage/**", "**/node_modules/**", "**/.next/**", "**/.turbo/**". The
-  slop:delta gate scans the live working tree (--head .) against a clean base
-  worktree, so any build output present locally but absent from that base reads
-  as net-new slop and FAILs the gate. slop-scan honours only the ROOT
-  .gitignore, so build output ignored by a nested .gitignore (e.g.
-  apps/web/.gitignore) is NOT excluded — list it here. Root-relative globs
-  ("dist/**") do NOT match nested build dirs ("apps/web/dist/"); use the "**/"
-  form. Add your own generated dirs the same way (e.g. "**/.svelte-kit/**",
-  "**/.nuxt/**", "**/out/**").
-
-  IMPORTANT — vendored skill ignores: ensure your "ignores" array also carries
-  "**/.agents/skills/**", "**/.claude/skills/**" and "**/.cursor/skills/**".
-  Installed skills are third-party code you do not own and will not fix, but
-  slop-scan scans them like any source file, so their findings inflate your
-  score and any skill you add or update reads as net-new slop in slop:delta.
-  These paths match the vendored-skill exemptions bkit already ships for
-  prettier (.prettierignore) and Vale (.vale.ini).
-
-  --- begin bkit reference slop-scan.config.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference slop-scan.config.json ---
-`;
-const LINTSTAGED_MERGE_INSTRUCTIONS = `[bkit] .lintstagedrc.json exists — bkit will not overwrite. The bkit pre-commit hook calls \`pnpm lint-staged\`; ensure your config formats markdown/code on staged files (e.g. \`"*": "prettier --write --ignore-unknown"\`).
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .lintstagedrc.json. Compare against the bkit reference below.
-  Keep your existing project-specific entries; ensure that staged
-  files matching the bkit canonical paths get formatted on commit.
-
-  --- begin bkit reference .lintstagedrc.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .lintstagedrc.json ---
-`;
-// Husky hooks moved from Tier 2 (managed-block enforced) to Tier 3 (seed-or-print)
-// in v2.0.4. Real-world consumers routinely already run typecheck/test/format:check
-// via turbo or lint-staged in their own hook content, making the bkit-managed block
-// a duplicate — and the strict Tier-2 drift gate (`tier2-text-drift`) failed CI
-// whenever the consumer customised the block, forcing them either back to the
-// canonical form or to delete the block (which the next install would re-seed).
-// Tier 3 seeds the canonical hook for new consumers and emits an advisory for
-// existing consumers whose hook differs — no drift gate, no managed-block markers
-// to keep in sync. Declarative pattern files (`.gitignore`, `.prettierignore`)
-// stay Tier 2 because their semantics genuinely require additive merging; husky
-// hooks are imperative scripts whose semantics are fully replaceable.
-const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  bkit's reference pre-commit hook runs \`pnpm bkit:gate:format\` (fast staged gate —
-  prettier over staged files). Prose, the enforcing slop gate and the heavier gates
-  live in pre-push via \`pnpm bkit:gate:static-unit\`. Editing what a gate runs means
-  editing the \`bkit:gate:*\` scripts in package.json, not the hook —
-  the same scripts the bkit agent workflows dispatch through, so hooks and agents
-  cannot drift apart. Most consumers using turbo or their own lint-staged config
-  already cover the equivalent — in that case, ignore this advisory and keep your
-  existing hook. If your hook does NOT already format staged files, consider
-  adopting the reference, or merging the missing commands into yours.
-
-  Monorepo note: do not add eslint to lint-staged. In a workspace it must run
-  per-package via turbo (at pre-push) so each package's own flat config resolves;
-  lint-staged passes repo-root-absolute paths that bypass per-package config.
-
-  Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
-  # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
-  the hook as a full-file template (Tier 3 seed-or-print). If your file still
-  contains bkit:start/bkit:end markers, you can safely delete them — the file
-  is yours to own. The block content itself can stay or go.
-
-  --- begin bkit reference .husky/pre-commit ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .husky/pre-commit ---
-`;
-const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`,
-  then \`pnpm lint:prose\` + \`pnpm slop:delta\` (the enforcing slop gate — fails only on
-  findings this push adds/worsens vs the base), then \`pnpm bkit check\` (the same drift gate
-  CI runs — catching it locally saves a wasted CI cycle when someone bumps @cbartens/bkit
-  without re-running \`bkit install\`). Together these make pre-push a full deterministic
-  mirror of CI. Most consumers using turbo (e.g.
-  \`npx turbo run lint typecheck format:check test\`) already cover the first
-  three gates — in that case, add \`pnpm slop:delta\` + \`pnpm bkit check\` after your
-  existing command. If your hook does NOT already run those gates, consider adopting the
-  reference, or merging the missing commands into yours.
-
-  Monorepo note: eslint is the one lint that legitimately belongs at pre-push rather
-  than in lint-staged/pre-commit — it must run per-package via turbo (\`npx turbo run
-  lint\`) so each package's own flat config resolves, and turbo scopes it to changed
-  packages and caches the result. eslint placement is the only sanctioned deviation
-  from bkit's lint-hook layout; keep format/prose/slop/drift gates where bkit puts them.
-
-  Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
-  # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
-  the hook as a full-file template (Tier 3 seed-or-print). If your file still
-  contains bkit:start/bkit:end markers, you can safely delete them — the file
-  is yours to own. The block content itself can stay or go.
-
-  --- begin bkit reference .husky/pre-push ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .husky/pre-push ---
-`;
-// CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file is
-// now Tier 2 markered-text; writeTier2 updates only the bkit:start/bkit:end
-// block and preserves consumer extensions outside it. The cloud-env-customize
-// advisory above carries the customization guidance.
-const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .cursor/settings.json. Compare against the bkit reference below.
-  Merge any new keys (e.g. plugin allowlists, MCP entries) you want.
-  Keep your existing project-specific entries.
-
-  --- begin bkit reference .cursor/settings.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .cursor/settings.json ---
-`;
-// CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file
-// is now Tier 2 markered-text. bkit owns the toolchain block (vale + gh +
-// jq + python3 + corepack-pinned pnpm); consumers customise Node major,
-// Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
-// those across upgrades.
-const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .bkit/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .bkit/.env.example. Compare against the bkit reference below.
-  Merge any new entries you find into your existing file — this file is for bkit
-  and agent tooling secrets ONLY: tracker/cloud-agent tokens (BKIT_GH_TOKEN,
-  BKIT_GH_TOKEN_INSTALL, BKIT_LINEAR_API_KEY, BKIT_ANTHROPIC_API_KEY, BKIT_CURSOR_API_KEY) and opencode
-  provider keys (BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY).
-  App/stack creds do NOT belong here — your
-  app's runtime keys AND the /bkit-debug observability tokens (e.g. a Vercel or
-  Supabase log-read token) live in your app env files (e.g. apps/web/.env.local,
-  sourced by .envrc), never in .bkit/.env. Keep any project-specific additions you
-  have.
-
-  --- begin bkit reference .bkit/.env.example ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .bkit/.env.example ---
-`;
-const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .bkit/.env via direnv.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .envrc. Compare against the bkit reference below.
-  Ensure the file contains \`dotenv_if_exists .bkit/.env\` so direnv
-  auto-exports the tokens into your shell. Keep any existing lines.
-  You can append more \`dotenv_if_exists <path>\` lines to expose additional
-  env files (e.g. .env.local, infra/secrets.env); run \`direnv allow\` after.
-
-  --- begin bkit reference .envrc ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .envrc ---
-`;
-// Note: BKIT_MODE_MERGE_INSTRUCTIONS was removed — .bkit/scripts/bkit-mode.sh is no
-// longer shipped by bkit (retired with the ccr router and `bkit mode` surface in #245).
-const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .mcp.json. Compare against the bkit reference below.
-  Keep any project-specific server entries you have added.
-
-  --- begin bkit reference .mcp.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .mcp.json ---
-`;
-/**
- * Build filtered `.mcp.json` content for the given tracker.
- * - "github"  → keep only the `github` mcpServers entry.
- * - "linear"  → keep only the `linear` mcpServers entry.
- * - "none"    → empty mcpServers object (tracker not wired).
- */
 /**
  * Render the tracker-filtered `.mcp.json` / `.cursor/mcp.json` content: keep only the selected
- * tracker's `mcpServers` entry (none → empty map). Token-free, so the output is the exact bytes
- * install seeds. Exported because the `bkit upgrade` template walk MUST render these the same way
- * (as a `contentOverride`, like bkit-cloud.yml #138 / opencode.json #245) — otherwise it compares
- * the RAW (all-tracker) template against the filtered on-disk seed and reports a false conflict on
- * every same-version run (#255 P3). Genuine consumer drift still differs from this and conflicts.
+ * tracker's `mcpServers` entry (none → empty map). Token-free. This is what a fresh install
+ * writes, and its one entry is what `reconcileMcpJson` owns in an existing file.
  */
 export function buildMcpJson(templatePath, tracker) {
     const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
@@ -2235,240 +1842,62 @@ export function buildMcpJson(templatePath, tracker) {
     return JSON.stringify({ mcpServers: filtered }, null, 2) + "\n";
 }
 /**
- * Seed-or-suggest a tracker-filtered MCP JSON file (Tier 3 semantics).
- * Absent → seed with filtered content. Present+different → push advisory.
+ * Reconcile bkit's tracker entry into a consumer's `.mcp.json` / `.cursor/mcp.json`. bkit
+ * owns exactly one key, `mcpServers[<tracker>]`, and sets it to the template's entry; every
+ * other key and the existing key order stay the consumer's. Absent file → write the
+ * `buildMcpJson` render. Malformed JSON → throw (refuse to merge; the consumer fixes it).
+ * Tracker `none` owns no entry, so a present file is left alone. Writes only on change, so
+ * dry-run and live compute the identical WriteSet. Another tracker's entry from an earlier
+ * install is left in place (`detectExtraMcpServers` advises on it).
  */
-function seedMcpJson(templatePath, dstPath, tracker, mergeInstructions, dryRun, advisories, ws) {
-    if (!fs.existsSync(templatePath))
-        return { suggested: false };
-    const content = buildMcpJson(templatePath, tracker);
-    const basename = path.basename(dstPath);
-    if (fs.existsSync(dstPath)) {
-        const existing = fs.readFileSync(dstPath, "utf-8");
-        if (existing !== content) {
-            advisories.push({
-                id: `tier3-merge-suggested-${basename}`,
-                severity: "advisory",
-                detect: `${dstPath} exists and differs from the bkit reference. Manual merge required.`,
-                action: mergeInstructions.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => content.trimEnd()),
-            });
-            return { suggested: true };
+export function reconcileMcpJson(templatePath, relDst, tracker, dryRun, ws) {
+    const rendered = buildMcpJson(templatePath, tracker);
+    if (!fs.existsSync(relDst)) {
+        if (!dryRun) {
+            ensureDir(path.dirname(relDst));
+            fs.writeFileSync(relDst, rendered, "utf-8");
         }
-        return { suggested: false };
-    }
-    ws.writes.push({ path: dstPath, action: "write" });
-    if (!dryRun) {
-        ensureDir(path.dirname(dstPath));
-        fs.writeFileSync(dstPath, content, "utf-8");
-    }
-    return { suggested: false };
-}
-const CURSOR_MCP_MERGE_INSTRUCTIONS = `[bkit] .cursor/mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .cursor/mcp.json. Compare against the bkit reference below.
-  Ensure the mcpServers object contains entries for both "linear" and "github".
-  Keep any project-specific server entries you have added.
-
-  --- begin bkit reference .cursor/mcp.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .cursor/mcp.json ---
-`;
-const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. This file is fully consumer-owned because the \`install\` / \`start\` / \`terminals[]\` / \`env\` fields are typically repo-specific.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .cursor/environment.json. Compare against the bkit reference below.
-  Merge new top-level fields if useful; keep your project-specific overrides.
-
-  Typical non-trivial customisations consumers add:
-  - Monorepo prebuild: \`"install": "pnpm install --frozen-lockfile && npx turbo run build --filter='./packages/*'"\`
-    so workspace packages are compiled before the agent starts.
-  - Dev-server terminal + port forwarding: \`env: { PORT: "4000" }\` plus a
-    \`terminals[]\` entry that runs \`pnpm turbo dev --filter=web\` with
-    \`ports: [4000]\` exposed.
-  - \`start\` field with a one-line "read docs/deployments.md before setup"
-    nudge so the agent doesn't blindly run dev commands.
-
-  The bkit baseline runs \`pnpm install --frozen-lockfile && vale sync\` (when
-  .vale.ini exists). Replace if your monorepo needs prebuild, your repo uses
-  npm/yarn/bun, or you don't ship vale.
-
-  --- begin bkit reference .cursor/environment.json ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .cursor/environment.json ---
-`;
-// ---------------------------------------------------------------------------
-// runCiModule — .github/workflows/ci.yml (Tier 3 seed-or-print)
-//
-// Switched from Tier 2 to Tier 3 in v0.2.1 — appending a complete workflow
-// to an existing ci.yml produces duplicate top-level keys (invalid GHA YAML).
-// Bkit can't safely YAML-merge, so we seed when absent and print AI-actionable
-// merge instructions when present.
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// deriveCiSkeleton — turn the WIRED ci.yml template into the stack-agnostic SKELETON
-// by commenting out every line inside each `# bkit:start ts-ci-steps` … `# bkit:end
-// ts-ci-steps` region. The wired template is the single source of truth (bkit dogfoods
-// it); the skeleton is purely derived, so the two never drift (#265). The result is
-// valid YAML whose Node/TS step bodies are inert, copy-to-adapt examples — a non-Node
-// consumer (`--ci` without `--typescript`) gets a workflow that runs trivially green.
-// ---------------------------------------------------------------------------
-// Tolerate the `optional` block flag (extractNamedBlocks parses it; see detectTier2TextDrift):
-// the ts-ci-steps region is marked `optional` so a consumer that hand-maintains its toolchain
-// outside the block is not perpetually nagged for a "missing" block on a Tier-3 file bkit never
-// rewrites. The skeleton derivation must still recognise the marker to comment the region.
-const CI_TS_REGION_START = /^\s*#\s*bkit:start ts-ci-steps(?:\s+optional)?\s*$/;
-const CI_TS_REGION_END = /^\s*#\s*bkit:end ts-ci-steps\s*$/;
-export function deriveCiSkeleton(content) {
-    const lines = content.split("\n");
-    let inRegion = false;
-    const out = lines.map((line) => {
-        if (CI_TS_REGION_START.test(line)) {
-            inRegion = true;
-            return line;
-        }
-        if (CI_TS_REGION_END.test(line)) {
-            inRegion = false;
-            return line;
-        }
-        if (inRegion && line.trim() !== "") {
-            // Insert "# " after the leading whitespace so indentation is preserved.
-            const m = /^(\s*)(.*)$/.exec(line);
-            return m ? `${m[1]}# ${m[2]}` : `# ${line}`;
-        }
-        return line;
-    });
-    return out.join("\n");
-}
-export function runCiModule(ctx) {
-    const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
-    const tag = dryRun ? "[dry-run] " : "";
-    // Wired (Node/TS step bodies active) when the TS toolchain is co-installed
-    // (--typescript/--tooling ⇒ `lint` present). Otherwise seed the agnostic skeleton.
-    const wiredCi = ctx.wiredCi === true;
-    const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "ci.yml");
-    if (!fs.existsSync(templatePath)) {
-        console.warn(`${logPrefix} CI template not found at ${templatePath} — skipping CI module`);
+        ws.writes.push({ path: relDst, action: "write" });
         return;
     }
-    // BAR-164 guard: refuse to seed a canonical template that contains a
-    // `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` stays
-    // private and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN
-    // cannot resolve such a reference and CI fails with "repository not found"
-    // before any install step runs. The canonical install flow is the install
-    // step's `pnpm config set` (writes the token to pnpm's user-level config) +
-    // BKIT_GH_TOKEN_INSTALL env — see README §"Consumer CI auth". Hard error so the
-    // regression is caught at dev/CI time, never written into a consumer repo.
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
-    const foreignUses = scanForeignBkitUses(templateContent);
-    if (foreignUses.length > 0) {
-        throw new Error(`${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .bkit/templates/.github/workflows/ci.yml and use the env-var pattern (BKIT_GH_TOKEN_INSTALL env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`);
+    // Parse-or-sentinel idiom (see reconcileOpencodeJson): the throw stays out of the catch.
+    let existing = null;
+    try {
+        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
     }
-    const dstPath = path.join(".github", "workflows", "ci.yml");
-    const prevLen = ws.writes.length;
-    const result = writeTier3(templatePath, dstPath, dryRun, advisories, ws, CI_YML_MERGE_INSTRUCTIONS, tokens, wiredCi ? undefined : deriveCiSkeleton);
-    if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}ci: ${dstPath}${wiredCi ? "" : " (skeleton — no --typescript)"}`);
+    catch {
+        existing = null;
     }
-    else if (result.suggested) {
-        console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
+    if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
+        throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
-    // bkit-cloud.yml is no longer shipped by the ci module (`--tooling`). Post-CI
-    // auto-routing is now opt-in via `bkit install --auto=<variant>` (see `runCloudModule`
-    // below). The router is inert without BKIT_ANTHROPIC_API_KEY + BKIT_LINEAR_API_KEY secrets, GitHub
-    // Actions write permissions, and (Cursor half) a dashboard trigger — and it
-    // depends on the issue tracker, which is itself opt-in. Shipping it on every
-    // tooling install wired an autonomous router to a tracker that may
-    // not be configured. See issue #119 ("Managed Cloud Agents").
-    // Vale prose-lint config is stack-agnostic (external binary, lints .md) → ships with
-    // --ci (#265). The `lint:prose` npm wrapper + typecheck/test package.json footprint live
-    // under --typescript (runLintModule); --ci has NO package.json footprint so a non-Node
-    // consumer can install it and stay green.
-    const templatesBase = getTemplatesRoot();
-    // .vale.ini — Tier 3 (seed-or-print).
-    const valeIniSrc = path.join(templatesBase, ".vale.ini");
-    if (fs.existsSync(valeIniSrc)) {
-        const valeDst = ".vale.ini";
-        const prevValeLen = ws.writes.length;
-        const valeRes = writeTier3(valeIniSrc, valeDst, dryRun, advisories, ws, VALE_INI_MERGE_INSTRUCTIONS);
-        if (ws.writes.length > prevValeLen) {
-            console.log(`${logPrefix} ${tag}ci: ${valeDst}`);
-        }
-        else if (valeRes.suggested) {
-            console.log(`${logPrefix} ${tag}ci: ${valeDst} (exists; AI merge instructions printed)`);
-        }
-    }
-    // .vale/styles/House/ — Tier 1 (fully managed).
-    const valeStylesSrc = path.join(templatesBase, ".vale", "styles", "House");
-    if (fs.existsSync(valeStylesSrc)) {
-        const valeStylesDst = path.join(".vale", "styles", "House");
-        ensureDir(valeStylesDst);
-        for (const file of fs.readdirSync(valeStylesSrc)) {
-            const srcPath = path.join(valeStylesSrc, file);
-            const dstFilePath = path.join(valeStylesDst, file);
-            if (!fs.statSync(srcPath).isFile())
-                continue;
-            const prevStyleLen = ws.writes.length;
-            writeTier1(srcPath, dstFilePath, tokens, dryRun, ws);
-            if (ws.writes.length > prevStyleLen) {
-                console.log(`${logPrefix} ${tag}ci: ${dstFilePath}`);
-            }
-        }
-    }
-    // Note: BKIT_GH_TOKEN_INSTALL secret check and Vercel detection are now Phase 3 responsibilities.
-    // runPostInstallCheck in bkit-postinstall.ts handles them after writes complete.
+    const owned = JSON.parse(rendered).mcpServers;
+    const servers = existing.mcpServers;
+    const serversObj = servers !== null && typeof servers === "object" && !Array.isArray(servers) ? servers : {};
+    const inSync = Object.entries(owned).every(([k, v]) => JSON.stringify(serversObj[k]) === JSON.stringify(v));
+    if (inSync)
+        return;
+    const next = { ...existing, mcpServers: { ...serversObj, ...owned } };
+    if (!dryRun)
+        fs.writeFileSync(relDst, JSON.stringify(next, null, 2) + "\n", "utf-8");
+    ws.writes.push({ path: relDst, action: "update" });
 }
 // ---------------------------------------------------------------------------
-// runLintModule — vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore
+// runCiModule — writes no files: ci.yml and the Vale config ship as templates.
+// ---------------------------------------------------------------------------
+export function runCiModule(ctx) {
+    const tag = ctx.dryRun ? "[dry-run] " : "";
+    console.log(`${ctx.logPrefix} ${tag}ci: nothing to write — ci.yml and the Vale config are templates (see .bkit/templates.md)`);
+}
+// ---------------------------------------------------------------------------
+// runLintModule — the owned slop-scan plugin + the package.json scripts/devDeps.
+// slop-scan.config.json, .prettierignore, .lintstagedrc.json and the Vale config ship
+// as templates (`.bkit/templates.md`).
 // ---------------------------------------------------------------------------
 export function runLintModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const templatesBase = getTemplatesRoot();
-    // Vale config (.vale.ini + .vale/styles/House) moved to the stack-agnostic `ci` module
-    // (#265) — vale is an external binary that lints .md, so it is not Node/TS-coupled. The
-    // `lint:prose` npm wrapper stays here (a package.json/Node convenience). --typescript
-    // always co-installs `ci`, so a --typescript consumer still gets the vale config.
-    // slop-scan.config.json — Tier 3 (seed-or-print)
-    const slopSrc = path.join(templatesBase, "slop-scan.config.json");
-    if (fs.existsSync(slopSrc)) {
-        const slopDst = "slop-scan.config.json";
-        const prevLen = ws.writes.length;
-        const slopRes = writeTier3(slopSrc, slopDst, dryRun, advisories, ws, SLOP_SCAN_MERGE_INSTRUCTIONS);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}lint: ${slopDst}`);
-        }
-        else if (slopRes.suggested) {
-            console.log(`${logPrefix} ${tag}lint: ${slopDst} (exists; AI merge instructions printed)`);
-        }
-    }
-    // .lintstagedrc.json — Tier 3 (seed-or-print). Pairs with the lint-staged
-    // call in the bkit-managed pre-commit hook block; without the config file
-    // lint-staged errors out at commit time.
-    const lintstagedSrc = path.join(templatesBase, ".lintstagedrc.json");
-    if (fs.existsSync(lintstagedSrc)) {
-        const lintstagedDst = ".lintstagedrc.json";
-        const prevLen = ws.writes.length;
-        const lintstagedRes = writeTier3(lintstagedSrc, lintstagedDst, dryRun, advisories, ws, LINTSTAGED_MERGE_INSTRUCTIONS);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}lint: ${lintstagedDst}`);
-        }
-        else if (lintstagedRes.suggested) {
-            console.log(`${logPrefix} ${tag}lint: ${lintstagedDst} (exists; AI merge instructions printed)`);
-        }
-    }
-    // .prettierignore — Tier 2 hash-comment
-    const prettierSrc = path.join(templatesBase, ".prettierignore");
-    if (fs.existsSync(prettierSrc)) {
-        const prettierDst = ".prettierignore";
-        const prevLen = ws.writes.length;
-        writeTier2(prettierSrc, prettierDst, tokens, "hash-comment", dryRun, ws);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
-        }
-    }
     // slop-scan helper script — moved OUT of the core template walk (#265) so they ship
     // ONLY with the TS toolchain (--typescript), never to a non-Node --ci consumer. Tier 1
     // (bkit-owned, force-overwritten; core pass would preserve the +x bit, writeTier1 copies
@@ -2647,46 +2076,12 @@ export function runLintModule(ctx) {
     // is actionable; this one fired on every install regardless of vale presence.
 }
 // ---------------------------------------------------------------------------
-// runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print)
-//
-// Switched from Tier 2 (managed-block) to Tier 3 (seed-or-print) in v2.0.4.
-// Rationale: imperative hook scripts don't need the additive-merge semantics
-// of `.gitignore` / `.prettierignore`. Consumers with their own turbo /
-// lint-staged hook content fully replace bkit's commands and would otherwise
-// fail the `tier2-text-drift` gate every install. Tier 3 seeds the canonical
-// hook for new consumers, prints AI-actionable merge instructions when one
-// already exists, and never enforces drift. See KN entry / CHANGELOG 2.0.4.
+// runGitHooksModule — the `prepare: husky` script + the husky devDep. The hooks
+// themselves (.husky/pre-commit, .husky/pre-push) ship as templates (`.bkit/templates.md`).
 // ---------------------------------------------------------------------------
-const HUSKY_MERGE_INSTRUCTIONS = {
-    "pre-commit": HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS,
-    "pre-push": HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS,
-};
 export function runGitHooksModule(ctx) {
-    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
+    const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const huskyTemplatesDir = path.join(getTemplatesRoot(), ".husky");
-    if (!fs.existsSync(huskyTemplatesDir)) {
-        console.warn(`${logPrefix} .husky templates not found at ${huskyTemplatesDir} — skipping git-hooks module`);
-        return;
-    }
-    ensureDir(".husky");
-    for (const hookName of ["pre-commit", "pre-push"]) {
-        const srcPath = path.join(huskyTemplatesDir, hookName);
-        if (!fs.existsSync(srcPath))
-            continue;
-        const dstPath = path.join(".husky", hookName);
-        const prevLen = ws.writes.length;
-        const result = writeTier3(srcPath, dstPath, dryRun, advisories, ws, HUSKY_MERGE_INSTRUCTIONS[hookName], tokens);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}git-hooks: ${dstPath}`);
-            if (!dryRun && fs.existsSync(dstPath)) {
-                fs.chmodSync(dstPath, 0o755);
-            }
-        }
-        else if (result.suggested) {
-            console.log(`${logPrefix} ${tag}git-hooks: ${dstPath} (exists; AI merge instructions printed)`);
-        }
-    }
     // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.
     // Husky 9+ requires this; without it, the .husky/* files exist but never run.
     // Husky 9+: `husky install` was renamed to plain `husky` (legacy form prints
@@ -2702,7 +2097,7 @@ export function runGitHooksModule(ctx) {
             id: "git-hooks-package-json-missing",
             severity: "advisory",
             detect: "package.json not found — cannot ensure `prepare` script.",
-            action: 'Hooks installed but won\'t activate until you add `"prepare": "husky"` to package.json and run `pnpm install`.',
+            action: 'Husky hooks (copied from .bkit/templates/.husky/) won\'t activate until you add `"prepare": "husky"` to package.json and run `pnpm install`.',
         });
     }
     else if (hookScripts.malformed) {
@@ -2739,10 +2134,9 @@ export function runGitHooksModule(ctx) {
         }
     }
 }
-// Shared note appended to the cloud-setup advisories (#362). Both bkit-cloud.yml jobs
-// share one configurable runner label; do NOT hand-edit the canonical workflow (the
-// drift gate reverts it) — set the label in config and let bkit render it.
-const CLOUD_RUNNER_NOTE = "RUNNER (optional — cost / perf): both cloud jobs' `runs-on` is bkit-substituted from `bkit.runners.bkitCloud` in `package.json` (default `ubuntu-latest`). The label is arbitrary — a GitHub larger runner, a Depot label (e.g. `depot-ubuntu-24.04`, ~30% lower per-minute cost — https://depot.dev/docs/github-actions/runner-types), or a self-hosted alias. bkit renders it on every `install`/`upgrade`, so it survives the canonical-overwrite drift gate; unset leaves `ubuntu-latest` unchanged. Do NOT hand-edit `runs-on` in `.github/workflows/bkit-cloud.yml` — that edit is reverted on the next run. See docs/deployments.md § Runner labels.";
+// The cloud workflow is a template (`.bkit/templates.md`). Shared first step of the
+// claude and opencode setup advisories.
+const CLOUD_WORKFLOW_ADOPT_STEP = "  - Copy `.bkit/templates/.github/workflows/bkit-cloud.yml` to `.github/workflows/bkit-cloud.yml` and own it: bkit never writes or overwrites that file. Replace the `{{CLOUD_RUNNER}}` placeholder in both jobs' `runs-on` with a runner label (e.g. `ubuntu-latest`). `.bkit/templates.md` lists every placeholder; on each `bkit upgrade`, diff the refreshed template against your copy.\n";
 // ---------------------------------------------------------------------------
 // runCloudModule — opt-in cloud-agent integration (issue #119, "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
@@ -2751,29 +2145,17 @@ const CLOUD_RUNNER_NOTE = "RUNNER (optional — cost / perf): both cloud jobs' `
 // so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
 //   cloud=claude (tracker=github):
-//   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action; requires
-//        BKIT_ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
 //   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
 //        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
 //
-//   cloud=cursor (tracker=linear):
-//   - `.cursor/Dockerfile`                 — Cursor Background Agent toolchain (Tier 2 markered).
-//   - `.cursor/environment.json`           — Cursor Background Agent env config (Tier 3,
-//        consumer-owned).
+//   cloud=opencode (tracker=github), cloud=cursor (tracker=linear): no files.
+//
+// Every variant records `bkit.cloudAgents` and prints its setup advisories. The cloud
+// workflow (bkit-cloud.yml) and the Cursor Background Agent files (.cursor/Dockerfile,
+// .cursor/environment.json) are templates the advisories point at.
 //
 // Variant constraints are enforced in bkit-install.ts before dispatch (tracker mismatch
 // = hard error). The context's cloudVariant carries the chosen variant.
-// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude and
-// cloud=opencode both require tracker=github; the Linear cloud path is Cursor-native
-// via cloud=cursor). The tracker parameter is accepted for interface stability but not
-// branched on — any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty
-// (should be none after T1.1, but this guard prevents accidental sentinel leakage).
-export function renderCloudWorkflow(raw, _tracker) {
-    return raw
-        .replace(/@@CLOUD_TRACKER_MCP@@/g, () => "mcp__github__*")
-        .replace(/@@CLOUD_TRACKER_SECRET_NOTE@@/g, () => "")
-        .replace(/^@@CLOUD_TRACKER_SECRET_ENV@@\n/gm, () => "");
-}
 export function runCloudModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -2783,25 +2165,7 @@ export function runCloudModule(ctx) {
     const variant = ctx.cloudVariant ?? "claude";
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
-        // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical).
-        // Carries both claude + opencode jobs; claude job requires id-token: write for OIDC App auth.
-        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
-        if (!fs.existsSync(workflowSrc))
-            return;
-        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
-        {
-            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
-            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
-            if (current !== rendered) {
-                ws.writes.push({ path: workflowDst, action: "write" });
-                if (!dryRun) {
-                    ensureDir(path.dirname(workflowDst));
-                    fs.writeFileSync(workflowDst, rendered, "utf-8");
-                }
-                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
-            }
-        }
-        // 2. Claude Code on the web SessionStart install hook — Tier 2 markered.
+        // Claude Code on the web SessionStart install hook — Tier 2 markered.
         {
             const src = path.join(templates, ".claude", "hooks", "cloud-bootstrap.sh");
             const dst = ".claude/hooks/cloud-bootstrap.sh";
@@ -2822,17 +2186,17 @@ export function runCloudModule(ctx) {
         advisories.push({
             id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
+            detect: "Cloud agents (claude) need the unified cloud workflow (claude + opencode jobs, runtime-gated by secret presence), which ships as a template at `.bkit/templates/.github/workflows/bkit-cloud.yml`. The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
+                CLOUD_WORKFLOW_ADOPT_STEP +
                 "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1` (job env keeps this vendor name; local `.bkit/.env` stores it as `BKIT_ANTHROPIC_API_KEY`).\n" +
                 "  - Do NOT add `BKIT_GH_TOKEN_INSTALL` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
                 "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
-                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).\n\n" +
-                CLOUD_RUNNER_NOTE,
+                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).",
         });
         // Advisory — cloud env scaffolding (Claude half).
         advisories.push({
@@ -2851,79 +2215,34 @@ export function runCloudModule(ctx) {
         });
     }
     else if (variant === "opencode") {
-        // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml, no OIDC) ---
-        // 3. Phase-routed workflow — same bkit-cloud.yml as cloud=claude.
-        // The opencode job is already in the file; no separate template needed.
-        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
-        if (!fs.existsSync(workflowSrc))
-            return;
-        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
-        {
-            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
-            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
-            if (current !== rendered) {
-                ws.writes.push({ path: workflowDst, action: "write" });
-                if (!dryRun) {
-                    ensureDir(path.dirname(workflowDst));
-                    fs.writeFileSync(workflowDst, rendered, "utf-8");
-                }
-                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
-            }
-        }
+        // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml template, no OIDC) ---
         // Record the variant.
         setConsumerBkitField("cloudAgents", "opencode", dryRun);
         // Advisory — cloud=opencode setup checklist.
         advisories.push({
             id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
+            detect: "Cloud agents (opencode) need the unified cloud workflow (claude + opencode jobs, runtime-gated by secret presence), which ships as a template at `.bkit/templates/.github/workflows/bkit-cloud.yml`. The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
+                CLOUD_WORKFLOW_ADOPT_STEP +
                 "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
                 "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`BKIT_OPENROUTER_API_KEY`/`BKIT_OLLAMA_API_KEY`/`BKIT_OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
-                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.\n\n" +
-                CLOUD_RUNNER_NOTE,
+                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.",
         });
     }
     else {
         // --- cloud=cursor: Linear-tracker path ---
-        // 4. Cursor Background Agent Dockerfile — Tier 2 markered.
-        {
-            const src = path.join(templates, ".cursor", "Dockerfile");
-            const dst = ".cursor/Dockerfile";
-            if (fs.existsSync(src)) {
-                const prevLen = ws.writes.length;
-                writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
-                if (ws.writes.length > prevLen) {
-                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
-                }
-            }
-        }
-        // 5. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
-        {
-            const src = path.join(templates, ".cursor", "environment.json");
-            const dst = ".cursor/environment.json";
-            if (fs.existsSync(src)) {
-                const prevLen = ws.writes.length;
-                const result = writeTier3(src, dst, dryRun, advisories, ws, CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS);
-                if (ws.writes.length > prevLen) {
-                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
-                }
-                else if (result.suggested) {
-                    console.log(`${logPrefix} ${tag}cloud: ${dst} (exists; AI merge instructions printed)`);
-                }
-            }
-        }
         // Record the variant.
         setConsumerBkitField("cloudAgents", "cursor", dryRun);
         // Advisory — cloud=cursor setup checklist.
         advisories.push({
             id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.cursor/Dockerfile` and `.cursor/environment.json` are in place (Cursor cloud scaffolding). The Cursor Background Agent trigger is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
+            detect: "Cloud agents (cursor) need the Cursor Background Agent scaffolding, which ships as templates at `.bkit/templates/.cursor/Dockerfile` and `.bkit/templates/.cursor/environment.json`. The Cursor Background Agent trigger is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "IN CURSOR DASHBOARD:\n" +
                 "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
@@ -2932,15 +2251,15 @@ export function runCloudModule(ctx) {
                 "  - Allowed concurrency: latest-supersedes.\n" +
                 "  - Set `BKIT_LINEAR_API_KEY` as a **Runtime Secret** in the Cloud Agents dashboard (https://cursor.com/dashboard/cloud-agents) → your environment → Secrets tab.\n" +
                 "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
-                "IN REPO (Tier 2 markered; consumer customises outside `# <!-- bkit:start -->` markers):\n" +
-                "  - `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below the bkit block.\n" +
-                "  - `.cursor/environment.json`: Tier 3, fully consumer-owned — set `install` / `start` / `terminals[]` / `env` for your stack.",
+                "IN REPO (copy each template and own it; bkit never writes or overwrites these files — see `.bkit/templates.md`):\n" +
+                "  - `.bkit/templates/.cursor/Dockerfile` → `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps.\n" +
+                "  - `.bkit/templates/.cursor/environment.json` → `.cursor/environment.json`: set `install` / `start` / `terminals[]` / `env` for your stack.",
         });
         // Advisory — cloud env scaffolding (Cursor half).
         advisories.push({
             id: "cloud-env-customize",
             severity: "advisory",
-            detect: "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor Cloud Agents dashboard (secrets, manual).",
+            detect: "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, copied from `.bkit/templates/.cursor/`) and the Cursor Cloud Agents dashboard (secrets, manual).",
             action: "Copy-paste-ready values (resolved from your `.envrc`) are written to `.cursor/cloud.md` (gitignored) on every install.\n\n" +
                 "IN THE CLOUD AGENTS DASHBOARD (https://cursor.com/dashboard/cloud-agents → your environment → Secrets tab) — add each as a **Runtime Secret** (loaded as an env var, redacted from the agent's transcript):\n" +
                 "  - `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`.\n" +
@@ -3180,9 +2499,6 @@ export const MODULE_DISPATCH_ORDER = [
  * After all modules complete, ctx.postDispatch callbacks are run in order.
  */
 export function dispatchModules(modules, ctx) {
-    // The `ci` module seeds the WIRED ci.yml when the TS toolchain is co-installed
-    // (`lint` present ⇒ --typescript/--tooling), else the agnostic skeleton (#265).
-    ctx.wiredCi = modules.has("lint");
     for (const flag of MODULE_DISPATCH_ORDER) {
         if (!modules.has(flag))
             continue;

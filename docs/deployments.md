@@ -376,13 +376,7 @@ Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: 
 
 Use one. Both open PRs for the same packages. `bkit.depUpdater: "none"` skips the install-time absence advisory.
 
-**Hands off bkit-owned files.** `bkit install` rewrites `.github/workflows/bkit-cloud.yml`. An updater that bumps its action pins opens the same PR forever.
-
-- Renovate: list `.github/workflows/bkit-cloud.yml` in `ignorePaths`. A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file.
-- Also ignore `.bkit/templates/**` and `.agents/skills/**` (bkit-owned; scanning them is noise).
-- Dependabot: `exclude-paths: [".github/workflows/bkit-cloud.yml"]` on the `github-actions` block. That covers version updates. Security-update PRs for that file can still open; close them.
-- Your own `ci.yml` and, if you copied it, `renovate.yml` stay out of that list so their pins can refresh.
-- `bkit install` warns when `bkit-cloud.yml` exists and the updater config does not name it (`dep-updater-touches-bkit`).
+**Hands off bkit-owned trees.** Renovate: ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them; scanning them is noise). A packageRule `enabled: false` does not stop the scan; `pinDigests` still rewrites the file, so use `ignorePaths`. Workflows you copied from `.bkit/templates/` (`ci.yml`, `bkit-cloud.yml`, `renovate.yml`) are yours: leave them out of that list so their pins refresh.
 
 **Land config on the default branch before the bot runs.** GitHub Apps and Dependabot read config from the default branch. The example sets `baseBranchPatterns: ["dev"]` (PRs land on `dev`) and `useBaseBranchConfig: "merge"` (edits on `dev` apply to dev-targeted runs). `useBaseBranchConfig` itself is read from the default branch, so it needs one merge there before dev-side edits take effect.
 
@@ -479,7 +473,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 | 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
 | 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
 | 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
-| 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 6 | bkit self-check | `pnpm bkit check` | consumer template (`.bkit/templates/.husky/pre-push` — the consumer copies and owns it); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
 | 7 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 | 8 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
 
@@ -503,7 +497,7 @@ Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git ad
 
 ### `.husky/pre-push` bkit check gate
 
-**Tier 3 (seed-or-print)** — written once, never overwritten; no `# bkit:start`/`# bkit:end`. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm bkit:check:dist`, `pnpm bkit:lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
+**Template** — bkit never writes it; the consumer copies `.bkit/templates/.husky/pre-push` and owns it. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm bkit:check:dist`, `pnpm bkit:lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
 
 - Repo-only lines at bottom; not in consumer template.
 - On failure: `pnpm bkit install` (drift), `pnpm build && git add dist/` (dist), fix workflow (actionlint); commit; push. `--no-verify` PROHIBITED.
