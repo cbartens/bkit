@@ -2,7 +2,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpencodeProvider, } from "./bkit-cli.js";
+import { detectRetiredOwnedFiles, retireOwnedFiles } from "./bkit-retire.js";
+import { runCommand } from "./commands/lib.js";
+import { COMMANDS } from "./commands/registry.js";
+import { CLASSIC_VERBS, parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpencodeProvider, } from "./bkit-cli.js";
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp } from "./bkit-launch.js";
@@ -1387,6 +1390,13 @@ async function runSelfBump(flags, cwd) {
 // decision logic OUT into an exported function (see validateModuleFlagsForVerb /
 // validateCloudTrackerMatch above) when you want it unit-covered here instead.
 async function main() {
+    const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {
+        classicVerbs: CLASSIC_VERBS,
+    });
+    if (commandExit !== null) {
+        process.exitCode = commandExit;
+        return;
+    }
     const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, complyPhase, telemetrySubverb, telemetryMigrateFlags, } = parseArgs(process.argv.slice(2));
     // A bare `bkit` (no arguments) means no command was given: print usage and exit non-zero
     // (2 = usage error), distinct from an explicit `bkit help` / `--help` (verb "help"), which
@@ -1784,6 +1794,15 @@ async function main() {
         // and the bkit-authoring docs moved into `.bkit/`. Strip any copies an old-layout
         // consumer still carries. No-op when absent / in dogfood.
         runPayload(upgradeFlags.dryRun);
+        // Retired bkit files: delete unedited copies, then name every edited copy and
+        // every consumer CI / package.json line that still calls one.
+        retireOwnedFiles(process.cwd(), {
+            dryRun: upgradeFlags.dryRun,
+            log: (line) => console.log(`${LOG_PREFIX} ${line}`),
+        });
+        const retiredBanner = formatChecklist(detectRetiredOwnedFiles(process.cwd()));
+        if (retiredBanner)
+            console.log(retiredBanner);
         // Collect bkit-managed template candidates from the package.
         // Templates live in .bkit/templates/ — walk the directory for all files.
         const tplRoot = getTemplatesRoot();

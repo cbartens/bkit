@@ -1318,6 +1318,23 @@ Auto mode **drops** broad allow rules granting arbitrary code execution — blan
 
 Inline definitions for workflow-file tokens. Keep synced with workflow bodies.
 
+### Workflow commands
+
+Mechanical step work runs as `bkit <noun> <verb> --flag=value` (also `--flag value`); `bkit <noun> --help` / `bkit <noun> <verb> --help` list verbs, flags, output keys, exit codes. Source `.bkit/src/commands/{workflow,ci,setup}/`, listed in `commands/registry.ts`; conventions enforced by `bkit-commands.test.ts`.
+
+| Contract                | Rule                                                                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| stdout                  | ONE JSON object; keys camelCase, matching `status.jsonl` (`parentSha`, `subPlan`).                                                                                      |
+| stderr                  | Human log lines, tagged `[bkit-<noun>]`.                                                                                                                                |
+| Flags                   | kebab-case; same name for the same thing everywhere: `--workflow --step --fid --month --sub-plan --attempt --verdict --artifact` (repeatable).                          |
+| Exit `0` / `1` / `2`    | ok / the answer is no (gate failed, max attempts, lock held) / usage error or missing dependency.                                                                       |
+| Exit `3`-`79`           | Command-specific; listed in that verb's `--help`.                                                                                                                       |
+| Exit `80` / `81` / `82` | Do it via MCP (`RUNTIME_GITHUBCLI=false`) / hand the wait back to the agent turn loop / needs a human.                                                                  |
+| Month                   | `YYYYMM` in UTC.                                                                                                                                                        |
+| `status.jsonl`          | design / plan / build / debug: `.worktrees/{FID}/` copy when present, else main checkout. ship: main checkout when `RUNTIME_DEVPUSHES=true`, else current worktree top. |
+
+Steps 1–2 run before the worktree has `node_modules`: call the main checkout's binary, `"$REPO_ROOT/node_modules/.bin/bkit"`.
+
 ### FID generation
 
 Step 1 of every phase resolves `FID` BEFORE taking the lock (the lock path is `logs/{FID}/.lock`, so it cannot come first). First match wins:

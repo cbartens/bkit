@@ -218,6 +218,8 @@ Three-tier model — different ownership without clobbering consumer customisati
 | **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
 | **Managed package.json keys** (v0.4.0) | Add-if-missing on `scripts` and `devDependencies`. Existing keys NEVER overwritten — consumer pins win. Drift via `bkit check` flags missing keys when parent module enabled. | All under `--typescript`: `scripts.typecheck` / `lint` / `format:check` / `lint:prose` / `lint:slop` / `slop:delta` / `bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` / `bkit:deps:outdated` / `bkit:deps:audit` / `prepare`; `devDependencies.prettier` + `slop-scan` + `lint-staged` + `husky`. Stack-agnostic `--ci` adds NO package.json keys. |
 
+**Retired files.** When bkit stops shipping a Tier-1 file, install and upgrade delete your copy if it is unchanged since bkit wrote it. An edited copy stays; `.bkit/advisories.md` names what replaced it, plus every `.github/workflows/*` or `package.json` line that still calls it.
+
 **Marker syntax** format-specific:
 
 - Markdown / `.gitignore`: `<!-- bkit:start -->` / `<!-- bkit:end -->`

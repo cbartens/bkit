@@ -2,7 +2,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { detectRetiredOwnedFiles, retireOwnedFiles } from "./bkit-retire.js";
+import { runCommand } from "./commands/lib.js";
+import { COMMANDS } from "./commands/registry.js";
 import {
+  CLASSIC_VERBS,
   parseArgs,
   printUsage,
   OPTIN_MODULES,
@@ -1603,6 +1607,14 @@ async function runSelfBump(flags: UpgradeFlags, cwd: string): Promise<boolean> {
 // decision logic OUT into an exported function (see validateModuleFlagsForVerb /
 // validateCloudTrackerMatch above) when you want it unit-covered here instead.
 async function main() {
+  const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {
+    classicVerbs: CLASSIC_VERBS,
+  });
+  if (commandExit !== null) {
+    process.exitCode = commandExit;
+    return;
+  }
+
   const {
     verb,
     modules,
@@ -2059,6 +2071,15 @@ async function main() {
     // and the bkit-authoring docs moved into `.bkit/`. Strip any copies an old-layout
     // consumer still carries. No-op when absent / in dogfood.
     runPayload(upgradeFlags.dryRun);
+
+    // Retired bkit files: delete unedited copies, then name every edited copy and
+    // every consumer CI / package.json line that still calls one.
+    retireOwnedFiles(process.cwd(), {
+      dryRun: upgradeFlags.dryRun,
+      log: (line) => console.log(`${LOG_PREFIX} ${line}`),
+    });
+    const retiredBanner = formatChecklist(detectRetiredOwnedFiles(process.cwd()));
+    if (retiredBanner) console.log(retiredBanner);
 
     // Collect bkit-managed template candidates from the package.
     // Templates live in .bkit/templates/ — walk the directory for all files.

@@ -80,6 +80,7 @@ import {
 } from "./bkit-cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
+import { isRetiredOwned, retireOwnedFiles } from "./bkit-retire.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -918,6 +919,14 @@ export function runCoreModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}payload: ${payloadDeletes} relocated orphan(s) removed`);
   }
 
+  // 2b. Retire pass — delete files bkit dropped, when unchanged since bkit wrote them.
+  // A pending delete is a write, so `bkit check` reports it as drift.
+  const { deleted: retired } = retireOwnedFiles(cwd, {
+    dryRun,
+    log: (line) => console.log(`${logPrefix} ${line}`),
+  });
+  for (const p of retired) ws.writes.push({ path: p, action: "update" });
+
   // 3. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
   // Each other module handles its own template files directly.
   console.log(`${logPrefix} ${tag}Running core templates pass`);
@@ -1004,7 +1013,7 @@ export function runCoreModule(ctx: ModuleContext): void {
     // would keep exempting that workflow from the floating-tag check.
     const canonicalHashes: Record<string, string> = {};
     for (const [p, h] of Object.entries({ ...existingCanonical, ...newCanonicalEntries })) {
-      if (!RETIRED_MANAGED_PATHS.has(p)) canonicalHashes[p] = h;
+      if (!RETIRED_MANAGED_PATHS.has(p) && !isRetiredOwned(p)) canonicalHashes[p] = h;
     }
 
     // Decide whether a write is needed: version mismatch, first install, or new
@@ -1016,8 +1025,9 @@ export function runCoreModule(ctx: ModuleContext): void {
       JSON.stringify(claudeAllowDerived) !==
       JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
     const droppedRetired =
-      Object.keys(existingCanonical).some((p) => RETIRED_MANAGED_PATHS.has(p)) ||
-      Object.keys(existingTier3Hashes).some((p) => RETIRED_MANAGED_PATHS.has(p));
+      Object.keys(existingCanonical).some(
+        (p) => RETIRED_MANAGED_PATHS.has(p) || isRetiredOwned(p),
+      ) || Object.keys(existingTier3Hashes).some((p) => RETIRED_MANAGED_PATHS.has(p));
     const needsWrite = versionChanged || hasNewEntries || derivedChanged || droppedRetired;
 
     if (needsWrite) {

@@ -2,6 +2,7 @@
 // Exported and consumed by bkit-install.ts main().
 
 import { ISSUE_TRACKERS, type IssueTracker, parseIssueTracker } from "./bkit-manifest.js";
+import { COMMANDS } from "./commands/registry.js";
 
 export type ModuleFlag =
   | "core"
@@ -91,6 +92,27 @@ export function parseCloudVariant(value: unknown): CloudVariant | null {
     ? (value as CloudVariant)
     : null;
 }
+
+/**
+ * The first words `parseArgs` treats as a verb. A `bkit <noun> <verb>` command whose
+ * noun is also listed here routes only when its second word is one of its verbs.
+ */
+export const CLASSIC_VERBS: ReadonlySet<string> = new Set([
+  "install",
+  "check",
+  "doctor",
+  "status",
+  "uninstall",
+  "upgrade",
+  "comply",
+  "harvest",
+  "analysis",
+  "telemetry",
+  "cursor",
+  "opencode",
+  "codex",
+  "help",
+]);
 
 export type Verb =
   | "install"
@@ -879,4 +901,14 @@ Consumer CI auth:
   See README.md ## Consumer CI auth for setup steps.
 
 Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
+  if (COMMANDS.length > 0) {
+    const width = Math.max(...COMMANDS.map((c) => c.noun.length));
+    console.log(
+      [
+        "",
+        "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+        ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
+      ].join("\n"),
+    );
+  }
 }

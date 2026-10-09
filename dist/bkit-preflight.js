@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains } from "./bkit-tiers.js";
+import { detectRetiredOwnedFiles } from "./bkit-retire.js";
 import { detectMarkerStyle, extractNamedBlocks, stripManagedBlock } from "./bkit-markers.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, LINT_PROSE_SCRIPT, } from "./bkit-manifest.js";
@@ -1407,6 +1408,7 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
     if (gitignoreDup)
         advisories.push(gitignoreDup);
+    advisories.push(...detectRetiredOwnedFiles(cwd));
     // #380 rollout: docs/completed.md still present -> not yet migrated
     const completedMdUnmigrated = detectCompletedMdUnmigrated(cwd);
     if (completedMdUnmigrated)

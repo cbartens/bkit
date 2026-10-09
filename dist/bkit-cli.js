@@ -1,6 +1,7 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
 import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
+import { COMMANDS } from "./commands/registry.js";
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
 /**
@@ -64,6 +65,26 @@ export function parseCloudVariant(value) {
         ? value
         : null;
 }
+/**
+ * The first words `parseArgs` treats as a verb. A `bkit <noun> <verb>` command whose
+ * noun is also listed here routes only when its second word is one of its verbs.
+ */
+export const CLASSIC_VERBS = new Set([
+    "install",
+    "check",
+    "doctor",
+    "status",
+    "uninstall",
+    "upgrade",
+    "comply",
+    "harvest",
+    "analysis",
+    "telemetry",
+    "cursor",
+    "opencode",
+    "codex",
+    "help",
+]);
 // ---------------------------------------------------------------------------
 // telemetry — sub-verb for bkit telemetry <subverb>
 // ---------------------------------------------------------------------------
@@ -702,4 +723,12 @@ Consumer CI auth:
   See README.md ## Consumer CI auth for setup steps.
 
 Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
+    if (COMMANDS.length > 0) {
+        const width = Math.max(...COMMANDS.map((c) => c.noun.length));
+        console.log([
+            "",
+            "Workflow commands (bkit <noun> <verb> --flags; JSON on stdout; bkit <noun> --help):",
+            ...COMMANDS.map((c) => `  bkit ${c.noun.padEnd(width)}  ${c.summary}`),
+        ].join("\n"));
+    }
 }
