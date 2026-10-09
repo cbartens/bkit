@@ -207,7 +207,7 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 `Check Default Branch Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
-Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
+Ships in the `ci.yml` template as the `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`); `bkit upgrade` lists `ci.yml` when it changes. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
 ### One CI run per dev commit (release PR mirrors the `dev` push run)
 

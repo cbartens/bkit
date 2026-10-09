@@ -159,11 +159,9 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
 // ci.yml: a template the consumer copies and owns. It carries NAMED blocks (`verbose-ci-env`,
-//   `main-lag-warning`), whose drift/absence is surfaced generically by the
-//   preflight `detectTier2TextDrift` advisory (named-block-aware — no per-block
-//   detector). The bare whole-file `# bkit:start`/`# bkit:end` markers were
-//   removed in the v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because
-//   consumers misread them as "bkit owns/syncs these steps".
+//   `main-lag-warning`) as labels only; bkit never checks them. It carries no bare
+//   whole-file `# bkit:start`/`# bkit:end` markers: consumers read those as "bkit
+//   owns/syncs these steps".
 // .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
 // ---------------------------------------------------------------------------
 
@@ -184,7 +182,7 @@ function extractCiYmlVerboseBlock(content: string): string | null {
   return content.slice(startLineEnd + 1, endIdx);
 }
 
-describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () => {
+describe("Group B templates — ci.yml named verbose-ci-env block", () => {
   it("ci.yml has exactly one # bkit:start verbose-ci-env (4-space indent)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
     expect(countMatches(content, /^    # bkit:start verbose-ci-env$/m)).toBe(1);
@@ -195,7 +193,7 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(countMatches(content, /^    # bkit:end verbose-ci-env$/m)).toBe(1);
   });
 
-  it("ci.yml carries no bare whole-file bkit markers (Tier-3 regression guard)", () => {
+  it("ci.yml carries no bare whole-file bkit markers", () => {
     const content = readTemplate(".github/workflows/ci.yml");
     expect(countMatches(content, /^\s*# bkit:start$/m)).toBe(0);
     expect(countMatches(content, /^\s*# bkit:end$/m)).toBe(0);
@@ -326,18 +324,18 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
 });
 
 // ---------------------------------------------------------------------------
-// .husky/pre-push and pre-commit are Tier 3 (seed-or-print) as of v2.0.4 — no
-// markers expected. Templates are full-file shell scripts.
+// .husky/pre-push and pre-commit are templates — no markers expected. They are
+// full-file shell scripts the consumer owns.
 // ---------------------------------------------------------------------------
 
-describe("Tier 3 husky templates (v2.0.4) — no bkit markers in template content", () => {
-  it(".husky/pre-push contains NO bkit:start/bkit:end markers (full-file Tier 3)", () => {
+describe("husky templates — no bkit markers in template content", () => {
+  it(".husky/pre-push contains NO bkit:start/bkit:end markers", () => {
     const content = readTemplate(".husky/pre-push");
     expect(countMatches(content, /^# bkit:start$/m)).toBe(0);
     expect(countMatches(content, /^# bkit:end$/m)).toBe(0);
   });
 
-  it(".husky/pre-commit contains NO bkit:start/bkit:end markers (full-file Tier 3)", () => {
+  it(".husky/pre-commit contains NO bkit:start/bkit:end markers", () => {
     const content = readTemplate(".husky/pre-commit");
     expect(countMatches(content, /^# bkit:start$/m)).toBe(0);
     expect(countMatches(content, /^# bkit:end$/m)).toBe(0);

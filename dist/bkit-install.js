@@ -1159,7 +1159,7 @@ export function validateModuleFlagsForVerb(verb, moduleFlags) {
 }
 /**
  * Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4): cloud=claude and
- * cloud=opencode both require tracker=github (both render bkit-cloud.yml);
+ * cloud=opencode both require tracker=github (both use the bkit-cloud.yml template);
  * cloud=cursor requires tracker=linear. Mismatch is a hard error — checked BEFORE
  * any package.json write so no state is recorded on mismatch ("no files written
  * on hard error" invariant). Returns the error message to print, or `null` when
@@ -1800,7 +1800,7 @@ async function main() {
             // package.json absent/unparseable — default tracker
         }
         // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
-        // `@@OPENCODE_*@@` sentinels). Like bkit-cloud.yml it MUST be rendered the same way on
+        // `@@OPENCODE_*@@` sentinels). It MUST be rendered the same way on
         // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
         // consumer's config (#245). Detect the installed provider so the render matches install.
         const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");

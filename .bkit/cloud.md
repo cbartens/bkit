@@ -48,7 +48,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick row for agent you
 | Configuration | Lives in the repo (bkit-managed) | Lives in the online dashboard (manual, one-time) |
 | --- | --- | --- |
 | **Claude Code on the web** | `.claude/hooks/preflight.sh` (tracker opt-in guard) + `.claude/hooks/cloud-bootstrap.sh` (per-session install — Tier 2 markered, customise outside markers) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70` — Claude pairs with the **GitHub** tracker, so no `BKIT_LINEAR_API_KEY`), **network access** (`Trusted`) |
-| **Cursor Cloud Agents** | `.cursor/Dockerfile` (Tier 2 markered toolchain block + consumer extensions) + `.cursor/environment.json` (consumer-owned `install` / `start` / `terminals[]` / `env`) + `.cursor/hooks.json` (wires preflight `failClosed: true`) + `.cursor/hooks/preflight.sh` (Linear guard) | Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets** tab, as **Runtime Secret**s: `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`. (`LINEAR_ISSUE_ID` injected per-session by the integration — don't hardcode.) |
+| **Cursor Cloud Agents** | `.cursor/Dockerfile` + `.cursor/environment.json` (`install` / `start` / `terminals[]` / `env`), both copied from bkit's templates and owned by the repo, + `.cursor/hooks.json` (wires preflight `failClosed: true`) + `.cursor/hooks/preflight.sh` (Linear guard) | Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents`) → your environment → **Secrets** tab, as **Runtime Secret**s: `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`. (`LINEAR_ISSUE_ID` injected per-session by the integration — don't hardcode.) |
 
 **Rule of thumb:** env vars / auth tokens → online dashboard (out of git). Scripts / Dockerfile / install hooks → repo.
 
@@ -205,7 +205,7 @@ Auto mode drops blanket `Bash(*)` on entry (narrow rows survive) → cloud auto-
 
 Token management by session type:
 
-- **Local sessions** — bkit seeds `.bkit/.env.example` (token placeholders) + `.envrc` (`dotenv_if_exists .bkit/.env`) on first install. Copy `.env.example` → `.bkit/.env`, fill tokens, `direnv allow`. direnv auto-exports `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, `BKIT_LINEAR_API_KEY` on repo entry — no manual `source` or shell-rc export. `.bkit/.env` gitignored; never commit.
+- **Local sessions** — bkit writes `.bkit/.env.example` (token placeholders); `.envrc` (`dotenv_if_exists .bkit/.env`) is a template: copy `.bkit/templates/.envrc`. Copy `.env.example` → `.bkit/.env`, fill tokens, `direnv allow`. direnv auto-exports `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, `BKIT_LINEAR_API_KEY` on repo entry — no manual `source` or shell-rc export. `.bkit/.env` gitignored; never commit.
 
   ```bash
   cp .bkit/.env.example .bkit/.env
@@ -390,10 +390,10 @@ When bkit reference Dockerfile changes (e.g. vale bump):
 
 ## What every consumer repo needs to do
 
-1. `pnpm bkit install` — bkit-managed toolchain updates inside `# <!-- bkit:start -->` / `# <!-- bkit:end -->` of `.cursor/Dockerfile` and `.claude/hooks/cloud-bootstrap.sh` without touching consumer customisations outside markers.
+1. `pnpm bkit install` — bkit-managed toolchain updates inside `# <!-- bkit:start -->` / `# <!-- bkit:end -->` of `.claude/hooks/cloud-bootstrap.sh` without touching consumer customisations outside markers. `.cursor/Dockerfile` is your copy of a template: diff it against `.bkit/templates/.cursor/Dockerfile` when `bkit upgrade` lists that path.
 2. Set `BKIT_LINEAR_API_KEY`, `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL` as **Runtime Secret**s in the Cloud Agents dashboard (`cursor.com/dashboard/cloud-agents` → your environment → **Secrets** tab). Paste-ready values are in `.cursor/cloud.md`.
 3. Add Claude environment **named after repo** at `claude.ai/code`; paste recipe from § Claude Code on the web (one environment per repo — secrets per-repo).
-4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps **outside** bkit-managed block; byte-stable inside markers, consumer-owned outside.
+4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps. Keep the toolchain block between the markers as the template ships it, so a template diff stays readable.
 
 # Post-CI auto-routing
 
@@ -485,7 +485,7 @@ Skip conditions emit single GitHub-comment no-op line and exit 0 — only real f
 - **No secrets store yet (Claude).** Env vars and setup-script body plaintext in Claude app. Rotate PATs regularly.
 - **Env vars do not reach Claude setup script.** Auth at snapshot-build time must be inlined — leak you want to avoid. Design around it: public binaries in setup script; defer auth-bearing work to SessionStart hook.
 - **Cache invalidation is body-based (Claude).** Editing env-vars block or repo-side hook scripts doesn't trigger rebuild. Use `# cache-bust YYYY-MM-DD-N` to force one.
-- **Husky runs on `pnpm install`.** `prepare` registers git hooks during install. Pre-commit hooks (`lint-staged`, `lint:prose`, `lint:slop`) run when agent commits. `slop-scan` devDep → PATH via `node_modules/.bin`; `vale` system binary → setup script (Claude) or Dockerfile (Cursor).
+- **Husky runs on `pnpm install`** (repos that adopted the `.husky/*` templates). `prepare` registers git hooks during install. The pre-commit hook (`bkit:gate:format` → `lint-staged`) runs when agent commits. `slop-scan` devDep → PATH via `node_modules/.bin`; `vale` system binary → setup script (Claude) or Dockerfile (Cursor).
 - **Bun proxy issues (Claude).** Bun known proxy issues with cloud security proxy. bkit uses pnpm — unaffected; flag for bun consumers.
 - **Custom base image not supported (Claude).** Escape hatch: `docker compose` sidecars. Not needed for bkit stack today.
 - **Cursor image cache layer-based.** Reorder `RUN` lines carefully — frequently-changing line above slow one invalidates cache below.

@@ -13,7 +13,7 @@
 > - Describe current state / rules, NOT reasons / history; state what to do, NOT why.
 > - Check `.agents/docs.md` index first and confirm topic belongs in THIS doc, not another.
 > - Tiers strictly separated — Static · Unit · Integration · E2E · @live · Smoke.
-> - Pre-push: `pnpm bkit:gate:static-unit` + `bkit check`; revert branches / commits run `bkit:gate:static` (no tests). Gate script is consumer-owned; seeded = typecheck + lint + format:check + prose + slop:delta + `pnpm test` (unit + in-process integration). E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
+> - Pre-push: `pnpm bkit:gate:static-unit`, then `bkit check`; the `.husky/pre-push` template runs `bkit:gate:static` (no tests) on revert branches / commits. Gate scripts are consumer-owned; bkit's default = typecheck + lint + format:check + prose + slop:delta + `pnpm test` (unit + in-process integration). E2E, @live, service-backed integration excluded (CI — see below). NEVER `--no-verify`.
 
 ## CI test tiers (the bkit scaffold)
 

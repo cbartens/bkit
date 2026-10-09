@@ -572,8 +572,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
 
       // Bare module flags. opencode/typescript are intercepted above; only
-      // claude/cursor/codex reach here. Everything else (incl. the dropped --full/--core/
-      // --lint/--cloud/--ci/--tooling) hits the generic unknown-flag error.
+      // claude/cursor/codex reach here. Everything else hits the generic unknown-flag error.
       const moduleFlag = flag as ModuleFlag;
       if (!MODULE_FLAGS.has(moduleFlag)) {
         console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);

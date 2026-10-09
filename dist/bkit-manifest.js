@@ -33,16 +33,16 @@ export function parseIssueTracker(value) {
 // ---------------------------------------------------------------------------
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --auto=claude` installed `.github/workflows/bkit-cloud.yml`
- *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
- * - `cursor`  — `bkit install --auto=cursor` installed `.cursor/Dockerfile`
- *               + `.cursor/environment.json`. Requires `tracker=linear`.
- * - `opencode` — `bkit install --auto=opencode` installed `.github/workflows/bkit-cloud.yml`
- *               (same file as claude; both jobs coexist, runtime-gated by secret presence).
- *               Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
+ * - `claude`  — `bkit install --auto=claude` writes `.claude/hooks/cloud-bootstrap.sh`; the
+ *               consumer copies the `.github/workflows/bkit-cloud.yml` template. Requires `tracker=github`.
+ * - `cursor`  — `bkit install --auto=cursor` writes no file; the consumer copies the
+ *               `.cursor/Dockerfile` + `.cursor/environment.json` templates. Requires `tracker=linear`.
+ * - `opencode` — `bkit install --auto=opencode` writes no file; the consumer copies the same
+ *               `bkit-cloud.yml` template as claude (both jobs coexist, runtime-gated by secret
+ *               presence). Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
- * Recorded in `package.json` `bkit.cloudAgents`. File presence
+ * Recorded in `package.json` `bkit.cloudAgents`. Presence of the adopted copy
  * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
@@ -309,7 +309,7 @@ export const LEGACY_SLOP_DELTA_SCRIPTS = [
 // consumer's to add — `.bkit/templates.md` lists them; the
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
-// The SAME names are what the git hooks run (`.husky/pre-commit`, `.husky/pre-push`),
+// The SAME names are what the git hook templates run (`.husky/pre-commit`, `.husky/pre-push`),
 // so agent and human gates cannot drift: one edit here changes both. `ci.yml` is
 // deliberately NOT on them — it needs per-step reporting, affected-package
 // conditionals, and tiers the local gate excludes, so it calls the scripts directly.

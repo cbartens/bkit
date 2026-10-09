@@ -218,12 +218,8 @@ export function detectGitignoreBlockDuplicates(cwd) {
 // ---------------------------------------------------------------------------
 // [verbose ci] marker advisories (BAR-224)
 // ---------------------------------------------------------------------------
-// NOTE: detectCiYmlVerboseCiBlockMissing was retired once detectTier2TextDrift became
-// named-block-aware. The template's `verbose-ci-env` is a named bkit-managed block, so a
-// consumer missing it (or having drifted it) is now surfaced generically by the tier2-text-drift
-// advisory over `.github/workflows/ci.yml` — no per-block detector needed. New bkit-owned
-// fragments follow the same path: wrap them in `# bkit:start <name>` in the template and the
-// generic drift advisory covers them. Per-block presence detectors are no longer added.
+// No presence detector for the ci.yml `verbose-ci-env` block: ci.yml is the consumer's copy
+// of a template, so bkit never checks its blocks.
 /**
  * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
  * overrides the configured reporter chain in `playwright.config.ts`. Under
@@ -756,8 +752,7 @@ export function detectTier2JsonDrift(cwd, relPath, pkgRoot) {
  *   - Template file exists AND has a bkit marker block
  *   - The extracted consumer block != extracted template block (byte-equal check)
  *
- * Does NOT fire when markers are absent from consumer (that is the `markers-missing`
- * case, surfaced separately by detectHuskyNoMarkers / future generic detector).
+ * Does NOT fire when markers are absent from consumer (the `markers-missing` case).
  *
  * Follows `[Context] Message` advisory format.
  */
@@ -1160,7 +1155,7 @@ function isCloudOrCi() {
 export function detectDirenvMissing(cwd, tracker = "linear") {
     if (isCloudOrCi())
         return null;
-    // Only meaningful when .envrc exists (seeded by bkit install)
+    // Only meaningful when .envrc exists (the consumer's copy of bkit's template)
     const envrcPath = path.join(cwd, ".envrc");
     if (!fs.existsSync(envrcPath))
         return null;
@@ -1370,8 +1365,8 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
         advisories.push(...detectExtraMcpServers(cwd, relPath, resolvedTracker));
     }
     // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),
-    // not here — Phase 1 cannot see the scaffolds (.bkit/.env.example, .envrc) on
-    // a first install because writes have not happened yet. Detectors stay exported
+    // not here — Phase 1 cannot see the .bkit/.env.example scaffold on a first
+    // install because writes have not happened yet. Detectors stay exported
     // from this file so the postinstall module can call them.
     return {
         blockers: dedupeById(blockers),

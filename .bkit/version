@@ -2,8 +2,8 @@
   "pinnedVersion": "4.12.0",
   "canonicalHashes": {
     ".cursor/mcp.json": "355e01cadabed3b924ebe339dc07ecbf7179397ebc9accf8618d5d7d6af6c438",
-    "docs/deployments.md": "f6c776131b5993a099378ce30d163454c042917ba44f73da7f5a1bb1abee0074",
-    "docs/testing.md": "e133b2a17ebad5872adcf483a71a414fe2ec2de84864188327a75ee89b64d3f5",
+    "docs/deployments.md": "1deb4e4fc938e58b0fd9a188c0f5bb602ee2c7a6f5f9bd797740625f77cdb6ba",
+    "docs/testing.md": "94c0897e1e320c34a569d86bb62144101c87db22c87f346f47de772dc167e0aa",
     ".claude/settings.json": "626fe730982f8fc75f0da984292eee0bb308e3a5da5987e1a3c31c9f4d99cca8",
     ".agents/context.md": "5cf54b91ffaa5d9372415a24dd1acfe0910c7def1f4434e25ccf110e3eaed013",
     ".agents/docs.md": "bfbddbf98bc4238c6a01dbd68fbe515ba01db2371c440d868fe12a8db6c96df0",
@@ -306,7 +306,8 @@
     "scripts/serena/serena.mcp.json": "bbfd9f341aff44863f949b26e0a1fb96f7f259ad3a4d0a2630862341a6611a3f",
     ".cursor/agents/bkit-utility-update-roadmap.md": "df6510044ee0b1ddcf7258e487cc7e7f8a69831478c69ae2a4938ae874b1b638",
     "docs/templates/bkit-audit-agents.md": "824f9cc5e66e5f34e172a8781dfb8a66b3ad8f2434a6fd352b962cd6a4b33510",
-    "docs/templates/bkit-audit-prompts.md": "5532f78225de4986f6d7f6a2a50e3fe989fe4bb7277a805fe7b57101377ed96a"
+    "docs/templates/bkit-audit-prompts.md": "5532f78225de4986f6d7f6a2a50e3fe989fe4bb7277a805fe7b57101377ed96a",
+    ".bkit/templates.md": "ac0478bd814bbcb508335befdcb9772666c5d5a82f39747cd3077c59fc18e618"
   },
   "claudeAllowDerived": [
     "WebFetch(domain:12factor.net)",

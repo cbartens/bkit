@@ -41,7 +41,7 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
      pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor --typescript
    ```
-   Writes `.agents/`, `.claude/`, `.cursor/` and the `bkit:gate:*` `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs, and the tool scripts and devDeps the gates chain, listed in `.bkit/templates.md`) into `.bkit/templates/` without applying them.
+   Writes `.agents/`, `.claude/`, `.cursor/` and the `bkit:gate:*` `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs) into `.bkit/templates/` without applying them. `.bkit/templates.md` lists each template plus the tool scripts and devDeps the gates chain.
 4. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
 5. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
 6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
@@ -127,7 +127,7 @@ bkit upgrade --latest                    # newest published; or --to=<version> t
 bkit check
 ```
 
-**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--opencode=<provider>` `--typescript`. `--typescript` writes the owned slop-scan type-suppression plugin, the one file `slop-scan.config.json` references that bkit keeps current. The CI workflow, the Vale config, the tool configs, the git hooks, and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. There is no `--core`/`--full`/`--ci`/`--tooling`/`--lint`/`--git-hooks` flag.
+**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--opencode=<provider>` `--typescript`. `--typescript` writes the owned slop-scan type-suppression plugin, the one file `slop-scan.config.json` references that bkit keeps current. The CI workflow, the Vale config, the tool configs, the git hooks, and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. Any other module flag is an unknown-flag error.
 
 **Opt-in flags:** `--tracker=github|linear`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Dependency updaters: copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 

@@ -1543,8 +1543,7 @@ export function runCursorModule(ctx: ModuleContext): void {
   // Markered-text — manifest format: "markered-text" — preflight hook + shared rules.
   // All use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
   // Uses writeTier2 to update only the bkit-managed block; consumer content outside
-  // markers is preserved. `.cursor/Dockerfile` moved to the opt-in `cloud` module
-  // (runCloudModule) — it only matters for Cursor Background Agents (cloud).
+  // markers is preserved. `.cursor/Dockerfile` is a template (`.bkit/templates.md`).
   {
     const markeredFiles: Array<[string, string]> = [
       [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
@@ -1715,10 +1714,10 @@ export function opencodeProviderEnvVar(providerKey: string): string {
  * silently leaves the handler calling the wrong provider's model and authenticating with the wrong
  * (likely-unset) secret.
  *
- * bkit-cloud.yml (the bkit-MANAGED cloud lane) has NO such problem: it runs `opencode run` against
- * the committed `.opencode/` config and fans one `OPENCODE_PROVIDER_KEY` secret out to every
- * provider env var, so it self-syncs on a provider switch. Only the unmanaged reactive handler
- * drifts — hence a manual-fix advisory rather than an auto-rewrite.
+ * bkit-cloud.yml (the cloud lane, copied from bkit's template) has NO such problem: it runs
+ * `opencode run` against the committed `.opencode/` config and fans one `OPENCODE_PROVIDER_KEY`
+ * secret out to every provider env var, so it self-syncs on a provider switch. Only the reactive
+ * handler drifts — hence a manual-fix advisory rather than an auto-rewrite.
  *
  * File-existence guarded (no-op when opencode.yml is absent) so it is safe to ship: it fires only
  * for repos that self-installed the /oc handler. No equivalent check for claude.yml — the @claude

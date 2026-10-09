@@ -1567,7 +1567,7 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
 
   it("no drift when a consumer adds a comment annotation inside a managed block", () => {
     // Comments inside a managed block are non-load-bearing — a consumer annotating the block
-    // with a ticket ref / rationale must not trip perpetual drift on a Tier-3 file bkit never
+    // with a ticket ref / rationale must not trip perpetual drift on a template file bkit never
     // rewrites. Only semantic (non-comment) lines are compared.
     const consumer = readTemplate().replace(
       "    # bkit:end verbose-ci-env",
@@ -1593,7 +1593,7 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
   it("does NOT flag MISSING when the optional ts-ci-steps block is absent (hand-maintained toolchain)", () => {
     // ts-ci-steps ships `optional`: a consumer that maintains its own setup/install/typecheck
     // steps outside the block (and deletes the block) must NOT be perpetually nagged "missing"
-    // on a Tier-3 file bkit never rewrites. Other required blocks remain intact.
+    // on a template file bkit never rewrites. Other required blocks remain intact.
     const consumer = readTemplate().replace(
       /\n\s*# bkit:start ts-ci-steps optional\n[\s\S]*?# bkit:end ts-ci-steps\n/g,
       "\n",
@@ -1613,7 +1613,7 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
 
   it("no ts-ci-steps drift even when the consumer customises a step (optional = consumer-owned)", () => {
     // ts-ci-steps IS the consumer's toolchain; editing a step (here: repin setup-node) must NOT
-    // nag — enforcing content on a Tier-3 block bkit never rewrites was perpetual noise on every
+    // nag — enforcing content on a template block bkit never rewrites was perpetual noise on every
     // consumer that customised its own CI.
     const consumer = readTemplate()
       .replace(/\{\{NODE_VERSION\}\}/g, "22")

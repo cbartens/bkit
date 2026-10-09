@@ -15,6 +15,15 @@
 <!-- prettier-ignore -->
 | Tool | Copy from | To | Output you commit |
 | --- | --- | --- | --- |
+| CI workflow | `.bkit/templates/.github/workflows/ci.yml` | `.github/workflows/ci.yml` | that file |
+| Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
+| Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
+| Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
+| lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
+| Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/House/` | `.vale.ini`, `.vale/styles/House/` | `.vale.ini` + the four House styles |
+| slop-scan | `.bkit/templates/slop-scan.config.json` | `slop-scan.config.json` | that file |
+| direnv | `.bkit/templates/.envrc` | `.envrc` | that file |
+| Cursor editor + cloud agent | `.bkit/templates/.cursor/settings.json`, `environment.json`, `Dockerfile` | same paths under `.cursor/` | the files you use |
 | Renovate rules | `.bkit/templates/.github/renovate.json5` | `.github/renovate.json5` | that file |
 | Renovate self-hosted runner | `.bkit/templates/.github/workflows/renovate.yml` | `.github/workflows/renovate.yml` | that file |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` | `.github/dependabot.yml` | that file |
@@ -23,12 +32,161 @@
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 
-- `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted (`{{...}}` placeholders stay). `bkit upgrade` lists changed / added / removed paths; `git diff .bkit/templates` shows the change. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do.
+Placeholders. Copies keep them raw; replace each in your copy:
+
+<!-- prettier-ignore -->
+| Placeholder | In | Put | Value bkit used to fill in |
+| --- | --- | --- | --- |
+| `main` | `ci.yml` (`on.push` / `on.pull_request` branches; stub comments) | your default branch | `origin/HEAD`, else `main` |
+| `{{NODE_VERSION}}` | `ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major | `.nvmrc`, then `engines.node`, then `22` |
+| `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, both jobs) | a runner label | `ubuntu-latest` |
+
+- `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
+- **What changed on upgrade.** `bkit upgrade` lists changed / added / removed template paths. For each one you adopted: `diff .bkit/templates/<path> <path>`, merge what you want (placeholder lines differ by design). `git diff .bkit/templates` in the upgrade commit = the package change.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do; an older adopted copy does not.
+- Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python + shell launchers; git hooks: POSIX `sh`).
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
-- No manifest key for Serena / graphify / secrets sync / prettier tables.
+- No manifest key for any template.
+
+## Gate tool scripts — `package.json`
+
+bkit seeds only the `bkit:gate:*` / `bkit:deps:*` names (add-if-missing). The tool scripts their defaults chain are yours; `gate-missing-called-scripts` names any that are missing.
+
+<!-- prettier-ignore -->
+| Gate (default) | Chains | Needs |
+| --- | --- | --- |
+| `bkit:gate:format` | `pnpm lint-staged` | lint-staged devDep + `.lintstagedrc.json` + prettier |
+| `bkit:gate:static` | `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` | the scripts below |
+| `bkit:gate:static-unit` | `bkit:gate:static` + `test` | a `test` script |
+| `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile` + `bkit:gate:static-unit` + `build` | a `build` script |
+
+```json
+{
+  "typecheck": "tsc --noEmit",
+  "lint": "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'",
+  "format:check": "prettier --check .",
+  "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo \"[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring\" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname \"$(cd \"$G\" && pwd)\") && [ -d \"$M/.vale/styles/write-good\" ] && mkdir -p .vale/styles && cp -R \"$M/.vale/styles/write-good\" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync\" >&2; fi; else echo \"[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)\"; fi'",
+  "lint:slop": "slop-scan scan .",
+  "slop:delta": "bkit ci slop",
+  "prepare": "husky"
+}
+```
+
+```bash
+pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
+```
+
+- `lint` must exist: with no `lint` script, `pnpm lint` falls through to any `lint` binary on `PATH` and the gate goes green through the wrong program. No eslint config → the value above prints a skip line.
+- No `tsconfig.json` → `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
+- `slop:delta` runs `bkit ci slop` (bkit devDep on `PATH` through the package script). CI passes the base sha as its one bare argument.
+- Non-Node stack → point each gate at your own commands; keep the gate names.
+
+## CI workflow — `ci.yml`
+
+Parallel lanes `bkit-tests-static` (typecheck, prettier, Vale, slop, actionlint, `bkit check`) and `bkit-tests-unit`, plus the commented FULL CI SCAFFOLD REFERENCE for the other tiers. Workflows care: `/bkit-ship` waits on its runs and the `bkit.capstoneJob` check (default `bkit-tests-check`), and `bkit-cloud.yml` triggers on a workflow named `CI`. `bkit install` reads your copy for advisories (`ci-yml-missing-token-env`, `bkit-stub-*`, `ci-yml-missing-actionlint`, `ci-yml-capstone-contract-drift`). Reference: https://docs.github.com/en/actions.
+
+- Install: nothing beyond the gate tool scripts above, a `test` script, and `packageManager` in `package.json` (`pnpm/action-setup` reads it; do not add `with: version:`).
+- Secrets: `BKIT_GH_TOKEN_INSTALL` (`read:packages`) → `docs/deployments.md` § Consumer CI auth.
+- Adapt: `main`, `{{NODE_VERSION}}`. Non-Node repo → replace the `ts-ci-steps` blocks with your stack's setup / install / check steps.
+- Adopt a scaffold lane only when its tier exists (`docs/testing.md`). Each `# bkit-stub:<id> —` header raises an install advisory until you enable or delete that stub.
+- Keep the `name: CI` line, or rename `workflows: [CI]` in `bkit-cloud.yml` and set `bkit.ciWorkflow` to the new file name.
+- Keep `fetch-depth: 0` on the static lane: `slop:delta` checks the PR base out as a worktree.
+
+## Cloud-agent workflow — `bkit-cloud.yml`
+
+Post-CI router: CI pass on `feat/**` → `/bkit-ship`, fail → `/bkit-debug`; failed `dev` CI → `/bkit-debug {FID}`; `workflow_dispatch` runs any phase. Two jobs, each a no-op without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`). Runs bkit workflows; `bkit install --auto=claude|opencode` points at it. Full recipe: `.bkit/cloud.md` § Post-CI auto-routing.
+
+- Install: `bkit install --auto=claude` (writes `.claude/hooks/cloud-bootstrap.sh`) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
+- Secrets: `ANTHROPIC_API_KEY` + the Claude GitHub App (`/install-github-app`) for `claude`; `OPENCODE_PROVIDER_KEY` for `opencode`. Repo Actions permissions: read and write, PR creation allowed.
+- Adapt: `{{CLOUD_RUNNER}}` in both jobs.
+- Traps: the file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade` — diff it on every upgrade. The opencode install version is a plain argument no updater bumps. Keep the file out of updater `ignorePaths` so action pins refresh.
+
+## Git hooks — Husky
+
+`pre-commit` runs `bkit:gate:format`; `pre-push` runs `bkit:gate:static-unit` (`bkit:gate:static` on revert branches / commits), then `bkit check`, plus a CI-suppressing-token guard. Workflows care: they commit and push without `--no-verify`, so a failing hook stops a workflow. Reference: https://typicode.github.io/husky/.
+
+```bash
+pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
+chmod +x .husky/pre-commit .husky/pre-push
+```
+
+- `.gitignore`: `.husky/_` (bkit's `.gitignore` block already lists it).
+- Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
+- Traps: hooks run on every workflow commit; keep them to seconds (pre-commit) and deterministic, offline checks (pre-push). Integration, E2E and `@live` belong in CI.
+
+## Prettier — `.prettierignore` first
+
+```bash
+pnpm add -D prettier@^3.5.3
+```
+
+1. Copy `.prettierignore` BEFORE the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example`, `docs/roadmap.md` in its own layout; prettier reformatting them fights the next `bkit install` (`bkit check` drift).
+2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
+
+- Keep the `.bkit/templates/` line.
+- Own entries go outside the `bkit:start` / `bkit:end` lines.
+
+## lint-staged — `.lintstagedrc.json`
+
+Runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls it. Reference: https://github.com/lint-staged/lint-staged.
+
+```bash
+pnpm add -D lint-staged@^17.0.0 prettier@^3.5.3
+```
+
+- Adapt: add per-glob commands (eslint `--fix`, etc.) — keep them seconds-fast.
+
+## Vale — prose lint, with House styles
+
+`lint:prose` (in `bkit:gate:static`) runs Vale with the `write-good` package and bkit's House styles (`Filler`, `Hedging`, `LLMSlop`, `Verbose`) on `.agents/**`. Workflows reach Vale only through the gate. Reference: https://vale.sh/docs/install.
+
+```bash
+brew install vale
+vale sync
+```
+
+- Copy `.vale.ini` and all four `.vale/styles/House/*.yml`.
+- `.gitignore`: `.vale/styles/write-good` (`vale sync` downloads it; the House styles stay tracked).
+- CI: the `ci.yml` template installs a pinned Vale and runs `vale sync`. Cursor: the `Dockerfile` template installs it.
+- Adapt: add `[glob]` scope blocks for your own docs; turn rules off per path, not globally.
+- Traps: no Vale on `PATH`, or `write-good` not synced → `lint:prose` prints a skip line and the prose gate is not enforcing. Keep the `.bkit/templates/**` block (rules off for the copies).
+
+## slop-scan — `slop-scan.config.json`
+
+`lint:slop` reports; `slop:delta` (`bkit ci slop`, in `bkit:gate:static`) fails on net-new findings against the base. Reference: https://github.com/benvinegar/slop-scan.
+
+```bash
+pnpm add -D slop-scan@^0.3.0
+bkit install --typescript
+```
+
+- `--typescript` writes the plugin the config loads (`./.bkit/scripts/bkit-slop-type-suppression.mjs`, rules `boundary/type-suppression`, `boundary/gate-suppression`). No plugin → drop the `plugins` entry and both `boundary/*` rules.
+- Adapt: `ignores` for generated / vendored trees; per-file `overrides` with a reason, never a rule disabled repo-wide.
+- Traps: keep `**/.bkit/templates/**` in `ignores`, or copied `.mjs` / `.py` count as net-new slop on the upgrade commit.
+
+## direnv — `.envrc`
+
+Loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN`, `BKIT_GH_TOKEN_INSTALL`, tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/cloud.md` / `.cursor/cloud.md`; preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
+
+```bash
+brew install direnv     # then add the shell hook from the link
+direnv allow
+```
+
+- Adapt: one `dotenv_if_exists <path>` line per extra env file; `unset` keys that must stay out of the shell (they are dropped from the cloud env blocks too).
+
+## Cursor — `settings.json`, `environment.json`, `Dockerfile`
+
+Editor defaults (`settings.json`: prettier format-on-save, extension recommendations) and the Cursor Cloud Agent image (`environment.json` → `Dockerfile` + per-snapshot `install`). Cloud agents run bkit workflows; `bkit install --auto=cursor` (needs `--tracker=linear`) points at the two cloud files. Reference: https://cursor.com/docs/cloud-agent/setup.
+
+- `Dockerfile`: the block between the markers installs what bkit's workflows use (git, jq, python3, gh, pinned Vale, corepack-pinned pnpm). Adapt `FROM`, the Node major and repo extras outside it.
+- `environment.json` `install`: writes the `BKIT_GH_TOKEN_INSTALL` auth line, `pnpm install --frozen-lockfile`, `vale sync` when `.vale.ini` exists.
+- Secrets: Cloud Agents dashboard → Runtime Secrets (`.bkit/cloud.md`).
+- Traps: the corepack pnpm pin must match `packageManager`. Keep the marked block as shipped so the template diff on upgrade stays readable.
 
 ## Dependabot and Renovate
+
+Opens dependency PRs. No bkit workflow reads either. Pick one.
 
 - Use one.
 - Examples ignore `.bkit/templates/**` and `.agents/skills/**` (bkit rewrites them). Your copied workflows (`ci.yml`, `bkit-cloud.yml`) stay in scope so their pins refresh.

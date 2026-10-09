@@ -776,7 +776,7 @@ export async function runUninstall(
   }
 
   // Prune bkit-authored dirs left empty by the deletions above (e.g. .claude/agents,
-  // .github/workflows, .husky, .vale/styles/House, .bkit/scripts). Candidates are the parent
+  // .claude/hooks, .bkit/scripts). Candidates are the parent
   // dirs of everything deleted, plus their ancestors; each is removed ONLY when it is actually
   // empty (never touches a dir still holding consumer files), deepest-first so the removal
   // cascades up. Skipped in dry-run — nothing was deleted, so nothing is empty to report.

@@ -25,10 +25,10 @@
  *   2. `gh auth token`               (keyring; needs `project`, `repo` scopes)
  *
  * Usage:
- *   pnpm exec tsx scripts/linear-to-github-import.ts             # dry-run
- *   pnpm exec tsx scripts/linear-to-github-import.ts --apply
- *   pnpm exec tsx scripts/linear-to-github-import.ts --only BAR-5,BAR-7 --apply
- *   pnpm exec tsx scripts/linear-to-github-import.ts --limit 3   # dry-run first 3
+ *   pnpm exec tsx scripts/linear/linear-to-github-import.ts             # dry-run
+ *   pnpm exec tsx scripts/linear/linear-to-github-import.ts --apply
+ *   pnpm exec tsx scripts/linear/linear-to-github-import.ts --only BAR-5,BAR-7 --apply
+ *   pnpm exec tsx scripts/linear/linear-to-github-import.ts --limit 3   # dry-run first 3
  */
 
 import { execSync } from "node:child_process";

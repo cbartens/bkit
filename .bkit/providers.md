@@ -19,7 +19,7 @@
 | Host | Tier | Subagent dir | Command dir | Settings | Hooks | Install |
 | --- | --- | --- | --- | --- | --- | --- |
 | Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | `bkit install --claude` |
-| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
+| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` (templates, `.bkit/templates.md`) | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 | Codex CLI | additive (opt-in) | `.codex/agents/` (TOML) | none — skills (below) | none (`openai` = reserved built-in id) | `.codex/hooks/gateguard.cjs` + `.codex/hooks/guardrails.cjs` (PreToolUse `apply_patch` / `Bash`, via `.codex/hooks.json`) | `bkit install --codex` |
 

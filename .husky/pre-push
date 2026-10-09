@@ -1,10 +1,19 @@
 #!/usr/bin/env sh
-# pre-push hook shipped by bkit. Tier 3 (seed-or-print): bkit writes this file
-# once if absent; if present bkit will not overwrite — modify freely.
+# bkit pre-push. Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
 #
-# Revert-branch bypass: when rolling back, the source tree is intentionally
-# inconsistent (deleted files referenced by surviving tests). Skip the test
-# suite so the recovery push can land; lint + typecheck still run.
+# FAST deterministic gates only: the `bkit:gate` script (typecheck + unit tests +
+# format:check + prose + the enforcing slop gate) plus the bkit drift gate (no
+# Docker/network). This is the full deterministic mirror of CI, so a green push can't
+# red-CI on those gates. Heavier tiers run in CI, NOT here: integration + E2E ->
+# bkit-tests (gated on web_affected / run_e2e); @live -> bkit-tests-live; "did the
+# planned tiers run?" -> bkit-tests-check. See ci.yml § FULL CI SCAFFOLD REFERENCE —
+# keep slow/network/deploy checks OUT so a green push never implies more than these
+# gates verified. Turbo monorepos: scope tests inside the `bkit:gate*` scripts with
+# `--filter="...[origin/<default>]"`; never add integration/E2E/@live.
+#
+# Revert-branch bypass: rolling back leaves the tree intentionally inconsistent (deleted
+# files referenced by surviving tests) — skip the suite so recovery lands; lint + typecheck still run.
 set -e
 
 # ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
@@ -66,14 +75,12 @@ case "$BRANCH" in
     ;;
 esac
 
-# WHAT each gate runs lives in package.json `bkit:gate*` — the same scripts the agent
-# workflows and prompts dispatch through, so a human push and an agent run enforce the
-# identical set. Edit the scripts, not this hook. bkit-repo-only extras stay below.
-# Revert path drops the suite only: prose and slop:delta stay (md prose is unaffected by
-# deleted code; removals show as 'resolved', never 'added', so slop:delta stays green).
-# bats runs inside `bkit:gate` and self-guards when the binary is absent — it is NOT a
-# devDependency (CI installs it via `npx --yes bats`), and without the guard a
-# contributor who has not installed bats could not push at all.
+# WHAT each gate runs lives in package.json, not here — the same `bkit:gate*` scripts
+# the bkit agent workflows and prompts dispatch through, so a human push and an agent
+# run enforce the identical set. Edit the scripts, not this hook. Repo-specific extras
+# go BELOW this block.
+# Revert path drops the suite only: prose and slop:delta stay (md prose is unaffected
+# by deleted code; removals show as 'resolved', never 'added').
 if [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — skipping the test suite"
   pnpm bkit:gate:static < /dev/null
@@ -81,8 +88,15 @@ else
   pnpm bkit:gate:static-unit < /dev/null
 fi
 
-# bkit-repo only — fail push if `.agents/*` edits weren't mirrored via `pnpm bkit install`.
+# bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
+# regenerating the `.claude/*`/`.cursor/*`/`.husky/*` mirrors (same check CI runs).
+# Outside the gate scripts: it validates the bkit install, not your source.
+# Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
+
+# bkit-repo only — bats runs inside `bkit:gate:static-unit` (above) and self-guards when
+# the binary is absent: it is NOT a devDependency (CI installs it via `npx --yes bats`), and
+# without the guard a contributor who has not installed bats could not push at all.
 
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.

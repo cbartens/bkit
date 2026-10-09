@@ -13,7 +13,7 @@
 # Base image digest-pinned — an `ubuntu:26.04` tag is mutable, so pinning the digest keeps builds
 # reproducible and the supply chain fixed. Refresh with `docker pull ubuntu:26.04` (prints `Digest:`),
 # or let Renovate's dockerfile manager bump it. Consumer-owned — repin to your own base as needed.
-FROM ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
+FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
 
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node >=20 are on PATH
@@ -26,9 +26,10 @@ RUN curl -fsSL --retry 3 --retry-all-errors https://deb.nodesource.com/setup_20.
     && rm -rf /var/lib/apt/lists/*
 
 # <!-- bkit:start -->
-# --- bkit toolchain (managed; do not edit) ---------------------------------
+# --- bkit toolchain (keep as shipped; diff against bkit's template) ---------
 # Aligned with the Claude Code on the web setup script in bkit's `cloud.md`.
-# Updates ship via `pnpm bkit install`; consumer extensions go outside this block.
+# Updates arrive in `.bkit/templates/.cursor/Dockerfile` on `bkit upgrade`; put repo
+# extensions outside this block.
 
 # System deps the preflight hook + bkit workflows depend on.
 RUN apt-get update && apt-get install -y --no-install-recommends \

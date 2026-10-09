@@ -207,7 +207,7 @@ CI on `dev` proves code good; nothing checks good code reached default branch. G
 
 `Check Default Branch Lags Dev` (`bkit-tests-static` lane) closes blind spot: every `dev` push diffs `renovate.json5`, `renovate.json`, `.github/workflows/**` vs default branch → `::warning::` + `$GITHUB_STEP_SUMMARY` if stale. **Non-blocking** nudge; keys ONLY consumed-from-default-branch surfaces. Clear: `dev` → default-branch PR.
 
-Ships as bkit-managed `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` → non-blocking `tier2-text-drift` if **missing or drifted**. Sync from template; do not hand-edit. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
+Ships in the `ci.yml` template as the `main-lag-warning` block (`# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`); `bkit upgrade` lists `ci.yml` when it changes. Safe even without default-branch-behind-`dev` gating: `dev` pushes only, self-skips when default branch is `dev`/unset.
 
 ### One CI run per dev commit (release PR mirrors the `dev` push run)
 
@@ -459,12 +459,12 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
 | --- | --- | --- | --- | --- |
-| 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
-| 2 | Unit and integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
-| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
-| 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
-| 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
-| 6 | bkit self-check | `pnpm bkit check` | consumer template (`.bkit/templates/.husky/pre-push` — the consumer copies and owns it); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 1 | Typecheck | `pnpm typecheck` | template, via `bkit:gate:static-unit` | TS error → fix source. |
+| 2 | Unit and integration tests | `pnpm test` | template, via `bkit:gate:static-unit` | Test failure → fix code, never delete the test. |
+| 3 | Prettier format check | `pnpm format:check` | template, via `bkit:gate:static-unit` | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
+| 4 | Prose lint | `pnpm lint:prose` | template, via `bkit:gate:static-unit` | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
+| 5 | Slop delta | `pnpm slop:delta` | template, via `bkit:gate:static-unit` | A finding this push ADDS or WORSENS the repo on NET → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), NOT raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must NOT fail the gate. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
+| 6 | bkit self-check | `pnpm bkit check` | template (`.bkit/templates/.husky/pre-push` — the consumer copies and owns it) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
 | 7 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 | 8 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
 
@@ -488,16 +488,16 @@ Source-repo only. Any `.bkit/src/*.ts` change MUST include `pnpm build && git ad
 
 ### `.husky/pre-push` bkit check gate
 
-**Template** — bkit never writes it; the consumer copies `.bkit/templates/.husky/pre-push` and owns it. Consumer template ships `pnpm bkit check < /dev/null`. Source repo additionally appends `pnpm bkit check`, `pnpm bkit:check:dist`, `pnpm bkit:lint:workflows` (not via markers) — drift, stale `dist/`, actionlint.
+**Template** — bkit never writes it; the consumer copies `.bkit/templates/.husky/pre-push` and owns it. Consumer template ships `pnpm bkit check < /dev/null`. Source repo appends `pnpm bkit:check:dist`, `pnpm bkit:lint:workflows` below it — stale `dist/`, actionlint.
 
 - Repo-only lines at bottom; not in consumer template.
 - On failure: `pnpm bkit install` (drift), `pnpm build && git add dist/` (dist), fix workflow (actionlint); commit; push. `--no-verify` PROHIBITED.
 
 ### Renovate — fencing bkit's own footprint
 
-This repo's `.github/renovate.json5` keeps Renovate off files `bkit install` rewrites, and off the `@cbartens/bkit` package.
+This repo's `.github/renovate.json5` is its copy of the template plus one bkit-repo block (vite and pnpm majors held back).
 
-- `ignorePaths`: `.bkit/templates/**`, `.agents/skills/**`, `.github/workflows/bkit-cloud.yml`, `.github/workflows/renovate.yml`.
+- `ignorePaths`: `.bkit/templates/**`, `.agents/skills/**`.
 - A packageRule disables `@cbartens/bkit`. Bump it with `pnpm bkit upgrade --latest` (or `--to=<version>`).
 
 Template workflow pins under `.bkit/templates/.github/workflows/` sit on an ignored path, so Renovate does not bump them. This repo's `.github/workflows/*.yml` stays in scope. Refresh template pins by hand when revising CI.
@@ -560,7 +560,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 
 ### `bkit-cloud.yml` — dual-job cloud-agent lane
 
-`bkit install --auto=…` ships a single `.github/workflows/bkit-cloud.yml` carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
+The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it to `.github/workflows/bkit-cloud.yml`) carries TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
 
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM secret |
@@ -573,7 +573,7 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 - **Secret-gated, never branch-gated.** Missing key → no-op (not fail). Both keys → both jobs; serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`).
 - **`--auto=opencode` requires `tracker=github`.**
 - **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in opencode job. GHA-injection hardened — `PHASE`/`ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
-- **Renovate exemption** + **`bkit [auto route]` gate** unchanged — § GitHub Actions pinning, commit-tag taxonomy.
+- **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
 
 ### Consumer CI auth — user-level `pnpm config set` (canonical)
 

@@ -135,6 +135,35 @@ describe("isGateConfig", () => {
   it("GATE_CONFIG_PATTERNS is non-empty", () => {
     expect(GATE_CONFIG_PATTERNS.length).toBeGreaterThan(0);
   });
+
+  it("does NOT flag a consumer's template copies under .bkit/templates/", () => {
+    for (const p of [
+      ".bkit/templates/.vale.ini",
+      ".bkit/templates/slop-scan.config.json",
+      ".bkit/templates/.prettierignore",
+      "/abs/repo/.bkit/templates/.lintstagedrc.json",
+    ]) {
+      expect(isGateConfig(p, false), p).toBe(false);
+    }
+  });
+
+  it("still flags the consumer's adopted copy at the repo root", () => {
+    expect(isGateConfig(".vale.ini", false)).toBe(true);
+    expect(isGateConfig("/abs/repo/slop-scan.config.json", false)).toBe(true);
+  });
+
+  it("flags .bkit/templates/ gate configs in bkit's own repo, where that folder is the source", () => {
+    expect(isGateConfig(".bkit/templates/.vale.ini", true)).toBe(true);
+    expect(isGateConfig("/abs/bkit/.bkit/templates/slop-scan.config.json", true)).toBe(true);
+  });
+
+  it("does not skip a folder that merely ends in .bkit/templates", () => {
+    expect(isGateConfig("x.bkit/templates/.vale.ini", false)).toBe(true);
+  });
+
+  it("defaults the dogfood flag from isDogfood() (this test runs inside bkit's repo)", () => {
+    expect(isGateConfig(".bkit/templates/.vale.ini")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

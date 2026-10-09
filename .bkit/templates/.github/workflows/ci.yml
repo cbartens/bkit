@@ -1,8 +1,7 @@
 # Example. Copy into the repo and own it.
 # bkit install does not write this file and does not overwrite a copy.
 # Keep the `# bkit:start verbose-ci-env` block below intact if you want verbose-CI
-# support: bkit's preflight checks for it by name to confirm the `[verbose ci]` marker
-# still works.
+# support: it is where the `[verbose ci]` commit marker is read.
 name: CI
 
 on:
@@ -146,7 +145,7 @@ jobs:
           fi
 
       # bkit:start main-lag-warning
-      # Promotion-lag reminder (non-blocking, bkit-managed block). Renovate reads its config
+      # Promotion-lag reminder (non-blocking). Renovate reads its config
       # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
       # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
       # that lands on dev but is never promoted runs STALE for everyone until a dev -> default
@@ -302,7 +301,7 @@ jobs:
   # and remote db push move out of this job when you adopt the scaffold below.
   bkit-tests-unit:
     runs-on: ubuntu-latest
-    # Env vars duplicated from bkit-tests-static's managed verbose-ci-env block.
+    # Env vars duplicated from bkit-tests-static's verbose-ci-env block.
     # See the verbose-ci-env block comment in bkit-tests-static for documentation —
     # including why NODE_OPTIONS is a static YAML key here and never a $GITHUB_ENV write.
     env:

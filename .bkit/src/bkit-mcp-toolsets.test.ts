@@ -5,8 +5,8 @@
 // the gh->MCP fallback lane, Sub-Plan 5) in both the live `.mcp.json` and the
 // shipped `.bkit/templates/.mcp.json`, and that the two stay in sync via the
 // real render path (`buildMcpJson`) rather than a naive byte-equal check —
-// `.mcp.json` is a Tier-3 seed-or-print file, tracker-filtered at install
-// time (`buildMcpJson`), so the live copy legitimately omits the `linear`
+// bkit owns only the tracker entry of `.mcp.json`, rendered tracker-filtered at
+// install time (`buildMcpJson`), so the live copy legitimately omits the `linear`
 // block the raw template carries. Validate with the real resolver, not a
 // string-presence assumption.
 

@@ -8,6 +8,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isTemplate } from "./bkit-modules";
 import { listFilesRecursive } from "./bkit-install";
+import { BKIT_GATE_SCRIPTS, LINT_PROSE_SCRIPT, SLOP_DELTA_SCRIPT } from "./bkit-manifest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
@@ -528,5 +529,37 @@ describe("templates", () => {
     expect(sh).toContain("R_PACKAGES_MMD");
     expect(sh).toContain("R_MODULES_MMD");
     expect(sh).toContain("--code-only");
+  });
+});
+
+describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", () => {
+  const doc = fs.readFileSync(path.resolve(".bkit/templates.md"), "utf-8");
+  const section = doc.slice(doc.indexOf("## Gate tool scripts"));
+  const block = /```json\n([\s\S]*?)\n```/.exec(section);
+  const scripts = JSON.parse(block?.[1] ?? "{}") as Record<string, string>;
+
+  it("lists the same lint:prose and slop:delta values install re-points legacy copies to", () => {
+    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
+    expect(scripts["slop:delta"]).toBe(SLOP_DELTA_SCRIPT);
+  });
+
+  it("lists the lint value this repo runs", () => {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    expect(scripts["lint"]).toBe(pkg.scripts["lint"]);
+  });
+
+  it("lists every script the default gates chain, except test and build", () => {
+    const chained = new Set<string>();
+    for (const [gate, value] of Object.entries(BKIT_GATE_SCRIPTS)) {
+      if (!gate.startsWith("bkit:gate:")) continue;
+      for (const m of value.matchAll(/pnpm ([\w:-]+)/g)) chained.add(m[1]);
+    }
+    const external = new Set(["install", "test", "build", "lint-staged"]);
+    const missing = [...chained].filter(
+      (name) => !name.startsWith("bkit:gate:") && !external.has(name) && !(name in scripts),
+    );
+    expect(missing).toEqual([]);
   });
 });

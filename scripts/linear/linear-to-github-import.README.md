@@ -1,6 +1,6 @@
 # Linear → GitHub importer — handover
 
-Instructions for an AI agent running `scripts/linear-to-github-import.ts` in **a different repo**.
+Instructions for an AI agent running `scripts/linear/linear-to-github-import.ts` in **a different repo**.
 
 ## What this does
 
@@ -9,7 +9,7 @@ Imports one Linear project's issues into one GitHub repo + Projects v2 board. Po
 ## Prereqs
 
 1. **Copy two files** from the bkit repo to the target repo:
-   - `scripts/linear-to-github-import.ts`
+   - `scripts/linear/linear-to-github-import.ts`
    - `docs/linear-issues.csv` (or use a fresh Linear CSV export — must include columns `ID, Title, Description, Status, Priority, Labels, Created, Assignee, Creator, UUID, Project, Parent issue`)
 2. **GitHub auth**: `gh auth login` — token needs `project`, `repo` scopes. The script reads `gh auth token --secure-storage` (keyring) by default; override with `GH_PROJECT_TOKEN=…`.
 3. **Linear key**: `export BKIT_LINEAR_API_KEY=lin_api_…` (personal API key from linear.app/settings/api).
@@ -23,7 +23,7 @@ Imports one Linear project's issues into one GitHub repo + Projects v2 board. Po
 The defaults target `cbartens/bkit`. **Always pass these**:
 
 ```bash
-pnpm exec tsx scripts/linear-to-github-import.ts \
+pnpm exec tsx scripts/linear/linear-to-github-import.ts \
   --repo OWNER/REPO \
   --project "GH Project Title" \
   --linear-project "Linear Project Name" \

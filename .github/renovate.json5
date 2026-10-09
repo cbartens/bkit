@@ -1,32 +1,28 @@
-// Renovate configuration shipped by bkit.
-// Tier 1 (canonical-overwrite): bkit owns this file. Rewritten on every
-// `bkit install`. Do NOT edit by hand — changes will be overwritten.
+// Example Renovate config. Copy it to `.github/renovate.json5` and own it.
+// bkit install does not write this file and does not overwrite a copy.
 //
 // Reference: https://docs.renovatebot.com/configuration-options/
 //
-// Renovate App install is one-click via GitHub UI (https://github.com/apps/renovate).
-// No `gh api` equivalent exists.
+// Mend App install is one-click via GitHub UI (https://github.com/apps/renovate).
+// No `gh api` equivalent exists. Land this file on the default branch before
+// installing the App. Self-hosted runner: copy
+// `.bkit/templates/.github/workflows/renovate.yml` as well, and suspend the
+// Mend App for this repo so both do not open the same PRs.
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
 
   // Extend Renovate's curated baseline. `config:recommended` enables the
   // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
-  //
-  // `local>cbartens/bkit//.github/renovate-local.json5` pulls in `.github/renovate-local.json5`,
-  // a CONSUMER-OWNED file bkit does NOT manage. This file (renovate.json5) is
-  // Tier-1 canonical-overwrite — rewritten on every `bkit install` — so hand-edits
-  // here are clobbered. Put repo-specific Renovate rules in renovate-local.json5
-  // instead; they survive `bkit install`/`bkit upgrade`. It's listed LAST so it
-  // wins over the presets above. Precedence caveat: extended-preset packageRules
-  // are evaluated BEFORE this config's inline packageRules below, so renovate-local
-  // can ADD rules and set keys bkit leaves unset (notably `enabled: false` to fence
-  // a package — bkit never sets `enabled: true`), but it canNOT override a key bkit
-  // sets explicitly (e.g. `automerge`). Renovate resolves the preset from the
-  // DEFAULT branch; append `#<branch>` to resolve from another branch.
+  // Repo-specific rules go in this file. You own it.
+  // A `local>` preset with no `#` is read from the default branch. `useBaseBranchConfig`
+  // does not change that fetch. Append the branch `baseBranchPatterns` names — a branch
+  // after `#` works (branch, tag, or commit SHA):
+  //   "local>owner/repo//path/to/preset.json5#dev"
+  // The `extends` line itself is still read from the default branch, so `#dev` needs
+  // one merge there before edits on `dev` apply.
   extends: [
     "config:recommended",
     ":dependencyDashboard",
-    "local>cbartens/bkit//.github/renovate-local.json5",
   ],
 
   // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open
@@ -39,7 +35,7 @@
   // to `main` to take effect. `merge` layers `dev`'s config over `main`'s for the
   // dev-targeted runs, so ongoing config edits can live on `dev`. Bootstrap caveat:
   // this option is itself read from `main`, so it needs ONE merge to `main` before
-  // dev-side config edits are honored. See docs/deployments.md § GitHub Actions pinning.
+  // dev-side config edits are honored. See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
   // Weekly batched runs — keeps PR noise low. CVE-driven updates fire
@@ -100,37 +96,34 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
-  // by consumer Renovate — scanning them only produces onboarding noise (and an
-  // unauthable `@cbartens/bkit` lookup).
-  // `bkit-cloud.yml` and (on self-hosted Renovate) `renovate.yml` are bkit-owned
-  // too and SHA-pinned by design (new SHAs arrive via `bkit install`). They MUST be
-  // ignored here, not merely fenced by the packageRule below: `enabled: false`
-  // suppresses version bumps but the github-actions manager still SCANS the file and
-  // applies its tag->SHA pinDigests, recreating a "Pin dependencies" PR on every
-  // scan. ignorePaths stops the scan outright. (`renovate.yml` is absent on
-  // Mend-runner installs, so ignoring it there is a harmless no-op.)
+  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned. Scanning them
+  // produces onboarding noise. To keep Renovate off a file entirely, list it here:
+  // a packageRule `enabled: false` suppresses version bumps, but the github-actions
+  // manager still scans the file and applies tag->SHA pinDigests. Workflows you
+  // copied from `.bkit/templates/` (ci.yml, bkit-cloud.yml, renovate.yml) are yours —
+  // leave them out of ignorePaths so their action pins refresh.
   ignorePaths: [
     "**/node_modules/**",
     "**/dist/**",
     "**/build/**",
     ".bkit/templates/**",
     ".agents/skills/**",
-    ".github/workflows/bkit-cloud.yml",
-    ".github/workflows/renovate.yml",
   ],
 
-  // ─────────────────────────────────────────────────────────────────────
-  // Private-registry read auth (`@cbartens/bkit` on npm.pkg.github.com) is
-  // configured in the consumer-owned `.github/renovate-local.json5`, NOT here.
-  // Renovate merges `hostRules` across extended presets, so the token set there
-  // SURVIVES every `bkit upgrade` — whereas this file is canonical-overwrite and
-  // would clobber a token added here on the next install.
-  // Without that token Renovate's lockfile regen 401s, every dependency PR lands
-  // with a stale lockfile, and CI fails `pnpm install --frozen-lockfile`
-  // (ERR_PNPM_OUTDATED_LOCKFILE). Activation recipe: `.github/renovate-local.json5`
-  // and docs/deployments.md § Renovate read-auth.
-  // ─────────────────────────────────────────────────────────────────────
+  // Private-registry read auth for `@cbartens/bkit` on npm.pkg.github.com.
+  // Renovate resolves the whole workspace to regenerate the lockfile. Without a
+  // read token, regen 401s and CI fails `pnpm install --frozen-lockfile`.
+  // Mend: uncomment `token` and add BKIT_GH_TOKEN_INSTALL as a Mend repository
+  // secret with "used during the scan as an environment variable" ticked.
+  // Self-hosted: leave `token` commented; the example workflow injects
+  // RENOVATE_HOST_RULES from the Actions secret instead. Do not commit a literal token.
+  // hostRules: [
+  //   {
+  //     matchHost: "npm.pkg.github.com",
+  //     hostType: "npm",
+  //     token: "{{ secrets.BKIT_GH_TOKEN_INSTALL }}",
+  //   },
+  // ],
 
   // Cap concurrent PRs so a major-version flood doesn't drown the repo.
   prConcurrentLimit: 10,
@@ -138,26 +131,9 @@
 
   packageRules: [
     // ─────────────────────────────────────────────────────────────────────
-    // bkit-managed workflow files — DO NOT BUMP.
-    // bkit ships these via `bkit install`. Consumer-side Renovate must stay
-    // out of them; new SHAs/versions arrive when consumers bump the bkit
-    // package and re-run `bkit install`. The primary fence is `ignorePaths`
-    // above (stops the scan AND the tag->SHA pinning that recreated the "Pin
-    // dependencies" PR); this rule is a secondary guard that still suppresses
-    // version bumps should the file ever be removed from ignorePaths.
-    // ─────────────────────────────────────────────────────────────────────
-    {
-      matchFileNames: [
-        ".github/workflows/bkit-cloud.yml",
-        ".github/workflows/renovate.yml",
-      ],
-      enabled: false,
-    },
-
-    // ─────────────────────────────────────────────────────────────────────
     // The bkit package itself — DO NOT BUMP via Renovate.
-    // bkit upgrades via `pnpm add -D @cbartens/bkit@latest && pnpm bkit upgrade`,
-    // which re-syncs templates, substitutes tokens, and bumps the pin. A bare
+    // bkit upgrades via `pnpm bkit upgrade --latest`, which bumps the pin and
+    // re-syncs bkit's files and `.bkit/templates/` in one step. A bare
     // version bump skips that and leaves the consumer split-brain. The package
     // also lives on GitHub Packages (restricted), which Mend's hosted runner has
     // no token for — so Renovate only ever logs a "no-result" lookup.
@@ -289,6 +265,19 @@
       groupName: "docker images",
       automerge: false,
     },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // bkit repo only — majors held back on purpose. Minor and patch stay
+    // enabled.
+    // vite is pinned to ^6 via root `pnpm.overrides`: vite 8 swapped its default
+    // transformer to oxc, which fails transforming the bkit integration tests.
+    // Revisit when vitest supports vite 8.
+    // pnpm 11 is a config migration, not a drop-in bump: it ignores
+    // `pnpm.overrides` in package.json (must move to pnpm-workspace.yaml) and
+    // blocks esbuild's build script by default (needs onlyBuiltDependencies).
+    // ─────────────────────────────────────────────────────────────────────
+    { matchPackageNames: ["vite"], matchUpdateTypes: ["major"], enabled: false },
+    { matchPackageNames: ["pnpm"], matchUpdateTypes: ["major"], enabled: false },
   ],
 
   // Where to send PRs. `dev` per baseBranchPatterns above.

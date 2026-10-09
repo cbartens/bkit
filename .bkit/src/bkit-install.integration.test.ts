@@ -154,7 +154,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(blockers).toHaveLength(0);
     const ids = advisories.map((f) => f.id);
     expect(ids).toContain("lint-prose-f9-vulnerable");
-    // husky-no-markers-* is no longer emitted (Tier 3 husky, v2.0.4)
+    // husky-no-markers-* is never emitted: the husky hooks are templates
     expect(ids).not.toContain("husky-no-markers-precommit");
     expect(ids).not.toContain("husky-no-markers-prepush");
   });

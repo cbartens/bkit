@@ -1,9 +1,18 @@
 #!/usr/bin/env sh
+# bkit pre-commit. Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+#
+# FAST local gate only: format staged files (seconds). Heavier gates
+# (typecheck/unit/format:check/prose) and the enforcing slop gate (slop:delta) are in
+# pre-push; integration/E2E/@live run ONLY in CI (bkit-tests / bkit-tests-live, enforced
+# by bkit-tests-check) — see ci.yml § FULL CI SCAFFOLD REFERENCE. Rule: anything needing
+# a deployed URL, a DB, or >a few seconds belongs in a CI tier, not a hook. (lint:slop is `slop-scan scan` — report-only, never
+# fails; the gate that fails on NEW findings is `slop:delta`, which runs in pre-push.)
+#
+# WHAT it runs lives in package.json `bkit:gate:format`, not here — the same script
+# the bkit agent workflows dispatch through. Change the gate there and hooks, prompts
+# and workflows all move together. Add repo-specific extras BELOW this line.
 set -e
-# WHAT this runs lives in package.json `bkit:gate:format` — the same script the agent
-# workflows dispatch through, so hooks and agents cannot drift. pre-commit stays fast:
-# format staged + prose. (lint:slop is report-only and never fails; the enforcing
-# `slop:delta` gate runs in pre-push via `bkit:gate`.)
 pnpm bkit:gate:format
 
 # bkit-repo only — block committing stale dist when a COMPILED `.bkit/src/*.ts` is

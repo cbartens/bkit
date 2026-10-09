@@ -410,7 +410,7 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
     id: "ci-yml-missing-actionlint",
     severity: "advisory",
     detect:
-      ".github/workflows/ci.yml (bkit-managed) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
+      ".github/workflows/ci.yml (adopted from bkit's template) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
     action:
       "Add an actionlint step among the static checks in .github/workflows/ci.yml (before the test/build group):\n\n" +
       "      - name: Run actionlint\n" +
@@ -573,7 +573,7 @@ export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding 
     id: "ci-yml-capstone-contract-drift",
     severity: "advisory",
     detect:
-      `.github/workflows/ci.yml (bkit-managed) has a bkit-tests-check capstone missing ${missing.length} ` +
+      `.github/workflows/ci.yml (adopted from bkit's template) has a bkit-tests-check capstone missing ${missing.length} ` +
       "load-bearing invariant(s) from bkit's canonical CI contract. ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
     action:
       "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit ci.yml template):\n\n" +
@@ -2751,10 +2751,9 @@ export function runPostInstallCheck(
     });
   }
 
-  // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
+  // Optional post-install decisions (opt-in add-ons):
   //   1. Issue tracker — branch on bkit.issueTracker.
-  //   2. Dependency updater — read-only. Suggests an example template, or warns
-  //      when an existing config would re-pin bkit-cloud.yml. Never writes config.
+  //   2. Dependency updater — read-only. Suggests an example template. Never writes config.
   //   3. Cloud agents — branch on bkit-cloud.yml presence (#119).
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
@@ -2864,8 +2863,8 @@ export function runPostInstallCheck(
   if (ledgerCollisions) phase3.push(ledgerCollisions);
 
   // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
-  // Wired here in Phase 3 — scaffolds (.bkit/.env.example, .envrc) only exist
-  // after writes, so Phase 1 cannot see them on first install.
+  // Wired here in Phase 3 — the .bkit/.env.example scaffold only exists after
+  // writes, so Phase 1 cannot see it on first install.
   // Pass the consumer's tracker so the mcp-env prose omits BKIT_LINEAR_API_KEY on github/none
   // repos (issue #138) — they never wire Linear, so asking for the key is a false ask.
   const mcpEnvTracker = readConsumerIssueTracker(cwd);

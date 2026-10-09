@@ -143,8 +143,8 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # SHA pins in this file — the bkit-shipped `renovate.json5` fences it off from
-      # consumer-side Renovate; new SHAs arrive via `bkit install`.
+      # SHA pins in this file — your updater refreshes them in your copy (keep this file out
+      # of renovate.json5 `ignorePaths`); `bkit upgrade` lists this template when bkit's pins move.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
@@ -845,9 +845,8 @@ jobs:
         if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
         run: |
           # Version-pinned: the bare `| bash` installs whatever opencode.ai/install resolves as "latest" at
-          # push time (unpinned remote code executing with the runner token). This file is bkit-managed and
-          # Renovate-ignored, so the pin is refreshed via `bkit install` on a bkit release — the same channel
-          # that carries the checkout/claude-code-action tag bumps in this file.
+          # push time (unpinned remote code executing with the runner token). No updater bumps this pin:
+          # take the new version from bkit's template when `bkit upgrade` lists this file, or bump it by hand.
           curl -fsSL --retry 3 --retry-all-errors https://opencode.ai/install | bash -s -- --version 1.17.13
           echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 

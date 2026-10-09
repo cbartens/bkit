@@ -28,10 +28,9 @@ pnpm-lock.yaml
 # time, so prettier must not reformat them or the next install / `bkit check`
 # would just revert the rewrite (permanent drift).
 .mcp.json
-.envrc
 .bkit/.env.example
 .opencode/opencode.json
-# Generated projection — bkit_roadmap_fold FULLY regenerates the
+# Generated projection — `bkit roadmap fold` FULLY regenerates the
 # `roadmap-status` marker block on every workflow close, emitting unpadded
 # markdown tables. Prettier would re-pad them, so the committed board would
 # never be byte-equal to what the renderer emits and every close would carry a
