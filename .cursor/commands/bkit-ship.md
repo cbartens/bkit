@@ -25,7 +25,7 @@ Ship Feature — Autonomous merge and archive
 > - **Resume:** On start, fold `$BOOK_ROOT/.../status.jsonl` — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded `$BOOK_ROOT/.../status.jsonl`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap` that removes `.dev.lock` on `EXIT`.
-> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bash .bkit/scripts/bkit-book-commit.sh`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit and ONE push per run, both from one flush block — Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]`. **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
+> - **Status branch:** All steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. **If** `RUNTIME_DEVPUSHES` = true → `BOOK_ROOT` = `$REPO_ROOT`, **else** current working branch tree. Stage path-scoped via `bash .bkit/scripts/bkit-book-commit.sh`; NEVER stage all files (`-A`) or blanket `docs/`. ONE commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]` → push `dev`, refused → close PR; **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → **If** `RUNTIME_DEVPUSHES` = true → push `dev`, **else** current branch; NEVER both.
 > - **Subagents:** Invoke using `/name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
@@ -189,8 +189,6 @@ Ship Feature — Autonomous merge and archive
 
 ## 🤖 Step 1 — Start Workflow
 
-**Goal:** resolve `BOOK_ROOT` once, create outbox, preflight `actions: write`, record start row.
-
 1. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 2. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 3. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
@@ -322,8 +320,6 @@ Ship Feature — Autonomous merge and archive
 
 ## 🤖 Step 2 — Verify PR (Worktree Setup + Regression Guard)
 
-**Goal:** create/resume worktree (NO rebase — Path A reads it read-only), read `ENTRY_HEAD` + `mergeable`, emit `ship-worktree-setup` + `ship-regression-guard`. Bookkeeping never rides the branch.
-
 1. Resolve `SHIP_BRANCH`, then create / resume worktree, or adopt it in place (NO rebase — Path A). `{PROMPT_BRANCH}` = branch the session prompt names, else empty:
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
@@ -400,7 +396,7 @@ Ship Feature — Autonomous merge and archive
    ```
    **If** exit non-zero → **Failure Path**. Re-run the `gh pr list` above → extract `PR_NUMBER`, `PR_BASE` and `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
 5. **Route:**
-   - **If** `state` = MERGED → record the resume marker, then → Step 9:
+   - **If** `state` = MERGED → record the resume marker, then → Step 13:
      ```bash
      BOOK_ROOT="{BOOK_ROOT}"
      STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
@@ -481,8 +477,6 @@ Ship Feature — Autonomous merge and archive
 
 ## 🤖 Step 3 — Base Check
 
-**Goal:** classify Path A (dev is ancestor → merge directly) vs Path B (dev moved → integration required).
-
 1. Determine whether `origin/dev` is an ancestor of the PR head:
    ```bash
    ENTRY_HEAD="{ENTRY_HEAD}"
@@ -512,7 +506,7 @@ Ship Feature — Autonomous merge and archive
    ```bash
    gh pr update-branch {PR_NUMBER} || { echo "[bkit-ship] gh pr update-branch failed for {PR_NUMBER} (403 = actions:write scope, network, branch protection) — PR head NOT integrated" >&2; exit 1; }
    ```
-   → Step 5 (re-validate the new head).
+   → Step 5.
 2. **If** `MERGEABLE` = CONFLICTING (B2 — textual conflict): resolve locally + push:
    1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `Task` tool:
       Context: You are a subagent in the Ship phase. Textual conflict against `origin/dev`. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -564,55 +558,14 @@ Ship Feature — Autonomous merge and archive
 
 ---
 
-## 🤖 Step 5 — Re-validate + Deferred Sweep
+## 🤖 Step 5 — Deferred Sweep
 
-**Goal:** if the head moved (Path B integration), wait for CI at the new head; then run the pre-merge completeness sweep.
-
-1. Re-validate on observed head movement (not path label) **or** on `{REVALIDATE_REASON}` = `gate-refusal`. Probe for run at head FIRST; dispatch ONLY when none present:
+1. Fast-forward to the PR head — NEVER onto a diverged branch:
    ```bash
-   REPO_ROOT="{REPO_ROOT}"
-   BOOK_ROOT="{BOOK_ROOT}"
-   ENTRY_HEAD="{ENTRY_HEAD}"
-   REVALIDATE_REASON="{REVALIDATE_REASON}"
-   CURRENT_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
-   if [ "$CURRENT_HEAD" != "$ENTRY_HEAD" ] || [ "$REVALIDATE_REASON" = "gate-refusal" ]; then
-     . "$REPO_ROOT/.bkit/scripts/bkit-ship-timeouts.sh"
-     . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-ship] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
-     bkit_wait_ci "{PR_NUMBER}" 60 10
-     DISPATCHED="false"
-     if [ "$CI_WAIT_RESULT" = "found" ]; then
-       echo "[bkit-ship] run already present at $CURRENT_HEAD — not dispatching a duplicate"
-     else
-       DISPATCHED="true"
-       echo "[bkit-ship] no run at $CURRENT_HEAD after ${CI_WAIT_ELAPSED:-0}s (probe=${CI_WAIT_RESULT:-err}) — dispatching"
-       gh workflow run ci.yml --ref "{SHIP_BRANCH}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
-     fi
-     jq -nc --arg t "$(date -u +%FT%TZ)" --arg h "$CURRENT_HEAD" --arg r "${CI_WAIT_RESULT:-err}" \
-       --arg rr "${REVALIDATE_REASON:-head-move}" --argjson d "$DISPATCHED" --argjson a "${CI_WAIT_ATTEMPTS:-0}" \
-       '{type:"ship-revalidate-dispatch", workflow:"ship", at:$t, head:$h, probe:$r, reason:$rr, dispatched:$d, attempts:$a}' \
-       >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-     gh api rate_limit >/dev/null 2>&1
-     DEADLINE=$(( $(date +%s) + ${SHIP_CI_WAIT_TIMEOUT_S:-1800} ))
-     ATTEMPT=0
-     while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-       ATTEMPT=$((ATTEMPT + 1))
-       RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json status,conclusion,headSha 2>/dev/null)
-       RUN_STATE=$(printf '%s' "$RUNS" | jq -c --arg h "$CURRENT_HEAD" '[.[] | select(.headSha == $h)] | .[0] // empty' 2>/dev/null)
-       RUN_STATUS=$(printf '%s' "$RUN_STATE" | jq -r '.status // empty' 2>/dev/null)
-       [ "$RUN_STATUS" = "completed" ] && break
-       sleep "${SHIP_POLL_INTERVAL_S:-30}"
-     done
-     if [ "$RUN_STATUS" != "completed" ]; then
-        jq -nc --arg t "$(date -u +%FT%TZ)" --argjson attempt "$ATTEMPT" --argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}" \
-          '{type:"ship-revalidate-timeout", workflow:"ship", at:$t, attempt:$attempt, timeout_s:$timeout}' \
-          >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-       echo "[bkit-ship] CI did not complete within ${SHIP_CI_WAIT_TIMEOUT_S:-1800}s after $ATTEMPT polls" >&2
-       exit 1
-     fi
-   fi
+   git fetch origin "{SHIP_BRANCH}"
+   git merge --ff-only "origin/{SHIP_BRANCH}" || { echo "[bkit-ship] local {SHIP_BRANCH} diverged from origin/{SHIP_BRANCH} — reconcile, then re-run ship" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
-   **If** `{REVALIDATE_REASON}` = `gate-refusal` → Step 6.
 2. Plan check (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BOOK_ROOT="{BOOK_ROOT}"
@@ -641,7 +594,7 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 5 — Re-validate + Deferred Sweep - Verdict: {SWEEP_VERDICT}
+   ### Step 5 — Deferred Sweep - Verdict: {SWEEP_VERDICT}
    ```
 7. Route:
    - **If** `SWEEP_VERDICT` = PASS → Step 6.
@@ -652,11 +605,9 @@ Ship Feature — Autonomous merge and archive
      ```
    - **Else** → **Failure Path**.
 
-### 🔒 Gate 5 — Re-validate + Deferred Sweep
+### 🔒 Gate 5 — Deferred Sweep
 
-- [ ] CI re-validated at current head when head moved or on `gate-refusal` re-entry
-- [ ] Duplicate-dispatch probe ran before `gh workflow run` (row `ship-revalidate-dispatch` recorded with `probe`, `reason`, `dispatched`)
-- [ ] CI completed at current head (no timeout exhaustion)
+- [ ] Worktree fast-forwarded to the PR head (`origin/{SHIP_BRANCH}`)
 - [ ] Deferred sweep run once per ship (no second `ship-deferred-sweep` step row)
 - [ ] Subagent invoked (`@bkit-ship-deferred-sweep`, no inline work)
 - [ ] Artifact written (`ship-deferred-sweep.md`, non-empty)
@@ -669,9 +620,245 @@ Ship Feature — Autonomous merge and archive
 
 ---
 
-## 🤖 Step 6 — Merge Gate + Merge PR
+## 🧠 Step 6 — Update Docs & Summary
 
-**Goal:** the ONLY merge precondition is `bkit-ship-gate.sh assert` at the current head; merge with `--match-head-commit`.
+1. Assert `FID` non-empty before any path operations.
+2. Launch two subagents in parallel using `Task` tool:
+   - **Subagent:** Invoke `/bkit-ship-update-docs`
+     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Read: `docs/plans/{YYYYMM}/{FID}-plan*.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
+     Update: Doc files.
+     Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
+   - **Subagent:** Invoke `/bkit-ship-summary`
+     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits`.
+     Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
+3. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
+   Then append the `SHIPPED` row to the worktree ledger and re-render the mechanical `roadmap-status` board from it:
+
+   ```bash
+   WT="{WORKTREE_PATH}"
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$WT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$(git -C "$WT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
+   ISSUES_JSONL="$WT/.bkit/issues.jsonl"
+   jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "ship-update-docs" --arg key "{FID}" \
+     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="ship" | .step=$step | .key=$key | .category="agentic" | .description="Ship closed for {FID}" | .status="SHIPPED"' \
+     >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
+   ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+   SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$ISSUES_JSONL" 2>/dev/null | wc -l | tr -d ' ')
+   if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
+   ```
+
+   **If** `DOCS_VERDICT` = FAIL → **Failure Path**.
+
+4. Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
+5. Update status (bookkeeping to `$BOOK_ROOT`):
+   ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
+   SUMMARY_VERDICT="{SUMMARY_VERDICT}"
+   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   PARENT_SHA=$(git rev-parse HEAD)
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '{type:"step-done", workflow:"ship", step:"ship-update-docs", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md"]}' \
+     >> "$STATUS"
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
+     '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
+     >> "$STATUS"
+   ```
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below:
+   ```comment
+   ###### bkit:generated
+   ### Step 6 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT}
+   [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
+   {FID-ship-summary.md content verbatim}
+   ```
+7. Route:
+   - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 7.
+   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
+   - **Else** → **Failure Path**.
+
+### 🔒 Gate 6 — Update Docs & Summary
+
+- [ ] Plans canonical at `docs/plans/{YYYYMM}/`
+- [ ] Subagents invoked in the worktree (`@bkit-ship-update-docs`, `@bkit-ship-summary`, `{WORKTREE_PATH}`, no inline work)
+- [ ] Artifact written (`ship-update-docs.md`, non-empty)
+- [ ] Artifact written (`ship-summary.md`, non-empty)
+- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
+- [ ] Ledger row appended in the worktree, mechanical `roadmap-status` board re-rendered after the subagents (`SHIPPED`, `$WT/.bkit/issues.jsonl`, `bkit_roadmap_fold "$WT"`, fail-open)
+- [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
+
+
+- [ ] Issue comment attempted (`Step 6` section)
+
+
+---
+
+## 🤖 Step 7 — Prune Skills
+
+1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md` via the CLI. Reconcile the **union** of on-disk directories and `skills-lock.json` keys; NEVER loop over directories alone.
+   ```bash
+   { find .agents/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null
+     jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
+   } | sort -u | while read -r skill; do
+     [ -n "$skill" ] || continue
+     case "$skill" in bkit-*) continue ;; esac
+     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
+   done
+   ```
+2. Update status (bookkeeping to `$BOOK_ROOT`):
+   ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
+   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   git status --short
+   PARENT_SHA=$(git rev-parse HEAD)
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '{type:"step-done", workflow:"ship", step:"ship-prune-skills", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
+     >> "$STATUS"
+   ```
+3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below:
+   ```comment
+   ###### bkit:generated
+   ### Step 7 — Prune Skills
+   ```
+
+### 🔒 Gate 7 — Prune Skills
+
+- [ ] Feature-specific skills pruned
+- [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
+- [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
+
+
+- [ ] Issue comment attempted (`Step 7` section)
+
+
+---
+
+## 🤖 Step 8 — Commit + Push Bookkeeping
+
+1. Record the code head, update status, then commit and push — NEVER force:
+   ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   case "{SHIP_BRANCH}" in dev|main|"") echo "[bkit-ship] refusing to push branch '{SHIP_BRANCH}'" >&2; exit 1 ;; esac
+   CODE_HEAD=$(git rev-parse HEAD)
+   jq -nc --arg p "$CODE_HEAD" --arg t "$(date -u +%FT%TZ)" \
+     '{type:"step-done", workflow:"ship", step:"ship-bookkeeping-push", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
+     >> "$STATUS"
+   git status --short
+   bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$(pwd)" --month={YYYYMM} --fid={FID} --scope=pr --mode=commit --message="docs({FID}): ship bookkeeping bkit [skip ci]" \
+     || { echo "[bkit-book] pre-merge bookkeeping commit failed" >&2; exit 1; }
+   if [ "$(git rev-parse HEAD)" != "$CODE_HEAD" ]; then
+     git push origin "{SHIP_BRANCH}"
+   fi
+   echo "CODE_HEAD=$CODE_HEAD"
+   ```
+   **If** exit non-zero → **Failure Path**. Carry `CODE_HEAD` (echoed above) to Step 9.
+2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below:
+   ```comment
+   ###### bkit:generated
+   ### Step 8 — Commit + Push Bookkeeping
+   [{OWNER_REPO}/tree/{SHIP_BRANCH}](https://github.com/{OWNER_REPO}/tree/{SHIP_BRANCH})
+   ```
+
+### 🔒 Gate 8 — Commit + Push Bookkeeping
+
+- [ ] Code head recorded before the commit (`CODE_HEAD`)
+- [ ] Workflow status updated before the commit (step `ship-bookkeeping-push` recorded with `parentSha`)
+- [ ] Single path-scoped `[skip ci]` commit via `bkit-book-commit.sh` (`--scope=pr`: docs, logs, ledgers, skill removals)
+- [ ] Branch pushed without force, only when the commit landed (`{SHIP_BRANCH}`)
+
+
+- [ ] Issue comment attempted (`Step 8` section)
+
+
+---
+
+## 🤖 Step 9 — Re-validate
+
+1. Resolve `VALIDATED_HEAD`, then re-validate on code movement **or** on `{REVALIDATE_REASON}` = `gate-refusal`. Probe for run at `VALIDATED_HEAD` FIRST; dispatch ONLY when none present:
+   ```bash
+   REPO_ROOT="{REPO_ROOT}"
+   BOOK_ROOT="{BOOK_ROOT}"
+   ENTRY_HEAD="{ENTRY_HEAD}"
+   CODE_HEAD="{CODE_HEAD}"
+   REVALIDATE_REASON="{REVALIDATE_REASON}"
+   git fetch origin "{SHIP_BRANCH}" 2>/dev/null
+   CURRENT_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
+   [ -z "$CURRENT_HEAD" ] && { echo "Cannot read PR head — query failed (403 = PAT scope)" >&2; exit 1; }
+   VALIDATED_HEAD="$CODE_HEAD"
+   bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" only-bookkeeping --root="$(pwd)" --month={YYYYMM} --fid={FID} --from="$CODE_HEAD" --to="$CURRENT_HEAD" \
+     || VALIDATED_HEAD="$CURRENT_HEAD"
+   REQUIRED_RULES=$(gh api "repos/{OWNER_REPO}/rules/branches/dev" --jq '[.[] | select(.type == "required_status_checks")] | length' 2>/dev/null) || REQUIRED_RULES=0
+   case "$REQUIRED_RULES" in '' | *[!0-9]*) REQUIRED_RULES=0 ;; esac
+   if [ "$REQUIRED_RULES" != "0" ] || gh api "repos/{OWNER_REPO}/branches/dev/protection/required_status_checks" >/dev/null 2>&1; then
+     echo "[bkit-ship] dev requires status checks — validating at the PR head $CURRENT_HEAD"
+     VALIDATED_HEAD="$CURRENT_HEAD"
+   fi
+   if [ "$VALIDATED_HEAD" != "$ENTRY_HEAD" ] || [ "$REVALIDATE_REASON" = "gate-refusal" ]; then
+     . "$REPO_ROOT/.bkit/scripts/bkit-ship-timeouts.sh"
+     PROBE="none"
+     PROBE_ATTEMPTS=0
+     while [ "$PROBE_ATTEMPTS" -lt "${SHIP_PROBE_ATTEMPTS:-6}" ]; do
+       PROBE_ATTEMPTS=$((PROBE_ATTEMPTS + 1))
+       if RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json headSha 2>/dev/null); then
+         printf '%s' "$RUNS" | jq -e --arg h "$VALIDATED_HEAD" 'any(.[]; .headSha == $h)' >/dev/null 2>&1 && { PROBE="found"; break; }
+         PROBE="none"
+       else
+         PROBE="err"
+       fi
+       sleep "${SHIP_PROBE_INTERVAL_S:-10}"
+     done
+     DISPATCHED="false"
+     if [ "$PROBE" = "found" ]; then
+       echo "[bkit-ship] run already present at $VALIDATED_HEAD — not dispatching a duplicate"
+     else
+       DISPATCHED="true"
+       VALIDATED_HEAD="$CURRENT_HEAD"
+       echo "[bkit-ship] no run at the validated head after $PROBE_ATTEMPTS probes (probe=$PROBE) — dispatching at $CURRENT_HEAD"
+       gh workflow run ci.yml --ref "{SHIP_BRANCH}" || { echo "[bkit-ship] gh workflow run failed (403 = actions:write scope)" >&2; exit 1; }
+     fi
+     jq -nc --arg t "$(date -u +%FT%TZ)" --arg h "$VALIDATED_HEAD" --arg r "$PROBE" \
+       --arg rr "${REVALIDATE_REASON:-head-move}" --argjson d "$DISPATCHED" --argjson a "$PROBE_ATTEMPTS" \
+       '{type:"ship-revalidate-dispatch", workflow:"ship", at:$t, head:$h, probe:$r, reason:$rr, dispatched:$d, attempts:$a}' \
+       >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+     gh api rate_limit >/dev/null 2>&1
+     DEADLINE=$(( $(date +%s) + ${SHIP_CI_WAIT_TIMEOUT_S:-1800} ))
+     ATTEMPT=0
+     while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+       ATTEMPT=$((ATTEMPT + 1))
+       RUNS=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json status,conclusion,headSha 2>/dev/null)
+       RUN_STATE=$(printf '%s' "$RUNS" | jq -c --arg h "$VALIDATED_HEAD" '[.[] | select(.headSha == $h)] | .[0] // empty' 2>/dev/null)
+       RUN_STATUS=$(printf '%s' "$RUN_STATE" | jq -r '.status // empty' 2>/dev/null)
+       [ "$RUN_STATUS" = "completed" ] && break
+       sleep "${SHIP_POLL_INTERVAL_S:-30}"
+     done
+     if [ "$RUN_STATUS" != "completed" ]; then
+        jq -nc --arg t "$(date -u +%FT%TZ)" --argjson attempt "$ATTEMPT" --argjson timeout "${SHIP_CI_WAIT_TIMEOUT_S:-1800}" \
+          '{type:"ship-revalidate-timeout", workflow:"ship", at:$t, attempt:$attempt, timeout_s:$timeout}' \
+          >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+       echo "[bkit-ship] CI did not complete within ${SHIP_CI_WAIT_TIMEOUT_S:-1800}s after $ATTEMPT polls" >&2
+       exit 1
+     fi
+   fi
+   echo "VALIDATED_HEAD=$VALIDATED_HEAD"
+   ```
+   **If** exit non-zero → **Failure Path**. Carry `VALIDATED_HEAD` (echoed above) → Step 10.
+
+### 🔒 Gate 9 — Re-validate
+
+- [ ] Validated head resolved (`VALIDATED_HEAD`: `CODE_HEAD` while the PR head adds bookkeeping only and `dev` requires no status checks, else the PR head)
+- [ ] CI awaited only on code movement or `gate-refusal` re-entry (`VALIDATED_HEAD` != `ENTRY_HEAD`, `REVALIDATE_REASON`)
+- [ ] Duplicate-dispatch probe ran before `gh workflow run` (row `ship-revalidate-dispatch` recorded with `probe`, `reason`, `dispatched`)
+- [ ] CI completed at the validated head, no timeout exhaustion (`VALIDATED_HEAD`)
+
+---
+
+## 🤖 Step 10 — Merge Gate + Merge PR
 
 1. Derive `{MERGE_ATTEMPT}`:
    ```bash
@@ -686,15 +873,16 @@ Ship Feature — Autonomous merge and archive
 2. Write pre-merge snapshot to outbox BEFORE the gate fires:
    ```bash
    OUTBOX="{OUTBOX}"
+   VALIDATED_HEAD="{VALIDATED_HEAD}"
    GATE_HEAD=$(gh pr view {PR_NUMBER} --json headRefOid --jq .headRefOid 2>/dev/null)
    DEV_SHA=$(git rev-parse origin/dev)
    ANCESTOR=$(git merge-base --is-ancestor origin/dev "$GATE_HEAD" 2>/dev/null && echo true || echo false)
    CAPSTONE_RUN=$(gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 1 --json databaseId,url --jq '.[0] // {}' 2>/dev/null)
    MERGEABLE_STATE=$(gh pr view {PR_NUMBER} --json mergeable --jq .mergeable 2>/dev/null)
    jq -nc \
-     --arg gateHead "$GATE_HEAD" --arg devSha "$DEV_SHA" --arg ancestor "$ANCESTOR" \
+     --arg gateHead "$GATE_HEAD" --arg validatedHead "$VALIDATED_HEAD" --arg devSha "$DEV_SHA" --arg ancestor "$ANCESTOR" \
      --argjson capstone "$CAPSTONE_RUN" --arg mergeable "$MERGEABLE_STATE" \
-     '{type:"ship-pre-merge-snapshot", workflow:"ship", gateHead:$gateHead, devSha:$devSha, ancestor:$ancestor, capstone:$capstone, mergeable:$mergeable}' \
+     '{type:"ship-pre-merge-snapshot", workflow:"ship", gateHead:$gateHead, validatedHead:$validatedHead, devSha:$devSha, ancestor:$ancestor, capstone:$capstone, mergeable:$mergeable}' \
      >> "$OUTBOX/pre-merge-snapshot.jsonl"
    ```
 3. Run HEAD-Subject Assertion:
@@ -706,15 +894,17 @@ Ship Feature — Autonomous merge and archive
    fi
    ```
    **If** assertion fails → **Failure Path**.
-4. Assert the gate at the current head (the ONLY merge precondition):
+4. Assert the gate at the current head, CI checked at `VALIDATED_HEAD` (the ONLY merge precondition):
    ```bash
    REPO_ROOT="{REPO_ROOT}"
    BOOK_ROOT="{BOOK_ROOT}"
    GATE_HEAD="{GATE_HEAD}"
+   VALIDATED_HEAD="{VALIDATED_HEAD}"
    GATE_SH="$REPO_ROOT/.bkit/scripts/bkit-ship-gate.sh"
    export STATUS_PATH="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   git fetch origin "{SHIP_BRANCH}" 2>/dev/null
    GATE_EXIT=0
-   bash "$GATE_SH" assert --head "$GATE_HEAD" --repo "{OWNER_REPO}" --branch "{SHIP_BRANCH}" || GATE_EXIT=$?
+   bash "$GATE_SH" assert --head "$GATE_HEAD" --validated "$VALIDATED_HEAD" --month {YYYYMM} --fid {FID} --repo "{OWNER_REPO}" --branch "{SHIP_BRANCH}" || GATE_EXIT=$?
    ```
    **If** `GATE_EXIT` != 0 → write a status row carrying the exit code, then route:
    ```bash
@@ -725,7 +915,7 @@ Ship Feature — Autonomous merge and archive
      '{type:"ship-gate-refusal", workflow:"ship", at:$t, exitCode:$code, head:$head}' \
      >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    ```
-   - A code 11 (in progress — poll), 14 (stale green), or 10 (no run) — run counter-bus routing:
+   - A code 11 (in progress — poll), 14 (stale green), 10 (no run), or 17 (non-bookkeeping change past `VALIDATED_HEAD`) — run counter-bus routing:
      ```bash
      BOOK_ROOT="{BOOK_ROOT}"
      REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -735,9 +925,9 @@ Ship Feature — Autonomous merge and archive
      START_AT=$(jq -r 'select(.type=="step-done" and .step=="ship-start-workflow") | .at' "$STATUS" 2>/dev/null | tail -1)
      REVALIDATE_ATTEMPT=$(jq -s --arg s "${START_AT:-}" '[.[] | select(.type=="ship-revalidate-dispatch" and .at > $s)] | length + 1' "$STATUS" 2>/dev/null)
      case "$REVALIDATE_ATTEMPT" in '' | *[!0-9]*) echo "[bkit-ship] could not derive REVALIDATE_ATTEMPT from $STATUS" >&2; exit 2 ;; esac
-     decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-5 failure-path
+     decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-9 failure-path
      ```
-     - **If** exit 0 (printed `step-5`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 5.
+     - **If** exit 0 (printed `step-9`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.
      - **If** exit 1 (printed `failure-path`) → **Failure Path**.
      - **If** any other exit → **Failure Path**.
    - Any other refusal (12/13/15/16/20) → **Failure Path**.
@@ -772,11 +962,11 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 6 — Merge Gate + Merge PR - Verdict: {MERGE_VERDICT}
+   ### Step 10 — Merge Gate + Merge PR - Verdict: {MERGE_VERDICT}
    ```
 10. Route:
 
-- **If** `state` = MERGED → Step 9.
+- **If** `state` = MERGED → Step 13.
 - **If** `state` != MERGED — run counter-bus routing:
   ```bash
   BOOK_ROOT="{BOOK_ROOT}"
@@ -786,18 +976,18 @@ Ship Feature — Autonomous merge and archive
   . "$REPO_ROOT/.bkit/scripts/bkit-counter-bus-config.sh"
   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
   MERGE_ATTEMPT=$(counter_current "$STATUS" ship ship-merge-pr) || exit 2
-  decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-7 failure-path
+  decide_next MERGE_ATTEMPT "$MERGE_ATTEMPT" "$MAX_MERGE_ATTEMPT" step-11 failure-path
   ```
-  - **If** exit 0 (printed `step-7`) → Step 7.
+  - **If** exit 0 (printed `step-11`) → Step 11.
   - **If** exit 1 (printed `failure-path`) → **Failure Path**.
   - **If** any other exit → **Failure Path**.
 - **Else** → **Failure Path**.
 
-### 🔒 Gate 6 — Merge Gate + Merge PR
+### 🔒 Gate 10 — Merge Gate + Merge PR
 
-- [ ] Pre-merge snapshot written to outbox (PR head SHA, `origin/dev` SHA, ancestor verdict, capstone run, `mergeable`)
+- [ ] Pre-merge snapshot written to outbox (PR head SHA, `VALIDATED_HEAD`, `origin/dev` SHA, ancestor verdict, capstone run, `mergeable`)
 - [ ] HEAD-Subject Assertion passed (no `[skip ci]` in PR title)
-- [ ] Gate asserted at current head (`bkit-ship-gate.sh assert`, exit 0)
+- [ ] Gate asserted at current head (`bkit-ship-gate.sh assert --validated`, exit 0)
 - [ ] Re-entry counter derived from `ship-revalidate-dispatch` rows since `ship-start-workflow`, bounded by `MAX_REVALIDATE_ATTEMPT`
 - [ ] PR merge attempted with `--match-head-commit` (server refuses on head drift)
 - [ ] State extracted (`state`, MERGED or not)
@@ -805,12 +995,12 @@ Ship Feature — Autonomous merge and archive
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
 
 
-- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Issue comment attempted (`Step 10` section)
 
 
 ---
 
-## 🧠 Step 7 — Failure Diagnose
+## 🧠 Step 11 — Failure Diagnose
 
 **Run only if** `state` != MERGED.
 
@@ -838,10 +1028,10 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 7 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
+   ### Step 11 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```
 
-### 🔒 Gate 7 — Failure Diagnose
+### 🔒 Gate 11 — Failure Diagnose
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
@@ -850,12 +1040,12 @@ Ship Feature — Autonomous merge and archive
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
 
 
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 11` section)
 
 
 ---
 
-## 🧠 Step 8 — Failure Remediate
+## 🧠 Step 12 — Failure Remediate
 
 **Run only if** `state` != MERGED. Code-level failures route back to build (via handover), NOT a source-file retry loop that re-merges identical remote content.
 
@@ -894,11 +1084,11 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 8 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
+   ### Step 12 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-7. **If** `REMEDIATE_VERDICT` = PASS → Step 6 (re-run merge). **Else** → **Failure Path** (code-level failures route back to build via handover — NO source-file retry loop).
+7. **If** `REMEDIATE_VERDICT` = PASS → Step 10 (re-run merge). **Else** → **Failure Path** (code-level failures route back to build via handover — NO source-file retry loop).
 
-### 🔒 Gate 8 — Failure Remediate
+### 🔒 Gate 12 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
@@ -906,12 +1096,12 @@ Ship Feature — Autonomous merge and archive
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
 
 
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 12` section)
 
 
 ---
 
-## 🤖 Step 9 — Switch to Dev
+## 🤖 Step 13 — Switch to Dev
 
 **Run only if** `state` = MERGED.
 
@@ -971,145 +1161,23 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 9 — Switch to Dev
+   ### Step 13 — Switch to Dev
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    ```
 
-### 🔒 Gate 9 — Switch to Dev
+### 🔒 Gate 13 — Switch to Dev
 
 - [ ] On `dev` branch
 - [ ] Dev branch up to date with origin (`dev`)
 - [ ] Workflow status updated (step `ship-switch-to-dev` recorded with `parentSha`)
 
 
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 13` section)
 
 
 ---
 
-## 🧠 Step 10 — Update Docs & Summary
-
-**Run only if** `state` = MERGED.
-
-1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
-2. Assert `FID` non-empty before any path operations.
-3. Launch two subagents in parallel using `Task` tool:
-   - **Subagent:** Invoke `/bkit-ship-update-docs`
-     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/{FID}-plan*.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
-     Update: Doc files.
-     Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md`.
-   - **Subagent:** Invoke `/bkit-ship-summary`
-     Context: You are a subagent in the Ship phase running in parallel with one other agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
-     Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-4. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-   Then re-render the mechanical `roadmap-status` board from the ledger:
-
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$BOOK_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$(git -C "$BOOK_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-   ISSUES_JSONL="$BOOK_ROOT/.bkit/issues.jsonl"
-   jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "ship-update-docs" --arg key "{FID}" \
-     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="ship" | .step=$step | .key=$key | .category="agentic" | .description="Ship closed for {FID}" | .status="SHIPPED"' \
-     >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
-   ( . "$BOOK_ROOT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$BOOK_ROOT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-   SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$BOOK_ROOT/.bkit/issues.jsonl" 2>/dev/null | wc -l | tr -d ' ')
-   if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
-   ```
-
-   **If** `DOCS_VERDICT` = FAIL → **Failure Path**.
-
-5. Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-6. Update status (bookkeeping to `$BOOK_ROOT`):
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   SUMMARY_VERDICT="{SUMMARY_VERDICT}"
-   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"ship", step:"ship-update-docs", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md"]}' \
-     >> "$STATUS"
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
-     '{type:"step-done", workflow:"ship", step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md"]}' \
-     >> "$STATUS"
-   ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 10 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT}
-   [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
-   {FID-ship-summary.md content verbatim}
-   ```
-8. Route:
-   - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
-   - **If** `SUMMARY_VERDICT` = FAIL → display `ship-summary.md` content verbatim as final message to user → **Failure Path**.
-   - **Else** → **Failure Path**.
-
-### 🔒 Gate 10 — Update Docs & Summary
-
-- [ ] Squash SHA verified on `origin/dev`
-- [ ] Plans canonical at `docs/plans/{YYYYMM}/`
-- [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
-- [ ] Artifact written (`ship-update-docs.md`, non-empty)
-- [ ] Artifact written (`ship-summary.md`, non-empty)
-- [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Mechanical `roadmap-status` board re-rendered from the ledger after the subagents (`bkit_roadmap_fold "$BOOK_ROOT"`, fail-open)
-- [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
-
-
-- [ ] Issue comment attempted (`Step 10` section)
-
-
----
-
-## 🤖 Step 11 — Prune Skills
-
-**Run only if** `state` = MERGED.
-
-1. Prune feature-specific skills — uninstall any skill not listed in `.agents/skills.md` via the CLI. Reconcile the **union** of on-disk directories and `skills-lock.json` keys; NEVER loop over directories alone.
-   ```bash
-   { find .agents/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null
-     jq -r '.skills // {} | keys[]' skills-lock.json 2>/dev/null
-   } | sort -u | while read -r skill; do
-     [ -n "$skill" ] || continue
-     case "$skill" in bkit-*) continue ;; esac
-     grep -qE "(^|[^A-Za-z0-9-])${skill}([^A-Za-z0-9-]|$)" .agents/skills.md || npx skills remove "$skill" -y </dev/null
-   done
-   ```
-2. Update status (bookkeeping to `$BOOK_ROOT`):
-   ```bash
-   BOOK_ROOT="{BOOK_ROOT}"
-   STATUS="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   git status --short
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"ship", step:"ship-prune-skills", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
-     >> "$STATUS"
-   ```
-3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 11 — Prune Skills
-   ```
-
-### 🔒 Gate 11 — Prune Skills
-
-- [ ] Feature-specific skills pruned
-- [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
-- [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
-
-
-- [ ] Issue comment attempted (`Step 11` section)
-
-
----
-
-## 🤖 Step 12 — Worktree Cleanup
+## 🤖 Step 14 — Worktree Cleanup
 
 **Run only if** `state` = MERGED.
 
@@ -1150,10 +1218,10 @@ Ship Feature — Autonomous merge and archive
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 12 — Worktree Cleanup
+   ### Step 14 — Worktree Cleanup
    ```
 
-### 🔒 Gate 12 — Worktree Cleanup
+### 🔒 Gate 14 — Worktree Cleanup
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent, or ownership marker absent → skipped)
 - [ ] Worktree prune executed (`git worktree prune`)
@@ -1162,37 +1230,53 @@ Ship Feature — Autonomous merge and archive
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
 
 
-- [ ] Issue comment attempted (`Step 12` section)
+- [ ] Issue comment attempted (`Step 14` section)
 
 
 ---
 
-## 🤖 Step 13 — Close Workflow
+## 🤖 Step 15 — Close Workflow
 
-1. Assert squash-merge CI run finished and its test tiers passed:
+1. Record the squash-merge CI verdict, then assert the run finished and its test tiers passed:
    ```bash
+   BOOK_ROOT="{BOOK_ROOT}"
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
    RUN_ID=$(echo "$RUN" | jq -r '.[0].databaseId // empty')
-   [ -z "$RUN_ID" ] && { echo "No CI run found for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    RUN_STATUS=$(echo "$RUN" | jq -r '.[0].status // empty')
-   [ "$RUN_STATUS" != "completed" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA has not completed (status: ${RUN_STATUS:-unknown}) — feature merge not test-validated" >&2; exit 1; }
    RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
-   [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
-   TESTS_JOBS=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | startswith("bkit-tests")) | {name, conclusion}]')
-   [ "$(echo "$TESTS_JOBS" | jq 'length')" -eq 0 ] && { echo "No bkit-tests* job on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
-   LIVE_NOT_OK=$(echo "$TESTS_JOBS" | jq -r '[.[] | select(.name == "bkit-tests-live") | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.name)=\(.conclusion)"] | join(", ")')
-   if [ -n "$LIVE_NOT_OK" ]; then
-     GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c '[.[] | select(.name != "bkit-tests-live" and .name != "bkit-tests-check")]')
+   CI_REASON=""
+   LIVE_NOT_OK=""
+   if [ -z "$RUN_ID" ]; then
+     CI_REASON="No CI run found for squash merge $SQUASH_SHA"
+   elif [ "$RUN_STATUS" != "completed" ]; then
+     CI_REASON="CI run $RUN_ID for squash merge $SQUASH_SHA has not completed (status: ${RUN_STATUS:-unknown})"
+   elif [ "$RUN_CONCLUSION" = "cancelled" ]; then
+     CI_REASON="CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled"
    else
-     GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c 'if any(.[]; .name == "bkit-tests-check") then map(select(.name == "bkit-tests-check")) else . end')
+     TESTS_JOBS=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | startswith("bkit-tests")) | {name, conclusion}]')
+     if [ "$(echo "$TESTS_JOBS" | jq 'length')" -eq 0 ]; then
+       CI_REASON="No bkit-tests* job on CI run $RUN_ID for squash merge $SQUASH_SHA"
+     else
+       LIVE_NOT_OK=$(echo "$TESTS_JOBS" | jq -r '[.[] | select(.name == "bkit-tests-live") | select(.conclusion == "failure" or .conclusion == "cancelled") | "\(.name)=\(.conclusion)"] | join(", ")')
+       if [ -n "$LIVE_NOT_OK" ]; then
+         GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c '[.[] | select(.name != "bkit-tests-live" and .name != "bkit-tests-check")]')
+       else
+         GATE_JOBS=$(echo "$TESTS_JOBS" | jq -c 'if any(.[]; .name == "bkit-tests-check") then map(select(.name == "bkit-tests-check")) else . end')
+       fi
+       TESTS_NOT_OK=$(echo "$GATE_JOBS" | jq -r '[.[] | select(.conclusion != "success") | "\(.name)=\(.conclusion // "null")"] | join(", ")')
+       [ -n "$TESTS_NOT_OK" ] && CI_REASON="Test tiers not green on CI run $RUN_ID for squash merge $SQUASH_SHA: $TESTS_NOT_OK"
+     fi
    fi
-   TESTS_NOT_OK=$(echo "$GATE_JOBS" | jq -r '[.[] | select(.conclusion != "success") | "\(.name)=\(.conclusion // "null")"] | join(", ")')
-   [ -n "$TESTS_NOT_OK" ] && { echo "Test tiers not green on CI run $RUN_ID for squash merge $SQUASH_SHA: $TESTS_NOT_OK — feature merge not test-validated" >&2; exit 1; }
+   if [ -n "$CI_REASON" ]; then CI_VERDICT=FAIL; else CI_VERDICT=PASS; fi
+   jq -nc --arg t "$(date -u +%FT%TZ)" --arg sha "$SQUASH_SHA" --arg run "$RUN_ID" --arg v "$CI_VERDICT" --arg r "$CI_REASON" \
+     '{type:"ship-merge-ci", workflow:"ship", at:$t, sha:$sha, run:$run, verdict:$v, reason:$r}' \
+     >> "$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    [ -n "$LIVE_NOT_OK" ] && echo "Live tier not green on CI run $RUN_ID ($LIVE_NOT_OK) — post-merge canary, not a merge gate; reproduce with /bkit-debug" >&2
+   [ -z "$CI_REASON" ] || { echo "$CI_REASON — feature merge not test-validated" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
-2. Update status, write close telemetry, commit, and push (single path-scoped `[skip ci]` commit):
+2. Update status, write close telemetry, and commit (single path-scoped `[skip ci]` commit):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
@@ -1292,20 +1376,57 @@ Ship Feature — Autonomous merge and archive
      --argjson coverage "$COVERAGE" \
      '. | .ts = (now*1000|floor) | .kind = "outcome" | .workflow = "ship" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .parentSha = $parentSha | .prNumber = $prNumber | .linesAdded = $linesAdded | .linesDeleted = $linesDeleted | .linesChanged = $linesChanged | .filesChanged = $filesChanged | .taskCount = $taskCount | .durationSeconds = $durationSeconds | .deferrals = $deferrals | .failures = $failures | .frictionAdded = $frictionAdded | .deferralsAdded = $deferralsAdded | .failuresAdded = $failuresAdded | (if $coverage != null then .coverage = $coverage else . end)' \
      >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-   bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=full --mode=commit-allow-empty --message="docs({FID}): ship DONE bkit [skip ci]" \
+   if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
+     CLOSE_ROOT="$WT"
+   else
+     git -C "$WT" fetch origin dev || { echo "[bkit-ship] fetch origin dev failed — close bookkeeping left uncommitted in $WT" >&2; exit 1; }
+     CLOSE_ROOT="$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)/bkit-outbox/{FID}/close"
+     [ -d "$CLOSE_ROOT" ] && git -C "$WT" worktree remove --force "$CLOSE_ROOT"
+     git -C "$WT" worktree prune
+     git -C "$WT" worktree add --detach "$CLOSE_ROOT" origin/dev || { echo "[bkit-ship] close worktree add failed — close bookkeeping left uncommitted in $WT" >&2; exit 1; }
+     bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" union-ledgers --src="$WT" --dst="$CLOSE_ROOT" \
+       || { echo "[bkit-book] ledger union failed ($WT -> $CLOSE_ROOT)" >&2; exit 1; }
+   fi
+   bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$CLOSE_ROOT" --month={YYYYMM} --fid={FID} --scope=full --mode=commit-allow-empty --message="docs({FID}): ship DONE bkit [skip ci]" \
      || { echo "[bkit-book] close-workflow bookkeeping commit failed" >&2; exit 1; }
    LOCK="$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
      git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
-   else
-     echo "[bkit-ship] RUNTIME_DEVPUSHES=false — close-workflow status/telemetry commit stays on the current branch; the code merge already landed server-side at Step 6" >&2
    fi
+   echo "CLOSE_ROOT=$CLOSE_ROOT"
    ```
-3. Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
+   **If** exit non-zero → **Failure Path**. Carry `CLOSE_ROOT` (echoed above) to sub-step 3.
+3. **Run only if** `RUNTIME_DEVPUSHES` != true. Push the close commit to `dev`:
+   ```bash
+   CLOSE_ROOT="{CLOSE_ROOT}"
+   git -C "$CLOSE_ROOT" push origin HEAD:dev
+   ```
+   Route:
+   - **If** exit 0 → sub-step 4.
+   - **Else** → publish the close commit through a PR, then sub-step 4:
+     ```bash
+     CLOSE_ROOT="{CLOSE_ROOT}"
+     CLOSE_BRANCH="ship-close/{FID}"
+     CLOSE_HEAD=$(git -C "$CLOSE_ROOT" rev-parse HEAD)
+     git -C "$CLOSE_ROOT" push origin "HEAD:refs/heads/$CLOSE_BRANCH" || { echo "[bkit-ship] close branch push failed — close bookkeeping left in $CLOSE_ROOT" >&2; exit 1; }
+     gh pr create --base dev --head "$CLOSE_BRANCH" --title "docs({FID}): ship DONE" --body "" || { echo "gh pr create failed" >&2; exit 1; }
+     CLOSE_PR=$(gh pr list --head "$CLOSE_BRANCH" --state open --json number --jq '.[0].number')
+     [ -n "$CLOSE_PR" ] || { echo "[bkit-ship] close PR not found for $CLOSE_BRANCH" >&2; exit 1; }
+     gh pr merge "$CLOSE_PR" --squash --delete-branch --match-head-commit "$CLOSE_HEAD" --subject "docs({FID}): ship DONE bkit [skip ci]" --body "" \
+       || echo "[bkit-ship] close PR #$CLOSE_PR opened but not merged — merge it by hand" >&2
+     ```
+     **If** exit non-zero → **Failure Path**.
+4. **Run only if** `RUNTIME_DEVPUSHES` != true. Remove the close worktree:
+   ```bash
+   CLOSE_ROOT="{CLOSE_ROOT}"
+   WT=$(git rev-parse --show-toplevel)
+   case "$CLOSE_ROOT" in */bkit-outbox/{FID}/close) git -C "$WT" worktree remove --force "$CLOSE_ROOT"; git -C "$WT" worktree prune ;; esac
+   ```
+5. Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`. Do NOT close the issue.
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: "{bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-4. Build `{ARTIFACTS}` link list:
+6. Build `{ARTIFACTS}` link list:
    ```bash
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
    ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/ship-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
@@ -1313,34 +1434,36 @@ Ship Feature — Autonomous merge and archive
    TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=ship) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
    printf '\n%s\n' "$TELEMETRY"
    ```
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ###### bkit:generated
-   ### Step 13 — Close Workflow
+   ### Step 15 — Close Workflow
    #### Artifacts
    {ARTIFACTS}
    #### Telemetry
    {TELEMETRY}
    ```
-6. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP**.
+8. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **If** `ship-summary.md` absent → display `PR was already merged — no ship summary this run.` **HARD STOP**.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
-### 🔒 Gate 13 — Close Workflow
+### 🔒 Gate 15 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Logs retained at `docs/plans/{YYYYMM}/logs/{FID}/` for manual cleanup
 - [ ] Worktree cleaned up
+- [ ] Squash-merge CI verdict recorded before routing (row `ship-merge-ci` with `verdict`, `reason`)
 - [ ] Squash-merge CI run completed and not failed (`RUN_STATUS`, `RUN_CONCLUSION`)
 - [ ] Test tiers green (`TESTS_NOT_OK` empty)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
-- [ ] Single path-scoped `[skip ci]` commit + push to `dev` when `RUNTIME_DEVPUSHES` = true; else close-workflow commit stays on the current branch
+- [ ] Single path-scoped `[skip ci]` close commit pushed to `dev`, refused push published through a close PR (`RUNTIME_DEVPUSHES`, `ship-close/{FID}`)
+- [ ] Close worktree removed (`RUNTIME_DEVPUSHES` != true)
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
 
 
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
-- [ ] Artifact link list embedded in `Step 13` comment
+- [ ] Artifact link list embedded in `Step 15` comment
 - [ ] Telemetry report embedded via summary
-- [ ] Issue comment attempted (`Step 13` section)
+- [ ] Issue comment attempted (`Step 15` section)
 

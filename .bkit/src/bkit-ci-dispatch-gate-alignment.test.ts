@@ -312,21 +312,24 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4b. Ship Step 5 duplicate-dispatch probe.
+// 4b. Ship Step 9 duplicate-dispatch probe.
 //
 // Ship stays out of the CI-Dispatch Gate (above) — no outcome vocabulary, no
-// self-heal, no pass-on-`no-ci`. But its Step 5 re-validate FOLLOWS a head move
-// (Path B `gh pr update-branch` / `--force-with-lease`) that has already fired a
-// `pull_request` run at that same SHA, so dispatching unconditionally produced a
-// second, redundant run every time. ci.yml's concurrency cannot absorb it:
-// `pull_request` groups by `head_ref`, `workflow_dispatch` by `run_id` — two
-// groups, neither cancels the other, both run to completion.
+// self-heal, no pass-on-`no-ci`. But its Step 9 re-validate FOLLOWS a head move
+// (Path B `gh pr update-branch`) that has already fired a `pull_request` run at
+// that same SHA, so dispatching unconditionally produced a second, redundant run
+// every time. ci.yml's concurrency cannot absorb it: `pull_request` groups by
+// `head_ref`, `workflow_dispatch` by `run_id` — two groups, neither cancels the
+// other, both run to completion.
 //
-// Contract: probe with `bkit_wait_ci` (presence-only) and dispatch ONLY when it
-// finds nothing. The probe is never a pass condition — the completion poll and
-// `bkit-ship-gate.sh assert` at Gate 6 still own the verdict.
+// Contract: probe for a run at `VALIDATED_HEAD` (presence-only) and dispatch
+// ONLY when there is none. The probe targets VALIDATED_HEAD, not the PR head:
+// the PR head is ship's own `[skip ci]` bookkeeping commit, which never gets a
+// run, so a PR-head probe (`bkit_wait_ci`, statusCheckRollup) would dispatch a
+// duplicate every time. The probe is never a pass condition — the completion
+// poll and `bkit-ship-gate.sh assert` at Gate 10 still own the verdict.
 // ---------------------------------------------------------------------------
-describe("bkit-ship.md — Step 5 probes before dispatching (no duplicate CI run)", () => {
+describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run)", () => {
   const dispatchIdx = shipMd.indexOf("gh workflow run ci.yml --ref");
 
   it("has exactly one gh workflow run dispatch site", () => {
@@ -334,15 +337,19 @@ describe("bkit-ship.md — Step 5 probes before dispatching (no duplicate CI run
     expect(shipMd.indexOf("gh workflow run ci.yml --ref", dispatchIdx + 1)).toBe(-1);
   });
 
-  it("calls bkit_wait_ci and sources bkit-runtime.sh before that dispatch", () => {
-    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 900), dispatchIdx);
-    expect(preceding).toContain("bkit_wait_ci");
-    expect(preceding).toContain(".bkit/scripts/bkit-runtime.sh");
+  it("probes for a run at VALIDATED_HEAD before that dispatch", () => {
+    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
+    expect(preceding).toContain(
+      'gh run list --branch "{SHIP_BRANCH}" --workflow ci.yml --limit 20 --json headSha',
+    );
+    expect(preceding).toContain(`jq -e --arg h "$VALIDATED_HEAD" 'any(.[]; .headSha == $h)'`);
+    // Bounded: the presence probe gives up after a fixed number of polls.
+    expect(preceding).toContain('while [ "$PROBE_ATTEMPTS" -lt "${SHIP_PROBE_ATTEMPTS:-6}" ]; do');
   });
 
   it("guards the dispatch on the probe result, not on head movement alone", () => {
-    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 900), dispatchIdx);
-    expect(preceding).toContain('[ "$CI_WAIT_RESULT" = "found" ]');
+    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
+    expect(preceding).toContain('[ "$PROBE" = "found" ]');
     // The pre-fix form. Its return means every rebase-integrating ship burns a
     // duplicate run on the SHA the push already triggered.
     expect(shipMd).not.toContain("dispatch CI unconditionally");
@@ -369,30 +376,46 @@ describe("bkit-ship.md — Step 5 probes before dispatching (no duplicate CI run
 });
 
 // ---------------------------------------------------------------------------
-// 4c. Step 6 gate refusal re-enters Step 5 as a POLL, and is bounded.
+// 4c. Step 10 gate refusal re-enters Step 9 as a POLL, and is bounded.
 //
-// Codes 10/11/14 route back to Step 5. Before this, sub-step 1 was gated on
+// Codes 10/11/14/17 route back to Step 9. Before this, the poll was gated on
 // `CURRENT_HEAD != ENTRY_HEAD` alone, so a refusal at an UNCHANGED head skipped
 // the poll entirely and fell straight through to the deferred sweep — a
 // high-effort subagent re-run per poll, and for code 10 an unbounded loop with
 // nothing in it able to change the gate's answer.
 // ---------------------------------------------------------------------------
-describe("bkit-ship.md — Step 6 gate-refusal re-entry is a bounded poll", () => {
-  it("Step 5 sub-step 1 also triggers on a gate-refusal re-entry, not head movement alone", () => {
+describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () => {
+  it("Step 9 also polls on a gate-refusal re-entry, not head movement alone", () => {
     expect(shipMd).toContain('[ "$REVALIDATE_REASON" = "gate-refusal" ]');
     expect(shipMd).toContain('|| [ "$REVALIDATE_REASON" = "gate-refusal" ]; then');
   });
 
-  it("a gate-refusal re-entry skips the deferred sweep (the jump lands past sub-steps 2-7)", () => {
-    // Sub-step 7 IS Step 5's Route: block, so jumping to Step 6 from sub-step 1
-    // is what makes the sweep first-pass-only. No second mechanism states it.
-    expect(shipMd).toContain("**If** `{REVALIDATE_REASON}` = `gate-refusal` → Step 6.");
+  it("a gate-refusal re-entry skips the deferred sweep and the bookkeeping commit", () => {
+    // Re-validate sits AFTER the sweep (Step 5) and the bookkeeping commit
+    // (Step 8), and the refusal route jumps straight to it, so both stay
+    // first-pass-only. Step 9 then routes forward to the merge gate.
+    expect(shipMd).toContain(
+      "**If** exit 0 (printed `step-9`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.",
+    );
+    const order = [
+      "## 🤖 Step 5 — Deferred Sweep",
+      "## 🤖 Step 8 — Commit + Push Bookkeeping",
+      "## 🤖 Step 9 — Re-validate",
+      "## 🤖 Step 10 — Merge Gate",
+    ];
+    const idx = order.map((h) => shipMd.indexOf(h));
+    expect(
+      idx.every((i) => i > -1),
+      `missing heading in ${JSON.stringify(idx)}`,
+    ).toBe(true);
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    expect(shipMd).toContain("Carry `VALIDATED_HEAD` (echoed above) → Step 10.");
   });
 
   it("bounds the re-entry against MAX_REVALIDATE_ATTEMPT via decide_next", () => {
     expect(shipMd).toContain("MAX_REVALIDATE_ATTEMPT");
     expect(shipMd).toContain(
-      'decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-5 failure-path',
+      'decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-9 failure-path',
     );
   });
 

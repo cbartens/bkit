@@ -1,4 +1,4 @@
-// Executes the Step 12 ownership fence from bkit-ship.md against a real git
+// Executes the Step 14 ownership fence from bkit-ship.md against a real git
 // worktree. The fence is extracted from the workflow and run as written —
 // the test does not keep a second copy of the if/remove logic.
 
@@ -19,15 +19,15 @@ afterEach(() => {
   }
 });
 
-function step12RemoveFence(fid: string, bookRoot: string): string {
+function cleanupRemoveFence(fid: string, bookRoot: string): string {
   const ship = fs.readFileSync(SHIP_MD, "utf-8");
   const lines = ship.split("\n");
-  const start = lines.findIndex((line) => /^## .*Step 12/.test(line));
-  expect(start, "Step 12 section not found").toBeGreaterThanOrEqual(0);
+  const start = lines.findIndex((line) => /^## .*Step 14 — Worktree Cleanup/.test(line));
+  expect(start, "Step 14 section not found").toBeGreaterThanOrEqual(0);
   const end = lines.findIndex((line, index) => index > start && /^---$/.test(line));
   const section = lines.slice(start, end + 1).join("\n");
   const fence = section.match(/```bash\n([\s\S]*?)```/);
-  expect(fence, "Step 12 ownership fence not found").toBeTruthy();
+  expect(fence, "Step 14 ownership fence not found").toBeTruthy();
   const body = fence![1];
   expect(body).toContain(".worktree-owned");
   expect(body).toContain("bkit-outbox");
@@ -60,13 +60,13 @@ function markerPath(repo: string): string {
 }
 
 function runFence(repo: string): void {
-  execFileSync("bash", ["-c", step12RemoveFence(FID, repo)], {
+  execFileSync("bash", ["-c", cleanupRemoveFence(FID, repo)], {
     cwd: repo,
     encoding: "utf-8",
   });
 }
 
-describe("bkit-ship.md Step 12 ownership fence", () => {
+describe("bkit-ship.md Step 14 ownership fence", () => {
   it("leaves the worktree in place when the ownership marker is absent", () => {
     const { repo } = initRepo();
     runFence(repo);

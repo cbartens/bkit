@@ -92,7 +92,7 @@ function bookCommitBlocks(ship: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// FROZEN — canonical 14 ship-* step-key set
+// FROZEN — canonical 15 ship-* step-key set
 // ---------------------------------------------------------------------------
 //
 // Step NUMBERS may move; KEYS may not. Renaming resets attempt counters across
@@ -100,7 +100,9 @@ function bookCommitBlocks(ship: string): string[] {
 // source of truth the rewrite (SP2 T7) must match. Verbatim from the design
 // (§ Canonical `ship-*` step keys — stable schema).
 //
-// 14 keys total (the canonical ship step set).
+// 15 keys total (the canonical ship step set), in run order. Keys are added,
+// never renamed: `ship-bookkeeping-push` arrived when docs, summaries and
+// ledgers moved onto the PR ahead of the merge (#452).
 
 export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
   "ship-start-workflow",
@@ -108,13 +110,14 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
   "ship-regression-guard",
   "ship-conflict-resolve",
   "ship-deferred-sweep",
+  "ship-update-docs",
+  "ship-summary",
+  "ship-prune-skills",
+  "ship-bookkeeping-push",
   "ship-merge-pr",
   "ship-failure-diagnose",
   "ship-failure-remediate",
   "ship-switch-to-dev",
-  "ship-update-docs",
-  "ship-summary",
-  "ship-prune-skills",
   "ship-worktree-cleanup",
   "ship-close-workflow",
 ] as const;
@@ -157,6 +160,10 @@ export const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   ".claude/skills",
   ".cursor/skills",
   ".opencode/skills",
+  // Project docs the ship docs sync edits — `--scope=pr` only, top level only
+  // (`:(glob)` keeps git's `*` from crossing into docs/plans/** or
+  // docs/templates/**). Ride the PR in the pre-merge bookkeeping commit.
+  ":(glob)docs/*.md",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -184,34 +191,56 @@ describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
 // NEGATIVE — no {SHIP_BRANCH} commit/push outside the B2 (conflict-resolve) block
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — push-timing invariant (no {SHIP_BRANCH} push before merge)", () => {
-  it("has no `git commit` / `git push` to {SHIP_BRANCH} outside the B2 conflict-resolve block", () => {
-    const ship = readShip();
-    // The push-timing invariant (design's sharpest departure): no ship
-    // bookkeeping commit reaches origin/{SHIP_BRANCH} before the merge.
-    // Permitted ONLY inside the B2 conflict-resolve step's fenced block.
-    // RED on current prose because Step 2/3/4/5/8/8b all commit on {BRANCH}.
-    const lines = ship.split("\n");
-    let inB2Block = false;
+describe("bkit-ship.md — push-timing invariant ({SHIP_BRANCH} pushes before merge)", () => {
+  // Ship pushes the feature branch before the merge in exactly two places: the
+  // B2 conflict-resolve integration (Step 4) and the one pre-merge bookkeeping
+  // commit (Commit + Push Bookkeeping) that carries docs, summaries, ledgers
+  // and skill removals onto the PR so the merge lands them on `dev`. Every
+  // other step must leave the branch alone. Fences in this workflow are
+  // indented under list items, so the fence match allows leading whitespace —
+  // a column-0-only match never sees a fence and passes vacuously.
+  function branchPushesByStep(ship: string): Map<string, string[]> {
+    const byStep = new Map<string, string[]>();
+    let step = "";
     let inFence = false;
-    const violations: string[] = [];
-    for (const line of lines) {
-      if (/^```/.test(line)) {
+    for (const line of ship.split("\n")) {
+      const heading = /^## .*Step \d+ — (.+)$/.exec(line);
+      if (heading) step = heading[1]!.trim();
+      if (/^\s*```/.test(line)) {
         inFence = !inFence;
         continue;
       }
-      // Track whether we are inside the conflict-resolve step's shell block.
-      if (/ship-conflict-resolve/.test(line) || /conflict-resolve/.test(line)) {
-        inB2Block = true;
-      } else if (/^##\s/.test(line) || /^###\s/.test(line)) {
-        // A new step header ends the B2 step scope.
-        if (!/conflict-resolve/.test(line)) inB2Block = false;
-      }
-      if (inFence && /git\s+(commit|push)\b.*\{SHIP_BRANCH\}/.test(line) && !inB2Block) {
-        violations.push(line.trim());
+      // Worktree Cleanup's post-merge `git push origin --delete` removes the
+      // branch; it carries no commit, so it is not a push this invariant covers.
+      if (/git\s+push\b.*--delete/.test(line)) continue;
+      if (inFence && /git\s+(commit|push)\b.*\{SHIP_BRANCH\}/.test(line)) {
+        byStep.set(step, [...(byStep.get(step) ?? []), line.trim()]);
       }
     }
-    expect(violations).toEqual([]);
+    return byStep;
+  }
+
+  it("commits / pushes {SHIP_BRANCH} only in Integrate (B2) and Commit + Push Bookkeeping", () => {
+    const byStep = branchPushesByStep(readShip());
+    expect([...byStep.keys()].sort()).toEqual(
+      ["Commit + Push Bookkeeping", "Integrate (Path B only)"].sort(),
+    );
+  });
+
+  it("the pre-merge bookkeeping push is a plain push — never forced", () => {
+    const pushes = branchPushesByStep(readShip()).get("Commit + Push Bookkeeping") ?? [];
+    expect(pushes).toEqual(['git push origin "{SHIP_BRANCH}"']);
+  });
+
+  it("the pre-merge bookkeeping commit stages through bkit-book-commit.sh --scope=pr as [skip ci]", () => {
+    const step = section(readShip(), /^## .*Step \d+ — Commit \+ Push Bookkeeping/, /^---$/);
+    expect(step, "Commit + Push Bookkeeping section not found").not.toBe("");
+    expect(step).toMatch(/bkit-book-commit\.sh" --root="\$\(pwd\)" .*--scope=pr --mode=commit /);
+    expect(step).toContain('--message="docs({FID}): ship bookkeeping bkit [skip ci]"');
+    // The step-done row is written BEFORE the commit so it rides the PR.
+    expect(step.indexOf('step:"ship-bookkeeping-push"')).toBeLessThan(
+      step.indexOf("bkit-book-commit.sh"),
+    );
   });
 
   it("pushes the branch outside B2 only to open a missing PR — non-force, and only when ahead of dev", () => {
@@ -357,26 +386,26 @@ describe("bkit-ship.md — status.jsonl writes resolve via BOOK_ROOT", () => {
 // POSITIVE — ship verdict reader resolves .bkit/issues.jsonl under BOOK_ROOT
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves under BOOK_ROOT (#380)", () => {
-  it("the SHIPPED_HIT jq read targets $BOOK_ROOT/.bkit/issues.jsonl, never a bare relative path", () => {
+describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves the ledger the writer wrote (#380)", () => {
+  it("the SHIPPED_HIT jq read targets $ISSUES_JSONL, never a bare relative path", () => {
     const ship = readShip();
     const lines = ship.split("\n");
     const shippedHitLine = lines.find((l) => /SHIPPED_HIT=\$\(/.test(l));
     expect(shippedHitLine, "SHIPPED_HIT assignment line not found").toBeTruthy();
-    // Every other book-path read/write in this file resolves via $BOOK_ROOT
-    // (status.jsonl, .deferred-blocked). The ship-verdict reader must not be
-    // the one path that reads a bare relative `.bkit/issues.jsonl` — that
-    // silently resolves against the CURRENT WORKING DIRECTORY (worktree),
-    // not the dev tree the writer targets, and would FAIL to find a row the
-    // writer correctly wrote.
-    expect(shippedHitLine!).toMatch(/\$BOOK_ROOT\/\.bkit\/issues\.jsonl/);
+    // The writer appends to $ISSUES_JSONL (the worktree ledger, so the SHIPPED
+    // row rides the PR). The reader must resolve the SAME variable — a bare
+    // relative `.bkit/issues.jsonl` silently resolves against whatever the
+    // current working directory is and would FAIL to find a row the writer
+    // correctly wrote.
+    expect(shippedHitLine!).toMatch(/"\$ISSUES_JSONL"/);
     expect(shippedHitLine!).not.toMatch(/[^/$]\.bkit\/issues\.jsonl/);
   });
 
-  it("the SHIPPED feature-row append is mechanical at Step 10, not the update-docs prompt", () => {
+  it("the SHIPPED feature-row append is mechanical at Step 6, into the worktree ledger, not the update-docs prompt", () => {
     const ship = readShip();
     expect(ship).toMatch(/--arg step "ship-update-docs"/);
-    expect(ship).toMatch(/ISSUES_JSONL="\$BOOK_ROOT\/\.bkit\/issues\.jsonl"/);
+    expect(ship).toMatch(/WT="\{WORKTREE_PATH\}"/);
+    expect(ship).toMatch(/ISSUES_JSONL="\$WT\/\.bkit\/issues\.jsonl"/);
     expect(ship).toMatch(/\.status="SHIPPED"/);
     const prompt = fs.readFileSync(
       path.join(REPO_ROOT, ".bkit/prompts/bkit-ship-update-docs.md"),
@@ -387,11 +416,11 @@ describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves under BOOK_ROOT (
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — canonical 14 ship-* step-key set
+// POSITIVE — canonical 15 ship-* step-key set
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — canonical 14 ship-* step-key set", () => {
-  it("publishes the canonical 14 ship-* step-key set (no invented names)", () => {
+describe("bkit-ship.md — canonical 15 ship-* step-key set", () => {
+  it("publishes the canonical 15 ship-* step-key set (no invented names)", () => {
     // Finding 7: agents invent step names. The set must be present verbatim.
     // RED on current prose because the current step set is a mix of
     // ship-{name} and chore({FID}): {name} commit subjects — only a subset of
@@ -565,18 +594,19 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
   // Finding 5 (MEDIUM): gate code 11 (in progress — poll) was a dead branch —
   // Step 6 routed ONLY 14/10 to Step 5, so code 11 fell through to Failure Path
   // instead of polling. Fix: route 11 to Step 5 alongside 10/14.
-  it("F5: gate code 11 (poll) routes to Step 5 alongside codes 10 and 14", () => {
+  it("F5: gate code 11 (poll) routes to Step 9 alongside codes 10, 14 and 17", () => {
     const ship = readShip();
     const lines = ship.split("\n");
     // One lead-in lists all three poll-able codes; the block it introduces owns
-    // the Step 5 route, so the destination sits on the exit-code bullets below.
+    // the Step 9 route, so the destination sits on the exit-code bullets below.
     const idx = lines.findIndex((l) => /code\s+11/.test(l));
     expect(idx, "code 11 must have a routing lead-in").toBeGreaterThan(-1);
     expect(lines[idx]).toMatch(/14/);
     expect(lines[idx]).toMatch(/\b10\b/);
+    expect(lines[idx]).toMatch(/\b17\b/);
     const block = lines.slice(idx, idx + 20).join("\n");
-    expect(block, "codes 10/11/14 must route to Step 5, not Failure Path").toMatch(
-      /\*\*If\*\* exit 0 \(printed `step-5`\).*Step 5\./,
+    expect(block, "codes 10/11/14/17 must route to Step 9, not Failure Path").toMatch(
+      /\*\*If\*\* exit 0 \(printed `step-9`\).*Step 9\./,
     );
   });
 
@@ -787,8 +817,10 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     expect(countLines(readShip(), /git .*add \$\{?BOOK_PATHS\}?/)).toBe(0);
   });
 
-  it("wires bkit-book-commit.sh into exactly 3 bash regions", () => {
-    expect(bookCommitBlocks(readShip())).toHaveLength(3);
+  it("wires bkit-book-commit.sh into exactly 5 bash regions", () => {
+    // Failure Path flush + union-ledgers, B2 stage, Commit + Push Bookkeeping,
+    // Re-validate's only-bookkeeping check, Close flush + close-worktree union.
+    expect(bookCommitBlocks(readShip())).toHaveLength(5);
   });
 
   it("guards every bkit-book-commit.sh region so a non-zero exit stops the step", () => {
@@ -807,10 +839,10 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
 // bkit-ship-worktree-ownership.integration.test.ts.
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — Step 12 worktree ownership prose", () => {
+describe("bkit-ship.md — Step 14 worktree ownership prose", () => {
   it("gates worktree remove --force on the ownership marker", () => {
-    const step12 = section(readShip(), /^## .*Step 12/, /^---$/);
-    expect(step12, "Step 12 section not found").not.toBe("");
+    const step12 = section(readShip(), /^## .*Step 14 —/, /^---$/);
+    expect(step12, "Step 14 section not found").not.toBe("");
     expect(step12).toContain("worktree-owned");
     expect(step12).toContain("worktree remove");
     expect(step12).toMatch(/if.*worktree-owned|-f.*worktree-owned/);
@@ -824,7 +856,7 @@ describe("bkit-ship.md — Step 12 worktree ownership prose", () => {
   });
 
   it("treats a missing marker as not mine and skips removal", () => {
-    const step12 = section(readShip(), /^## .*Step 12/, /^---$/);
+    const step12 = section(readShip(), /^## .*Step 14 —/, /^---$/);
     expect(step12).toMatch(/not mine|ownership.*absent|skipping removal/i);
   });
 });

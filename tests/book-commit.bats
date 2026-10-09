@@ -251,3 +251,190 @@ _staged() { git -C "$TEST_REPO" diff --cached --name-only; }
   run bash "$BOOK_SCRIPT" union-ledgers --src="$SRC" --dst="$DST"
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Top-level project docs: staged under scope=full only, never docs/** below
+# ---------------------------------------------------------------------------
+
+@test "top-level docs/*.md is committed under scope=pr, not under scope=core or scope=full" {
+  mkdir -p "$TEST_REPO/docs/plans/202610/logs/452d"
+  echo '{}' > "$TEST_REPO/docs/plans/202610/logs/452d/status.jsonl"
+  echo a > "$TEST_REPO/docs/architecture.md"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m init )
+  echo b >> "$TEST_REPO/docs/architecture.md"
+  echo '{"a":1}' >> "$TEST_REPO/docs/plans/202610/logs/452d/status.jsonl"
+
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=452d --scope=core --mode=commit --message="core"
+  [ "$status" -eq 0 ]
+  stat="$(_stat)"
+  [[ "$stat" != *"architecture.md"* ]]
+
+  echo '{"a":2}' >> "$TEST_REPO/docs/plans/202610/logs/452d/status.jsonl"
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=452d --scope=full --mode=commit --message="full"
+  [ "$status" -eq 0 ]
+  stat="$(_stat)"
+  [[ "$stat" != *"architecture.md"* ]]
+
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=452d --scope=pr --mode=commit --message="pr"
+  [ "$status" -eq 0 ]
+  stat="$(_stat)"
+  [[ "$stat" == *"docs/architecture.md"* ]]
+}
+
+@test "scope=pr does not reach nested docs (docs/plans/** of another FID, docs/templates/**)" {
+  mkdir -p "$TEST_REPO/docs/plans/202610/logs/452n" "$TEST_REPO/docs/plans/202609" "$TEST_REPO/docs/templates"
+  echo '{}' > "$TEST_REPO/docs/plans/202610/logs/452n/status.jsonl"
+  echo a > "$TEST_REPO/docs/plans/202609/other-plan.md"
+  echo a > "$TEST_REPO/docs/templates/bkit-plan.md"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m init )
+  echo b >> "$TEST_REPO/docs/plans/202609/other-plan.md"
+  echo b >> "$TEST_REPO/docs/templates/bkit-plan.md"
+  echo '{"a":1}' >> "$TEST_REPO/docs/plans/202610/logs/452n/status.jsonl"
+
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=452n --scope=pr --mode=commit --message="pr"
+  [ "$status" -eq 0 ]
+  stat="$(_stat)"
+  [[ "$stat" != *"other-plan.md"* ]]
+  [[ "$stat" != *"bkit-plan.md"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# only-bookkeeping: the ship merge gate's carry-forward check
+# ---------------------------------------------------------------------------
+
+_book_base() {
+  mkdir -p "$TEST_REPO/src" "$TEST_REPO/docs/plans/202610/logs/452b"
+  echo a > "$TEST_REPO/src/a.ts"
+  echo a > "$TEST_REPO/docs/architecture.md"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m init )
+}
+
+@test "only-bookkeeping: docs, FID logs, ledgers and skill removals only → exit 0" {
+  mkdir -p "$TEST_REPO/.agents/skills/foo"
+  echo x > "$TEST_REPO/.agents/skills/foo/SKILL.md"
+  _book_base
+  from="$(_head)"
+  echo b >> "$TEST_REPO/docs/architecture.md"
+  echo s > "$TEST_REPO/docs/plans/202610/logs/452b/ship-summary.md"
+  echo '{"k":1}' > "$TEST_REPO/docs/deferrals.jsonl"
+  rm -r "$TEST_REPO/.agents/skills/foo"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m book )
+
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from="$from" --to="$(_head)"
+  [ "$status" -eq 0 ]
+}
+
+@test "only-bookkeeping: a source file in the range → exit 7, path listed" {
+  _book_base
+  from="$(_head)"
+  echo b >> "$TEST_REPO/docs/architecture.md"
+  echo b >> "$TEST_REPO/src/a.ts"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m mixed )
+
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from="$from" --to="$(_head)"
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"src/a.ts"* ]]
+  [[ "$output" != *"  docs/architecture.md"* ]]
+}
+
+@test "only-bookkeeping: another FID's plan file in the range → exit 7" {
+  _book_base
+  from="$(_head)"
+  mkdir -p "$TEST_REPO/docs/plans/202610"
+  echo p > "$TEST_REPO/docs/plans/202610/9-other-plan.md"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m plan )
+
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from="$from" --to="$(_head)"
+  [ "$status" -eq 7 ]
+}
+
+@test "only-bookkeeping: <from> not an ancestor of <to> → exit 7" {
+  _book_base
+  first="$(_head)"
+  echo b >> "$TEST_REPO/docs/architecture.md"
+  ( cd "$TEST_REPO" && git add -A && git commit -q -m book )
+
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from="$(_head)" --to="$first"
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"not an ancestor"* ]]
+}
+
+@test "only-bookkeeping: unknown commit → exit 3; missing flag → exit 2" {
+  _book_base
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from=deadbeef --to="$(_head)"
+  [ "$status" -eq 3 ]
+  run bash "$BOOK_SCRIPT" only-bookkeeping --root="$TEST_REPO" --month=202610 --fid=452b --from="$(_head)"
+  [ "$status" -eq 2 ]
+}
+
+@test "union-ledgers never carries .bkit/issues.jsonl (a pre-merge SHIPPED row must not reach dev)" {
+  SRC="$TEST_TMP/src3"
+  DST="$TEST_TMP/dst3"
+  mkdir -p "$SRC/.bkit" "$DST/.bkit"
+  git init -q "$SRC"
+  git -C "$SRC" config user.email t@t.t
+  git -C "$SRC" config user.name t
+  printf '{"kind":"feature","key":"452x","status":"SHIPPED"}\n' > "$SRC/.bkit/issues.jsonl"
+  printf '{"row":1}\n' > "$SRC/.bkit/friction.jsonl"
+  ( cd "$SRC" && git add -A && git commit -q -m srcinit )
+  printf '{"kind":"feature","key":"452x","status":"BUILT"}\n' > "$DST/.bkit/issues.jsonl"
+
+  run bash "$BOOK_SCRIPT" union-ledgers --src="$SRC" --dst="$DST"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$DST/.bkit/issues.jsonl")" = '{"kind":"feature","key":"452x","status":"BUILT"}' ]
+  [ "$(cat "$DST/.bkit/friction.jsonl")" = '{"row":1}' ]
+}
+
+# ---------------------------------------------------------------------------
+# --squash-of: the close commit carries the squash and bookkeeping, nothing
+# else already staged (#493)
+# ---------------------------------------------------------------------------
+
+_squash_base() {
+  mkdir -p "$TEST_REPO/docs/plans/202610/logs/493s"
+  echo '{}' > "$TEST_REPO/docs/plans/202610/logs/493s/status.jsonl"
+  echo old > "$TEST_REPO/docs/plans/202610/gone.md"
+  ( cd "$TEST_REPO" && git checkout -q -b dev && git add -A && git commit -q -m init )
+  ( cd "$TEST_REPO" && git checkout -q -b feat/493s \
+      && echo plan > docs/plans/202610/493s-plan.md && git rm -q docs/plans/202610/gone.md \
+      && git add -A && git commit -q -m feat && git checkout -q dev )
+}
+
+@test "--squash-of commits the squashed paths (deletion included) and bookkeeping, not another staged file" {
+  _squash_base
+  echo other > "$TEST_REPO/docs/plans/202610/OTHER-plan.md"
+  git -C "$TEST_REPO" add docs/plans/202610/OTHER-plan.md
+  git -C "$TEST_REPO" merge -q --squash feat/493s
+  echo '{"close":1}' >> "$TEST_REPO/docs/plans/202610/logs/493s/status.jsonl"
+
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=493s --scope=core --mode=commit-allow-empty --squash-of=feat/493s --message="close"
+  [ "$status" -eq 0 ]
+  landed="$(git -C "$TEST_REPO" show --name-status --format= HEAD)"
+  [[ "$landed" == *"A	docs/plans/202610/493s-plan.md"* ]]
+  [[ "$landed" == *"D	docs/plans/202610/gone.md"* ]]
+  [[ "$landed" == *"status.jsonl"* ]]
+  [[ "$landed" != *"OTHER-plan.md"* ]]
+  [ "$(_staged)" = "docs/plans/202610/OTHER-plan.md" ]
+}
+
+@test "--squash-of under --mode=commit counts the squashed paths as something to commit" {
+  _squash_base
+  git -C "$TEST_REPO" merge -q --squash feat/493s
+  before="$(_head)"
+
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=493s --scope=core --mode=commit --squash-of=feat/493s --message="close"
+  [ "$status" -eq 0 ]
+  [ "$(_head)" != "$before" ]
+  landed="$(git -C "$TEST_REPO" show --name-only --format= HEAD)"
+  [[ "$landed" == *"493s-plan.md"* ]]
+}
+
+@test "--squash-of: stage mode → exit 2; unknown ref → exit 3, no commit" {
+  _squash_base
+  before="$(_head)"
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=493s --scope=core --mode=stage --squash-of=feat/493s
+  [ "$status" -eq 2 ]
+  run bash "$BOOK_SCRIPT" --root="$TEST_REPO" --month=202610 --fid=493s --scope=core --mode=commit-allow-empty --squash-of=feat/nope --message="close"
+  [ "$status" -eq 3 ]
+  [ "$(_head)" = "$before" ]
+}

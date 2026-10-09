@@ -148,6 +148,8 @@ const PROVIDES: Record<string, string[]> = {
     "SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S",
     "SHIP_DEV_LOCK_STALE_S",
     "SHIP_POLL_INTERVAL_S",
+    "SHIP_PROBE_ATTEMPTS",
+    "SHIP_PROBE_INTERVAL_S",
   ],
   "bkit-status-fold.sh": ["BKIT_STATUS_FOLD"],
   "bkit-rebase-resolve.sh": ["BKIT_REBASE_LEDGERS"],

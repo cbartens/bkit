@@ -2,7 +2,7 @@
  * bkit-ship-verdict.integration.test.ts — #380 Sub-plan 1 Task 5, matrix row 10.
  *
  * Boundary: real jq + real fs (no mocks). Runs the EXACT `DOCS_VERDICT`
- * derivation shipped in `.bkit/workflows/bkit-ship.md` Step 10 against a
+ * derivation shipped in `.bkit/workflows/bkit-ship.md` Step 6 against a
  * fixture `.bkit/issues.jsonl`, so a drift between this test and the shipped
  * shell can never pass silently.
  */
@@ -40,11 +40,12 @@ afterEach(() => {
 function runVerdict(fid: string, jsonlContent: string): string {
   fs.writeFileSync(path.join(tmpDir, ".bkit", "issues.jsonl"), jsonlContent, "utf-8");
   const snippet = extractVerdictSnippet();
-  // BOOK_ROOT resolves to a DIFFERENT directory than CWD (a bare relative
+  // ISSUES_JSONL points at a DIFFERENT directory than CWD (a bare relative
   // `.bkit/issues.jsonl` read would miss the fixture entirely) — proves the
-  // shipped reader actually resolves via $BOOK_ROOT, not the working dir.
+  // shipped reader resolves the same $ISSUES_JSONL the writer appended to
+  // (the worktree ledger), not the working dir.
   const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-verdict-cwd-"));
-  const script = `cd "${otherDir}" && BOOK_ROOT="${tmpDir}" FID="${fid}" ${snippet.replace(/\{FID\}/g, "$FID")}\necho "$DOCS_VERDICT"`;
+  const script = `cd "${otherDir}" && ISSUES_JSONL="${tmpDir}/.bkit/issues.jsonl" FID="${fid}" ${snippet.replace(/\{FID\}/g, "$FID")}\necho "$DOCS_VERDICT"`;
   try {
     return execSync(script, { shell: "/bin/bash", encoding: "utf-8" }).trim();
   } finally {

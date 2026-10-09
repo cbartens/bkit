@@ -384,3 +384,73 @@ run_gate() {
   run_gate --head release-push-red-pr-green
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Validated-head carry-forward — `--validated` (code 17)
+# ---------------------------------------------------------------------------
+#
+# A throwaway repo whose tags double as fixture SHAs: the gate resolves
+# `--validated green-capstone` to a commit for the bookkeeping check, then
+# queries the `green-capstone` runs fixture for CI.
+
+_carry_repo() {
+  CARRY_TMP="$(mktemp -d)"
+  CARRY_REPO="$CARRY_TMP/repo"
+  git init -q "$CARRY_REPO"
+  git -C "$CARRY_REPO" config user.email t@t.t
+  git -C "$CARRY_REPO" config user.name t
+  mkdir -p "$CARRY_REPO/src" "$CARRY_REPO/docs/plans/202610/logs/452g"
+  echo a > "$CARRY_REPO/src/a.ts"
+  echo a > "$CARRY_REPO/docs/architecture.md"
+  git -C "$CARRY_REPO" add -A && git -C "$CARRY_REPO" commit -q -m code
+  git -C "$CARRY_REPO" tag green-capstone
+  git -C "$CARRY_REPO" tag failed
+  echo b >> "$CARRY_REPO/docs/architecture.md"
+  echo s > "$CARRY_REPO/docs/plans/202610/logs/452g/ship-summary.md"
+  git -C "$CARRY_REPO" add -A && git -C "$CARRY_REPO" commit -q -m "docs [skip ci]"
+  git -C "$CARRY_REPO" tag book-head
+  echo b >> "$CARRY_REPO/src/a.ts"
+  git -C "$CARRY_REPO" add -A && git -C "$CARRY_REPO" commit -q -m code2
+  git -C "$CARRY_REPO" tag code-head
+}
+
+@test "carry-forward: bookkeeping-only commits on a green head pass (exit 0) without CI at the head" {
+  _carry_repo
+  cd "$CARRY_REPO"
+  run_gate --head book-head --validated green-capstone --month 202610 --fid 452g --explain
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"bookkeeping only"* ]]
+  rm -rf "$CARRY_TMP"
+}
+
+@test "carry-forward: a source change past the validated head refuses (exit 17)" {
+  _carry_repo
+  cd "$CARRY_REPO"
+  run_gate --head code-head --validated green-capstone --month 202610 --fid 452g
+  [ "$status" -eq 17 ]
+  [[ "$output" == *"src/a.ts"* ]]
+  [[ "$output" == *"required head:  code-head"* ]]
+  rm -rf "$CARRY_TMP"
+}
+
+@test "carry-forward: the validated sha's own CI still has to be green (failed → exit 12)" {
+  _carry_repo
+  cd "$CARRY_REPO"
+  run_gate --head book-head --validated failed --month 202610 --fid 452g
+  [ "$status" -eq 12 ]
+  [[ "$output" == *"required head:  failed"* ]]
+  rm -rf "$CARRY_TMP"
+}
+
+@test "carry-forward: --validated equal to --head is the plain head check" {
+  run_gate --head green-capstone --validated green-capstone
+  [ "$status" -eq 0 ]
+}
+
+@test "carry-forward: --validated without --month/--fid is a usage error (exit 2)" {
+  _carry_repo
+  cd "$CARRY_REPO"
+  run_gate --head book-head --validated green-capstone
+  [ "$status" -eq 2 ]
+  rm -rf "$CARRY_TMP"
+}

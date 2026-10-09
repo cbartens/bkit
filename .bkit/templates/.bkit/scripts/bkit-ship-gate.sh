@@ -12,6 +12,18 @@
 #   bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>]
 #                                      [--repo <o/r>] [--branch <name>] [--explain]
 #                                      [--required-lanes <a,b,c>] [--event <name>]
+#                                      [--validated <sha> --month <YYYYMM> --fid <FID>]
+#
+# Validated-head carry-forward (`--validated`): ship commits its own docs and
+# ledgers onto the PR with `[skip ci]` after CI has already passed. Re-running
+# CI for that commit buys nothing, so when `--validated` names an ancestor of
+# `--head` and every path changed between them is on bkit-book-commit.sh's
+# bookkeeping allow-list (its `only-bookkeeping` subcommand — one list, one
+# definition), the run checks below are made against the VALIDATED sha instead
+# of the head. Anything else between them (a source file, a rebase, a
+# concurrent push) is code 17 — re-validate at the head. The caller still
+# merges with `--match-head-commit <head>`, so the carry-forward never widens
+# what gets merged. Requires a checkout holding both commits (cwd).
 #
 # Run selection (decided before exit codes can mean anything):
 #   gh api /repos/{o}/{r}/actions/workflows/{ciWorkflow}/runs?head_sha=<sha>
@@ -43,6 +55,8 @@
 #   14  Green run exists, but at a SUPERSEDED SHA (needs --branch)          → refuse
 #   15  Selected run concluded `cancelled`                                  → refuse
 #   16  A lane named in `bkit.shipGateRequiredLanes` concluded `skipped`  → refuse
+#   17  `--validated` given, but head carries non-bookkeeping changes past it,
+#       or it is not an ancestor of head                                    → refuse
 #   20  API error / rate limit / auth                                       → refuse
 #
 # Code 14 requires `--branch`: the head-keyed run query is filtered SERVER-SIDE,
@@ -98,11 +112,17 @@ REPO=""
 BRANCH=""
 EVENT=""
 EXPLAIN=0
+VALIDATED_SHA=""
+MONTH=""
+FID=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     assert) ACTION="assert" ;;
     --head) HEAD_SHA="${2:-}"; shift ;;
+    --validated) VALIDATED_SHA="${2:-}"; shift ;;
+    --month) MONTH="${2:-}"; shift ;;
+    --fid) FID="${2:-}"; shift ;;
     --capstone) CAPSTONE="${2:-}"; shift ;;
     --required-lanes) REQUIRED_LANES="${2:-}"; shift ;;
     --workflow) WORKFLOW="${2:-}"; shift ;;
@@ -123,7 +143,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$ACTION" != "assert" ]; then
-  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--branch <name>] [--event <name>] [--explain]"
+  err "usage: bkit-ship-gate.sh assert --head <sha> [--capstone <job>] [--workflow <file>] [--repo <o/r>] [--branch <name>] [--event <name>] [--explain] [--validated <sha> --month <YYYYMM> --fid <FID>]"
   exit 2
 fi
 
@@ -198,6 +218,9 @@ filter_event() {
 print_refusal_context() {
   local run_url="${1:-}"
   err "required head:  $HEAD_SHA"
+  if [ -n "${MERGE_HEAD:-}" ] && [ "$MERGE_HEAD" != "$HEAD_SHA" ]; then
+    err "merge head:    $MERGE_HEAD  (bookkeeping-only commits on top of the required head)"
+  fi
   if [ -n "${SELECTED_HEAD_SHA:-}" ] && [ "$SELECTED_HEAD_SHA" != "$HEAD_SHA" ]; then
     err "head tested:   $SELECTED_HEAD_SHA  (SUPERSEDED)"
   fi
@@ -244,6 +267,29 @@ refuse() {
   maybe_override
   exit "$code"
 }
+
+# ---------------------------------------------------------------------------
+# 0. Validated-head carry-forward — decided before any run query
+# ---------------------------------------------------------------------------
+
+MERGE_HEAD="$HEAD_SHA"
+if [ -n "$VALIDATED_SHA" ] && [ "$VALIDATED_SHA" != "$HEAD_SHA" ]; then
+  if [ -z "$MONTH" ] || [ -z "$FID" ]; then
+    err "--validated requires --month <YYYYMM> and --fid <FID> (the bookkeeping allow-list is FID-scoped)"
+    exit 2
+  fi
+  BOOK_SH="$(cd "$(dirname "$0")" && pwd)/bkit-book-commit.sh"
+  [ -f "$BOOK_SH" ] || { err "missing $BOOK_SH — run 'bkit install'"; exit 2; }
+  BOOK_EXIT=0
+  bash "$BOOK_SH" only-bookkeeping --root="$(pwd)" --month="$MONTH" --fid="$FID" \
+    --from="$VALIDATED_SHA" --to="$HEAD_SHA" || BOOK_EXIT=$?
+  if [ "$BOOK_EXIT" -ne 0 ]; then
+    err "head $HEAD_SHA is not $VALIDATED_SHA plus bookkeeping only (bkit-book-commit.sh exit $BOOK_EXIT) — re-validate at head"
+    refuse 17
+  fi
+  [ "$EXPLAIN" = "1" ] && printf '[bkit-ship-gate] head %s = validated %s + bookkeeping only — checking CI at the validated sha\n' "$HEAD_SHA" "$VALIDATED_SHA"
+  HEAD_SHA="$VALIDATED_SHA"
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Run-list query (workflow-scoped, head-keyed)

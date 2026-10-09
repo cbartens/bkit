@@ -675,9 +675,12 @@ Design Feature — Autonomous design phase
      STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
      [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
      git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-     git merge --squash -X ours "feat/{FID}"
+     git merge --squash -X ours "feat/{FID}" || { echo "squash of feat/{FID} into dev failed — nothing committed or pushed; feat/{FID} and its worktree kept. Clear what git names above from the main checkout, then re-run." >&2; exit 1; }
      STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "design close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+     DESIGN_DOC="docs/plans/{YYYYMM}/{FID}-design.md"
+     BRANCH_BLOB=$(git rev-parse -q --verify "feat/{FID}:$DESIGN_DOC") || { echo "feat/{FID} carries no $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
+     [ "$(git rev-parse -q --verify ":$DESIGN_DOC")" = "$BRANCH_BLOB" ] || { echo "squash did not stage the feat/{FID} copy of $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
      WT=$(git rev-parse --show-toplevel)
      STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      STATS="$WT/.bkit/stats.jsonl"
@@ -702,9 +705,8 @@ Design Feature — Autonomous design phase
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
        >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
      ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=stage \
-       || { echo "[bkit-book] design-close bookkeeping stage failed" >&2; exit 1; }
-     git commit --allow-empty -m "docs({FID}): design DONE bkit [skip ci]"
+     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit-allow-empty --squash-of="feat/{FID}" --message="docs({FID}): design DONE bkit [skip ci]" \
+       || { echo "[bkit-book] design-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
      git push origin dev || { echo "dev push failed" >&2; exit 1; }
      git show "dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
      CLOSE_SHAPE="local"
@@ -787,6 +789,7 @@ Design Feature — Autonomous design phase
 - [ ] Canonical design copied (`docs/plans/{YYYYMM}/{FID}-design.md`, verified on `dev` post-merge)
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
+- [ ] Squash exited 0 and staged `{FID}-design.md` matched `feat/{FID}` before commit (if `RUNTIME_DEVPUSHES` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
 - [ ] Worktree removed and feature branch deleted (mint mode only)

@@ -39,7 +39,7 @@ One file per `kind`; writers:
 | `failure` | `docs/failures.jsonl` | any agent on a discovered bug; `@bkit-debug-abort-handover`; `@bkit-utility-update-failures` (close / triage / locator) |
 | `knowledge` | `docs/knowledge.jsonl` | `@bkit-build-challenge-remediate`, `@bkit-build-plan-gaps-remediate`, `@bkit-debug-failure-remediate` (after verified fix), `@bkit-utility-update-knowledge` (supersede / correct) |
 | `decision` | `docs/decisions.jsonl` | `@bkit-debug-failure-remediate` (forced arch), `@bkit-plan-generate`, `@bkit-utility-update-decisions` (supersede / correct) |
-| `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 10 on `$BOOK_ROOT`; `ABANDONED` only by a human, or an agent on explicit human instruction |
+| `feature` | `.bkit/issues.jsonl` | design / plan / build / debug orchestrators at their phase close; ship Step 6 into the worktree ledger (rides the PR); `ABANDONED` only by a human, or an agent on explicit human instruction |
 
 **Writers are exhaustive:** ONLY agents listed as writers for a given kind are allowed to write that specific kind; NO exceptions.
 

@@ -24,6 +24,13 @@ SHIP_CI_WAIT_TIMEOUT_S=1800
 # Polling interval (seconds) between CI status checks during SHIP_CI_WAIT_TIMEOUT_S.
 SHIP_POLL_INTERVAL_S=30
 
+# Re-validate's presence probe: seconds between checks for a run at
+# VALIDATED_HEAD before dispatching one, and how many checks. 6 x 10s keeps the
+# 60s budget a push-triggered `pull_request` run needs to surface, so the probe
+# does not dispatch a duplicate of a run that is merely slow to register.
+SHIP_PROBE_INTERVAL_S=10
+SHIP_PROBE_ATTEMPTS=6
+
 # A `.dev.lock` older than this (seconds) is considered stale and may be reclaimed.
 SHIP_DEV_LOCK_STALE_S=900
 

@@ -796,9 +796,13 @@ description: "Plan Feature — Autonomous plan generation"
      STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
      [ -n "$STRAY_MAIN" ] && { echo "{FID} artifacts written to the main checkout instead of the worktree:" >&2; echo "$STRAY_MAIN" >&2; echo "Move them under .worktrees/{FID}/ or delete them, then re-run." >&2; exit 1; }
      git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-     git merge --squash -X ours "feat/{FID}"
+     git merge --squash -X ours "feat/{FID}" || { echo "squash of feat/{FID} into dev failed — nothing committed or pushed; feat/{FID} and its worktree kept. Clear what git names above from the main checkout, then re-run." >&2; exit 1; }
      STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "plan close-workflow staged non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+     PLAN_DOCS=$(git ls-tree -r --name-only "feat/{FID}" -- "docs/plans/{YYYYMM}/" | grep -E "^docs/plans/{YYYYMM}/{FID}-plan(-[0-9]+)?\.md$" || true)
+     printf '%s\n' "$PLAN_DOCS" | grep -qx "docs/plans/{YYYYMM}/{FID}-plan.md" || { echo "feat/{FID} carries no docs/plans/{YYYYMM}/{FID}-plan.md — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
+     UNLANDED=$(printf '%s\n' "$PLAN_DOCS" | while IFS= read -r DOC; do [ "$(git rev-parse -q --verify ":$DOC")" = "$(git rev-parse "feat/{FID}:$DOC")" ] || printf '%s\n' "$DOC"; done)
+     [ -z "$UNLANDED" ] || { echo "squash did not stage the feat/{FID} copy of:" >&2; echo "$UNLANDED" >&2; echo "nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
      WT=$(git rev-parse --show-toplevel)
      STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      STATS="$WT/.bkit/stats.jsonl"
@@ -823,9 +827,8 @@ description: "Plan Feature — Autonomous plan generation"
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
        >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
      ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=stage \
-       || { echo "[bkit-book] plan-close bookkeeping stage failed" >&2; exit 1; }
-     git commit --allow-empty -m "docs({FID}): plan DONE bkit [skip ci]"
+     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit-allow-empty --squash-of="feat/{FID}" --message="docs({FID}): plan DONE bkit [skip ci]" \
+       || { echo "[bkit-book] plan-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
      git push origin dev || { echo "dev push failed" >&2; exit 1; }
      CLOSE_SHAPE="local"
      CLOSE_TRANSPORT="git"
@@ -912,6 +915,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same sub-plans if any)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
 - [ ] Close telemetry committed (`.bkit/stats.jsonl` staged before push)
+- [ ] Squash exited 0 and staged `{FID}-plan.md` (and sub-plans) matched `feat/{FID}` before commit (if `RUNTIME_DEVPUSHES` = true)
 - [ ] Changes merged to `dev`
 - [ ] Post-close body scan clean, transport cross-check passed, `close-transport` row recorded
 - [ ] Worktree removed and feature branch deleted (mint mode only)

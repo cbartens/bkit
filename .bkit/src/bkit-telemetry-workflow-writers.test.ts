@@ -136,11 +136,11 @@ describe("Ship workflow — outcome writer", () => {
     const shipFile = path.join(REPO_ROOT, ".bkit/workflows/bkit-ship.md");
     const content = fs.readFileSync(shipFile, "utf-8");
 
-    const closeGateSection = content.indexOf("## 🤖 Step 13 — Close Workflow");
+    const closeGateSection = content.indexOf("## 🤖 Step 15 — Close Workflow");
     const outcomeIdx = content.indexOf('.kind = "outcome"');
     expect(
       closeGateSection,
-      "Close workflow step (Step 13) must exist in bkit-ship.md",
+      "Close workflow step (Step 15) must exist in bkit-ship.md",
     ).toBeGreaterThan(-1);
     expect(outcomeIdx, "outcome block must exist in bkit-ship.md").toBeGreaterThan(-1);
     expect(

@@ -68,11 +68,12 @@ function pathAStatus(): string {
     // Step 3 (Base Check) writes no step-done row — it's a router
     // Step 4 (Integrate) skipped — Path A
     row("ship-deferred-sweep"),
-    row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
-    row("ship-switch-to-dev"),
     row("ship-update-docs"),
     row("ship-summary"),
     row("ship-prune-skills"),
+    row("ship-bookkeeping-push"),
+    row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
+    row("ship-switch-to-dev"),
     row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
@@ -86,29 +87,27 @@ function pathBStatus(): string {
     row("ship-regression-guard"),
     row("ship-conflict-resolve", { verdict: "PASS" }),
     row("ship-deferred-sweep"),
-    row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
-    row("ship-switch-to-dev"),
     row("ship-update-docs"),
     row("ship-summary"),
     row("ship-prune-skills"),
+    row("ship-bookkeeping-push"),
+    row("ship-merge-pr", { verdict: "PASS", attempt: 1, failures: 0 }),
+    row("ship-switch-to-dev"),
     row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
 }
 
-/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 9). */
+/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 13). */
 function mergedOnEntryStatus(): string {
   return [
     row("ship-start-workflow"),
-    // Step 2 routes to Step 9 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
+    // Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
     // 8 writes ship-worktree-setup + ship-regression-guard, so neither appears.
     // The explicit marker is what makes this path unambiguous to an auditor.
     JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
-    // Steps 3–8 skipped entirely — PR was already merged
+    // Steps 3–12 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
-    row("ship-update-docs"),
-    row("ship-summary"),
-    row("ship-prune-skills"),
     row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
@@ -122,14 +121,15 @@ function retryLoopPathBStatus(): string {
     row("ship-regression-guard"),
     row("ship-conflict-resolve", { verdict: "PASS" }),
     row("ship-deferred-sweep"),
+    row("ship-update-docs"),
+    row("ship-summary"),
+    row("ship-prune-skills"),
+    row("ship-bookkeeping-push"),
     row("ship-merge-pr", { verdict: "FAIL", attempt: 1, failures: 1 }),
     row("ship-failure-diagnose", { verdict: "PASS", attempt: 1 }),
     row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
     row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
     row("ship-switch-to-dev"),
-    row("ship-update-docs"),
-    row("ship-summary"),
-    row("ship-prune-skills"),
     row("ship-worktree-cleanup"),
     row("ship-close-workflow"),
   ].join("\n");
@@ -219,11 +219,12 @@ describe("classifyRun", () => {
       "ship-worktree-setup",
       "ship-regression-guard",
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -237,18 +238,19 @@ describe("classifyRun", () => {
       "ship-regression-guard",
       "ship-conflict-resolve",
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
     expect(classifyRun(observed, false)).toBe("PATH_B");
   });
 
-  it("classifies a MERGED-on-entry run (Step 2 routed to Step 9 before its writes)", () => {
+  it("classifies a MERGED-on-entry run (Step 2 routed to Step 13 before its writes)", () => {
     // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
     // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
     // MERGED-on-entry resume carries neither. (The previous fixture included
@@ -256,9 +258,6 @@ describe("classifyRun", () => {
     const observed = new Set([
       "ship-start-workflow",
       "ship-switch-to-dev",
-      "ship-update-docs",
-      "ship-summary",
-      "ship-prune-skills",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -274,10 +273,11 @@ describe("classifyRun", () => {
       "ship-start-workflow",
       "ship-worktree-setup",
       "ship-regression-guard",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -360,11 +360,12 @@ describe("detectHoles", () => {
       "ship-worktree-setup",
       "ship-regression-guard",
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -379,11 +380,12 @@ describe("detectHoles", () => {
       "ship-worktree-setup",
       // ship-regression-guard SKIPPED — this is a real hole
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -399,11 +401,12 @@ describe("detectHoles", () => {
       "ship-regression-guard",
       // ship-conflict-resolve SKIPPED but merge-pr is present → classified PATH_B
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);
@@ -419,11 +422,12 @@ describe("detectHoles", () => {
       "ship-worktree-setup",
       "ship-regression-guard",
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
       "ship-resume-human-override", // invented name — not in canonical set
@@ -439,11 +443,12 @@ describe("detectHoles", () => {
       "ship-worktree-setup",
       "ship-regression-guard",
       "ship-deferred-sweep",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
       "ship-update-docs",
       "ship-summary",
       "ship-prune-skills",
+      "ship-bookkeeping-push",
+      "ship-merge-pr",
+      "ship-switch-to-dev",
       "ship-worktree-cleanup",
       "ship-close-workflow",
     ]);

@@ -15,8 +15,9 @@
 // Path-conditional expectations:
 //   - Path A (dev is ancestor): skips ship-conflict-resolve.
 //   - Path B (dev moved): includes ship-conflict-resolve.
-//   - MERGED-on-entry (Step 2 detects state=MERGED → Step 9): skips the entire
-//     middle (base check, integrate, deferred-sweep, merge-pr).
+//   - MERGED-on-entry (Step 2 detects state=MERGED → Step 13): skips the entire
+//     middle (base check, integrate, deferred-sweep, the pre-merge docs /
+//     summary / prune / bookkeeping-push steps, merge-pr).
 //   - Aborted (workflow-failed row present): no post-abort holes expected.
 //   - ship-failure-diagnose / ship-failure-remediate are NEVER mandatory — they
 //     appear only in the merge-retry loop.
@@ -42,13 +43,14 @@ export const SHIP_STEP_ORDER = [
   "ship-regression-guard",
   "ship-conflict-resolve",
   "ship-deferred-sweep",
+  "ship-update-docs",
+  "ship-summary",
+  "ship-prune-skills",
+  "ship-bookkeeping-push",
   "ship-merge-pr",
   "ship-failure-diagnose",
   "ship-failure-remediate",
   "ship-switch-to-dev",
-  "ship-update-docs",
-  "ship-summary",
-  "ship-prune-skills",
   "ship-worktree-cleanup",
   "ship-close-workflow",
 ] as const;
@@ -62,15 +64,21 @@ const PATH_B_ONLY_STEPS = new Set<string>(["ship-conflict-resolve"]);
 /**
  * The steps a MERGED-on-entry resume skips entirely.
  *
- * bkit-ship.md Step 2 routes to Step 9 at sub-step 5 (`state` = MERGED), which
+ * bkit-ship.md Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED), which
  * is BEFORE sub-step 8 writes `ship-worktree-setup` + `ship-regression-guard` —
- * so those two are absent too, not just the middle.
+ * so those two are absent too, not just the middle. The pre-merge docs,
+ * summary, prune and bookkeeping-push steps (6-8) ride the PR, so a PR that is
+ * already merged skips them too.
  */
 const MERGED_ON_ENTRY_SKIP = new Set<string>([
   "ship-worktree-setup",
   "ship-regression-guard",
   "ship-conflict-resolve",
   "ship-deferred-sweep",
+  "ship-update-docs",
+  "ship-summary",
+  "ship-prune-skills",
+  "ship-bookkeeping-push",
   "ship-merge-pr",
   // failure-diagnose/remediate are already in RETRY_LOOP_STEPS (never expected)
 ]);
@@ -204,7 +212,7 @@ export function checkSourceCanonicalDrift(sourceSteps: string[]): string[] {
  * row was emitted. Classification logic mirrors bkit-ship.md's routing:
  *
  * - close-workflow present → completed (sub-classify by the Step 2 marker)
- *   - no regression-guard → MERGED_ON_ENTRY (Step 2 jumped to 9)
+ *   - no regression-guard → MERGED_ON_ENTRY (Step 2 jumped to 13)
  *   - conflict-resolve present → PATH_B
  *   - else → PATH_A
  * - workflow-failed present (and no close-workflow) → ABORTED
