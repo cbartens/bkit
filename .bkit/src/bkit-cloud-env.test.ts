@@ -878,7 +878,10 @@ describe("egress registry — completeness, invariants and the anti-widening gat
     // second: it is a legitimate company apex, it predates this change as one of the ten
     // hand-typed bases, and dropping it would revoke a working grant — so the accept list
     // carries both rather than the assertion carrying only the newly derived one.
-    const ACCEPTED_SOFT_WARN = ["linear.app", "models.dev"];
+    // dora.dev, google.dev and slsa.dev are audit anchor publishers (DORA, the Gemini
+    // prompting guide at ai.google.dev, SLSA): each is its owner's own apex, not a platform
+    // that hosts other tenants.
+    const ACCEPTED_SOFT_WARN = ["dora.dev", "google.dev", "linear.app", "models.dev", "slsa.dev"];
     const softWarn = BKIT_SHIPPED_NETWORK_DOMAINS.filter((b) =>
       [".dev", ".app", ".run"].some((tld) => b.endsWith(tld)),
     );
