@@ -31,7 +31,7 @@ Optional, copy and own, never installed. Catalog and install steps: `.bkit/templ
 | `pnpm` | tracks `package.json#packageManager` (single SoT) — `corepack enable`, then `pnpm install` (Corepack resolves the pinned version) | Workspace install, lint/typecheck/test gates, bkit CLI. |
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
-| `jq` | latest | `status.jsonl` append operations inside workflows. |
+| `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
 | `vale` | `3.9.1` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
