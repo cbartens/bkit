@@ -43,12 +43,14 @@ reasoningEffort: max
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
-5. Ecosystem search — per major capability the design requires:
+5. Prior-art search — per major capability the design requires:
+   - In-repo (text search for names / strings / near-miss helpers / sibling modules; symbol references via language server when configured; `docs/capabilities.md` when present) → in-repo candidate outranks ecosystem one. Empty language-server / capability-map result = inconclusive — absence needs text search.
    - Search `{framework/runtime} {capability} built-in` → stack already solves it?
    - Search `{problem} best practice {current year}` → standard ecosystem approach?
    - Check official docs for relevant framework / library.
-   - Record per finding: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification).
+   - Record per finding: What exists (name / path, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM` — with justification).
    - **If** existing solution covers >80% of requirement → recommend it over custom code; note remaining 20% gap.
+   - **If** design `Reuse & Prior Art` verdict is `NEW` where candidate covers capability, or reason is cleaner-fresh / messy-existing / close-but-different → `CONCERNS`, name candidate.
 6. Stack feasibility — buildable with approved stack? Constraints?
 7. Library / API eval — maturity, bundle, types, license.
 8. Integration risk — monorepo fit, systems touched.
@@ -72,11 +74,11 @@ Spike: TRUE | FALSE
 
 # Design Review
 
-Lens: Buildability — stack feasibility, library fit, integration risk.
+Lens: Buildability — prior art, stack feasibility, library fit, integration risk.
 
-## Ecosystem Search
+## Prior Art Search
 
-[Per major capability: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification); initially set to `PENDING`.]
+[Per major capability: What exists (name / path, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (`EXTEND-EXISTING|USE-AS-IS|ADAPT|BUILD-CUSTOM` — with justification); initially set to `PENDING`.]
 
 ## Stack Feasibility
 

@@ -31,16 +31,16 @@ developer_instructions = """
 3. Read `.agents/docs.md` → load docs for workflow / step / task; skip missing.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify strict adherence to `docs/templates/bkit-plan.md` — all template-mandated sections present and populated.
-6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` questions lacking options, `Recommended` or `Default if unanswered` → OPTIONAL findings naming missing parts.
+6. **If** `Acceptance Scenario` or `Derived Test Matrix` sections missing / vague → `CRITICAL`. Any `Open Questions & Assumptions` question off template shape → OPTIONAL findings naming missing parts.
 7. Verify plan reflects source — no drift, no omissions, no silent expansion.
    - Design-coverage: **If** design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), all design sections map to plan tasks OR out-of-scope notes; declared non-goals excluded. Design-required sections parked out of scope / missing → `CRITICAL`.
    - Sub-plans: Respect declared coverage scopes if produced — flag only items inside their slice.
    - Expansion: Plan tasks with no source justification → `CRITICAL`.
 8. Cross-check architecture, knowledge, decisions.
 9. Generate alternatives. Identify risks, edge cases, missing considerations.
-10. All `Out of Scope` entries are `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → `CRITICAL`.
-11. `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces — candidates, sources, and recommendations (fold in / keep deferred / needs design decision). Advisory ONLY; never `CRITICAL`, never tasks.
-12. Verify all `Agent Execution Runbook` tasks have `Done when` completion criteria — terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Missing / vague → `CRITICAL`.
+10. `Out of Scope` entries `Exempt` per template. Required work parked out of scope = `Blocking` → `CRITICAL`.
+11. `Suggested Scope Expansion`: From `related-*.md` context overlapping plan surfaces → candidates per template. Advisory ONLY; never `CRITICAL`.
+12. `Agent Execution Runbook` tasks carry `Done when` per template. Missing / vague → `CRITICAL`.
 13. Sort findings into standard three categories (`CRITICAL` / OPTIONAL / OUT OF SCOPE).
 14. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = no `CRITICAL` items.
@@ -73,7 +73,7 @@ Lens: Tightness, scope discipline, design-coverage.
 
 ## SUGGESTED SCOPE EXPANSION
 
-[From `related-*.md` context overlapping plan surfaces. One line each: Candidate, source (`#N` / `docs/deferrals.jsonl` / `docs/failures.jsonl`), and recommendation (fold in / keep deferred / needs design decision). Advisory ONLY; never tasks. **If** none → `None`; initially set to `PENDING`.]
+[From `related-*.md` context overlapping plan surfaces. One line each: Candidate, source, and recommendation per template `Suggested Scope Expansion`. **If** none → `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after reviewing plan and producing output. Do NOT code or edit plan.**

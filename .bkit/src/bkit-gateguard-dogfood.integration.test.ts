@@ -374,6 +374,9 @@ describe("dogfood advisories — carry EVERY rule from their source section", ()
     "Reuse wording and formatting": "copy shapes verbatim",
     // the master rule states the threshold in the singular
     "Labeled decision blocks": "labeled decision",
+    // the advisory reads only the parent Self-contained line, which carries this
+    // sub-rule as its supplied-template exception
+    "Template owns its rules": "carry their own rules",
   };
 
   // Navigational headings and illustrations the doc adds for readers. They carry no

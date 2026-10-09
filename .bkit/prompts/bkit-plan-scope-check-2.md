@@ -46,10 +46,11 @@ maxTurns: 50
 8. Verify `Derived Test Matrix` ↔ `Agent Execution Runbook`: rows map 1:1 (bidirectional) to verification tasks. Gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
 10. Replaced / superseded code → `Supersession Inventory` with DELETE / RETAIN-WITH-REASON. Missing → `CRITICAL`.
-11. All `Out of Scope` entries `Exempt` — genuinely-additive; not required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excluded. Required work parked out of scope = `Blocking` → `CRITICAL`.
-12. No task scopes edits inside `bkit:start` / `bkit:end` blocks; ALWAYS edit below `bkit:end`.
-13. Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
-14. Update **Create** — set `Verdict` via `Edit`; mapping:
+11. Introduced capability → `Reuse Inventory` row per template. Missing row, empty `Search performed`, rejected `NEW` reason, or untraced `[NEW]` / `EXTEND` row → `CRITICAL`.
+12. `Out of Scope` entries `Exempt` per template. Required work parked out of scope = `Blocking` → `CRITICAL`.
+13. No task scopes edits inside `bkit:start` / `bkit:end` blocks; ALWAYS edit below `bkit:end`.
+14. Sort findings: `CRITICAL` / OPTIONAL / OUT OF SCOPE.
+15. Update **Create** — set `Verdict` via `Edit`; mapping:
     - `PASS` = scope complete.
     - `FAIL` = template broken or matrix<->runbook mapping unrecoverable.
     - `CONCERNS` = `CRITICAL` gaps (apply via plan-update).

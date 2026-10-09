@@ -158,6 +158,7 @@ One row per behaviour (copy the tier name from the key above verbatim into `Type
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 > Unknowns + assumptions this plan relies on. Unresolved question = risk; wrong assumption breaks downstream. If none, write "None".
 > **Never a bare question.** Each carries 2-3 options, a recommendation, and default if unanswered — human must decide from the page alone. Canonical plan shape.
+> Design → carry its options / recommendation forward where already answered.
 
 - **Assumption:** [what the plan takes as given] → [what breaks if it's wrong]
 - **Open Question:** [decision needed] → [who / how to resolve]
@@ -229,7 +230,7 @@ Always verify.
 
 - [ ] **Package Management:** Verify `package.json` for required packages. Ensure `pnpm-lock.yaml` syncs cleanly.
 - [ ] **Dependency Versions:** Run `pnpm outdated`; spot-check CLI versions (`npx tsc --version`, `pnpm --version`, stack CLIs — e.g. `npx supabase --version`). Flag outdated deps that may silently block implementation — infra errors often = CLI vs backend version mismatch.
-- [ ] **Existing-Solution Search:** grep codebase + docs for existing capability implementations; extend over duplicate. Search `{framework} {capability} built-in` / `{problem} best practice {current year}` before custom. Every planned `[NEW]` must justify why existing artifact can't be evolved.
+- [ ] **Existing-Solution Search (reuse over duplicate):** per capability, three sweeps → `Reuse Inventory`: in-repo (text search for names / strings / near-miss helpers / sibling modules; symbol references via language server when configured; `docs/capabilities.md` when present), dependency (`{framework} {capability} built-in`), ecosystem (`{problem} best practice {current year}`). Empty language-server / capability-map result = inconclusive — absence needs text search. Unrecorded = unsearched. Drives `[MODIFY]` vs `[NEW]`.
 - [ ] **User Context:** Verify read / write access to required files. Request missing user information up front.
 - [ ] **Project Context:** Fold `docs/knowledge.jsonl` and `docs/decisions.jsonl` each by `key`, highest `ts` wins → read ONLY winning rows where `status` is `ACTIVE` or absent; NEVER read any other rows. Check for relevant patterns, decisions, gotchas.
 - [ ] **Testing & Quality:** Ensure testing strategy aligns with `docs/testing.md`.
@@ -253,6 +254,7 @@ Verify only when applicable.
 - [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). Unchecked → Summary must issue `REVISE`.
 - [ ] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`). Unchecked → Summary must issue `REVISE`.
 - [ ] **Security & Privacy checked:** All applicable `Security & Privacy` rows verified (or "None" justified).
+- [ ] **Reuse Inventory complete:** every capability has a row with non-empty `Search performed` + `Decision`; every `NEW` cites an allowed reason.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
 
 ## Data Schema Integration
@@ -277,11 +279,31 @@ Verify only when applicable.
 - **MODIFY:** `users.role` (added enum value)]
   If no schema changes are required, explicitly state "None".
 
+## Reuse Inventory
+
+[One row per capability plan introduces, including those search cleared as absent. Author BEFORE `Architecture & Component Changes`. No capability → no rows; "None" never substitutes for searching. Design `Reuse & Prior Art` verdicts = starting point; every row still records its own `Search performed`; initially set to `PENDING`.]
+
+<!-- prettier-ignore -->
+| Capability | Search performed | Existing candidates | Decision | Justification |
+| --- | --- | --- | --- | --- |
+| [what the plan must do] | `grep -rn "..."`; references to `{symbol}`; `docs/capabilities.md`; `{framework} {capability} built-in` | `path/to/existing` — covers [X], missing [Y] | EXTEND | [what changes in it to close the gap] |
+| [capability] | [exact commands / queries run] | None — [what was searched] | NEW | [reason (a)/(b)/(c)] |
+
+> [!CAUTION]
+> **Default = `EXTEND`.** `NEW` only allowed for:
+> (a) no candidate — `Search performed` shows the commands establishing absence;
+> (b) extending breaks the candidate's contract or callers — name both;
+> (c) candidate is a `Supersession Inventory` `DELETE` — replacement, not duplicate.
+>
+> NEVER accept cleaner-fresh / messy-existing / close-but-different as a `NEW` reason — messy candidate → extend and clean it, in scope. Empty `Search performed` = UNSEARCHED, NOT `NEW`-eligible.
+>
+> Each `EXTEND` row MUST land as `[MODIFY] path/to/existing` in `Architecture & Component Changes` AND a task in `Agent Execution Runbook`; each `NEW` row as `[NEW]` carrying the SAME reason. `[NEW]` with no row = unjustified.
+
 ## Architecture & Component Changes
 
 [Group files logically (DB, API, Backend, Frontend, Cron, Observability). Separate by headers; initially set to `PENDING`.]
 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
-**CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` MUST state **why existing artifact can't be evolved** — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
+**CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` MUST trace to a `Reuse Inventory` `NEW` row and carry its reason — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
 **CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: grep callers/importers/schemas/consumers, list blast radius.
 **CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
@@ -310,6 +332,7 @@ Verify only when applicable.
 
 #### [NEW] `path/to/file.ext`
 
+- **Reuse Check:** [`Reuse Inventory` row + reason (a)/(b)/(c) — why no existing artifact can be evolved.]
 - [Detail purpose, access/RLS policies, input validation (e.g. Zod), naming.]
 
 #### [DELETE] `path/to/file.ext`
@@ -379,6 +402,8 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > Every task MUST include `**Done when:**` — terse, testable, codebase-verifiable (file exists / signature matches / test passes / behaviour observable). Plan-verify asserts before `[x]`. No task without `Done when:`. One task per in-scope audit finding id; group only on one shared root cause in report — every id still named.
 >
 > **Tests ship with their task.** Task adding / changing logic → names its own unit tests in `Done when`, matrix row or not; tests it breaks → fixed in same task. NEVER defer task tests to later tasks to avoid splits that leave untested code and drop coverage gates.
+>
+> **Build order and test source.** Order tasks by build dependency (schema → API → UI). Behaviour tests ONLY from `Derived Test Matrix` rows — do NOT invent. Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks exempt from pairing, not from unit tests.
 
 - [ ] **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly].
 - [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; unit test `packages/api/src/items/setStatus.test.ts` covers each status transition; integration test in `packages/api/items.integration.test.ts` passes].
@@ -388,7 +413,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT — `[x]` all boxes below. **DO NOT stop for user permission.** Proceed to `Testing & Documentation`.
 
-- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` justified against extending an existing artifact; no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to make a gate pass.
+- [ ] **No bolt-on / no gate-weakening:** every `[NEW]` traces to a `Reuse Inventory` `NEW` row and its search still holds — reusable artifact found mid-build → add a row, fold code into it; every `EXTEND` landed as a modification of the named artifact, NOT a parallel file. No `as any` / `as unknown as` / `@ts-ignore` / `.skip` / empty `catch` / error-swallowing introduced to make a gate pass.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off against the plan.
 
 > [!IMPORTANT]

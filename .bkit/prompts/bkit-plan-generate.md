@@ -42,16 +42,17 @@ maxTurns: 100
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available; **If** none → `None`.
 5. Populate template sections in following dependency order; do NOT change order, do NOT use document order. Follow ALL instruction in template and below; ALWAYS verify gates before proceeding. Leave human-confirmation boxes unchecked.
 6. Foundation — testable contract:
-   - `Context & Goals`; populate `Related Issues` from references already present in input NOT fresh issue search. Do NOT expand scope.
-   - `Acceptance Scenario`; `Narrative`, `Success Criteria`, `Process Sketch`, `Concrete Example`, `Edge Cases`. **If** design provided → expand on existing; do NOT replace. **If** audit provided → write based on in-scope findings: `Narrative` = what changes for users / operators; one `Success Criteria` per finding from its `Expected`; do NOT emit missing-input string. Write BEFORE `Derived Test Matrix`.
-   - `Derived Test Matrix`; one row per testable behaviour from `Acceptance Scenario`; assign test tiers; all rows must have target files; no rows without behaviour.
+   - `Context & Goals`.
+   - `Acceptance Scenario`.
+   - `Derived Test Matrix`.
 7. Investigation & prerequisites:
-   - `Open Questions & Assumptions`; unknowns needing decisions and assumptions plan relies on. All open questions MUST carry 2-3 concrete options with trade-offs, a `Recommended` option with one-line rationale, and a `Default if unanswered`; bare questions are NOT acceptable output; carry design options / recommendation forward where already answered. Assumptions stay plain bullets.
-   - `Pre-Flight / Dependencies`; fill Core / Conditional content including existing-solution search;
+   - `Open Questions & Assumptions`.
+   - `Pre-Flight / Dependencies`.
 8. Design:
-   - `Alternative Approaches & Recommendations`; chosen approach and rejected paths.
-   - `Data Schema Integration`; inputs / outputs / schema changes
-   - `Architecture & Component Changes`; `[NEW]` / `[MODIFY]` / `[DELETE]` per component area. Append new architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
+   - `Alternative Approaches & Recommendations`.
+   - `Data Schema Integration`.
+   - `Reuse Inventory`.
+   - `Architecture & Component Changes`; derived from `Reuse Inventory`. Append new architecture / technology decision rows (if any) to `docs/decisions.jsonl` in `.bkit/jsonl.md` format; check existing entries first.
 9. Derived from design:
    - `Breaking Changes & Naming Review` from Architecture.
    - `Supersession Inventory` from Architecture `[DELETE]` rows.
@@ -60,10 +61,10 @@ maxTurns: 100
    - `Rollback Strategy` from Data schema / Architecture.
 10. Scope hygiene:
     - `Out of Scope`; mirror `Exempt` rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design or plan item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
-    - `Suggested Scope Expansion`; do NOT expand scope.
+    - `Suggested Scope Expansion`.
 11. Execution:
-    - `Agent Execution Runbook`; chronological implementation tasks ONLY, ordered by build dependency (schema → API → UI). All tasks MUST carry `Done when` entries — terse, testable, codebase-verifiable (files exist / function signatures match / tests pass / observable behaviour). Tasks without `Done when` are rejected. Pick every behaviour test from existing `Derived Test Matrix` rows — do NOT invent behaviour tests absent from matrix; every matrix row maps to exactly one runbook task. Important: every task adding / changing logic names its own unit tests in `Done when`, matrix row or not, and fixes tests it breaks; NEVER deferred to later tasks. Follow matrix tier-selection and boundary rules: Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks are exempt from the non-mock pairing, not from unit tests.
-    - `Verification Plan`; from Test Matrix and Execution Runbook. Advisory build-phase checks, NOT merge gates — ship gates on runbook `Done when` only; NEVER write a "before merge" precondition no agent can tick.
+    - `Agent Execution Runbook`.
+    - `Verification Plan` from Test Matrix and Execution Runbook.
 12. Re-read **Create** → assert template structure intact per `docs/templates/bkit-plan.md`; no `PENDING` left. **If** NOT intact → restore via `Edit`.
 
 **Output format:**

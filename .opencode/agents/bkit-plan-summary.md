@@ -68,7 +68,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Acceptance Scenario
 
-[List all items verbatim, do NOT summarise: the plan's `Narrative`, `Success Criteria`, `Process Sketch`, `Concrete Example` and `Edge Cases`, in that order; exclude `Derived Test Matrix` and `Human Confirmation`. Then ONE line: adherence to `docs/templates/bkit-plan.md` § `Spec — what good looks like`. Initially set to `PENDING`.]
+[List all items verbatim, do NOT summarise: the plan's `Narrative`, `Success Criteria`, `Process Sketch`, `Concrete Example` and `Edge Cases`, in that order; exclude `Derived Test Matrix` and `Human Confirmation`. Then ONE line: adherence to `docs/templates/bkit-plan.md` § `Spec`. Initially set to `PENDING`.]
 
 ## Breaking Changes
 
@@ -80,7 +80,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to PENDING.]
 
 ## Deferred & Out-of-Scope
 
-[List all items and summarise each: every `Out of Scope` item — what is excluded, where it belongs, `Exempt` (genuinely-additive) or `Blocking` (required by `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix`, or design sections; declared non-goals excepted). Any `Blocking` → `CONCERNS` and `Action Items`. **If** none → `None`; initially set to `PENDING`.]
+[List all items and summarise each: every `Out of Scope` item — what is excluded, where it belongs, `Exempt` or `Blocking` per `docs/templates/bkit-plan.md` § `Out of Scope`. Any `Blocking` → `CONCERNS` and `Action Items`. **If** none → `None`; initially set to `PENDING`.]
 
 ## Suggested Scope Expansion
 

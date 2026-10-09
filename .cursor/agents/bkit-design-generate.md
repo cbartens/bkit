@@ -41,7 +41,8 @@ tools:
 5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer onto selected approach, NOT as separate approach.
 6. Each conflict → pick stronger, justify.
 7. Preserve strongest approaches. Consolidate Decisions.
-8. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
+8. Prior-art sweep per capability — repo, dependency built-ins, ecosystem practice. Default `EXTEND` + named artifact; `NEW` ONLY when nothing covers capability or extending breaks named contract / callers. Every net-new `Architecture` component traces to a `NEW` verdict.
+9. Append out-of-scope idea rows (if any) to `docs/deferrals.jsonl` in `.bkit/jsonl.md` format; check existing entries first. **If** `reason` scope-declared → `references` must contain design item declaring it out of scope (row is NOT that declaration). **If** `reason` own-cycle → state what makes it plan-sized.
 
 **Output format:**
 
@@ -71,6 +72,10 @@ tools:
 ### Process Sketch
 
 [Narrative happy path and key edge cases in process form; 3-7 lines, `WHEN X → THEN Y` flow, NO prose, SAME `Acceptance Scenario` examples. Outcomes, NOT implementation steps. Initially set to `PENDING`.]
+
+## Reuse & Prior Art
+
+[Table: Capability / Prior art (`path/to/existing`, library, or `None` + what was searched) / `Verdict` (`EXTEND|NEW`) / Why. **If** design adds no capability → `None`; initially set to `PENDING`.]
 
 ## Architecture
 

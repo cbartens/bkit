@@ -42,7 +42,7 @@ tools:
 8. Update **Create** — set `Verdict` via `Edit`; mapping:
    - `PASS` = design ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = `CRITICAL` scope concerns.
-   - `CONCERNS` = revisions needed; content-level issues (`Narrative` not user POV, `Success Criteria` not measurable outcomes, `Key Edge Cases` not design-shaping, `Process Sketch` prose rather than a `WHEN X → THEN Y` flow, or open questions lacking options, `Recommended` or `Default if unanswered`).
+   - `CONCERNS` = revisions needed; content-level issues (`Narrative` not user POV, `Success Criteria` not measurable outcomes, `Key Edge Cases` not design-shaping, `Process Sketch` prose rather than a `WHEN X → THEN Y` flow, `Reuse & Prior Art` unsearched or `NEW` over live candidate, or open questions lacking options, `Recommended` or `Default if unanswered`).
 
 **Output format:**
 
