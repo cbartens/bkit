@@ -26,6 +26,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { resolveRepoSlug, type TelemetryEvent, type TelemetrySeverity } from "./bkit-telemetry.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -481,11 +482,14 @@ export function parseCompletedMd(content: string, diagnosticLines: string[]): Pa
   return entries;
 }
 
-/** Strip the managed <!-- bkit:start --> … <!-- bkit:end --> header block from .md content. */
+/**
+ * Strip the managed <!-- bkit:start --> … <!-- bkit:end --> header block from .md content.
+ * Only a line-anchored end marker ends the header; prose quoting it does not.
+ */
 function stripManagedHeader(content: string): string {
-  const endMarker = "<!-- bkit:end -->";
-  const idx = content.indexOf(endMarker);
-  if (idx === -1) return content;
+  const endMarker = selectMarkers("html-comment")[1];
+  const idx = findLineAnchoredMarkers(content, endMarker)[0];
+  if (idx === undefined) return content;
   return content.slice(idx + endMarker.length);
 }
 

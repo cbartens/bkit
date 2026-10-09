@@ -2641,6 +2641,29 @@ describe("detectManagedDocsStale", () => {
     expect(f?.detect).toContain("non-blocking on this feature branch");
   });
 
+  it("skips a doc that only quotes the marker in prose (no managed block)", () => {
+    declareCanonical("architecture.md");
+    const p = path.join(tmpDir, "docs", "architecture.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(
+      p,
+      "# Architecture\n\nbkit content sits inside `<!-- bkit:start -->` markers.\n",
+    );
+    expect(detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true)).toBeNull();
+  });
+
+  it("reads the stamp from the real block when prose quotes both markers first", () => {
+    declareCanonical("testing.md");
+    const p = path.join(tmpDir, "docs", "testing.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(
+      p,
+      "Edit outside `<!-- bkit:start -->` / `<!-- bkit:end -->`.\n" +
+        `<!-- bkit:start -->\n${managedVersionMarker("4.1.0")}\n\n# T\n<!-- bkit:end -->\n`,
+    );
+    expect(detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true)).toBeNull();
+  });
+
   it("flags a managed doc whose block carries no marker (pre-feature / hand-edited)", () => {
     declareCanonical("deployments.md");
     writeConsumerDoc("deployments.md", null);

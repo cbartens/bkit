@@ -7,6 +7,7 @@ import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } from "./bkit-version.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
+import { findLineAnchoredMarkers, selectMarkers } from "./bkit-install.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
 import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
 /**
@@ -2209,23 +2210,25 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
 // ---------------------------------------------------------------------------
 // detectManagedDocsStale — managed docs/*.md version gate (#256 extension)
 // ---------------------------------------------------------------------------
-/** Opening delimiter of a bkit-managed block — the signal that a doc is bkit-owned. */
-const MANAGED_REGION_START = "<!-- bkit:start -->";
-/** Closing delimiter — bounds the first block so deeper prose / appended blocks are ignored. */
-const MANAGED_REGION_END = "<!-- bkit:end -->";
+/** Position of the first line-anchored `<!-- bkit:start -->`, or undefined when the doc has no block. */
+function managedBlockStart(content) {
+    return findLineAnchoredMarkers(content, selectMarkers("html-comment")[0])[0];
+}
 /**
  * Read the managed-version stamp from a doc's first `bkit:start`…`bkit:end` block.
- * Only a full-line `<!-- bkit:managed v… -->` counts — inline prose examples
+ * Markers count only on their own line, so prose quoting them is skipped. Only a
+ * full-line `<!-- bkit:managed v… -->` counts — inline prose examples
  * (`vX.Y.Z` in architecture.md) must not be mistaken for the stamp.
  */
 export function readManagedDocStampVersion(content) {
-    const startIdx = content.indexOf(MANAGED_REGION_START);
-    if (startIdx === -1)
+    const startIdx = managedBlockStart(content);
+    if (startIdx === undefined)
         return null;
-    const endIdx = content.indexOf(MANAGED_REGION_END, startIdx + MANAGED_REGION_START.length);
-    const region = endIdx === -1
+    const endMarker = selectMarkers("html-comment")[1];
+    const endIdx = findLineAnchoredMarkers(content, endMarker).find((i) => i > startIdx);
+    const region = endIdx === undefined
         ? content.slice(startIdx)
-        : content.slice(startIdx, endIdx + MANAGED_REGION_END.length);
+        : content.slice(startIdx, endIdx + endMarker.length);
     const line = region.match(MANAGED_MARKER_LINE_RE)?.[0] ?? null;
     if (!line)
         return null;
@@ -2289,7 +2292,7 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
         if (!fs.existsSync(file))
             continue; // consumer may not have every doc
         const content = fs.readFileSync(file, "utf-8");
-        if (!content.includes(MANAGED_REGION_START))
+        if (managedBlockStart(content) === undefined)
             continue; // consumer dropped the managed block — not ours to gate
         scanned++;
         const found = readManagedDocStampVersion(content);

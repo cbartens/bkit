@@ -305,6 +305,14 @@ describe("real-corpus: parseKnowledgeMd parses bkit actual knowledge.md", () => 
   });
 });
 
+describe("parsePendingMd — managed header", () => {
+  it("a bkit:end quoted in the header prose does not end the header", () => {
+    const content =
+      "<!-- bkit:start -->\n# Pending\n\nAdd entries below `<!-- bkit:end -->`.\n\n## Entry template\n\n- **Status:** OPEN\n<!-- bkit:end -->\n\n## Real deferral\n\n- **Status:** OPEN\n- **Description:** real\n";
+    expect(parsePendingMd(content).map((e) => e.summary)).toEqual(["Real deferral"]);
+  });
+});
+
 describe("real-corpus: parsePendingMd parses bkit actual pending.md", () => {
   it("parses all entries below the managed bkit:end block", () => {
     const mdPath = path.join(REPO_ROOT, "docs", "pending.md");

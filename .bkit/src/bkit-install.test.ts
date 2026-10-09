@@ -1502,6 +1502,16 @@ describe("model overrides (consumer-owned, below bkit:end)", () => {
     fs.rmSync(tmp);
   });
 
+  it("a bkit:end quoted in prose inside the managed block does not open the override region", () => {
+    const tmp = path.join(os.tmpdir(), `ovq-${Math.random().toString(36).slice(2)}.md`);
+    fs.writeFileSync(
+      tmp,
+      `<!-- bkit:start -->\nAdd overrides below \`<!-- bkit:end -->\`.\n\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n| evil | openrouter | openrouter/inject |\n\n<!-- bkit:end -->\n`,
+    );
+    expect(parseModelOverrides(tmp)).toEqual([]);
+    fs.rmSync(tmp);
+  });
+
   it("returns [] when file/section absent", () => {
     expect(parseModelOverrides("/no/such/file.md")).toEqual([]);
   });

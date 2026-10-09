@@ -359,15 +359,16 @@ export function buildOpencodeModelLookup(
  * Parse the consumer-owned `## Model Overrides` table (below the `bkit:end` marker)
  * from an installed prompts.md. Rows are `| Prompt | Provider | Model |`. Best-effort:
  * returns [] when the file, the marker, the section, or the rows are absent.
- * Only the region after `bkit:end` is read — the bkit-managed block is never an override.
+ * Only the region after the line-anchored `bkit:end` is read — the bkit-managed block is
+ * never an override, even when its prose quotes the marker.
  */
 export function parseModelOverrides(
   promptsMdPath: string,
 ): Array<{ prompt: string; provider: string; model: string }> {
   if (!fs.existsSync(promptsMdPath)) return [];
   const content = fs.readFileSync(promptsMdPath, "utf-8");
-  const endIdx = content.indexOf("<!-- bkit:end -->");
-  const region = endIdx === -1 ? "" : content.slice(endIdx);
+  const endIdx = findLineAnchoredMarkers(content, END_MARKER)[0];
+  const region = endIdx === undefined ? "" : content.slice(endIdx);
   const ovIdx = region.indexOf("## Model Overrides");
   if (ovIdx === -1) return [];
   const out: Array<{ prompt: string; provider: string; model: string }> = [];
@@ -961,25 +962,6 @@ export function findLineAnchoredMarkers(
   return positions;
 }
 
-// Internal helper: find anchored positions for a specific marker string (private).
-function findAnchored(content: string, marker: string): number[] {
-  const positions: number[] = [];
-  const len = marker.length;
-  let pos = 0;
-  while (true) {
-    const idx = content.indexOf(marker, pos);
-    if (idx === -1) break;
-    let lineStart = idx;
-    while (lineStart > 0 && content[lineStart - 1] !== "\n") lineStart--;
-    const beforeMarker = content.slice(lineStart, idx);
-    const after = idx + len >= content.length ? "\n" : content[idx + len];
-    const isLineEnd = after === "\n" || after === undefined;
-    if (ALLOWED_PREFIXES.includes(beforeMarker) && isLineEnd) positions.push(idx);
-    pos = idx + len;
-  }
-  return positions;
-}
-
 // Find the start of the line containing a position.
 function lineStartOf(content: string, idx: number): number {
   let i = idx;
@@ -1000,8 +982,8 @@ export function updateManagedBlock(
   if (!fs.existsSync(filePath)) return false;
   const existing = fs.readFileSync(filePath, "utf-8");
   const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findAnchored(existing, startMarker);
-  const ends = findAnchored(existing, endMarker);
+  const starts = findLineAnchoredMarkers(existing, startMarker);
+  const ends = findLineAnchoredMarkers(existing, endMarker);
   if (starts.length === 0 || ends.length === 0) {
     console.warn(`${LOG_PREFIX} Managed block markers absent in ${filePath} — skipping`);
     return false;
@@ -1042,8 +1024,8 @@ export function extractManagedBlock(
   markerStyle: MarkerStyle = "html-comment",
 ): string | null {
   const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findAnchored(content, startMarker);
-  const ends = findAnchored(content, endMarker);
+  const starts = findLineAnchoredMarkers(content, startMarker);
+  const ends = findLineAnchoredMarkers(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
   if (starts[0]! >= ends[0]!) return null;
   const startLineEnd = content.indexOf("\n", starts[0]! + startMarker.length);
@@ -1122,8 +1104,8 @@ export function extractFullManagedBlock(
   markerStyle: MarkerStyle = "html-comment",
 ): string | null {
   const [startMarker, endMarker] = selectMarkers(markerStyle);
-  const starts = findAnchored(content, startMarker);
-  const ends = findAnchored(content, endMarker);
+  const starts = findLineAnchoredMarkers(content, startMarker);
+  const ends = findLineAnchoredMarkers(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
   if (starts[0]! >= ends[0]!) return null;
   const startLineStart = lineStartOf(content, starts[0]!);
