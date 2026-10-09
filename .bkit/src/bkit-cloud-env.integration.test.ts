@@ -110,7 +110,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
   }, 180_000);
 });
 
-// T14 (provenance leg) — adding webFetchDerived must not itself create drift.
+// T14 (provenance leg) — adding claudeAllowDerived must not itself create drift.
 //
 // The plan's Task 28 asserts `bkit check` reports zero writes outright. That reading is
 // unavailable while unrelated uncommitted template edits produce ambient drift of their
@@ -118,7 +118,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
 // isolates the claim that matters here: the check write-set is IDENTICAL with and
 // without the provenance record, so the field contributes nothing to drift either way.
 describe("T14 — the provenance field contributes no bkit check drift", () => {
-  it("check reports the same write set with and without webFetchDerived present", () => {
+  it("check reports the same write set with and without claudeAllowDerived present", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -144,9 +144,9 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
     // strip the record and re-check: the count must not move
     const versionPath = path.join(tmpDir, ".bkit", "version");
     const v = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as Record<string, unknown>;
-    expect(Array.isArray(v.webFetchDerived)).toBe(true);
-    expect((v.webFetchDerived as string[]).length).toBeGreaterThan(0);
-    delete v.webFetchDerived;
+    expect(Array.isArray(v.claudeAllowDerived)).toBe(true);
+    expect((v.claudeAllowDerived as string[]).length).toBeGreaterThan(0);
+    delete v.claudeAllowDerived;
     fs.writeFileSync(versionPath, JSON.stringify(v, null, 2) + "\n");
 
     expect(writeCount(run(["check"]).stdout ?? "")).toBe(withField);

@@ -287,6 +287,7 @@ Pre-edit advisory hook, on all three hosts. First file touch per session → inv
 | Granularity | Per-tool glob | Hook script (project-scoped, failClosed) | Per-path / per-command glob in `permission` |
 | Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) | `opencode --auto` + permission defaults |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) | `.opencode/opencode.json` → `mcp` |
+| MCP tool approval | `permissions.allow` `mcp__<s>__*` from consumer `mcp-servers` (§ MCP servers) | Generated `.cursor/cli.json` `Mcp(<s>:*)` | `permission` `"<s>_*": "allow"` |
 | Local-only (not shipped) | `.claude/settings.local.json` (`additionalDirectories`, extra allows) | Cursor project/user settings / MCP as needed | `~/.config/opencode/opencode.json` → `permission.external_directory` |
 
 **Install behaviour:** template drops, host-specific encoding of the **same** shared policy. No single canonical JSON — three native forms kept in lockstep. Machine-local paths stay out of templates.
@@ -306,7 +307,20 @@ Pre-edit advisory hook, on all three hosts. First file touch per session → inv
 
 **Do not hand-edit** `.cursor/allowlist.json` — regenerate via install/upgrade after changing `allowed-domains`. Missing file ⇒ the hook resolves no hosts and every host reads as unknown; there is deliberately no list embedded in the hook, because a second copy drifts from the registry silently.
 
-**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/cloud.md` / `.cursor/cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Cloud allowed domains and `.bkit/cloud.md`.
+**Cloud egress (separate):** the derived registry union the same `allowed-domains` feed `.claude/cloud.md` / `.cursor/cloud.md` paste instructions for dashboard network Custom allowlists — that is proxy egress, not local agent permission files. See `.agents/context.md` § Allowed domains and `.bkit/cloud.md`.
+
+### MCP servers — one source, three encodings
+
+**Source of truth:** consumer `.agents/context.md` → `<!-- mcp-servers:start -->` **after** `<!-- bkit:end -->`, one server name per line. Every tool on a listed server (reads and writes) runs without a prompt on every host; an unlisted server keeps each host's default. bkit ships no server names — only what the consumer lists.
+
+<!-- prettier-ignore -->
+| Host | Where the allows live | Rule per server `<s>` |
+| --- | --- | --- |
+| **Claude** | `.claude/settings.json` `permissions.allow`, recorded in `.bkit/version` `claudeAllowDerived` so a server dropped from the block is pruned | `mcp__<s>__*` (`.mcp.json` servers; claude.ai connectors in cloud sessions) + `mcp__claude_ai_<s>__*` (claude.ai connectors in the local CLI) |
+| **Cursor** | Generated `.cursor/cli.json` `permissions.allow` — Cursor CLI + cloud agents. The IDE agent's MCP auto-run list is user-level only | `Mcp(<s>:*)` |
+| **OpenCode** | Baked into `.opencode/opencode.json` → `permission` | `"<s>_*": "allow"` — opencode names MCP tools `<s>_<tool>` |
+
+**Spelling is per host:** a name matches a tool id verbatim — list each spelling a host uses (`sentry` for a `.mcp.json` server, `Sentry` for the claude.ai connector). **Do not hand-edit** `.cursor/cli.json` — it is regenerated whole on install/upgrade. Codex: no project-level MCP approval file — out of scope.
 
 ### MCP config asymmetry — GitHub tracker
 

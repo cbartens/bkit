@@ -62,15 +62,16 @@ export interface BkitVersion {
    */
   canonicalHashes: Record<string, string>;
   /**
-   * The `WebFetch(domain:…)` rows bkit itself derived and wrote into
-   * `.claude/settings.json` at install time — the provenance record that lets a later
-   * run prune a row it added without touching one the consumer added by hand.
+   * The `permissions.allow` rows bkit itself derived and wrote into
+   * `.claude/settings.json` at install time (`WebFetch(domain:…)` from
+   * `allowed-domains`, `mcp__…` from `mcp-servers`) — the provenance record that lets
+   * a later run prune a row it added without touching one the consumer added by hand.
    *
    * Absent means "unknown" → defaults to `[]`, i.e. bkit claims authorship of nothing
    * and prunes nothing. That is the conservative direction: the cost is a stale row
    * surviving, never a consumer's own row being deleted.
    */
-  webFetchDerived: string[];
+  claudeAllowDerived: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ export function parseBkitVersion(content: string): BkitVersion | null {
   // Try JSON first
   if (trimmed.startsWith("{")) {
     try {
-      const parsed = JSON.parse(trimmed) as Partial<BkitVersion>;
+      const parsed = JSON.parse(trimmed) as Partial<BkitVersion> & { webFetchDerived?: unknown };
       const pinnedVersion = typeof parsed.pinnedVersion === "string" ? parsed.pinnedVersion : "";
       const tier3Hashes =
         parsed.tier3Hashes &&
@@ -110,11 +111,11 @@ export function parseBkitVersion(content: string): BkitVersion | null {
         !Array.isArray(parsed.canonicalHashes)
           ? (parsed.canonicalHashes as Record<string, string>)
           : {};
-      // Additive, same shape of guard as canonicalHashes — absent on old payloads → []
-      const webFetchDerived = Array.isArray(parsed.webFetchDerived)
-        ? (parsed.webFetchDerived as string[])
-        : [];
-      return { pinnedVersion, tier3Hashes, canonicalHashes, webFetchDerived };
+      // Additive, same shape of guard as canonicalHashes — absent on old payloads → [].
+      // Older payloads carry the same record under its former name, `webFetchDerived`.
+      const recorded = parsed.claudeAllowDerived ?? parsed.webFetchDerived;
+      const claudeAllowDerived = Array.isArray(recorded) ? (recorded as string[]) : [];
+      return { pinnedVersion, tier3Hashes, canonicalHashes, claudeAllowDerived };
     } catch {
       // Fall through to plain-text parse
     }
@@ -123,7 +124,7 @@ export function parseBkitVersion(content: string): BkitVersion | null {
   // Plain-text fallback (v0.6.x format: just a semver string)
   // KN-5 guard: reject NaN-producing inputs
   if (!trimmed) return null;
-  return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, webFetchDerived: [] };
+  return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, claudeAllowDerived: [] };
 }
 
 /**

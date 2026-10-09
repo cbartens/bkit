@@ -471,6 +471,9 @@ const CURSOR_MANIFEST = [
     // `writeNetworkAllowlistArtifact` (bkit-cloud-env.ts) computes the domain set from the
     // consumer's own config, so it is `generated` and its hash is in `canonicalHashes`.
     { path: ".cursor/allowlist.json", format: "byte-equal-text", module: "cursor", generated: true },
+    // Cursor CLI / cloud-agent MCP allows — `writeCursorCliPermissionsArtifact`
+    // (bkit-cloud-env.ts) renders it from the consumer's `mcp-servers` block; same contract.
+    { path: ".cursor/cli.json", format: "byte-equal-text", module: "cursor", generated: true },
     { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
     { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
     // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module

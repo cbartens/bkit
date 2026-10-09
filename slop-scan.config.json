@@ -200,7 +200,7 @@
     },
     {
       "files": [".bkit/src/bkit-modules.ts"],
-      "_reason": "Three fail-open catches on consumer-authored JSON (package.json parse in runLintModule already surfaced via the lint-package-json-malformed advisory above; chmod failure on the dependabot helper surfaced via advisory below; .claude/settings.json parse in enrichClaudeSettingsWebFetch — install must NOT crash on a consumer's corrupt file). slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here; the empty catch with a comment is the fail-open contract, and each is paired with an advisory emission path. Scoped per-rule to this file.",
+      "_reason": "Three fail-open catches on consumer-authored JSON (package.json parse in runLintModule already surfaced via the lint-package-json-malformed advisory above; chmod failure on the dependabot helper surfaced via advisory below; .claude/settings.json parse in enrichClaudeSettingsAllows — install must NOT crash on a consumer's corrupt file). slop-scan's log+rethrow shape would abort install/upgrade on consumer input we cannot fix from here; the empty catch with a comment is the fail-open contract, and each is paired with an advisory emission path. Scoped per-rule to this file.",
       "rules": {
         "defensive.empty-catch": {
           "enabled": false

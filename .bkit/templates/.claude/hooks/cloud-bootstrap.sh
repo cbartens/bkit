@@ -170,7 +170,7 @@ fi
 # Docker daemon — PREREQUISITE for any containerised local stack below. Cloud
 # sessions ship the docker CLI but no init system, so nothing starts the daemon
 # for you, and image pulls go through the egress proxy: declare the registry
-# hosts in .agents/context.md § Cloud allowed domains or every pull 403s. Needs
+# hosts in .agents/context.md § Allowed domains or every pull 403s. Needs
 # root / a privileged container; on a plain host this self-skips.
 # if command -v dockerd >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
 #   log "starting dockerd"

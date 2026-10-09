@@ -594,7 +594,7 @@ $ARGUMENTS
      echo "[bkit-debug] context-fetch context=$CONTEXT name=${NAME:-default} CHECKED — data returned"
    elif [ -n "$SKIP" ]; then
      printf '%s\n' "$SKIP" > "$OUT"
-     echo "[bkit-debug] context-fetch context=$CONTEXT name=${NAME:-default} SELF-SKIPPED ($SKIP) — NOT CHECKED; this is NOT evidence that this source was clean (Trusted egress may also silently block the host — see .agents/context.md § Cloud allowed domains)"
+     echo "[bkit-debug] context-fetch context=$CONTEXT name=${NAME:-default} SELF-SKIPPED ($SKIP) — NOT CHECKED; this is NOT evidence that this source was clean (Trusted egress may also silently block the host — see .agents/context.md § Allowed domains)"
    else
      echo "[bkit-debug] context-fetch context=$CONTEXT name=${NAME:-default} produced neither data nor a skip breadcrumb — NOT CHECKED (unexpected silent exit; treat as unavailable, never as clean)"
    fi

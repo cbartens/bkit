@@ -17,6 +17,9 @@ import {
   expandAllowedDomains,
   networkAllowlistBases,
   writeNetworkAllowlistArtifact,
+  writeCursorCliPermissionsArtifact,
+  extractMcpServers,
+  resolveClaudeDerivedAllows,
   renderCloudNetworkAllowlist,
   resolveNetworkAllowlist,
   cloudRepoPath,
@@ -717,6 +720,77 @@ describe("writeNetworkAllowlistArtifact — .cursor/allowlist.json writer", () =
     const res = writeNetworkAllowlistArtifact(tmpDir, false);
     expect(res.domains).toContain("example.invalid");
     expect(res.domains).toContain("*.example.invalid");
+  });
+});
+
+describe("extractMcpServers / resolveClaudeDerivedAllows", () => {
+  it("returns [] when context.md is absent or declares no mcp-servers block", () => {
+    expect(extractMcpServers(tmpDir)).toEqual([]);
+    write(".agents/context.md", "<!-- bkit:end -->\nno servers here\n");
+    expect(extractMcpServers(tmpDir)).toEqual([]);
+  });
+
+  it("extracts names verbatim below bkit:end, deduped, comments and examples ignored", () => {
+    write(
+      ".agents/context.md",
+      "<!-- mcp-servers:start -->\nexample\n<!-- mcp-servers:end -->\n" +
+        "<!-- bkit:end -->\n<!-- mcp-servers:start -->\n# project\nsentry\n\n  Supabase  \nsentry\n" +
+        "<!-- mcp-servers:end -->\n",
+    );
+    expect(extractMcpServers(tmpDir)).toEqual(["sentry", "Supabase"]);
+  });
+
+  it("an mcp-servers block does not leak into allowed-domains, nor the reverse", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nsentry.io\n<!-- allowed-domains:end -->\n" +
+        "<!-- mcp-servers:start -->\nsentry\n<!-- mcp-servers:end -->\n",
+    );
+    expect(extractAllowedDomains(tmpDir)).toEqual(["sentry.io"]);
+    expect(extractMcpServers(tmpDir)).toEqual(["sentry"]);
+  });
+
+  it("derives WebFetch grants, then both Claude MCP tool-id forms per server", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- mcp-servers:start -->\nSupabase\n<!-- mcp-servers:end -->\n",
+    );
+    const allows = resolveClaudeDerivedAllows(tmpDir);
+    expect(allows).toContain("WebFetch(domain:github.com)");
+    expect(allows.slice(-2)).toEqual(["mcp__Supabase__*", "mcp__claude_ai_Supabase__*"]);
+  });
+});
+
+describe("writeCursorCliPermissionsArtifact — .cursor/cli.json writer", () => {
+  const rel = path.join(".cursor", "cli.json");
+
+  it("writes one Mcp(<server>:*) allow per declared server", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- mcp-servers:start -->\nsentry\nsupabase\n<!-- mcp-servers:end -->\n",
+    );
+    const res = writeCursorCliPermissionsArtifact(tmpDir, false);
+    expect(res).toEqual({ path: rel, wrote: true });
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8"))).toEqual({
+      permissions: { allow: ["Mcp(sentry:*)", "Mcp(supabase:*)"], deny: [] },
+    });
+  });
+
+  it("writes an empty allow list when no servers are declared", () => {
+    writeCursorCliPermissionsArtifact(tmpDir, false);
+    const written = JSON.parse(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
+    expect(written.permissions.allow).toEqual([]);
+  });
+
+  it("regenerates over a hand edit, and is a no-op once current", () => {
+    write(rel, '{ "permissions": { "allow": ["Shell(ls)"] } }\n');
+    expect(writeCursorCliPermissionsArtifact(tmpDir, false).wrote).toBe(true);
+    expect(writeCursorCliPermissionsArtifact(tmpDir, false).wrote).toBe(false);
+  });
+
+  it("dry-run reports the pending write without touching disk", () => {
+    expect(writeCursorCliPermissionsArtifact(tmpDir, true).wrote).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, rel))).toBe(false);
   });
 });
 

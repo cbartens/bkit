@@ -483,7 +483,7 @@ export function updateCanonicalHashesAfterUpgrade(
     cwd?: string;
     pinnedVersion?: string;
     /** What enrich recorded this run. `null`/absent = not determined; keep the prior record. */
-    webFetchDerived?: readonly string[] | null;
+    claudeAllowDerived?: readonly string[] | null;
   },
 ): void {
   if (options.dryRun) return;
@@ -510,8 +510,9 @@ export function updateCanonicalHashesAfterUpgrade(
   const pinnedVersion = options.pinnedVersion ?? bkitVersion.pinnedVersion;
 
   const webFetchUnchanged =
-    options.webFetchDerived == null ||
-    JSON.stringify([...options.webFetchDerived]) === JSON.stringify(bkitVersion.webFetchDerived);
+    options.claudeAllowDerived == null ||
+    JSON.stringify([...options.claudeAllowDerived]) ===
+      JSON.stringify(bkitVersion.claudeAllowDerived);
 
   // Nothing to persist: no files processed AND the pin is current AND the record is unchanged.
   if (
@@ -526,7 +527,9 @@ export function updateCanonicalHashesAfterUpgrade(
     ...bkitVersion,
     pinnedVersion,
     canonicalHashes: newCanonicalHashes,
-    ...(options.webFetchDerived == null ? {} : { webFetchDerived: [...options.webFetchDerived] }),
+    ...(options.claudeAllowDerived == null
+      ? {}
+      : { claudeAllowDerived: [...options.claudeAllowDerived] }),
   };
   writeBkitVersion(versionFile, updated);
 }

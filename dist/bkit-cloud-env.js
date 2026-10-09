@@ -354,14 +354,12 @@ export function renderCloudContextFetchProvision(cwd) {
         ') || echo "[cloud-setup] a context-fetch provision recipe failed (non-blocking); its CLI will be absent" >&2');
 }
 /**
- * Extract the cloud network-allowlist domains the consumer declared in
- * `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` blocks BELOW
- * `<!-- bkit:end -->` in `.agents/context.md` (one registrable domain per line;
- * blank / `#` comment / marker lines ignored). Stack-agnostic: bkit hardcodes no
- * domains — the consumer declares which log-backend / API / app hosts their cloud
- * sessions must reach. Returns declared entries verbatim (pre-expansion), in order.
+ * Entries of every `<!-- {tag}:start --> … <!-- {tag}:end -->` list block BELOW
+ * `<!-- bkit:end -->` in `.agents/context.md` — one entry per line; blank, `#` comment
+ * and marker lines ignored. Blocks above the marker are bkit's reference examples and
+ * never read. Returns entries verbatim, in order.
  */
-export function extractAllowedDomains(cwd) {
+function extractConsumerListBlock(cwd, tag) {
     const filePath = path.join(cwd, ".agents", "context.md");
     if (!fs.existsSync(filePath))
         return [];
@@ -370,14 +368,14 @@ export function extractAllowedDomains(cwd) {
     if (endIdx === -1)
         return [];
     const consumer = content.slice(endIdx);
-    const domains = [];
+    const entries = [];
     let inBlock = false;
     for (const line of consumer.split("\n")) {
-        if (/^<!-- allowed-domains:start/.test(line)) {
+        if (line.startsWith(`<!-- ${tag}:start`)) {
             inBlock = true;
             continue;
         }
-        if (/^<!-- allowed-domains:(end|none)/.test(line)) {
+        if (line.startsWith(`<!-- ${tag}:end`) || line.startsWith(`<!-- ${tag}:none`)) {
             inBlock = false;
             continue;
         }
@@ -386,9 +384,27 @@ export function extractAllowedDomains(cwd) {
         const t = line.trim();
         if (!t || t.startsWith("#") || t.startsWith("<!--"))
             continue;
-        domains.push(t);
+        entries.push(t);
     }
-    return domains;
+    return entries;
+}
+/**
+ * Cloud network-allowlist domains the consumer declared in `allowed-domains` blocks
+ * (one registrable domain per line). Stack-agnostic: bkit hardcodes no domains — the
+ * consumer declares which log-backend / API / app hosts their cloud sessions must
+ * reach. Returns declared entries verbatim (pre-expansion), in order.
+ */
+export function extractAllowedDomains(cwd) {
+    return extractConsumerListBlock(cwd, "allowed-domains");
+}
+/**
+ * MCP server names the consumer declared in `mcp-servers` blocks (one per line,
+ * spelled exactly as each host names the server in its tool ids). Every tool on a
+ * listed server is pre-approved on every host — see `.bkit/providers.md` § MCP
+ * servers. Deduplicated, declaration order kept.
+ */
+export function extractMcpServers(cwd) {
+    return [...new Set(extractConsumerListBlock(cwd, "mcp-servers"))];
 }
 /**
  * Expand each declared registrable domain to BOTH the apex and a `*.` wildcard so the
@@ -463,7 +479,7 @@ export const BKIT_SHIPPED_NETWORK_HOSTS = deriveEgressEntries(BKIT_EGRESS_SOURCE
 /**
  * Apex-only unique bases from an expanded (apex + `*.`) domain list.
  *
- * Single call site (injectOpencodeNetworkCurlAllows in bkit-modules.ts), kept as a
+ * Single call site (injectOpencodeDerivedAllows in bkit-modules.ts), kept as a
  * named export because (a) bkit-modules.ts is covered by the INTEGRATION lane only
  * — inlining here would move these branches out of the unit-lane's measured file
  * (bkit-cloud-env.ts) and silently erode the unit coverage floor, and (b) the
@@ -480,6 +496,19 @@ export function networkAllowlistBases(expanded) {
 export function resolveNetworkAllowlist(cwd) {
     return expandAllowedDomains([...BKIT_SHIPPED_NETWORK_DOMAINS, ...extractAllowedDomains(cwd)]);
 }
+/**
+ * Every `permissions.allow` row bkit derives into `.claude/settings.json`: one
+ * `WebFetch(domain:…)` per {@link resolveNetworkAllowlist} entry, then two MCP rows per
+ * {@link extractMcpServers} entry — `mcp__<s>__*` (`.mcp.json` servers, and claude.ai
+ * connectors in cloud sessions) and `mcp__claude_ai_<s>__*` (claude.ai connectors in
+ * the local CLI). Single source for install / upgrade enrichment and uninstall strip.
+ */
+export function resolveClaudeDerivedAllows(cwd) {
+    return [
+        ...resolveNetworkAllowlist(cwd).map((d) => `WebFetch(domain:${d})`),
+        ...extractMcpServers(cwd).flatMap((s) => [`mcp__${s}__*`, `mcp__claude_ai_${s}__*`]),
+    ];
+}
 /** Cursor-relative path of the install-written curl/wget allowlist (guardrails). */
 export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
 /**
@@ -491,21 +520,38 @@ export const NETWORK_ALLOWLIST_RELPATH = path.join(".cursor", "allowlist.json");
 export function writeNetworkAllowlistArtifact(cwd, dryRun) {
     const domains = resolveNetworkAllowlist(cwd);
     const rel = NETWORK_ALLOWLIST_RELPATH;
+    return { path: rel, domains, wrote: writeGeneratedJson(cwd, rel, { domains }, dryRun) };
+}
+/** Cursor-relative path of the install-written Cursor CLI permissions (MCP allows). */
+export const CURSOR_CLI_PERMISSIONS_RELPATH = path.join(".cursor", "cli.json");
+/**
+ * Write `.cursor/cli.json` — the project-level Cursor CLI / cloud-agent permissions —
+ * with one `Mcp(<server>:*)` allow per {@link extractMcpServers} entry. bkit-owned and
+ * regenerated whole, like `.cursor/allowlist.json`: hand edits do not survive, the
+ * `mcp-servers` block is the source. Call only when the cursor module is installed.
+ */
+export function writeCursorCliPermissionsArtifact(cwd, dryRun) {
+    const allow = extractMcpServers(cwd).map((s) => `Mcp(${s}:*)`);
+    const rel = CURSOR_CLI_PERMISSIONS_RELPATH;
+    const doc = { permissions: { allow, deny: [] } };
+    return { path: rel, wrote: writeGeneratedJson(cwd, rel, doc, dryRun) };
+}
+/**
+ * Write a whole-file generated JSON artifact. Returns whether the on-disk bytes differ
+ * from the rendered body — under `dryRun` that is computed without writing, so dry
+ * and real runs report the identical write set (the `bkit check` drift signal).
+ */
+function writeGeneratedJson(cwd, rel, doc, dryRun) {
     const abs = path.join(cwd, rel);
-    const body = JSON.stringify({ domains }, null, 2) + "\n";
-    let wrote = false;
+    const body = JSON.stringify(doc, null, 2) + "\n";
+    const prev = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+    if (prev === body)
+        return false;
     if (!dryRun) {
-        const prev = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
-        if (prev !== body) {
-            fs.mkdirSync(path.dirname(abs), { recursive: true });
-            fs.writeFileSync(abs, body, "utf-8");
-            wrote = true;
-        }
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, body, "utf-8");
     }
-    else if (!fs.existsSync(abs) || fs.readFileSync(abs, "utf-8") !== body) {
-        wrote = true;
-    }
-    return { path: rel, domains, wrote };
+    return true;
 }
 /**
  * 8-hex fingerprint of the DERIVED egress set only — bases and hosts, sorted, never

@@ -33,7 +33,7 @@ Unnamed block => omit the name segment (`context-runtime-{DEBUG_ATTEMPT}.md`). U
 
 **Self-contained blocks.** No block exports state. Discover any run id inside the block. No ordering, no shared variables, no parse contract — stdout IS the artifact. Stamp the run id / SHA used into the output.
 
-**Loudness:** `exit 0` self-skip (missing CLI/token, or host unreachable behind Trusted-egress — § Cloud allowed domains) => source **not checked**, never "no errors". Narrate each block `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` per context, every attempt. Self-skip => unavailable. A skip breadcrumb MAY name a fallback; taking it => CHECKED; no fallback => UNCHECKED.
+**Loudness:** `exit 0` self-skip (missing CLI/token, or host unreachable behind Trusted-egress — § Allowed domains) => source **not checked**, never "no errors". Narrate each block `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` per context, every attempt. Self-skip => unavailable. A skip breadcrumb MAY name a fallback; taking it => CHECKED; no fallback => UNCHECKED.
 
 **Fence rule:** no block-body line may start with a triple backtick. Plain-text section headers (`===== failed-step logs =====`).
 
@@ -49,7 +49,7 @@ Shipped `ci` / `diff` / `e2e` examples are GitHub Actions + Playwright. Point ea
 
 **Formatting output (`jq`):** every example pipes JSON through `jq` → **PII-safe** field subset (projection keeps PII out of run artifact). bkit provisions `jq` (macOS dev, Cursor container, Claude-web cloud setup) — assume present, no self-gate. **Without `jq`:** substitute present interpreter (`… | node -e '…'` or `… | python3 -c '…'` — same filter/project) or source `--json` / raw unfiltered — raw writes whatever source returns (possibly PII) into artifact; prefer in-block projection.
 
-### CLI provisioning (cloud)
+### CLI provisioning
 
 Fetch block _runs_ in cloud only if CLI present — else self-skips, cloud `/bkit-debug` gets **no** runtime logs (silent `exit 0`, not error). bkit installs no stack CLIs; **declare** each block's install recipe in sibling `<!-- context-fetch:provision <name> --> … <!-- context-fetch:end -->`; bkit stack-agnostic tooling runs both cloud paths:
 
@@ -281,7 +281,7 @@ rm -f "$RESP"
 
 <!-- No context-fetch:provision block: curl/API fetch, no stack CLI to install. -->
 
-## Cloud allowed domains
+## Allowed domains
 
 Cloud sessions (Claude Code on the web, Cursor background agents) run behind egress proxy. **Trusted** network: package registries + common SDK hosts only — log-backend / observability API hosts and app domains **not** reachable → cloud `/bkit-debug` no runtime logs, e2e can't reach deployment. Declare domains in `<!-- allowed-domains:start --> … <!-- allowed-domains:end -->` **after** `<!-- bkit:end -->`; `bkit install` expands each to `<domain>` + `*.<domain>`, then:
 
@@ -299,6 +299,29 @@ tavily.com
 your-app.com
 
 <!-- allowed-domains:end -->
+
+## Allowed MCP servers
+
+MCP servers whose **every tool** (reads and writes) agents run without a prompt, on every host. Declare in `<!-- mcp-servers:start --> … <!-- mcp-servers:end -->` **after** `<!-- bkit:end -->`, one server name per line (`#` comments allowed). `bkit install` / `bkit upgrade` render each name `<s>` into:
+
+<!-- prettier-ignore -->
+| Host | File | Rule |
+| --- | --- | --- |
+| Claude | `.claude/settings.json` `permissions.allow` | `mcp__<s>__*` + `mcp__claude_ai_<s>__*` |
+| Cursor CLI / cloud agents | `.cursor/cli.json` (generated — do not hand-edit) | `Mcp(<s>:*)` |
+| OpenCode | `.opencode/opencode.json` `permission` | `"<s>_*": "allow"` |
+
+**Spell each name exactly as the host's tool ids do** — list every spelling in use: `.mcp.json` / `.cursor/mcp.json` / `opencode.json` keys (`sentry`) and claude.ai connector names (`Sentry`). A name dropped from the block is pruned from Claude on the next install. Personal connectors (mail, calendar, drive) belong in user settings, never here. Declare none → `<!-- mcp-servers:none intentional -->` after `<!-- bkit:end -->`. Full matrix: `.bkit/providers.md` § MCP servers.
+
+**Example (reference only — copy below `<!-- bkit:end -->` and edit):**
+
+<!-- mcp-servers:start -->
+
+github
+sentry
+Sentry
+
+<!-- mcp-servers:end -->
 
 <!-- bkit:end -->
 

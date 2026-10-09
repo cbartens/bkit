@@ -1894,7 +1894,7 @@ describe("opencodeProviders persist block — sequential installs + legacy migra
 // T10 — the .bkit/version provenance record must survive a REAL install. The write
 // path is a fresh object literal, so any future field addition can silently drop this
 // one; a mocked install would never catch that. Real tmpdir consumer, spawned binary.
-describe("T10 — webFetchDerived survives a real install", () => {
+describe("T10 — claudeAllowDerived survives a real install", () => {
   const paths = () => ({
     bkitInstallPath: path.resolve(
       path.dirname(new URL(import.meta.url).pathname),
@@ -1915,7 +1915,7 @@ describe("T10 — webFetchDerived survives a real install", () => {
     });
 
   const readDerived = (): string[] =>
-    JSON.parse(fs.readFileSync(path.join(tmpDir, ".bkit", "version"), "utf-8")).webFetchDerived;
+    JSON.parse(fs.readFileSync(path.join(tmpDir, ".bkit", "version"), "utf-8")).claudeAllowDerived;
 
   // The shipped context.md already carries allowed-domains blocks of its own, so this
   // brackets ITS block with a sentinel and rewrites only that. A non-global replace

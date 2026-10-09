@@ -9,7 +9,7 @@ import * as os from "node:os";
 import {
   scanForeignBkitUses,
   guardTemplatesRoot,
-  enrichClaudeSettingsWebFetch,
+  enrichClaudeSettingsAllows,
   type WriteSet,
 } from "./bkit-modules";
 import { resolveNetworkAllowlist } from "./bkit-cloud-env";
@@ -363,7 +363,7 @@ describe("guardTemplatesRoot — fail-loud on missing templates root", () => {
   });
 });
 
-describe("enrichClaudeSettingsWebFetch — recording contract and prune (T8, T15)", () => {
+describe("enrichClaudeSettingsAllows — recording contract and prune (T8, T15)", () => {
   let dir: string;
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-webfetch-"));
@@ -375,19 +375,19 @@ describe("enrichClaudeSettingsWebFetch — recording contract and prune (T8, T15
   const settings = () => path.join(dir, ".claude", "settings.json");
   const writeSettings = (allow: unknown) =>
     fs.writeFileSync(settings(), JSON.stringify({ permissions: { allow } }, null, 2));
-  const writeVersion = (webFetchDerived: string[]) =>
+  const writeVersion = (claudeAllowDerived: string[]) =>
     fs.writeFileSync(
       path.join(dir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "4.12.0",
         tier3Hashes: {},
         canonicalHashes: {},
-        webFetchDerived,
+        claudeAllowDerived,
       }),
     );
   const derived = () => resolveNetworkAllowlist(dir).map((d) => `WebFetch(domain:${d})`);
   const run = (dryRun = false, ws: WriteSet = { writes: [] }, adv: PreflightFinding[] = []) => ({
-    ret: enrichClaudeSettingsWebFetch(settings(), dir, dryRun, ws, adv),
+    ret: enrichClaudeSettingsAllows(settings(), dir, dryRun, ws, adv),
     ws,
     adv,
   });
@@ -449,12 +449,12 @@ describe("enrichClaudeSettingsWebFetch — recording contract and prune (T8, T15
     expect(allow).toContain(stale);
   });
 
-  it("emits the webfetch-grants-pruned advisory on a removal", () => {
+  it("emits the derived-grants-pruned advisory on a removal", () => {
     const stale = "WebFetch(domain:gone.example)";
     writeSettings([...derived(), stale]);
     writeVersion([...derived(), stale]);
     const { adv } = run();
-    expect(adv.map((a) => a.id)).toContain("webfetch-grants-pruned");
+    expect(adv.map((a) => a.id)).toContain("derived-grants-pruned");
   });
 
   // --- T15: the dryRun write-set signal survives, which is the bkit check drift gate ---

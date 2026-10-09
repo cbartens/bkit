@@ -6,10 +6,10 @@ import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpen
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsWebFetch, pruneRetiredClaudeAskRules, opencodeProviderId, isCopyPasteExample, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsAllows, pruneRetiredClaudeAskRules, opencodeProviderId, isCopyPasteExample, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
-import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { repointLegacyLintProse } from "./bkit-package-json.js";
 import { runPreflight } from "./bkit-preflight.js";
@@ -2305,7 +2305,7 @@ async function main() {
         // the same helper install uses (runClaudeModule). Untracked → not in canonicalHashes.
         // What enrich recorded this upgrade, threaded into the one .bkit/version writer.
         // null = not determined (dry run / no settings file) -> keep the prior record.
-        let upgradeWebFetchDerived = null;
+        let upgradeClaudeAllowDerived = null;
         if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
             if (writeClaudeCloudDoc(process.cwd(), tokens)) {
                 console.log(`${LOG_PREFIX} upgrade: .claude/cloud.md (regenerated — gitignored, holds resolved secrets)`);
@@ -2319,22 +2319,27 @@ async function main() {
                 console.log(`${LOG_PREFIX} upgrade: .cursor/cloud.md (regenerated — gitignored, holds resolved secrets)`);
             }
         }
-        // Network allowlist — OpenCode curl/wget from renderOpencodeJson; Claude WebFetch
-        // enrich below; Cursor `.cursor/allowlist.json` only when cursor module installed.
+        // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich
+        // below; Cursor `.cursor/allowlist.json` + `.cursor/cli.json` only when cursor
+        // module installed.
         {
             const cwd = process.cwd();
             if (renderModules.has("cursor")) {
-                const art = writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun);
-                if (art.wrote) {
-                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
+                for (const art of [
+                    writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun),
+                    writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun),
+                ]) {
+                    if (art.wrote) {
+                        console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`);
+                    }
                 }
             }
             if (renderModules.has("claude") &&
                 fs.existsSync(path.join(cwd, ".claude", "settings.json"))) {
                 const enrichWs = { writes: [] };
-                upgradeWebFetchDerived = enrichClaudeSettingsWebFetch(".claude/settings.json", cwd, upgradeFlags.dryRun, enrichWs);
+                upgradeClaudeAllowDerived = enrichClaudeSettingsAllows(".claude/settings.json", cwd, upgradeFlags.dryRun, enrichWs);
                 for (const w of enrichWs.writes) {
-                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`);
+                    console.log(`${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch + MCP derived allows)`);
                 }
                 // Retired-rule prune. Upgrade does not dispatch modules, so without this the
                 // install-side call never runs for `bkit upgrade --latest` — the path the
@@ -2377,7 +2382,7 @@ async function main() {
                 dryRun: false,
                 cwd: process.cwd(),
                 pinnedVersion: pkgVersion,
-                webFetchDerived: upgradeWebFetchDerived,
+                claudeAllowDerived: upgradeClaudeAllowDerived,
             });
         }
         console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`);

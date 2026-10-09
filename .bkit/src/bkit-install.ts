@@ -30,7 +30,7 @@ import {
   reconcileOpencodeJson,
   buildMcpJson,
   renderManagedOutputs,
-  enrichClaudeSettingsWebFetch,
+  enrichClaudeSettingsAllows,
   pruneRetiredClaudeAskRules,
   opencodeProviderId,
   isCopyPasteExample,
@@ -44,6 +44,7 @@ import {
   writeClaudeCloudDoc,
   writeCursorCloudDoc,
   writeNetworkAllowlistArtifact,
+  writeCursorCliPermissionsArtifact,
 } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { repointLegacyLintProse } from "./bkit-package-json.js";
@@ -2628,7 +2629,7 @@ async function main() {
     // the same helper install uses (runClaudeModule). Untracked → not in canonicalHashes.
     // What enrich recorded this upgrade, threaded into the one .bkit/version writer.
     // null = not determined (dry run / no settings file) -> keep the prior record.
-    let upgradeWebFetchDerived: readonly string[] | null = null;
+    let upgradeClaudeAllowDerived: readonly string[] | null = null;
     if (!upgradeFlags.dryRun && renderModules.has("claude") && tokens) {
       if (writeClaudeCloudDoc(process.cwd(), tokens)) {
         console.log(
@@ -2648,16 +2649,21 @@ async function main() {
       }
     }
 
-    // Network allowlist — OpenCode curl/wget from renderOpencodeJson; Claude WebFetch
-    // enrich below; Cursor `.cursor/allowlist.json` only when cursor module installed.
+    // Network allowlist + MCP allows — OpenCode from renderOpencodeJson; Claude enrich
+    // below; Cursor `.cursor/allowlist.json` + `.cursor/cli.json` only when cursor
+    // module installed.
     {
       const cwd = process.cwd();
       if (renderModules.has("cursor")) {
-        const art = writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun);
-        if (art.wrote) {
-          console.log(
-            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`,
-          );
+        for (const art of [
+          writeNetworkAllowlistArtifact(cwd, upgradeFlags.dryRun),
+          writeCursorCliPermissionsArtifact(cwd, upgradeFlags.dryRun),
+        ]) {
+          if (art.wrote) {
+            console.log(
+              `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${art.path}`,
+            );
+          }
         }
       }
       if (
@@ -2665,7 +2671,7 @@ async function main() {
         fs.existsSync(path.join(cwd, ".claude", "settings.json"))
       ) {
         const enrichWs: WriteSet = { writes: [] };
-        upgradeWebFetchDerived = enrichClaudeSettingsWebFetch(
+        upgradeClaudeAllowDerived = enrichClaudeSettingsAllows(
           ".claude/settings.json",
           cwd,
           upgradeFlags.dryRun,
@@ -2673,7 +2679,7 @@ async function main() {
         );
         for (const w of enrichWs.writes) {
           console.log(
-            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch network allowlist)`,
+            `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: ${w.path} (WebFetch + MCP derived allows)`,
           );
         }
         // Retired-rule prune. Upgrade does not dispatch modules, so without this the
@@ -2729,7 +2735,7 @@ async function main() {
           dryRun: false,
           cwd: process.cwd(),
           pinnedVersion: pkgVersion,
-          webFetchDerived: upgradeWebFetchDerived,
+          claudeAllowDerived: upgradeClaudeAllowDerived,
         },
       );
     }

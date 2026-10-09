@@ -442,26 +442,26 @@ describe("stampManagedVersion", () => {
   });
 });
 
-describe("webFetchDerived provenance field (T16)", () => {
+describe("claudeAllowDerived provenance field (T16)", () => {
   it("defaults to [] at the JSON return when the key is absent", () => {
     const v = parseBkitVersion(
       JSON.stringify({ pinnedVersion: "4.12.0", tier3Hashes: {}, canonicalHashes: {} }),
     );
-    expect(v?.webFetchDerived).toEqual([]);
+    expect(v?.claudeAllowDerived).toEqual([]);
   });
 
   it("defaults to [] at the plain-text fallback return, a separate code path", () => {
     // v0.6.x payload: a bare semver string, never JSON — exercises the other return
     const v = parseBkitVersion("4.12.0");
     expect(v?.pinnedVersion).toBe("4.12.0");
-    expect(v?.webFetchDerived).toEqual([]);
+    expect(v?.claudeAllowDerived).toEqual([]);
   });
 
   it("defaults to [] when the key is present but not an array", () => {
     const v = parseBkitVersion(
-      JSON.stringify({ pinnedVersion: "4.12.0", webFetchDerived: "WebFetch(domain:x.example)" }),
+      JSON.stringify({ pinnedVersion: "4.12.0", claudeAllowDerived: "WebFetch(domain:x.example)" }),
     );
-    expect(v?.webFetchDerived).toEqual([]);
+    expect(v?.claudeAllowDerived).toEqual([]);
   });
 
   it("round-trips a populated record unchanged through parse and serialize", () => {
@@ -471,10 +471,19 @@ describe("webFetchDerived provenance field (T16)", () => {
         pinnedVersion: "4.12.0",
         tier3Hashes: {},
         canonicalHashes: {},
-        webFetchDerived: rows,
+        claudeAllowDerived: rows,
       }),
     );
-    expect(parsed?.webFetchDerived).toEqual(rows);
-    expect(parseBkitVersion(serializeBkitVersion(parsed!))?.webFetchDerived).toEqual(rows);
+    expect(parsed?.claudeAllowDerived).toEqual(rows);
+    expect(parseBkitVersion(serializeBkitVersion(parsed!))?.claudeAllowDerived).toEqual(rows);
+  });
+
+  it("reads a record written under the former key, webFetchDerived", () => {
+    // A consumer upgrading from a release that still wrote `webFetchDerived` must keep
+    // its provenance — losing it would leave bkit unable to prune its own grants.
+    const rows = ["WebFetch(domain:models.dev)"];
+    const v = parseBkitVersion(JSON.stringify({ pinnedVersion: "4.12.0", webFetchDerived: rows }));
+    expect(v?.claudeAllowDerived).toEqual(rows);
+    expect(serializeBkitVersion(v!)).not.toContain("webFetchDerived");
   });
 });

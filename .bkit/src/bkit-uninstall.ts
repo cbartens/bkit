@@ -41,7 +41,7 @@ import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.
 import {
   CLAUDE_CLOUD_RELPATH,
   CURSOR_CLOUD_RELPATH,
-  resolveNetworkAllowlist,
+  resolveClaudeDerivedAllows,
 } from "./bkit-cloud-env.js";
 
 // ---------------------------------------------------------------------------
@@ -578,7 +578,8 @@ export async function runUninstall(
               const templateDoc = JSON.parse(templateRaw) as Record<string, JsonValue>;
               // `.claude/settings.json` is not written verbatim: after rendering the
               // template, install appends one `WebFetch(domain:<d>)` grant per entry in
-              // the resolved network allowlist (enrichClaudeSettingsWebFetch). Stripping
+              // the resolved network allowlist and `mcp__…` grants per declared MCP
+              // server (enrichClaudeSettingsAllows). Stripping
               // against the RAW template leaves those grants behind as if the consumer
               // had added them. Recompute the same set — the very function that produced
               // them — and treat it as part of the template, exactly as the opencode.json
@@ -589,9 +590,7 @@ export async function runUninstall(
                   const permsObj = perms as Record<string, JsonValue>;
                   const allow = permsObj.allow;
                   if (Array.isArray(allow)) {
-                    const enriched = resolveNetworkAllowlist(ctx.cwd).map(
-                      (d) => `WebFetch(domain:${d})`,
-                    );
+                    const enriched = resolveClaudeDerivedAllows(ctx.cwd);
                     permsObj.allow = [
                       ...allow,
                       ...enriched.filter((e) => !allow.includes(e)),

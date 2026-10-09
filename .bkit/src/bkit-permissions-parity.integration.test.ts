@@ -16,9 +16,12 @@
 // `additionalContext` — the gate fires and informs, it cannot stop the command. Deny
 // blocks for real on all four.
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { writeCursorCliPermissionsArtifact } from "./bkit-cloud-env";
+import { enrichClaudeSettingsAllows, renderOpencodeJson } from "./bkit-modules";
 
 const CLAUDE_SETTINGS = ".bkit/templates/.claude/settings.json";
 const OPENCODE_JSON = ".bkit/templates/.opencode/opencode.json";
@@ -312,7 +315,7 @@ describe("cross-host gate parity — curl / wget in a shell", () => {
     });
     // opencode is asserted against the TEMPLATE, which carries only the `curl *: ask`
     // base. Its per-domain `curl *{domain}*: allow` rows are injected at install time
-    // from the consumer's resolved allowlist (injectOpencodeNetworkCurlAllows), and the
+    // from the consumer's resolved allowlist (injectOpencodeDerivedAllows), and the
     // rendered result is covered in bkit-modules.integration.test.ts. So "ask" here is
     // the template's honest verdict, not a gap in the host.
     expect({ host: "opencode(template)", v: opencodeVerdict("bash", ALLOWED) }).toEqual({
@@ -407,9 +410,53 @@ describe("cross-host gate parity — network allowlist", () => {
 
   it("the shipped Claude settings seed no host grants of its own", () => {
     // The seed was a fourth partial copy, stale against the registry. Grants now arrive
-    // only via enrichClaudeSettingsWebFetch, which records what it wrote so it can
+    // only via enrichClaudeSettingsAllows, which records what it wrote so it can
     // later prune it. A literal back in the template would be unrecorded and unprunable.
     const webFetch = claudePermissions().allow.filter((a) => a.startsWith("WebFetch(domain:"));
     expect(webFetch).toEqual([]);
+  });
+});
+
+describe("cross-host gate parity — MCP servers", () => {
+  // One `mcp-servers` block in context.md, three encodings. Every host must pre-approve
+  // every tool on a declared server — and nothing on an undeclared one.
+  it("a declared server is allowed on Claude, Cursor and opencode; an undeclared one is not", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-mcp-parity-"));
+    try {
+      fs.mkdirSync(path.join(cwd, ".agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, ".agents", "context.md"),
+        "<!-- bkit:end -->\n<!-- mcp-servers:start -->\nsentry\n<!-- mcp-servers:end -->\n",
+      );
+      const settings = path.join(cwd, "settings.json");
+      fs.copyFileSync(CLAUDE_SETTINGS, settings);
+      enrichClaudeSettingsAllows(settings, cwd, false, { writes: [] });
+      const claudeAllow = JSON.parse(fs.readFileSync(settings, "utf-8")).permissions
+        .allow as string[];
+
+      writeCursorCliPermissionsArtifact(cwd, false);
+      const cursorAllow = JSON.parse(
+        fs.readFileSync(path.join(cwd, ".cursor", "cli.json"), "utf-8"),
+      ).permissions.allow as string[];
+
+      const opencodePerm = JSON.parse(
+        renderOpencodeJson(OPENCODE_JSON, "github", "openrouter", cwd),
+      ).permission as Record<string, unknown>;
+
+      expect({
+        claude: claudeAllow.includes("mcp__sentry__*"),
+        claudeConnector: claudeAllow.includes("mcp__claude_ai_sentry__*"),
+        cursor: cursorAllow.includes("Mcp(sentry:*)"),
+        opencode: opencodePerm["sentry_*"],
+      }).toEqual({ claude: true, claudeConnector: true, cursor: true, opencode: "allow" });
+
+      expect({
+        claude: claudeAllow.some((a) => a.includes("vercel")),
+        cursor: cursorAllow.some((a) => a.includes("vercel")),
+        opencode: Object.keys(opencodePerm).some((k) => k.includes("vercel")),
+      }).toEqual({ claude: false, cursor: false, opencode: false });
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });

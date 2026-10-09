@@ -62,11 +62,11 @@ export function parseBkitVersion(content) {
                 !Array.isArray(parsed.canonicalHashes)
                 ? parsed.canonicalHashes
                 : {};
-            // Additive, same shape of guard as canonicalHashes — absent on old payloads → []
-            const webFetchDerived = Array.isArray(parsed.webFetchDerived)
-                ? parsed.webFetchDerived
-                : [];
-            return { pinnedVersion, tier3Hashes, canonicalHashes, webFetchDerived };
+            // Additive, same shape of guard as canonicalHashes — absent on old payloads → [].
+            // Older payloads carry the same record under its former name, `webFetchDerived`.
+            const recorded = parsed.claudeAllowDerived ?? parsed.webFetchDerived;
+            const claudeAllowDerived = Array.isArray(recorded) ? recorded : [];
+            return { pinnedVersion, tier3Hashes, canonicalHashes, claudeAllowDerived };
         }
         catch {
             // Fall through to plain-text parse
@@ -76,7 +76,7 @@ export function parseBkitVersion(content) {
     // KN-5 guard: reject NaN-producing inputs
     if (!trimmed)
         return null;
-    return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, webFetchDerived: [] };
+    return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {}, claudeAllowDerived: [] };
 }
 /**
  * Read and parse `.bkit/version` from an absolute path.

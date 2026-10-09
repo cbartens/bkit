@@ -27,7 +27,7 @@ import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
-import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveNetworkAllowlist, } from "./bkit-cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "./bkit-cloud-env.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
 // ---------------------------------------------------------------------------
@@ -453,7 +453,8 @@ export async function runUninstall(modules, ctx) {
                             const templateDoc = JSON.parse(templateRaw);
                             // `.claude/settings.json` is not written verbatim: after rendering the
                             // template, install appends one `WebFetch(domain:<d>)` grant per entry in
-                            // the resolved network allowlist (enrichClaudeSettingsWebFetch). Stripping
+                            // the resolved network allowlist and `mcp__…` grants per declared MCP
+                            // server (enrichClaudeSettingsAllows). Stripping
                             // against the RAW template leaves those grants behind as if the consumer
                             // had added them. Recompute the same set — the very function that produced
                             // them — and treat it as part of the template, exactly as the opencode.json
@@ -464,7 +465,7 @@ export async function runUninstall(modules, ctx) {
                                     const permsObj = perms;
                                     const allow = permsObj.allow;
                                     if (Array.isArray(allow)) {
-                                        const enriched = resolveNetworkAllowlist(ctx.cwd).map((d) => `WebFetch(domain:${d})`);
+                                        const enriched = resolveClaudeDerivedAllows(ctx.cwd);
                                         permsObj.allow = [
                                             ...allow,
                                             ...enriched.filter((e) => !allow.includes(e)),

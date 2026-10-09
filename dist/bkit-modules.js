@@ -13,7 +13,7 @@ import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyCodexAg
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, LINT_SCRIPT, LINT_PROSE_SCRIPT, TYPECHECK_NO_TSCONFIG_SCRIPT, LEGACY_LINT_PROSE_SCRIPTS, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, GATEGUARD_CJS_WIRING_INSTRUCTIONS, CODEX_GUARDRAILS_WIRING_INSTRUCTIONS, CLAUDE_GUARDRAILS_WIRING_INSTRUCTIONS, GATEGUARD_JS_WIRING_INSTRUCTIONS, GUARDRAILS_WIRING_INSTRUCTIONS, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
-import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, networkAllowlistBases, writeNetworkAllowlistArtifact, } from "./bkit-cloud-env.js";
+import { writeClaudeCloudDoc, writeCursorCloudDoc, resolveNetworkAllowlist, resolveClaudeDerivedAllows, extractMcpServers, networkAllowlistBases, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, } from "./bkit-cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 // ---------------------------------------------------------------------------
@@ -776,8 +776,9 @@ export function runCoreModule(ctx) {
         // canonical entries.
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
         const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
-        const webFetchDerived = ctx.webFetchRecorded ?? existingVersion?.webFetchDerived ?? [];
-        const derivedChanged = JSON.stringify(webFetchDerived) !== JSON.stringify(existingVersion?.webFetchDerived ?? []);
+        const claudeAllowDerived = ctx.claudeAllowRecorded ?? existingVersion?.claudeAllowDerived ?? [];
+        const derivedChanged = JSON.stringify(claudeAllowDerived) !==
+            JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
         const droppedRetired = Object.keys(existingCanonical).some((p) => RETIRED_MANAGED_PATHS.has(p)) ||
             Object.keys(existingTier3Hashes).some((p) => RETIRED_MANAGED_PATHS.has(p));
         const needsWrite = versionChanged || hasNewEntries || derivedChanged || droppedRetired;
@@ -790,7 +791,7 @@ export function runCoreModule(ctx) {
                     pinnedVersion: pkgVersion,
                     tier3Hashes,
                     canonicalHashes,
-                    webFetchDerived: [...webFetchDerived],
+                    claudeAllowDerived: [...claudeAllowDerived],
                 });
             }
         }
@@ -885,7 +886,7 @@ export function runClaudeModule(ctx) {
         }
         const prevLen = ws.writes.length;
         writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
-        ctx.webFetchRecorded = enrichClaudeSettingsWebFetch(settingsDst, process.cwd(), dryRun, ws, advisories);
+        ctx.claudeAllowRecorded = enrichClaudeSettingsAllows(settingsDst, process.cwd(), dryRun, ws, advisories);
         // AFTER the contained merge: the merge is additive and would otherwise re-seat a
         // row this prune had just removed if the ordering were reversed.
         const prunedAsk = pruneRetiredClaudeAskRules(settingsDst, dryRun, ws);
@@ -1195,8 +1196,12 @@ export function runCursorModule(ctx) {
     // Cursor-only runtime curl/wget allowlist (guardrails.cjs reads `.cursor/allowlist.json`).
     // Same domain set as Claude WebFetch / OpenCode bash allows — sourced from tooling
     // defaults ∪ consumer `allowed-domains`. Not under `.bkit/` (IDE-scoped artifact).
-    {
-        const art = writeNetworkAllowlistArtifact(process.cwd(), dryRun);
+    // Cursor CLI / cloud-agent MCP allows (`.cursor/cli.json`) from consumer `mcp-servers` —
+    // same server set as Claude `mcp__…` allows / OpenCode `<server>_*` permission rows.
+    for (const art of [
+        writeNetworkAllowlistArtifact(process.cwd(), dryRun),
+        writeCursorCliPermissionsArtifact(process.cwd(), dryRun),
+    ]) {
         if (art.wrote) {
             ws.writes.push({ path: art.path, action: "write" });
             console.log(`${logPrefix} ${tag}cursor: ${art.path}`);
@@ -1363,7 +1368,8 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  *
  * Also injects `curl *{domain}*` / `wget *{domain}*` **allow** rules (after the
  * template's `curl *` / `wget *` ask) for {@link resolveNetworkAllowlist} so
- * context-fetch / provider hosts do not prompt. OpenCode bash is last-match-wins.
+ * context-fetch / provider hosts do not prompt (OpenCode bash is last-match-wins), and
+ * `<server>_*` allows for the consumer's `mcp-servers` block.
  */
 export function renderOpencodeJson(templatePath, tracker, provider, cwd = process.cwd()) {
     const raw = fs.readFileSync(templatePath, "utf-8");
@@ -1408,7 +1414,7 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
             const pid = providerDefaults.providerId ?? provider;
             const options = { apiKey: providerDefaults.apiPlaceholder };
             parsed.provider = { [pid]: { options } };
-            injectOpencodeNetworkCurlAllows(parsed, cwd);
+            injectOpencodeDerivedAllows(parsed, cwd);
             return JSON.stringify(parsed, null, 2) + "\n";
         }
         // For npm-based custom providers (e.g. openrouter), replace the api-openai provider
@@ -1428,17 +1434,26 @@ export function renderOpencodeJson(templatePath, tracker, provider, cwd = proces
                 },
             };
         }
-        injectOpencodeNetworkCurlAllows(parsed, cwd);
+        injectOpencodeDerivedAllows(parsed, cwd);
         return JSON.stringify(parsed, null, 2) + "\n";
     }
     catch {
         return rendered;
     }
 }
-/** Append curl/wget domain allows after template ask rules (OpenCode last-match-wins). */
-function injectOpencodeNetworkCurlAllows(parsed, cwd) {
+/**
+ * Append curl/wget domain allows after template ask rules (OpenCode last-match-wins),
+ * and one `<server>_*` allow per declared MCP server — opencode names MCP tools
+ * `<server>_<tool>` and matches permission keys as globs against the tool name.
+ */
+function injectOpencodeDerivedAllows(parsed, cwd) {
     const permission = parsed.permission;
-    if (!permission || typeof permission.bash !== "object" || permission.bash === null)
+    if (!permission)
+        return;
+    for (const server of extractMcpServers(cwd)) {
+        permission[`${server}_*`] = "allow";
+    }
+    if (typeof permission.bash !== "object" || permission.bash === null)
         return;
     const bash = permission.bash;
     for (const base of networkAllowlistBases(resolveNetworkAllowlist(cwd))) {
@@ -1447,7 +1462,8 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
     }
 }
 /**
- * Ensure Claude `WebFetch(domain:…)` allows cover {@link resolveNetworkAllowlist}.
+ * Ensure Claude `permissions.allow` covers {@link resolveClaudeDerivedAllows} —
+ * `WebFetch(domain:…)` per network-allowlist host and `mcp__…` per declared MCP server.
  * Claude rules match a command prefix, not a URL host, so curl cannot be excepted
  * by domain — network allowlisting for Claude is WebFetch-only; shell curl runs under
  * Bash(*), gated by `deny` and the auto-mode classifier rather than an ask row.
@@ -1455,7 +1471,7 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
  * dispatch modules).
  *
  * Adds AND prunes, but only ever removes a grant bkit itself recorded writing. The
- * record is `webFetchDerived` in `.bkit/version`: a grant in that list and no longer
+ * record is `claudeAllowDerived` in `.bkit/version`: a grant in that list and no longer
  * in the derived set is bkit's to remove; a grant the consumer added by hand was
  * never recorded, so it is never touched. An absent or empty record means bkit claims
  * authorship of nothing and prunes nothing — old consumers converge by addition only.
@@ -1466,7 +1482,7 @@ function injectOpencodeNetworkCurlAllows(parsed, cwd) {
  * about the write set — the `ws.writes` push below still fires under `dryRun`, because
  * it is the entire `bkit check` drift signal for `.claude/settings.json`.
  */
-export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws, advisories) {
+export function enrichClaudeSettingsAllows(settingsDst, cwd, dryRun, ws, advisories) {
     if (!fs.existsSync(settingsDst))
         return null;
     let doc;
@@ -1479,8 +1495,8 @@ export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws, advis
     const allow = doc.permissions?.allow;
     if (!Array.isArray(allow))
         return null;
-    const needed = resolveNetworkAllowlist(cwd).map((d) => `WebFetch(domain:${d})`);
-    const recorded = readBkitVersion(path.join(cwd, ".bkit", "version"))?.webFetchDerived ?? [];
+    const needed = resolveClaudeDerivedAllows(cwd);
+    const recorded = readBkitVersion(path.join(cwd, ".bkit", "version"))?.claudeAllowDerived ?? [];
     const add = needed.filter((r) => !allow.includes(r));
     // Only what bkit recorded writing AND the derived set no longer wants.
     const remove = recorded.filter((r) => !needed.includes(r) && allow.includes(r));
@@ -1495,10 +1511,10 @@ export function enrichClaudeSettingsWebFetch(settingsDst, cwd, dryRun, ws, advis
         }
         if (remove.length > 0 && advisories) {
             advisories.push({
-                id: "webfetch-grants-pruned",
+                id: "derived-grants-pruned",
                 severity: "advisory",
-                detect: `bkit removed ${remove.length} WebFetch grant(s) it had previously added and no longer derives: ${remove.join(", ")}.`,
-                action: "Nothing to do — a grant bkit added for a host it no longer ships was withdrawn. To keep one, add it back to permissions.allow in .claude/settings.json by hand and bkit will leave it alone from then on.",
+                detect: `bkit removed ${remove.length} permissions.allow grant(s) it had previously added and no longer derives: ${remove.join(", ")}.`,
+                action: "Nothing to do — a grant bkit added for a host or MCP server it no longer derives (dropped from .agents/context.md allowed-domains / mcp-servers, or no longer shipped) was withdrawn. To keep one, add it back to permissions.allow in .claude/settings.json by hand and bkit will leave it alone from then on.",
             });
         }
     }
@@ -1529,7 +1545,7 @@ const RETIRED_CLAUDE_ASK_RULES = ["Bash(curl:*)", "Bash(wget:*)"];
  *
  * Idempotent (no-op once absent), dry-run aware, and called from BOTH engines:
  * install dispatches modules, upgrade does not, and `bkit upgrade --latest` is the
- * path the README points consumers at. Mirrors {@link enrichClaudeSettingsWebFetch}.
+ * path the README points consumers at. Mirrors {@link enrichClaudeSettingsAllows}.
  */
 export function pruneRetiredClaudeAskRules(settingsDst, dryRun, ws) {
     if (!fs.existsSync(settingsDst))
