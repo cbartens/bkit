@@ -209,6 +209,25 @@ describe("branches rebase: classification", () => {
   ])("refuses %s", (p) => {
     expect(classifyConflict(p)).toBe("refuse");
   });
+
+  it("matches ledger globs as whole paths: `**` spans any depth, `.` is literal, no prefix match", () => {
+    expect(classifyConflict("docs/plans/a/b/c/status.jsonl")).toBe("ledger");
+    expect(classifyConflict("docs/plans/status.jsonl")).toBe("refuse");
+    expect(classifyConflict("docs/knowledgexjsonl")).toBe("refuse");
+    expect(classifyConflict("xdocs/knowledge.jsonl")).toBe("refuse");
+  });
+
+  it.each([
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "bun.lock",
+    "Cargo.lock",
+    "go.sum",
+    "uv.lock",
+  ])("classifies %s (every manager bkit recognises) as the lockfile shape", (p) => {
+    expect(classifyConflict(p)).toBe("lockfile");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -463,6 +482,64 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(4);
     expect(r.json).toBeUndefined();
   });
+
+  it("resolves two ledgers conflicting in the same commit in one pass", async () => {
+    const dir = makeRepo("two-ledgers");
+    write(dir, ".bkit/friction.jsonl", '{"key":"F","ts":1}\n');
+    write(dir, "docs/plans/202610/logs/1-x/status.jsonl", '{"key":"S","ts":1}\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "ledgers");
+    diverge(
+      dir,
+      {
+        ".bkit/friction.jsonl": '{"key":"F2","ts":2}\n',
+        "docs/plans/202610/logs/1-x/status.jsonl": '{"key":"S2","ts":2}\n',
+      },
+      {
+        ".bkit/friction.jsonl": '{"key":"F3","ts":3}\n',
+        "docs/plans/202610/logs/1-x/status.jsonl": '{"key":"S3","ts":3}\n',
+      },
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "resolved", skippedCommits: 0 });
+    expect((r.json?.resolved as Array<{ path: string }>).map((x) => x.path).sort()).toEqual([
+      ".bkit/friction.jsonl",
+      "docs/plans/202610/logs/1-x/status.jsonl",
+    ]);
+    expect(inRebase(dir)).toBe(false);
+    for (const [f, keys] of [
+      [".bkit/friction.jsonl", ["F", "F2", "F3"]],
+      ["docs/plans/202610/logs/1-x/status.jsonl", ["S", "S2", "S3"]],
+    ] as const) {
+      const got = read(dir, f)
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => (JSON.parse(l) as { key: string }).key);
+      expect(got.sort(), f).toEqual([...keys]);
+    }
+  });
+
+  it("resolves a conflict in each of two replayed commits across rounds", async () => {
+    const dir = makeRepo("two-commits");
+    git(dir, "checkout", "-q", "-b", "feat");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' }, "feat 1");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"B3","ts":4}\n' }, "feat 2");
+    git(dir, "checkout", "-q", "main");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' }, "main");
+    git(dir, "checkout", "-q", "feat");
+    git(dir, "rebase", "main");
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "resolved", skippedCommits: 0 });
+    expect(inRebase(dir)).toBe(false);
+    expect(git(dir, "log", "--format=%s", "main..HEAD").out).toBe("feat 2\nfeat 1");
+    const keys = read(dir, "docs/knowledge.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { key: string }).key);
+    expect(keys.sort()).toEqual(["A", "B", "B3", "C"]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -577,6 +654,30 @@ describe("branches anchor-stamp", () => {
       "<!-- bkit:anchor\nbaseSha: n\nbaseRef: origin/dev\n-->\n# T\n",
     );
   });
+
+  const STAMPED = "<!-- bkit:anchor\nbaseSha: n\nbaseRef: origin/dev\n-->\n";
+  it.each([
+    ["empty file", "", STAMPED],
+    ["no trailing newline (kept as-is)", "# Title\nlast line", `${STAMPED}# Title\nlast line`],
+    [
+      "two blocks (both removed)",
+      "<!-- bkit:anchor\nbaseSha: one\n-->\n# Doc\n<!-- bkit:anchor\nbaseSha: two\n-->\ntail\n",
+      `${STAMPED}# Doc\ntail\n`,
+    ],
+    [
+      "close on the line after open (body line kept)",
+      "<!-- bkit:anchor\n-->\nbaseSha: outside\n",
+      `${STAMPED}baseSha: outside\n`,
+    ],
+    [
+      "inline lookalike marker is not a block",
+      "# Plan\n\nbaseSha: x\n<!-- bkit:anchor -->\n",
+      `${STAMPED}# Plan\n\nbaseSha: x\n<!-- bkit:anchor -->\n`,
+    ],
+    ["empty field block", "<!-- bkit:anchor\nbaseSha: \n-->\n", STAMPED],
+  ])("stampAnchor: %s", (_, input, expected) => {
+    expect(stampAnchor(input, "n")).toBe(expected);
+  });
 });
 
 describe("branches anchor-read", { timeout: GIT_TIMEOUT }, () => {
@@ -680,6 +781,32 @@ describe("branches anchor-read", { timeout: GIT_TIMEOUT }, () => {
       const r = await run(clone, ["anchor-read", `--file=${plan}`, "--against=origin/nope"]);
       expect(r.code).toBe(2);
     });
+  });
+
+  it.each([
+    [
+      "two blocks: the first block's value wins",
+      "<!-- bkit:anchor\nbaseSha: one\n-->\n# Doc\n<!-- bkit:anchor\nbaseSha: two\n-->\ntail\n",
+      { baseSha: "one" },
+    ],
+    [
+      "an unterminated block runs to the end of the file",
+      "# Doc\n<!-- bkit:anchor\nbaseSha: x\nbody after\n",
+      { baseSha: "x" },
+    ],
+    [
+      "a field after the close line is outside the block",
+      "<!-- bkit:anchor\n-->\nbaseSha: outside\n",
+      {},
+    ],
+    [
+      "an empty field reads as the empty string",
+      "<!-- bkit:anchor\nbaseSha: \n-->\n",
+      { baseSha: "" },
+    ],
+    ["an empty file has no fields", "", {}],
+  ])("readAnchor: %s", (_, input, expected) => {
+    expect(readAnchor(input)).toEqual(expected);
   });
 });
 

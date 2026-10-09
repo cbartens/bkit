@@ -237,10 +237,11 @@ describe("bkit setup protect-main — pre-flight", () => {
 
   it("asks a human to log in when gh is not authenticated", async () => {
     const cwd = repo();
-    fakeGh({ FAKE_GH_AUTH_FAIL: "1" });
+    const gh = fakeGh({ FAKE_GH_AUTH_FAIL: "1" });
     const r = await run(cwd, []);
     expect(r.code).toBe(82);
     expect(r.err).toContain("run 'gh auth login'");
+    expect(gh.calls()).not.toContain("-X PUT");
   });
 
   it("is a missing-dependency error when gh is not installed", async () => {

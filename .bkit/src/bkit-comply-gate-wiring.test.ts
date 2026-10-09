@@ -1,199 +1,85 @@
 // bkit-comply-gate-wiring.test.ts — close-gate wiring audit.
 //
-// Done-when contract (WS2-T6 + #387):
-//   - Every wired close gate contains the PINNED fail-open idiom:
-//     `pnpm bkit comply --phase={phase} || echo "[bkit-comply] grader unavailable, skipping"`
-//   - No invocation sits on its own line under a bare `set -e` block that would
-//     defeat the `|| echo` guard.
-//   - Rollout: every workflow close is wired. design/plan/build/debug grade via
-//     the shared `.bkit/scripts/bkit-workflow-telemetry.sh` BEFORE the final push
-//     (so `.bkit/stats.jsonl` is commit-able); ship inline at its close gate.
-//   - Tracker close comments use summary-only (`pnpm bkit telemetry summary`) —
-//     NEVER re-invoke the write script after push (#387).
+// Done-when contract (WS2-T6 + #387, moved onto `bkit` commands by #467):
+//   - Every phase workflow (design, plan, build, debug, ship) grades itself at
+//     close with exactly one `"$BKIT" comply --phase=<wf>` call, carrying the
+//     fail-open guard on the same line:
+//     `|| echo "[bkit-comply] grader unavailable, skipping"`.
+//     A grader crash must never fail the close; the bracketed prefix keeps the
+//     skip grep-able.
+//   - No comply call sits unguarded under `set -e`.
+//   - The grader runs in the close block next to `bkit workflows close`, BEFORE
+//     that block's commit — comply appends `kind:"compliance"` rows to
+//     `.bkit/stats.jsonl`, and rows written after the commit never land.
+//   - Close telemetry is written once: one `bkit workflows close` per workflow,
+//     and the tracker close comment embeds the `report` it printed (via
+//     `close-telemetry.md`) rather than re-running a writer after the push (#387).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const PHASES = ["design", "plan", "build", "debug", "ship"] as const;
 
 function readWorkflow(name: string): string {
   const p = path.resolve(__dirname, "../../.bkit/workflows", name);
   return fs.readFileSync(p, "utf8");
 }
 
-/**
- * Return all occurrences of `pnpm bkit comply` in the file, with surrounding
- * context (the line + 2 lines of context).
- */
-function findComplyInvocations(content: string): string[] {
-  const lines = content.split("\n");
-  const occurrences: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes("pnpm bkit comply")) {
-      // Collect the invocation line plus up to 2 lines of context.
-      const ctx = lines.slice(Math.max(0, i - 1), i + 3).join("\n");
-      occurrences.push(ctx);
-    }
-  }
-  return occurrences;
-}
+/** Every ```bash block body in a workflow. */
+const bashBlocks = (content: string) =>
+  [...content.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]!);
 
 /**
- * Check that EVERY `pnpm bkit comply` invocation in a file has `|| echo` on
- * the same line or joined via shell continuation (line ending with `\`).
- * This ensures no invocation is an unguarded bare call.
+ * A comply line inside a `set -e` region without a same-line `||` guard: the
+ * grader's non-zero exit would abort the close.
  */
-function allInvocationsAreGuarded(content: string): boolean {
+function unguardedComplyUnderSetE(content: string): string | null {
   const lines = content.split("\n");
+  let inSetE = false;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line.includes("pnpm bkit comply")) continue;
-
-    // The guard must appear on the SAME line as the invocation.
-    const hasGuardSameLine = line.includes("|| echo");
-    if (!hasGuardSameLine) return false;
-  }
-  return true;
-}
-
-/**
- * Check that no wired `pnpm bkit comply` invocation is a STANDALONE line
- * immediately following a bare `set -e` with no guard.
- *
- * A "standalone" invocation is one where:
- *   - the comply line does NOT contain `||` (the guard is on a separate line)
- *   - AND there is a `set -e` block active (no `set +e` or `|| true` wrapping)
- *
- * Since we enforce same-line guard in `allInvocationsAreGuarded`, this check is
- * belt-and-suspenders: it scans for multi-line patterns like:
- *
- *   set -e
- *   ...
- *   pnpm bkit comply ...  # without || on same line
- */
-function noUnguardedComplyUnderSetE(content: string): { ok: boolean; violation?: string } {
-  const lines = content.split("\n");
-  let inSetEBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    // Detect `set -e` activation (bare set -e or combined flags containing e).
-    if (/^set\s+-[a-z]*e[a-z]*\s*$/.test(line) || line === "set -e") {
-      inSetEBlock = true;
-    }
-    // Detect `set +e` (disables set -e).
-    if (line === "set +e") {
-      inSetEBlock = false;
-    }
-
-    // If we find a comply line without a same-line `||` guard AND we are inside
-    // a known `set -e` block, that is a potential guard-defeat.
-    if (line.includes("pnpm bkit comply") && !line.includes("||") && inSetEBlock) {
-      return {
-        ok: false,
-        violation: `Line ${i + 1}: unguarded comply under set -e: ${lines[i]}`,
-      };
+    const line = lines[i]!.trim();
+    if (/^set\s+-[a-z]*e[a-z]*\s*$/.test(line)) inSetE = true;
+    if (line === "set +e") inSetE = false;
+    if (/\bcomply --phase=/.test(line) && !line.includes("||") && inSetE) {
+      return `Line ${i + 1}: unguarded comply under set -e: ${lines[i]}`;
     }
   }
-  return { ok: true };
+  return null;
 }
 
-// ---------------------------------------------------------------------------
-// Ship workflow — the wired phase (rollout: ship-only)
-// ---------------------------------------------------------------------------
-
-describe("bkit-ship.md — comply gate wiring (ship-only rollout)", () => {
-  const content = readWorkflow("bkit-ship.md");
-
-  it("contains at least one pnpm bkit comply --phase=ship invocation", () => {
-    expect(content).toContain("pnpm bkit comply --phase=ship");
-  });
-
-  it("every comply invocation carries the || echo fail-open guard on the same line", () => {
-    const invocations = findComplyInvocations(content);
-    expect(invocations.length).toBeGreaterThan(0);
-    expect(allInvocationsAreGuarded(content)).toBe(true);
-  });
-
-  it("the || echo guard uses the [bkit-comply] prefix for grep-ability", () => {
-    const invocations = findComplyInvocations(content);
-    for (const ctx of invocations) {
-      expect(ctx).toContain("[bkit-comply]");
-    }
-  });
-
-  it("no comply invocation sits under a bare set -e block without || guard", () => {
-    const result = noUnguardedComplyUnderSetE(content);
-    expect(result.ok).toBe(true);
-  });
-
-  it("the comply invocation specifies --phase=ship", () => {
-    expect(content).toContain("--phase=ship");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Non-ship workflows — comply runs from the shared close script
-// (.bkit/scripts/bkit-workflow-telemetry.sh), invoked at each workflow's close.
-// ---------------------------------------------------------------------------
-
-const NON_SHIP_PHASES = ["design", "plan", "build", "debug"] as const;
-
-function readScript(name: string): string {
-  return fs.readFileSync(path.resolve(__dirname, "../scripts", name), "utf8");
-}
-
-describe("bkit-workflow-telemetry.sh — comply grader wiring", () => {
-  const script = readScript("bkit-workflow-telemetry.sh");
-
-  it("invokes pnpm bkit comply --phase= for the passed workflow", () => {
-    expect(script).toContain('pnpm bkit comply --phase="$WF"');
-  });
-
-  it("guards the comply invocation with || echo on the same line", () => {
-    expect(findComplyInvocations(script).length).toBeGreaterThan(0);
-    expect(allInvocationsAreGuarded(script)).toBe(true);
-  });
-
-  it("comply guard uses the [bkit-comply] prefix", () => {
-    for (const ctx of findComplyInvocations(script)) expect(ctx).toContain("[bkit-comply]");
-  });
-
-  it("has no unguarded comply under a bare set -e", () => {
-    expect(noUnguardedComplyUnderSetE(script).ok).toBe(true);
-  });
-});
-
-describe("non-ship workflows — invoke the close script, no inline comply", () => {
-  for (const phase of NON_SHIP_PHASES) {
+describe("every phase workflow grades itself at close through bkit comply", () => {
+  for (const phase of PHASES) {
     const content = readWorkflow(`bkit-${phase}.md`);
+    const complyLines = content.split("\n").filter((l) => /\bcomply --phase=/.test(l));
 
-    it(`bkit-${phase}.md invokes bkit-workflow-telemetry.sh ${phase} at close`, () => {
-      expect(content).toContain(`bkit-workflow-telemetry.sh" ${phase} `);
-    });
-
-    it(`bkit-${phase}.md has no inline pnpm bkit comply (delegated to the script)`, () => {
+    it(`bkit-${phase}.md calls "$BKIT" comply --phase=${phase} exactly once`, () => {
+      expect(complyLines).toHaveLength(1);
+      expect(complyLines[0]).toContain(`"$BKIT" comply --phase=${phase} `);
       expect(content).not.toContain("pnpm bkit comply");
     });
 
-    it(`bkit-${phase}.md tracker comment uses summary-only (no post-push stats append)`, () => {
-      expect(content).toContain(`pnpm bkit telemetry summary --phase=${phase}`);
-      // Write script may appear once (pre-push); comment body must not be the only call site.
-      const writeCalls = content.split(`bkit-workflow-telemetry.sh" ${phase} `).length - 1;
-      expect(writeCalls).toBe(1);
+    it(`bkit-${phase}.md: the comply call carries the [bkit-comply] fail-open guard on the same line`, () => {
+      expect(complyLines[0]).toMatch(/\|\| echo "\[bkit-comply\][^"]*"/);
+      expect(unguardedComplyUnderSetE(content)).toBeNull();
+    });
+
+    it(`bkit-${phase}.md: comply runs in the close block, beside workflows close and before its commit`, () => {
+      const block = bashBlocks(content).find((b) => /\bcomply --phase=/.test(b));
+      expect(block, "comply sits inside a bash block").toBeDefined();
+      const close = block!.indexOf(`workflows close --workflow=${phase}`);
+      const comply = block!.search(/\bcomply --phase=/);
+      expect(close, "the close block also runs bkit workflows close").toBeGreaterThan(-1);
+      const commit = block!.slice(comply).search(/\bgit commit\b|\bledgers commit\b/);
+      expect(commit, "a commit follows the grader in the same block").toBeGreaterThan(-1);
+    });
+
+    it(`bkit-${phase}.md writes close telemetry once and embeds its report in the close comment`, () => {
+      expect(content.split(`workflows close --workflow=${phase}`).length - 1).toBe(1);
+      expect(content).toMatch(/\.report \| join\("\\n"\)'? > "[^"]*close-telemetry\.md"/);
+      expect(content).toMatch(
+        /issues comment [^\n]*--section="Telemetry=[^"]*close-telemetry\.md"/,
+      );
     });
   }
-});
-
-describe("ship workflow — summary-only tracker comment (#387 parity)", () => {
-  const content = readWorkflow("bkit-ship.md");
-
-  it("tracker comment uses telemetry summary, not the write script", () => {
-    expect(content).toContain("pnpm bkit telemetry summary --phase=ship");
-    expect(content).not.toContain("bkit-workflow-telemetry.sh");
-  });
 });

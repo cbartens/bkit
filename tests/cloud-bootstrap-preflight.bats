@@ -12,8 +12,8 @@
 # Requires: bats >= 1.0
 
 REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-# Template-relative by default (same convention as tests/counter-bus.bats /
-# tests/bkit-runtime.bats): edits land in .bkit/templates/.claude/hooks/;
+# Template-relative by default (same convention as tests/mirror-push-run.bats):
+# edits land in .bkit/templates/.claude/hooks/;
 # the installed .claude/hooks/ mirror is produced by `bkit install`,
 # deferred to the batch mirror regen (Sub-Plan 6).
 BOOTSTRAP_SH="${BKIT_CLOUD_BOOTSTRAP_SH:-$REPO_ROOT/.bkit/templates/.claude/hooks/cloud-bootstrap.sh}"

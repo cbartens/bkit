@@ -15,9 +15,10 @@
 // `archive/` is a SUBDIRECTORY on purpose: every read of these artefacts is an
 // exact filename or a non-recursive glob, so a nested directory is invisible to
 // all of them. Renaming in place is not safe — `{FID}-plan-{TS}.md` matches the
-// sub-plan count glob in bkit-build.md and the task-count globs in bkit-ship.md
-// and bkit-workflow-telemetry.sh. These tests pin the behaviour, not the literal
-// path string.
+// sub-plan count glob in bkit-build.md and the plan-presence globs in
+// bkit-build.md and bkit-ship.md. These tests pin the behaviour, not the literal
+// path string. The block's `bkit` calls (runtime assert, anchor-stamp) run from
+// the repo's built dist/, linked into the fixture at the path the block resolves.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -28,6 +29,8 @@ import { afterEach, describe, expect, it } from "vitest";
 const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
 const MONTH = "202605";
 const FID = "68-digital-agent-mvp";
+const BKIT_BIN = path.resolve("dist/bkit-install.js");
+const STATUS = `docs/plans/${MONTH}/logs/${FID}/status.jsonl`;
 
 const roots: string[] = [];
 
@@ -35,18 +38,33 @@ afterEach(() => {
   while (roots.length) fs.rmSync(roots.pop()!, { recursive: true, force: true });
 });
 
-const RUNTIME_SH = path.resolve(".bkit/scripts/bkit-runtime.sh");
-
-// The extracted close-workflow block now sources bkit-runtime.sh (via
-// `git rev-parse --path-format=absolute --git-common-dir`) to read/stamp the
-// `bkit:anchor` block (#431 Part 1) — so `root` must be a real git repo
-// carrying the shim, the same as any actual workflow worktree.
+// The extracted close-workflow block resolves `bkit` through
+// `git rev-parse --git-common-dir`, so `root` must be a real git repo. Its
+// status log carries a resolved runtime row with no base SHA, so the block's
+// anchor stamp (covered by the branches command tests) is skipped and the
+// archive logic runs alone.
 function makeRoot(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-archive-"));
   roots.push(dir);
   execFileSync("git", ["init", "-q"], { cwd: dir });
-  fs.mkdirSync(path.join(dir, ".bkit", "scripts"), { recursive: true });
-  fs.copyFileSync(RUNTIME_SH, path.join(dir, ".bkit", "scripts", "bkit-runtime.sh"));
+  fs.mkdirSync(path.join(dir, "node_modules/.bin"), { recursive: true });
+  fs.symlinkSync(BKIT_BIN, path.join(dir, "node_modules/.bin/bkit"));
+  for (const workflow of ["design", "plan"]) {
+    const row = {
+      type: "runtime-resolved",
+      workflow,
+      at: "2026-05-01T00:00:00Z",
+      runtime: "LOCAL",
+      runtimeWorktrees: true,
+      runtimeDevPushes: true,
+      runtimeGithubCli: false,
+      runtimeGithubCliExit: 127,
+      runtimeGithubCliErr: "",
+      baseSha: "",
+    };
+    fs.mkdirSync(path.dirname(path.join(dir, STATUS)), { recursive: true });
+    fs.appendFileSync(path.join(dir, STATUS), `${JSON.stringify(row)}\n`);
+  }
   return dir;
 }
 
@@ -64,7 +82,9 @@ function extractBashBlock(workflow: string, headingSnippet: string): string {
     .split("\n")
     .map((l) => l.replace(/^ {3}/, ""))
     .join("\n")
-    .replaceAll("{FID}", FID);
+    .replaceAll("{FID}", FID)
+    .replaceAll("{YYYYMM}", MONTH)
+    .replaceAll("{STATUS}", STATUS);
 }
 
 function run(block: string, root: string): void {
@@ -133,7 +153,8 @@ describe("design close: archive before overwrite", () => {
   it("archives into the feature's own bucket, not the current month", () => {
     // Guards the companion fix in #416: the close step used to derive the bucket
     // with `date +%Y%m`, so a design that crossed a month boundary resolved
-    // against an empty directory. MONTH is deliberately in the past.
+    // against an empty directory. MONTH is deliberately in the past; the block
+    // takes it as `{YYYYMM}`, the bucket `bkit locks acquire` resolved.
     const root = makeRoot();
     write(root, `docs/plans/${MONTH}/logs/${FID}/design-v1-draft.md`, "V1\n");
     write(root, `docs/plans/${MONTH}/${FID}-design.md`, "OLD\n");
@@ -202,7 +223,7 @@ describe("archive/ is unreachable from the globs that read these artefacts", () 
   // glob below is the real one from the workflow it names.
   const cases: Array<{ name: string; glob: string }> = [
     { name: "bkit-build.md sub-plan count", glob: `docs/plans/${MONTH}/${FID}-plan-*.md` },
-    { name: "bkit-ship.md task count", glob: `docs/plans/${MONTH}/${FID}-plan*.md` },
+    { name: "bkit-ship.md plan presence", glob: `docs/plans/${MONTH}/${FID}-plan*.md` },
     { name: "bkit-ship.md logs sweep", glob: `docs/plans/${MONTH}/logs/${FID}/*.md` },
   ];
 

@@ -4,7 +4,7 @@
 #
 # Waiting logic runs against a scripted gate (BKIT_MIRROR_GATE_SH) that replays one exit
 # code per call from $SEQ, so polling is tested without a clock. The end-to-end cases run
-# the real bkit-ship-gate.sh against the tests/fixtures/gh `gh` stub.
+# the real gate, `bkit runs gate`, against the tests/fixtures/gh `gh` stub.
 #
 # Run: bats tests/mirror-push-run.bats
 
@@ -150,21 +150,36 @@ codes() { printf '%s\n' "$@" >"$SEQ"; }
 }
 
 # ---------------------------------------------------------------------------
-# End to end — the real bkit-ship-gate.sh behind the gh fixture stub
+# End to end — the real gate (`bkit runs gate`) behind the gh fixture stub
 # ---------------------------------------------------------------------------
 
+# The script calls its gate as `<gate> assert <flags>`; `bkit runs gate` takes the
+# same flags and exit codes without the `assert` word.
+real_gate() {
+  REAL_GATE="$WORK/real-gate.sh"
+  cat >"$REAL_GATE" <<GATE
+#!/usr/bin/env bash
+[ "\${1:-}" = assert ] && shift
+exec "$REPO_ROOT/node_modules/.bin/bkit" runs gate "\$@"
+GATE
+  chmod +x "$REAL_GATE"
+}
+
 @test "e2e: green push run beside the PR's own in-flight run -> exit 0" {
-  run env PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-push-green --repo example/example --interval 0
+  real_gate
+  run env BKIT_MIRROR_GATE_SH="$REAL_GATE" PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-push-green --repo example/example --interval 0
   [ "$status" -eq 0 ]
 }
 
 @test "e2e: red push run is not masked by a newer green PR run -> exit 1" {
-  run env PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-push-red-pr-green --repo example/example --interval 0
+  real_gate
+  run env BKIT_MIRROR_GATE_SH="$REAL_GATE" PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-push-red-pr-green --repo example/example --interval 0
   [ "$status" -eq 1 ]
   [[ "$output" == *"FAILURE"* ]]
 }
 
 @test "e2e: only the PR's own run exists -> absent, not in progress (exit 3)" {
-  run env PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-pr-only --repo example/example --interval 0 --absent-minutes 0
+  real_gate
+  run env BKIT_MIRROR_GATE_SH="$REAL_GATE" PATH="$GH_FIXTURE_ROOT/bin:$PATH" bash "$MIRROR_SH" --head release-pr-only --repo example/example --interval 0 --absent-minutes 0
   [ "$status" -eq 3 ]
 }

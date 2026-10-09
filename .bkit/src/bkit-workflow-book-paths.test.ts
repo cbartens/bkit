@@ -5,8 +5,9 @@
 // glob that ABORTS under zsh when a glob matches nothing (fine under bash,
 // where an unmatched glob just passes through literally) — a host-shell
 // dependency that let the pattern spread from 5 sites to 16 in a single
-// commit with nothing to catch it. bkit-book-commit.sh (invoked with an
-// explicit `bash` prefix) replaces every site; these two static shapes must
+// commit with nothing to catch it. `bkit ledgers commit|union` replaces every
+// site (its allow-list is covered in commands/workflow/ledgers.test.ts); these
+// two static shapes must
 // never reappear in a `.bkit/workflows/*.md` file, since neither is caught
 // by `bkit:lint:workflows` (actionlint covers `.github/workflows/` only).
 
@@ -59,13 +60,16 @@ describe("workflow bookkeeping pathspec — no BOOK_PATHS regression (#446)", ()
     expect(offendingLines).toEqual([]);
   });
 
-  it("bookkeeping commits are wired through bkit-book-commit.sh", () => {
+  it("bookkeeping commits are wired through bkit ledgers", () => {
     const totalCalls = workflowFiles
       .map((file) => fs.readFileSync(file, "utf-8"))
-      .reduce((n, content) => n + (content.match(/bkit-book-commit\.sh/g) ?? []).length, 0);
-    // 8 call sites across bkit-ship.md (5), bkit-design.md (1), bkit-plan.md (1),
-    // bkit-build.md (1) — see #446 comment 5425812733 Task 2 shapes 1-5, plus the
-    // union-ledgers subcommand for Task 3 (bkit-ship.md:174 ledger union).
+      .reduce(
+        (n, content) =>
+          n + (content.match(/"\$BKIT" ledgers (commit|union|only-bookkeeping)\b/g) ?? []).length,
+        0,
+      );
+    // The #446 call sites across bkit-ship.md, bkit-design.md, bkit-plan.md
+    // and bkit-build.md (stage / commit shapes plus ship's ledger union).
     expect(totalCalls).toBeGreaterThanOrEqual(8);
   });
 });

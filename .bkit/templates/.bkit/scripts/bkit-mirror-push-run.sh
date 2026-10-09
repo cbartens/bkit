@@ -12,7 +12,7 @@
 #                           [--capstone <job>] [--absent-minutes 10] [--max-minutes 170]
 #                           [--interval 30]
 #
-# Each poll runs `bkit-ship-gate.sh assert --event push --branch <branch>` at <sha>; the
+# Each poll runs `bkit runs gate --event push --branch <branch>` at <sha>; the
 # gate owns run selection, capstone lookup and its exit codes. This script owns waiting.
 #
 #   gate 0              -> exit 0   push run's capstone passed
@@ -79,15 +79,21 @@ for n in "$ABSENT_MINUTES" "$MAX_MINUTES" "$INTERVAL"; do
   esac
 done
 
-GATE_SH="${BKIT_MIRROR_GATE_SH:-$(cd "$(dirname "$0")" && pwd)/bkit-ship-gate.sh}"
-if [ ! -f "$GATE_SH" ]; then
-  err "gate script not found: $GATE_SH"
-  exit 2
+if [ -n "${BKIT_MIRROR_GATE_SH:-}" ]; then
+  GATE=(bash "$BKIT_MIRROR_GATE_SH" assert)
+  WORKFLOW_FLAG=--workflow
+else
+  GATE=("$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" runs gate)
+  WORKFLOW_FLAG=--ci-workflow
+  if [ ! -x "${GATE[0]}" ]; then
+    err "bkit not found: ${GATE[0]} — install dependencies first"
+    exit 2
+  fi
 fi
 
-GATE_ARGS=(assert --head "$HEAD_SHA" --branch "$BRANCH" --event push)
+GATE_ARGS=(--head "$HEAD_SHA" --branch "$BRANCH" --event push)
 [ -n "$REPO" ] && GATE_ARGS+=(--repo "$REPO")
-[ -n "$WORKFLOW" ] && GATE_ARGS+=(--workflow "$WORKFLOW")
+[ -n "$WORKFLOW" ] && GATE_ARGS+=("$WORKFLOW_FLAG" "$WORKFLOW")
 [ -n "$CAPSTONE" ] && GATE_ARGS+=(--capstone "$CAPSTONE")
 
 START=$(date +%s)
@@ -96,7 +102,7 @@ LAST_STATE=""
 
 while :; do
   set +e
-  GATE_ERR=$(env -u BKIT_SHIP_GATE_OVERRIDE bash "$GATE_SH" "${GATE_ARGS[@]}" 2>&1 >/dev/null)
+  GATE_ERR=$(env -u BKIT_SHIP_GATE_OVERRIDE "${GATE[@]}" "${GATE_ARGS[@]}" 2>&1 >/dev/null)
   CODE=$?
   set -e
   ELAPSED_MIN=$(( ($(date +%s) - START) / 60 ))

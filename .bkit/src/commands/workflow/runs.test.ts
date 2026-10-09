@@ -396,6 +396,23 @@ describe("bkit runs gate", () => {
         0,
       );
     });
+
+    it("--capstone and --ci-workflow beat package.json", async () => {
+      fixtureGh();
+      const d = pkg({ capstoneJob: "app-check", ciWorkflow: "build.yml" });
+      const r = await gate(
+        d,
+        "--head=green-capstone",
+        "--capstone=lint",
+        "--ci-workflow=other.yml",
+      );
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ capstone: "lint", ciWorkflow: "other.yml" });
+      expect(r.err).toContain("capstone lint=success");
+      const absent = await gate(d, "--head=green-capstone", "--capstone=nope");
+      expect(absent.code).toBe(13);
+      expect(absent.err).toContain("capstone job 'nope' ABSENT");
+    });
   });
 
   it("missing --head is a usage error (2)", async () => {
@@ -1197,6 +1214,20 @@ describe("bkit runs declared", () => {
     fs.writeFileSync(path.join(cwd, ".github/workflows/build.yml"), "");
     r = await cli(cwd, ["declared"]);
     expect(r.code).toBe(0);
+  });
+
+  it("the default ci.yml counts when no bkit.ciWorkflow is configured", async () => {
+    const cwd = tmp();
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "x" }));
+    fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".github/workflows/ci.yml"), "");
+    const r = await cli(cwd, ["declared"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      declared: true,
+      ciWorkflow: "ci.yml",
+      path: ".github/workflows/ci.yml",
+    });
   });
 });
 

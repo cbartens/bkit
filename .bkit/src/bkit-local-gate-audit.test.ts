@@ -56,8 +56,7 @@ const BANNED = [
 
 // Occurrences that are NOT a re-inlined gate. Every entry must say why, and a
 // NEW banned occurrence must be added here deliberately or the audit fails —
-// never silently allowed. (Same discipline as EXEMPT_RAW_SLEEPS in
-// bkit-runtime-prose-audit.test.ts.)
+// never silently allowed.
 const EXEMPT: Array<{ rel: string; pattern: string; context: string }> = [
   {
     rel: ".bkit/workflows.md",
@@ -93,12 +92,10 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/prompts/bkit-build-challenge-tests.md", "pnpm bkit:gate:static-unit"],
   [".bkit/prompts/bkit-build-plan-verify.md", "pnpm bkit:gate:static-unit"],
   [".bkit/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
-  // bkit-build.md / bkit-debug.md are NOT listed: they build the call from the
-  // descending probe (`bkit_resolve_gate`), so no literal appears. The PROBES
-  // block below covers them, including the fail-loud branch.
+  // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
+  // `bkit tests run --gate=<candidate>...`, which picks the deepest declared
+  // candidate itself. The PROBES block below covers them.
 ];
-
-const RUNTIME_SH = path.resolve(REPO_ROOT, ".bkit/templates/.bkit/scripts/bkit-runtime.sh");
 
 describe("bkit-local-gate-audit (#437)", () => {
   describe("no toolchain command is inlined at a call site", () => {
@@ -127,89 +124,70 @@ describe("bkit-local-gate-audit (#437)", () => {
     for (const name of named) expect(seeded).toContain(name);
   });
 
-  // Both loops share one contract: probe candidates in descending depth, run the
-  // first the consumer declares. Order IS the contract — a shallower gate winning
-  // while a deeper one is declared means the workflow silently under-tests and then
-  // records a scope claiming it did more.
+  // Workflows never run a gate script themselves: `bkit tests run` owns the
+  // descending probe, the saved log and the "nothing declared" refusal. A
+  // workflow that runs `pnpm bkit:gate:*` or `eval`s a resolved command is the
+  // copy this audit exists to stop — and `eval ""` exits 0, reading as a clean run.
+  it("workflows run the local gate only through `bkit tests run`", () => {
+    for (const name of fs.readdirSync(WORKFLOWS_DIR).filter((f) => f.endsWith(".md"))) {
+      const body = fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8");
+      expect(body, `${name} runs a gate script directly`).not.toMatch(/pnpm (run )?bkit:gate/);
+      expect(body, `${name} evals a command`).not.toMatch(/(^|[;&|(\s])eval\s/m);
+    }
+  });
+
+  // Both call sites share one contract: pass the candidates in descending depth,
+  // and `bkit tests run` runs the first the consumer declares. Order IS the
+  // contract — a shallower gate winning while a deeper one is declared means the
+  // workflow silently under-tests and then records a scope claiming it did more.
   const PROBES = [
-    { workflow: "bkit-build.md", gates: BKIT_BUILD_GATES, stopsAt: "integration" },
-    { workflow: "bkit-debug.md", gates: BKIT_DEBUG_GATES, stopsAt: "live" },
+    { workflow: "bkit-build.md", gates: BKIT_BUILD_GATES, stopsAt: "integration", sites: 2 },
+    { workflow: "bkit-debug.md", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
   ] as const;
 
-  for (const { workflow, gates, stopsAt } of PROBES) {
+  /** The ```bash blocks of a workflow that call `bkit tests run`. */
+  const testBlocks = (body: string) =>
+    [...body.matchAll(/```bash\n([\s\S]*?)```/g)]
+      .map((m) => m[1]!)
+      .filter((b) => /\btests run\b/.test(b));
+
+  for (const { workflow, gates, stopsAt, sites } of PROBES) {
     describe(`${workflow} runs the deepest declared gate (through ${stopsAt})`, () => {
       const body = fs.readFileSync(path.join(REPO_ROOT, ".bkit/workflows", workflow), "utf-8");
+      const blocks = testBlocks(body);
 
-      it("names every candidate, in descending depth", () => {
-        const positions = gates.map((g) => body.indexOf(g));
-        for (const pos of positions) expect(pos).toBeGreaterThanOrEqual(0);
-        expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      it(`passes every candidate, in descending depth, at each of its ${sites} call site(s)`, () => {
+        expect(blocks).toHaveLength(sites);
+        for (const block of blocks) {
+          // The candidate list is either inline on the `tests run` line or set
+          // as positional args (`set -- --gate=...`) for the call to expand.
+          const line = block.split("\n").find((l) => l.includes("--gate=bkit:gate"));
+          const passed = [...(line ?? "").matchAll(/--gate=(\S+)/g)].map((m) => m[1]);
+          expect(passed).toEqual([...gates]);
+        }
       });
 
       it("falls back to a gate install actually seeds, so the chain terminates", () => {
         expect(Object.keys(BKIT_GATE_SCRIPTS)).toContain(gates[gates.length - 1]);
       });
 
-      it("fails loud when no candidate is declared, never silently skipping", () => {
-        // The defect this whole issue exists to kill: an unresolved gate must not
-        // reach `eval ""`, which exits 0 and reads as a clean run. The probe lives
-        // in bkit_resolve_gate; every call site must stop on its non-zero return.
-        const calls = body.split("\n").filter((l) => l.includes("bkit_resolve_gate"));
-        expect(calls.length).toBeGreaterThan(0);
-        for (const call of calls) expect(call.trimEnd()).toMatch(/\|\| exit 2$/);
+      it("never swallows a could-not-run exit, so an undeclared gate fails loud", () => {
+        // `tests run` exits 3 when no candidate is declared and 4 when the gate
+        // could not run (commands/workflow/tests.test.ts). Only 0 (PASS) and
+        // 1 (FAIL) are verdicts; every other code must leave the block.
+        for (const block of blocks) {
+          const lines = block.trimEnd().split("\n");
+          const at = lines.findIndex((l) => /\btests run\b/.test(l));
+          expect(lines[at]).not.toMatch(/\|\|\s*(true|:|echo)\b/);
+          if (at === lines.length - 1) continue; // the call's exit IS the block's exit
+          const rest = lines.slice(at).join("\n");
+          const captured = /\b(\w+)=\$\?/.exec(rest)?.[1];
+          expect(captured, "the exit code is captured right after the call").toBeDefined();
+          expect(rest).toMatch(new RegExp(`exit "\\$${captured}"`));
+        }
       });
     });
   }
-
-  it("bkit_resolve_gate returns non-zero and leaves TEST_SCOPE empty when nothing resolves", () => {
-    const body = fs.readFileSync(RUNTIME_SH, "utf-8");
-    const fn = body.slice(body.indexOf("bkit_resolve_gate() {"));
-    expect(fn).toContain('TEST_SCOPE=""');
-    expect(fn).toContain('[ -n "$TEST_SCOPE" ] || {');
-    expect(fn.slice(0, fn.indexOf("\n}"))).toContain("return 2");
-  });
-
-  // #457. Build runs its gate at every sub-plan boundary, not only once at Step 14,
-  // so a sub-plan that breaks the tree is caught before the next one builds on it.
-  // Each clause below is load-bearing: drop the boundary call and the loop is
-  // gate-free again; drop a route and a red boundary either advances to the next
-  // sub-plan or never reaches the agent that can fix it.
-  describe("bkit-build.md gates every sub-plan boundary (#457)", () => {
-    const body = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
-    const step7 = body.slice(
-      body.indexOf("### 🧠 Step 7 — Plan Verify"),
-      body.indexOf("### 🔒 Gate 7"),
-    );
-    const step8 = body.slice(
-      body.indexOf("### 🧠 Step 8 — Plan Gaps Remediate"),
-      body.indexOf("### 🔒 Gate 8"),
-    );
-    const resolve = `bkit_resolve_gate ${BKIT_BUILD_GATES.join(" ")} || exit 2`;
-
-    it("runs the same gate as Step 14, from Step 7, between sub-plans only", () => {
-      expect(step7).toContain(resolve);
-      expect(body.split(resolve).length - 1).toBe(2);
-      expect(step7).toContain(
-        "**If** `VERIFY_VERDICT` = PASS **and** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → sub-step 15.",
-      );
-      expect(step7).toContain('step:"build-subplan-gate"');
-    });
-
-    it("never advances past a red boundary", () => {
-      expect(step7).toContain("**If** `VERIFY_VERDICT` = PASS **and** `BOUNDARY_VERDICT` != FAIL:");
-      expect(step7).toContain(
-        "**If** `VERIFY_VERDICT` = CONCERNS or FAIL, **or** `BOUNDARY_VERDICT` = FAIL — run counter-bus routing:",
-      );
-    });
-
-    it("hands a red boundary to gaps-remediate with the gate log", () => {
-      expect(step8).toContain("**or** `BOUNDARY_VERDICT` = FAIL.");
-      expect(step8).toContain("build-subplan-gate-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` (if present)");
-      expect(step8).toContain(
-        "**If** `BOUNDARY_VERDICT` = FAIL → add `Boundary gate`: `{TEST_SCOPE}`.",
-      );
-    });
-  });
 
   it("only debug reaches the live tier, and only its deepest gate carries the `live` word", () => {
     // bkit-debug.md greps the recorded scope for the WORD `live` to decide

@@ -273,6 +273,28 @@ describe("bkit workflows fail", () => {
     expect((await run(cwd, wf("fail", "build", `--month=${M}`))).json.rebaseAborted).toBe(false);
   });
 
+  it("the workflow-failed row survives the rebase abort when status.jsonl is tracked in the rebasing tree", async () => {
+    // `git rebase --abort` resets the tree, discarding an uncommitted append to a
+    // tracked status.jsonl — so the abort must run before the row is written.
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-started", workflow: "build" }]));
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "status");
+    git(cwd, "checkout", "-q", "-b", "other");
+    write(cwd, "a.txt", "theirs\n");
+    git(cwd, "commit", "-qam", "theirs");
+    git(cwd, "checkout", "-q", "dev");
+    write(cwd, "a.txt", "ours\n");
+    git(cwd, "commit", "-qam", "ours");
+    git(cwd, "rebase", "other");
+    const r = await run(cwd, wf("fail", "build", `--month=${M}`));
+    expect(r.json.rebaseAborted).toBe(true);
+    expect(rows(statusOf(cwd)).at(-1)).toMatchObject({
+      type: "workflow-failed",
+      workflow: "build",
+    });
+  });
+
   it("clears .rebase-failed inside the worktree it was created in, and says a handover is due", async () => {
     const cwd = repo();
     const wt = path.join(cwd, ".worktrees", FID);
@@ -523,5 +545,41 @@ describe("bkit workflows close", () => {
     );
     const other = await run(cwd, wf("close", "design", "--ref=feat/x", "--owner-repo=o/r"));
     expect(other.json.artifacts).toEqual([]);
+  });
+
+  it("per-run counts are distinct keys; failures come from docs/failures.jsonl", async () => {
+    const cwd = closable();
+    fs.appendFileSync(
+      path.join(cwd, ".bkit/friction.jsonl"),
+      jsonl([{ ts: 1577836801500, kind: "friction", workflow: "build", key: "fr1" }]),
+    );
+    write(
+      cwd,
+      "docs/failures.jsonl",
+      jsonl([
+        { ts: 1, kind: "failure", workflow: "plan", key: "x0" },
+        { ts: 1577836803000, kind: "failure", workflow: "build", key: "x1" },
+        { ts: 1577836804000, kind: "failure", workflow: "build", key: "x1" },
+      ]),
+    );
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.outcomeRow).toMatchObject({ frictionAdded: 1, failures: 2, failuresAdded: 1 });
+    expect(validate(r.json.outcomeRow).ok).toBe(true);
+  });
+
+  it("absent ledgers still give a schema-valid row with zero per-run counts", async () => {
+    const cwd = closable("design");
+    fs.rmSync(path.join(cwd, ".bkit/friction.jsonl"));
+    const r = await run(cwd, wf("close", "design"));
+    expect(r.code).toBe(0);
+    expect(r.json.outcomeRow).toMatchObject({
+      frictionAdded: 0,
+      deferralsAdded: 0,
+      failuresAdded: 0,
+      deferrals: 0,
+      failures: 0,
+    });
+    expect(validate(r.json.outcomeRow).ok).toBe(true);
   });
 });

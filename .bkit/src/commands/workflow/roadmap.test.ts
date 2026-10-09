@@ -387,6 +387,136 @@ describe("bkit roadmap fold (tests/roadmap-fold.bats)", () => {
     await fold(os.tmpdir(), `--root=${r}`);
     expect(board(r)).toContain("412-export-csv");
   });
+
+  it("DEBUGGED rows land under Debug; a null summary falls back to the FID, an empty one stays empty", async () => {
+    const r = root();
+    ledger(
+      r,
+      feature(1, "420-debugged", "DEBUGGED"),
+      feature(2, "430-no-summary", "DESIGNED", { summary: null }),
+      feature(3, "431-empty-summary", "DESIGNED", { summary: "" }),
+    );
+    const res = await fold(r);
+    const b = board(r);
+    expect(section(b, "### Debug", "### Shipped")).toContain("| 420-debugged | 420-debugged | 1 |");
+    expect(section(b, "### Design", "### Plan")).toContain(
+      "| 430-no-summary | 430-no-summary | 2 |",
+    );
+    expect(section(b, "### Design", "### Plan")).toContain("| 431-empty-summary |  | 3 |");
+    expect(res.json.counts).toEqual({ designed: 2, planned: 0, built: 0, debugged: 1, shipped: 0 });
+  });
+
+  it("whitespace-only notes and analysis bodies are re-seeded, not carried as blanks", async () => {
+    const r = root();
+    fs.writeFileSync(
+      path.join(r, "docs/roadmap.md"),
+      [
+        MARKERS.notesPreStart,
+        "  ",
+        MARKERS.notesPreEnd,
+        MARKERS.analysisStart,
+        "\t",
+        MARKERS.analysisEnd,
+        MARKERS.notesPostStart,
+        "",
+        MARKERS.notesPostEnd,
+        "",
+      ].join("\n"),
+    );
+    await fold(r);
+    const b = board(r);
+    for (const [start, end] of [
+      [MARKERS.notesPreStart, MARKERS.notesPreEnd],
+      [MARKERS.analysisStart, MARKERS.analysisEnd],
+      [MARKERS.notesPostStart, MARKERS.notesPostEnd],
+    ] as const) {
+      const body = section(b, start, end).slice(start.length);
+      expect(body.trim(), start).not.toBe("");
+    }
+    expect(b).not.toContain("\t");
+  });
+
+  it("carries notes and analysis verbatim, keeps a custom title, and folds the tail under an existing notes-post body", async () => {
+    const r = root();
+    fs.writeFileSync(
+      path.join(r, "docs/roadmap.md"),
+      [
+        "",
+        "# Title",
+        "",
+        "HEAD",
+        "",
+        MARKERS.notesPreStart,
+        "",
+        "PRE",
+        "   ",
+        "",
+        MARKERS.notesPreEnd,
+        MARKERS.statusStart,
+        "old",
+        MARKERS.statusEnd,
+        MARKERS.analysisStart,
+        "  ANALYSIS",
+        MARKERS.analysisEnd,
+        MARKERS.notesPostStart,
+        "POST",
+        MARKERS.notesPostEnd,
+        "",
+        "TAIL 1",
+        "",
+        "TAIL 2",
+        "",
+      ].join("\n"),
+    );
+    ledger(r, feature(1, "412-export-csv", "DESIGNED"));
+    await fold(r);
+    const b = board(r);
+    expect(b.startsWith("# Title\n\nHEAD\n\n")).toBe(true);
+    expect(b).not.toContain("# Roadmap");
+    expect(b).toContain(`${MARKERS.notesPreStart}\n\nPRE\n   \n${MARKERS.notesPreEnd}`);
+    expect(b).toContain(`${MARKERS.analysisStart}\n  ANALYSIS\n${MARKERS.analysisEnd}`);
+    expect(b).toContain(
+      `${MARKERS.notesPostStart}\nPOST\n\nTAIL 1\n\nTAIL 2\n${MARKERS.notesPostEnd}`,
+    );
+    expect(b.endsWith(`${MARKERS.notesPostEnd}\n`)).toBe(true);
+    expect(b).not.toContain("old");
+  });
+
+  it("an empty board file and an empty ledger file still fold to a full board", async () => {
+    const r = root();
+    fs.writeFileSync(path.join(r, "docs/roadmap.md"), "");
+    ledger(r);
+    const res = await fold(r);
+    expect(res.code).toBe(0);
+    const b = board(r);
+    for (const m of Object.values(MARKERS)) expect(b).toContain(m);
+    expect(res.err).toContain(".bkit/issues.jsonl absent or empty");
+    expect(res.err).not.toContain("bootstrapping");
+  });
+
+  it("an end marker above its start marker loses no consumer line", async () => {
+    const r = root();
+    fs.writeFileSync(
+      path.join(r, "docs/roadmap.md"),
+      `top\n${MARKERS.statusEnd}\nmiddle\n${MARKERS.statusStart}\nbottom\n`,
+    );
+    expect((await fold(r)).code).toBe(0);
+    const b = board(r);
+    for (const s of ["top", "middle", "bottom"]) expect(b).toMatch(new RegExp(`^${s}$`, "m"));
+    expect(lineOf(b, MARKERS.notesPostEnd, true)).toBe(b.split("\n").length - 1);
+  });
+
+  it("text after the last marker with no final newline is folded into notes-post", async () => {
+    const r = root();
+    fs.writeFileSync(
+      path.join(r, "docs/roadmap.md"),
+      `# R\n${MARKERS.notesPostStart}\nP\n${MARKERS.notesPostEnd}\nafter`,
+    );
+    await fold(r);
+    const b = board(r);
+    expect(b).toContain(`${MARKERS.notesPostStart}\nP\n\nafter\n${MARKERS.notesPostEnd}\n`);
+    expect(b.endsWith(`${MARKERS.notesPostEnd}\n`)).toBe(true);
+  });
 });
 
 describe("project", () => {

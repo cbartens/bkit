@@ -487,6 +487,16 @@ export const workflowsCommand: CommandSpec = {
           ? path.resolve(ctx.cwd, file)
           : statusLocation({ cwd: ctx.cwd, workflow, fid, month, devPushes }).path;
 
+        // The run's own tree: the feature worktree when there is one, else this checkout.
+        // Never the main checkout behind a worktree, where a rebase would be a human's.
+        const worktree = path.join(root, ".worktrees", fid);
+        const tree = fs.existsSync(worktree)
+          ? worktree
+          : (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root);
+        // Abort first: the abort resets the tree, which would drop a row appended to a
+        // tracked status.jsonl before it.
+        const rebaseAborted = abortRebase(tree, ctx.log);
+
         let row: Record<string, unknown> | null = null;
         if (fs.existsSync(status)) {
           row = { type: "workflow-failed", workflow, at: statusTimestamp() };
@@ -494,14 +504,6 @@ export const workflowsCommand: CommandSpec = {
         } else {
           ctx.log(`${status} does not exist — no workflow-failed row written`);
         }
-
-        // The run's own tree: the feature worktree when there is one, else this checkout.
-        // Never the main checkout behind a worktree, where a rebase would be a human's.
-        const worktree = path.join(root, ".worktrees", fid);
-        const tree = fs.existsSync(worktree)
-          ? worktree
-          : (git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? root);
-        const rebaseAborted = abortRebase(tree, ctx.log);
 
         const lockFile = workflowLockPath(lockRoot(ctx.cwd, workflow, devPushes), month, fid);
         const { removeFailed, ...lock } = releaseLock(lockFile, {

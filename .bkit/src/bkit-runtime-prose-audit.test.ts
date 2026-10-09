@@ -1,21 +1,22 @@
 // bkit-runtime-prose-audit.test.ts — #341 T16, Derived Test Matrix row 15.
 //
-// The design's own honest limit (D3): bats/vitest can prove the shim
+// The design's own honest limit (D3): tests can prove `bkit runtime detect`
 // DETECTS capabilities correctly, never that prose rules HONOUR them — that
-// consumption guarantee rests entirely on Sub-Plan 6's real live-mode-3 run
-// (row 14). This audit is deliberately narrow: PRESENCE, not BEHAVIOUR.
+// consumption guarantee rests on a real live-mode run. This audit is
+// deliberately narrow: PRESENCE, not BEHAVIOUR.
 //
-//   (i)  every `CAN_*` capability flag has >=1 reader somewhere in
+//   (i)  every `RUNTIME_*` capability flag has >=1 reader somewhere in
 //        `.bkit/workflows/*.md` — a flag set but never read anywhere is a
 //        dead flag, exactly the class of gap #341 T14/T15 discovered
-//        (docs/failures.jsonl key `runtime-resolved-row-never-emitted-step1`).
-//   (ii) every foreground **CI-wait** `sleep` sits inside the CI-Dispatch
-//        Gate shared kernel (i.e. is `bkit_wait_ci`'s own `timeout`-wrapped
-//        `sleep`, D22 — never a raw `sleep` duplicated at a call site);
-//        every OTHER raw `sleep` literal in `.bkit/workflows/*.md` MUST be
-//        an explicitly-catalogued retry/backoff sleep (the `dev`-lock
-//        acquisition poll) — exempted BY NAME, never silently allowed, so a
-//        new un-catalogued raw sleep fails loud instead of passing quietly.
+//        (docs/failures.jsonl key `runtime-resolved-row-never-emitted-step1`)
+//        — and every phase workflow emits the `runtime-resolved` row those
+//        readers depend on, through `bkit runtime row`.
+//   (ii) no workflow sleeps in the foreground. Every wait lives in a command:
+//        CI waits in `bkit runs wait|dispatch` (which hands a blocked sleep to
+//        the agent's turn loop with exit 81, pinned in
+//        commands/workflow/runs.test.ts) and the dev-lock poll in
+//        `bkit locks acquire --kind=dev`. A raw `sleep N` reappearing in a
+//        workflow is a wait that bypasses both.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -42,41 +43,9 @@ function readAllWorkflows(): string {
 }
 
 // (i) every RUNTIME_* capability flag must have >=1 reader across the workflow corpus.
-// CAN_SLEEP was deleted (#341 follow-up): sleep is measured inside bkit_wait_ci
-// (CI_WAIT_BLOCKED), not predicted by a capability row.
+// CAN_SLEEP was deleted (#341 follow-up): whether the runtime can sleep is
+// measured inside `bkit runs wait|dispatch`, not predicted by a capability row.
 const RUNTIME_FLAGS = ["RUNTIME_WORKTREES", "RUNTIME_DEVPUSHES", "RUNTIME_GITHUBCLI"] as const;
-
-// (ii) the CI-Dispatch Gate shared kernel — the ONLY sanctioned place a
-// CI-wait sleep may live (inside `bkit_wait_ci`, never a raw `sleep` at the
-// call site). Marker comments bound each kernel block in bkit-build.md /
-// bkit-debug.md (three occurrences: build close-workflow, debug PR-mode
-// close-workflow, debug LOCAL-mode create-pr).
-const KERNEL_START = "# --- CI-Dispatch Gate shared kernel ---";
-const KERNEL_END = "# --- end CI-Dispatch Gate shared kernel ---";
-
-// Every raw `sleep N` literal in `.bkit/workflows/*.md` OUTSIDE the kernel
-// blocks MUST be one of these explicitly-catalogued retry/backoff sleeps —
-// the `dev`-lock acquisition poll (never a CI-wait; #341 D16/Risk 8's
-// serialise-concurrent-ship-runs mechanism, unrelated to D22's measured-signal
-// sleep probe inside bkit_wait_ci).
-// A new, un-catalogued raw sleep must be added HERE deliberately, or the
-// audit fails — never silently passed.
-const EXEMPT_RAW_SLEEPS: Array<{
-  file: (typeof WORKFLOW_FILES)[number];
-  literal: string;
-  context: string;
-}> = [
-  { file: "bkit-ship.md", literal: "sleep 5", context: "DEVLOCK" },
-  { file: "bkit-ship.md", literal: "sleep 10", context: "DEVLOCK" },
-  // Design/plan close hold the dev lock on the RUNTIME_DEVPUSHES=true branch only,
-  // which is exactly the branch where a foreground sleep is honoured.
-  { file: "bkit-design.md", literal: "sleep 10", context: "DEVLOCK" },
-  { file: "bkit-plan.md", literal: "sleep 10", context: "DEVLOCK" },
-  // #380 build/debug close — the dev-lock ROADMAP MIRROR poll (a distinct,
-  // short-deadline lock from ship's DEVLOCK above; fail-open, never a CI-wait).
-  { file: "bkit-build.md", literal: "sleep 5", context: "DEVLOCK" },
-  { file: "bkit-debug.md", literal: "sleep 5", context: "DEVLOCK" },
-];
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
   describe("(i) every RUNTIME_* flag has >=1 reader in .bkit/workflows/", () => {
@@ -85,9 +54,8 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
     for (const flag of RUNTIME_FLAGS) {
       it(`${flag} is read at least once`, () => {
         // A "reader" = any reference to the flag name outside its own
-        // definition site (the shim source lives in
-        // .bkit/templates/.bkit/scripts/bkit-runtime.sh, NOT under
-        // .bkit/workflows/ — so any occurrence here is necessarily a
+        // definition site (`bkit runtime detect`, commands/workflow/runtime.ts,
+        // NOT under .bkit/workflows/ — so any occurrence here is necessarily a
         // consumer: a conditional, an interpolation, or explanatory prose
         // naming the flag a reader depends on).
         const occurrences = (corpus.match(new RegExp(flag, "g")) ?? []).length;
@@ -95,10 +63,8 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       });
     }
 
-    it("CAN_SLEEP is absent (deleted — measured via CI_WAIT_BLOCKED, not a capability row)", () => {
+    it("CAN_SLEEP is absent (deleted — measured by bkit runs, not a capability row)", () => {
       expect(corpus).not.toContain("CAN_SLEEP");
-      expect(corpus).toContain("CI_WAIT_BLOCKED");
-      expect(corpus).toContain("BKIT_CI_OUTCOME");
     });
 
     it("RUNTIME_GITHUBCLI's reader chain includes the runtime-resolved row it is durably read back from", () => {
@@ -107,95 +73,27 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       // no writer ever durably emitted the row those readers depend on
       // (docs/failures.jsonl key runtime-resolved-row-never-emitted-step1,
       // fixed in this same sub-plan). Assert BOTH halves are present now:
-      // the reader (already existed) and the emission call site (T16 fix).
+      // the reader and the emission call site, which runs before the first
+      // `bkit runtime assert` that reads the row back.
       expect(corpus).toContain("runtime-resolved");
       for (const workflow of ["design", "plan", "build", "debug", "ship"] as const) {
         const content = readWorkflow(`bkit-${workflow}.md`);
-        expect(content).toContain(`bkit_runtime_row ${workflow} `);
+        const row = content.indexOf(`"$BKIT" runtime row --workflow=${workflow} `);
+        expect(row, `bkit-${workflow}.md emits the runtime-resolved row`).toBeGreaterThan(-1);
+        expect(row).toBeLessThan(content.indexOf("runtime assert"));
       }
     });
   });
 
-  describe("(ii) every foreground CI-wait sleep sits under the CI-wait rule; retry/backoff sleeps are explicitly exempted", () => {
-    it("the CI-Dispatch Gate shared kernel blocks call bkit_wait_ci, never a raw `sleep`", () => {
-      for (const file of ["bkit-build.md", "bkit-debug.md"] as const) {
-        const content = readWorkflow(file);
-        const blocks: string[] = [];
-        let cursor = 0;
-        for (;;) {
-          const startIdx = content.indexOf(KERNEL_START, cursor);
-          if (startIdx === -1) break;
-          const endIdx = content.indexOf(KERNEL_END, startIdx);
-          expect(endIdx).toBeGreaterThan(startIdx); // every start has a matching end
-          blocks.push(content.slice(startIdx, endIdx));
-          cursor = endIdx + KERNEL_END.length;
-        }
-        expect(blocks.length).toBeGreaterThanOrEqual(1);
-        for (const block of blocks) {
-          expect(block).toContain("bkit_wait_ci");
-          expect(block).not.toMatch(/(?<!bkit_wait_ci\()\bsleep\s+\d/);
-        }
-      }
-    });
-
-    it("every raw `sleep N` literal outside a kernel block is an explicitly-catalogued retry/backoff sleep", () => {
-      const RAW_SLEEP_RE = /\bsleep\s+\d+\b/g;
-      const found: Array<{ file: string; literal: string }> = [];
-
-      for (const file of WORKFLOW_FILES) {
-        const content = readWorkflow(file);
-        // Strip kernel-block content — those `sleep`s (inside bkit_wait_ci's
-        // own doc comments, if any) are governed by the assertion above,
-        // not this one.
-        let stripped = content;
-        for (;;) {
-          const startIdx = stripped.indexOf(KERNEL_START);
-          if (startIdx === -1) break;
-          const endIdx = stripped.indexOf(KERNEL_END, startIdx);
-          if (endIdx === -1) break;
-          stripped = stripped.slice(0, startIdx) + stripped.slice(endIdx + KERNEL_END.length);
-        }
-        for (const match of stripped.matchAll(RAW_SLEEP_RE)) {
-          found.push({ file, literal: match[0] });
-        }
-      }
-
-      // Every found raw sleep must appear in the exemption catalogue for
-      // its file (by literal `sleep N` text) — a new, un-catalogued sleep
-      // fails this assertion instead of silently passing.
-      for (const { file, literal } of found) {
-        const isExempt = EXEMPT_RAW_SLEEPS.some((e) => e.file === file && e.literal === literal);
+  describe("(ii) no workflow sleeps in the foreground — waits live in bkit commands", () => {
+    for (const file of WORKFLOW_FILES) {
+      it(`${file} carries no raw \`sleep N\``, () => {
+        const sleeps = readWorkflow(file).match(/\bsleep\s+\d+/g) ?? [];
         expect(
-          isExempt,
-          `un-catalogued raw sleep "${literal}" in ${file} — add to EXEMPT_RAW_SLEEPS or route through bkit_wait_ci`,
-        ).toBe(true);
-      }
-
-      // And the catalogue itself stays accurate — no stale exemption for a
-      // sleep that no longer exists in the corpus.
-      for (const exempt of EXEMPT_RAW_SLEEPS) {
-        const stillPresent = found.some(
-          (f) => f.file === exempt.file && f.literal === exempt.literal,
-        );
-        expect(
-          stillPresent,
-          `catalogued exemption "${exempt.literal}" in ${exempt.file} no longer found in the corpus — remove the stale entry`,
-        ).toBe(true);
-      }
-    });
-
-    it("every catalogued exemption is a dev-lock retry/backoff sleep, not a CI-wait duplicate", () => {
-      for (const { file, literal, context } of EXEMPT_RAW_SLEEPS) {
-        const content = readWorkflow(file);
-        const idx = content.indexOf(literal);
-        expect(idx).toBeGreaterThanOrEqual(0);
-        // The exemption's declared context (DEVLOCK) must appear in the
-        // surrounding ~400 chars — proves it is the dev-lock poll, not an
-        // unrelated CI-wait sleep smuggled past the kernel-block check.
-        const windowStart = Math.max(0, idx - 400);
-        const window = content.slice(windowStart, idx);
-        expect(window).toContain(context);
-      }
-    });
+          sleeps,
+          `raw sleep in ${file} — wait through bkit runs wait|dispatch or bkit locks acquire`,
+        ).toEqual([]);
+      });
+    }
   });
 });

@@ -16,17 +16,16 @@
  * is left unchanged, so `awk '{print $2}'` survives a one-argument invocation and
  * breaks the moment a third argument is passed.
  *
- * The fix is `$(N)`, not the host's `\$N` escape. `$(0)` is POSIX awk — `$`
- * applied to a parenthesised expression — identical in behaviour and containing
- * no `$`-digit sequence for any host to rewrite. The backslash escape is
- * Claude-Code-specific, and these same files also render to `.cursor/commands/`
- * and `.opencode/commands/`, where a surviving `\$0` would reach awk as a syntax
- * error of its own.
+ * The ledger scans and lock-owner reads that used awk field references now run
+ * inside `bkit` commands, so a workflow needs no `$N` at all. When an inline awk
+ * program does need a field, write `$(N)` (POSIX awk — `$` applied to a
+ * parenthesised expression — with no `$`-digit sequence for any host to rewrite),
+ * not the host's `\$N` escape: the backslash escape is Claude-Code-specific, and
+ * these same files also render to `.cursor/commands/` and `.opencode/commands/`,
+ * where a surviving `\$0` would reach awk as a syntax error of its own.
  *
- * Scope is workflows only. `.bkit/scripts/*.sh` and `.github/workflows/*.yml`
- * are executed as files, never expanded, and their `$1` is a genuine positional
- * parameter. Shell functions taking arguments belong in those scripts — `$(1)`
- * is command substitution in bash, so the workaround does NOT carry over.
+ * Scope is workflows only. `bkit` commands, `.bkit/scripts/*` and
+ * `.github/workflows/*.yml` are executed as programs, never expanded.
  */
 
 import * as fs from "node:fs";
@@ -67,32 +66,5 @@ describe("slash-command argument expansion cannot clobber workflow bash", () => 
         });
     }
     expect(bad).toEqual([]);
-  });
-});
-
-describe("awk field references survive the rewrite", () => {
-  /**
-   * The rewrite is only safe if `$(N)` is what the shipped programs actually use.
-   * A regression that reintroduces `$0` would be caught above; this catches the
-   * opposite slip — a workflow that drops the field reference entirely while
-   * chasing the placeholder rule, leaving `tolower()` or `{print}`.
-   */
-  it("the ledger scan still reads whole lines", () => {
-    const plan = fs.readFileSync(path.join(REPO_ROOT, `${WORKFLOW_DIR}/bkit-plan.md`), "utf-8");
-    expect(plan.match(/tolower\(\$\(0\)\)/g)?.length).toBe(2);
-    expect(plan.match(/printf "%d\\t%d\\t%s\\n", c, NR, \$\(0\)/g)?.length).toBe(2);
-  });
-
-  it("every lock-owner read still selects the second field", () => {
-    const withLock = workflowFiles().filter((f) =>
-      fs.readFileSync(path.join(REPO_ROOT, f), "utf-8").includes("LOCK_WORKFLOW="),
-    );
-    expect(withLock.length).toBeGreaterThan(3);
-    for (const file of withLock) {
-      expect(
-        fs.readFileSync(path.join(REPO_ROOT, file), "utf-8"),
-        `${file}: lock-owner read lost its field reference`,
-      ).toContain(`LOCK_WORKFLOW=$(awk '{print $(2)}' "$LOCK")`);
-    }
   });
 });

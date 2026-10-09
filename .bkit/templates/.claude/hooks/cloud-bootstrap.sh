@@ -119,8 +119,8 @@ fi
 # gh-preflight (#341 C2): loud, NEVER-silent RUNTIME_GITHUBCLI record. SessionStart hooks
 # cannot hard-stop the session (see header note) — this line is a loud,
 # NON-BLOCKING signal only. The ENFORCING dual-lane abort lives in each
-# workflow's Step-1 preflight (the shim reading RUNTIME_GITHUBCLI — see
-# bkit-runtime.sh's bkit_runtime_detect / bkit_runtime_assert_resolved), NOT
+# workflow's Step-1 preflight (`bkit runtime detect` / `bkit runtime assert`
+# reading RUNTIME_GITHUBCLI), NOT
 # here.
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   RUNTIME_GITHUBCLI=true

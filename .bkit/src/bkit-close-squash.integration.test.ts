@@ -1,7 +1,10 @@
 // Executes the local (RUNTIME_DEVPUSHES=true) close path of bkit-design.md and
 // bkit-plan.md against a real repo, remote and worktree. The block is
 // extracted from the workflow and run as written — the test does not keep a
-// second copy of the squash / commit / cleanup logic.
+// second copy of the squash / commit / cleanup logic. The `bkit` commands the
+// block calls (dev lock, roadmap fold, ledgers commit, dev push, worktree
+// removal) run from the repo's built dist/, linked into the fixture at the
+// path the block resolves.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -11,7 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const FID = "999-close-squash";
 const MONTH = "202610";
-const SCRIPTS_DIR = path.resolve(".bkit/scripts");
+const BKIT_BIN = path.resolve("dist/bkit-install.js");
 
 const temps: string[] = [];
 
@@ -40,15 +43,13 @@ function localCloseBlock(workflow: "design" | "plan"): string {
     .map((m) => m[1])
     .find((body) => body.includes('git merge --squash -X ours "feat/{FID}"'));
   expect(fence, `${workflow} close squash fence not found`).toBeTruthy();
-  const open = 'if [ "$RUNTIME_DEVPUSHES" = "true" ]; then\n';
-  const start = fence!.indexOf(open);
+  // The `if` that tests the runtime's runtimeDevPushes, up to its `else`.
+  const open = /^ {3}if \[ .*runtimeDevPushes.*= "true" \]; then\n/m.exec(fence!);
+  expect(open, "local close branch not found").toBeTruthy();
+  const start = open!.index + open![0].length;
   const end = fence!.indexOf("\n   else\n", start);
-  expect(start, "local close branch not found").toBeGreaterThanOrEqual(0);
   expect(end, "local close branch end not found").toBeGreaterThan(start);
-  return fence!
-    .slice(start + open.length, end)
-    .replaceAll("{FID}", FID)
-    .replaceAll("{YYYYMM}", MONTH);
+  return fence!.slice(start, end).replaceAll("{FID}", FID).replaceAll("{YYYYMM}", MONTH);
 }
 
 interface Fixture {
@@ -69,10 +70,11 @@ function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = 
   git(repo, "config", "user.email", "t@t.t");
   git(repo, "config", "user.name", "t");
   git(repo, "remote", "add", "origin", remote);
-  fs.cpSync(SCRIPTS_DIR, path.join(repo, ".bkit/scripts"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "node_modules/.bin"), { recursive: true });
+  fs.symlinkSync(BKIT_BIN, path.join(repo, "node_modules/.bin/bkit"));
   write(
     path.join(repo, ".gitignore"),
-    ".worktrees/\n.bkit/.dev.lock\ndocs/plans/*/logs/**/.lock\n",
+    ".worktrees/\nnode_modules/\n.bkit/.dev.lock\ndocs/plans/*/logs/**/.lock\n",
   );
   write(path.join(repo, "docs/roadmap.md"), "# Roadmap\n");
   write(path.join(repo, "src/app.ts"), "export {};\n");
@@ -93,6 +95,9 @@ function initFixture(workflow: "design" | "plan", opts: { docOnDev?: string } = 
   git(wt, "add", "-A");
   git(wt, "commit", "-q", "-m", "feature work");
   git(wt, "push", "-q", "origin", `feat/${FID}`);
+  // `bkit worktrees setup` marks the worktrees it creates; close removes only those.
+  const common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  write(path.join(common, "bkit-outbox", FID, ".worktree-owned"), "");
   return { repo, docPath, devBefore: git(repo, "rev-parse", "origin/dev") };
 }
 
@@ -100,7 +105,16 @@ function runClose(
   workflow: "design" | "plan",
   repo: string,
 ): { status: number | null; stderr: string } {
-  const script = `REPO_ROOT="${repo}"\nRUNTIME_DEVPUSHES=true\n${localCloseBlock(workflow)}`;
+  // What the fence sets before its runtime branch: the binary, the main
+  // checkout, and the ledger row's repo / version fields.
+  const preamble = [
+    'BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"',
+    `REPO_ROOT="${repo}"`,
+    'cd "$REPO_ROOT"',
+    'REPO_SLUG="test/repo"',
+    'BKIT_VER="0.0.0"',
+  ].join("\n");
+  const script = `${preamble}\n${localCloseBlock(workflow)}`;
   const res = spawnSync("bash", ["-c", script], { cwd: repo, encoding: "utf-8" });
   return { status: res.status, stderr: res.stderr };
 }
@@ -126,6 +140,7 @@ describe.each(["design", "plan"] as const)("bkit-%s.md local close squash", (wor
     const res = runClose(workflow, fx.repo);
 
     expect(res.status).not.toBe(0);
+    expect(res.stderr).toContain(`squash of feat/${FID} into dev failed`);
     expectBranchKept(fx);
     expect(fs.readFileSync(path.join(fx.repo, "docs/roadmap.md"), "utf-8")).toContain(
       "another session",
@@ -155,6 +170,7 @@ describe.each(["design", "plan"] as const)("bkit-%s.md local close squash", (wor
     const res = runClose(workflow, fx.repo);
 
     expect(res.status).not.toBe(0);
+    expect(res.stderr).toContain(`squash did not stage the feat/${FID} copy of`);
     expectBranchKept(fx);
   });
 

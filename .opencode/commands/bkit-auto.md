@@ -27,11 +27,11 @@ $ARGUMENTS
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{PHASE}`, `{ARG}`, `{FID}`, `{ISSUE_ID}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` and `{REPO}` derived from `{OWNER_REPO}` at Step 1.
 > - **Tools:** Verify every return; do NOT assume success.
 > - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --kind=fallback --from= --to= --reason= --asserted-by= --file=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
 
@@ -43,13 +43,14 @@ $ARGUMENTS
 ## 🤖 Failure Path
 
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Workflow Failure
-   Step: {N} — {Step Name}; Sub-step: {M}
-   Error: {error message / tool response}
-   Stderr: {last 20 lines if shell}
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = a file holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   ERROR=$(cat <<'BKIT_ERROR'
+   {error message / tool response}
+   BKIT_ERROR
+   )
+   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="{STDERR_FILE}"
    ```
 2. **STOP**, no further downstream steps.
 
@@ -70,34 +71,38 @@ $ARGUMENTS
    esac
    ```
    **If** exit branch fires → **Failure Path**.
-3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
+3. Resolve repo:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" repo info --allow-detached
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`.
 4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
 5. **If** `MODE` = CI, discriminate on `{ARG}` shape — numeric = PR number, else FID slug. Assert the slug allowlist BEFORE `FID` is used:
    ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    ARG="{ARG}"
    if [[ "$ARG" =~ ^[0-9]+$ ]]; then
-     PR_NUMBER="$ARG"
+     printf 'MODE=CI PR_NUMBER=%s\n' "$ARG"
    else
-     MODE=CI_DEV
-     FID="$ARG"
-     if ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-       echo "Invalid CI_DEV FID: $FID" >&2; exit 1
-     fi
-     ISSUE_ID=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]')
-     BRANCH=dev
-     HEAD_SHA=$(git rev-parse origin/dev 2>/dev/null || echo "")
-     PR_URL=""
-     RUN_ID=""
+     "$BKIT" fids check --fid="$ARG" --tracker=any || { echo "Invalid CI_DEV FID: $ARG" >&2; exit 1; }
+     printf 'MODE=CI_DEV BRANCH=dev HEAD_SHA=%s\n' "$(git rev-parse origin/dev 2>/dev/null || echo "")"
    fi
-   printf 'MODE=%s PR_NUMBER=%s FID=%s ISSUE_ID=%s BRANCH=%s HEAD_SHA=%s\n' \
-     "$MODE" "${PR_NUMBER:-}" "${FID:-}" "${ISSUE_ID:-}" "${BRANCH:-}" "${HEAD_SHA:-}"
    ```
-   **If** exit branch fires → **Failure Path**.
+   **If** exit non-zero → **Failure Path**.
    Route:
-   - **If** `MODE` = CI_DEV → assert `FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA` non-empty, then step 11. **Else** → **Failure Path**.
-   - **Else** → step 6.
-6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
-7. **If** `PR_STATE` != OPEN → **Failure Path**.
+   - **If** printed `MODE` = CI_DEV → hold `MODE`, `BRANCH`, `HEAD_SHA`, `fid` as `{FID}`, `issueId` as `{ISSUE_ID}`; set `PR_URL` and `RUN_ID` empty → assert `FID`, `ISSUE_ID`, `BRANCH`, `HEAD_SHA` non-empty, then step 11. **Else** → **Failure Path**.
+   - **Else** → hold printed `PR_NUMBER` → step 6.
+6. Read the PR:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" prs probe --number={PR_NUMBER}
+   ```
+   Route:
+   - **If** exit 0 → hold `headRefName` as `{BRANCH}`, `headRefOid` as `{HEAD_SHA}`, `state` as `{PR_STATE}`, `url` as `{PR_URL}`.
+   - **If** exit 80 → `pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → `head.ref` → `BRANCH`, `head.sha` → `HEAD_SHA`, `state` uppercased → `PR_STATE`, `html_url` → `PR_URL`.
+   - **Else** → **Failure Path**.
+7. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**. **If** `PR_STATE` != OPEN → **Failure Path**.
 8. Resolve CI run id that triggered the workflow:
    ```bash
    BRANCH="{BRANCH}"
@@ -105,32 +110,22 @@ $ARGUMENTS
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
-9. Extract `ISSUE_ID` and `FID` from PR body metadata — marker first, branch name only as fallback:
-     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` and `FID`:
-   ```html
-   <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
-   ```
-   Assert `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`.
-   **If** marker missing, malformed, or `{FID}` fails the slug assertion → fall through to step 10.
-10. **Fallback (marker absent or malformed).**
+9. Read PR body via `pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → whole line starting `<!-- bkit:` → `{MARKER}`; empty when absent.
+10. Recover `FID` and `ISSUE_ID` — marker first, `feat/{FID}` branch as fallback:
     ```bash
-    BRANCH="{BRANCH}"
-    case "$BRANCH" in
-      feat/*) FID="${BRANCH#feat/}" ;;
-      *) FID="" ;;
-    esac
+    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+    MARKER=$(cat <<'BKIT_MARKER'
+    {MARKER}
+    BKIT_MARKER
+    )
+    "$BKIT" fids parse --marker="$MARKER" --branch="{BRANCH}"
     ```
-    **If** `BRANCH` does not start with `feat/` → **Failure Path**. Assert `FID` non-empty, `FID` != `BRANCH`, and `[[ "{FID}" =~ ^[a-z0-9][a-z0-9-]*$ ]]`. **Else** → **Failure Path**. Then recover `ISSUE_ID` from the `{FID}` slug:
-     `ISSUE_ID` = leading numeric segment of `{FID}` (`341-three-runtimes` → `341`). Assert `[[ "{ISSUE_ID}" =~ ^[0-9]+$ ]]`. **Else** → **Failure Path**.
+    **If** exit non-zero → **Failure Path**. Hold `fid` as `{FID}`, `issueId` as `{ISSUE_ID}`.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-    `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch / PR / run links; `MODE` = CI_DEV omits the PR line when `PR_URL` is empty and the run line when `RUN_ID` is empty):
-    ```comment
-    ###### bkit:generated
-    ## bkit Auto
-    ### Step 1 — Start Workflow - Phase: {PHASE}
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
-    [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID})
+    `{BODY}` = `body` of the block below; `MODE` = BRIEF drops `--tree`, `--pr-number`, `--pr-url`, `--run-id`; `MODE` = CI_DEV drops `--pr-number` / `--pr-url` when `PR_URL` is empty and `--run-id` when `RUN_ID` is empty:
+    ```bash
+    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+    "$BKIT" issues comment --workflow=auto --workflow-heading --step-number=1 --step-title="Start Workflow" --field=Phase={PHASE} --owner-repo={OWNER_REPO} --tree={BRANCH} --pr-number={PR_NUMBER} --pr-url={PR_URL} --run-id={RUN_ID}
     ```
 
 ### 🔒 Gate 1 — Start Workflow
@@ -150,10 +145,10 @@ $ARGUMENTS
 ## 🤖 Step 2 — Dispatch
 
 1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 2 — Dispatch - Phase: {PHASE}
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=2 --step-title=Dispatch --field=Phase={PHASE}
    ```
 2. Derive `{REF}`. NEVER pass a bare `{FID}` or bare number — the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
    `{REF}` = `{ISSUE_ID}` prefixed with `#`, unless it already starts with `#`. The `#` is REQUIRED.

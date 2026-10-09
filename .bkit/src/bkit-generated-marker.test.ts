@@ -3,26 +3,27 @@
  * comments out of future workflow inputs, and the ordering fix that makes the
  * `###### bkit:ignore-earlier` cut mean the same thing on both trackers.
  *
- * Four invariants, each a silent-failure mode if it slips:
- *  1. Every ```comment fence — the template a workflow posts FROM — opens with
- *     `###### bkit:generated` as the first body line. A template added later
- *     without the marker looks like human input forever; the fence count is
- *     pinned so a new template cannot silently join unstamped.
- *  2. Both filters live at the point of use, not at the fetch: every step that
- *     joins a body and its comments into `ISSUE_TEXT` / `RELATED_ISSUE_TEXT`
- *     drops marker-carrying comments AND applies the `bkit:ignore-earlier` cut,
- *     and no fetch site does either. Splitting them back apart is what the 16
- *     fetch sites make expensive to keep consistent — one of them silently
- *     missing a filter is exactly the pollution the marker exists to close off.
- *  3. Every comment-fetch site normalises order with the same `sort oldest to
- *     newest` step, on both trackers. Worded as a sort rather than a per-tracker
- *     reversal it stays correct whatever order the call returned. A site missing
- *     it feeds the cut a newest-first stream, which inverts "drop everything
- *     above the last marker" into "keep the superseded revision, drop the
- *     current thinking" — and the artifact still looks plausibly trimmed, so
- *     nothing else would ever catch it.
- *  4. GitHub comment text is fetched via `issue_read` `get_comments`, same
- *     sort step as Linear `list_comments`. Fetch sites do not filter.
+ * Stamping and filtering both live in `bkit issues` now: every comment body comes
+ * from `bkit issues comment` / `bkit workstreams comment`, which open it with
+ * `###### bkit:generated` (pinned in commands/workflow/issues.test.ts and
+ * workstreams.test.ts), and `bkit issues text` drops marker-carrying comments and
+ * applies the cut (pinned in issues.test.ts). What stays here is the wiring that
+ * keeps those commands the ONLY place either happens — each a silent-failure mode
+ * if it slips:
+ *  1. No workflow hand-writes a ```comment template. A hand-written body that
+ *     misses the marker looks like human input forever.
+ *  2. Every join into `ISSUE_TEXT` / `RELATED_ISSUE_TEXT` goes through
+ *     `bkit issues text`, and no workflow names the marker or the cut token at
+ *     all — a filter or cut reappearing in prose means the logic has split in two
+ *     again, and one copy silently drifting is exactly the pollution the marker
+ *     exists to close off.
+ *  3. Nothing bkit ships carries a whole-line cut marker, which would arm the next
+ *     run's cut on bkit's own output.
+ *  4. Every comment-fetch site normalises order with the same `sort oldest to
+ *     newest` step, on both trackers. `bkit issues text` re-sorts by timestamp only
+ *     when every comment carries one; for any other input the order it is handed
+ *     is the order the cut sees, and a newest-first stream inverts "drop
+ *     everything above the last marker" into "keep the superseded revision".
  */
 
 import * as fs from "node:fs";
@@ -52,62 +53,52 @@ const CUT_MARKER = `###### ${CUT_TOKEN}`;
 // mention of the token prose rather than a live marker, and it is the whole reason
 // a prompt or a step may name the mechanism without arming it.
 const CUT_MARKER_LINE_RE = new RegExp(`^[ \\t]*${CUT_MARKER}[ \\t]*$`);
-const FENCE_RE = /^[ \t]*```comment$/;
-const TOTAL_EXPECTED_FENCES = 84;
-
-// The cut steps are the ONLY sanctioned place the cut token may appear: one per
-// join into each named stream. Shared by the point-of-use check and the
-// no-self-cut check so the two cannot disagree about how many are legitimate.
-const CUT_STEPS = { ISSUE_TEXT: 5, RELATED_ISSUE_TEXT: 6 } as const;
-
 const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
 
-describe("every comment template is stamped bkit:generated", () => {
-  it(`carries exactly ${TOTAL_EXPECTED_FENCES} \`\`\`comment fences repo-wide`, () => {
-    const total = ALL_FILES.reduce(
-      (sum, rel) => sum + (read(rel).match(new RegExp(FENCE_RE, "gm")) ?? []).length,
-      0,
-    );
-    // Pinned count: a new template that skips the fence entirely (rather than
-    // shipping unstamped) would otherwise pass every other check in this file.
-    expect(total).toBe(TOTAL_EXPECTED_FENCES);
-  });
-
-  for (const rel of ALL_FILES) {
-    it(`${rel}: every \`\`\`comment fence opens with ${MARKER}`, () => {
-      const lines = read(rel).split("\n");
-      const fenceLineIdx = lines
-        .map((line, i) => ({ line, i }))
-        .filter(({ line }) => FENCE_RE.test(line))
-        .map(({ i }) => i);
-      expect(fenceLineIdx.length, `${rel} carries no comment fences`).toBeGreaterThan(0);
-      for (const i of fenceLineIdx) {
-        const body = (lines[i + 1] ?? "").trim();
-        expect(body, `${rel}:${i + 2} fence body does not open with ${MARKER}`).toBe(MARKER);
-      }
+describe("comment bodies come from bkit commands, never a hand-written template", () => {
+  for (const rel of WORKFLOW_FILES) {
+    it(`${rel}: carries no \`\`\`comment template`, () => {
+      const fences = read(rel).match(/^[ \t]*```comment$/gm) ?? [];
+      expect(
+        fences,
+        `${rel} hand-writes a comment body; build it with bkit issues comment`,
+      ).toEqual([]);
     });
   }
 });
 
-describe("both filters are applied at the point of use", () => {
-  // The point of use is the step that names the joined stream: `ISSUE_TEXT` for
-  // the input artifact, `RELATED_ISSUE_TEXT` per hit in the related-issues
-  // sweep. Counted by phrase rather than per line, because the sweep spreads its
-  // steps over one bullet each while the issue path keeps them on one line.
-  const occurrences = (phrase: string) =>
-    WORKFLOW_FILES.reduce((sum, rel) => sum + read(rel).split(phrase).length - 1, 0);
+describe("issue text is joined, filtered and cut only by bkit issues text", () => {
+  const ISSUE_JOIN = 'issues text --description-file="{OUTBOX}/issue-description.md"';
+  const RELATED_JOIN = 'issues text --description-file="{OUTBOX}/related-description.md"';
+  const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
+  const SWEEPS = [
+    ".bkit/workflows/bkit-debug.md",
+    ".bkit/workflows/bkit-design.md",
+    ".bkit/workflows/bkit-plan.md",
+  ];
 
-  for (const [variable, count] of Object.entries(CUT_STEPS)) {
-    it(`${variable}: ${count} joins, each dropping ${MARKER} and applying the cut`, () => {
-      expect(occurrences(`into \`${variable}\``), "join step count").toBe(count);
-      expect(
-        occurrences(`drop any comments from \`${variable}\` whose first line is \`${MARKER}\``),
-        "drop step count",
-      ).toBe(count);
-      expect(
-        occurrences(`**If** \`${variable}\` contains whole-line marker \`${CUT_MARKER}\``),
-        "cut step count",
-      ).toBe(count);
+  for (const rel of PHASES) {
+    it(`${rel}: ISSUE_TEXT is the text bkit issues text prints`, () => {
+      const content = read(rel);
+      expect(content.split(ISSUE_JOIN).length - 1, "issue-text join").toBe(1);
+      // The join's output is what the input artifact carries.
+      expect(content).toMatch(/`text` (as|→) `\{?ISSUE_TEXT\}?`|`ISSUE_TEXT` = `text` printed by/);
+    });
+  }
+
+  for (const rel of SWEEPS) {
+    it(`${rel}: each related-issues hit is joined by bkit issues text`, () => {
+      const content = read(rel);
+      expect(content.split(RELATED_JOIN).length - 1).toBeGreaterThanOrEqual(1);
+      expect(content).toContain("RELATED_ISSUE_TEXT");
+    });
+  }
+
+  for (const rel of WORKFLOW_FILES) {
+    it(`${rel}: names neither ${MARKER} nor ${CUT_TOKEN} — filtering is the command's job`, () => {
+      const content = read(rel);
+      expect(content).not.toContain(MARKER);
+      expect(content).not.toContain(CUT_TOKEN);
     });
   }
 });
@@ -139,39 +130,6 @@ describe("nothing bkit ships can carry a live cut marker", () => {
     const offenders = [...ALL_FILES, ...PROMPT_FILES].flatMap(markerLines);
     expect(offenders, "a shipped cut marker arms the next run's cut").toEqual([]);
   });
-});
-
-describe("no comment-fetch call site filters or cuts", () => {
-  // Filtering at the fetch is what this change moved away from: every call site
-  // is another chance for one to drift, and the wording cannot then be shared with
-  // the sweep. A filter reappearing here means the logic has split in two again.
-  const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments/;
-  const PROSE_LINE_RE = /^\s*>/;
-
-  const callSites = (rel: string) =>
-    read(rel)
-      .split("\n")
-      .filter((line) => CALL_SITE_RE.test(line) && !PROSE_LINE_RE.test(line));
-
-  it("finds exactly 16 real call sites repo-wide (10 issue-comment + 6 related-issues)", () => {
-    const total = WORKFLOW_FILES.reduce((sum, rel) => sum + callSites(rel).length, 0);
-    expect(total).toBe(16);
-  });
-
-  for (const rel of WORKFLOW_FILES) {
-    it(`${rel}: no get_comments / list_comments call site mentions ${MARKER}`, () => {
-      // Guard against a sweep site that collapses its fetch and join back onto
-      // one line: that line legitimately carries the marker, so exclude it here
-      // rather than fail — it is covered as a point-of-use step above.
-      const fetchOnly = callSites(rel).filter((line) => !line.includes("RELATED_ISSUE_TEXT"));
-      for (const line of fetchOnly) {
-        expect(
-          line,
-          `fetch site filters at the wrong layer: ${line.trim().slice(0, 80)}…`,
-        ).not.toContain(MARKER);
-      }
-    });
-  }
 });
 
 describe("every comment-fetch site normalises order the same way", () => {

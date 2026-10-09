@@ -18,8 +18,8 @@
 // cutting 41-76% of the bytes. The ceiling exists because immunity alone fails
 // open exactly when things are worst; it sits far above the observed maximum.
 //
-// Bytes are counted as the shell's `LC_ALL=C awk` counts them, so a record from
-// here and one from bkit-context-clamp.sh agree while both exist.
+// Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
+// characters, so a multi-byte line is measured by what it costs on disk.
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";

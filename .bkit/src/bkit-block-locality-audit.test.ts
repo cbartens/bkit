@@ -107,71 +107,7 @@ const ENV = new Set([
   "RUNNER_OS",
   "NODE_ENV",
   "npm_config_user_agent",
-  "BKIT_CI_OUTCOME",
-  "BKIT_CI_ATTEMPTS",
-  "BKIT_CI_ALL_ERRORED",
 ]);
-
-/**
- * Variables a sourced `.bkit/scripts/*.sh` library sets in the CALLER's shell.
- *
- * Only libraries the block actually sources count, and only if sourced (`.` /
- * `source`). `bkit-workflow-telemetry.sh` and `bkit-ship-gate.sh` are invoked
- * as `bash "..."` — a subprocess — so their variables correctly do NOT count.
- */
-const PROVIDES: Record<string, string[]> = {
-  "bkit-counter-bus-config.sh": [
-    "MAX_CHALLENGE_REMEDIATE_ATTEMPT",
-    "MAX_DEBUG_ATTEMPT",
-    "MAX_DEV_DISPATCH_ATTEMPTS",
-    "MAX_MERGE_ATTEMPT",
-    "MAX_NORMAL_ATTEMPT",
-    "MAX_REVALIDATE_ATTEMPT",
-    "MAX_SOAK_ATTEMPT",
-    "MAX_TEST_ATTEMPT",
-    "MAX_VERIFY_ATTEMPT",
-  ],
-  // sources bkit-counter-bus-config.sh itself
-  "bkit-counter-bus.sh": [
-    "MAX_CHALLENGE_REMEDIATE_ATTEMPT",
-    "MAX_DEBUG_ATTEMPT",
-    "MAX_DEV_DISPATCH_ATTEMPTS",
-    "MAX_MERGE_ATTEMPT",
-    "MAX_NORMAL_ATTEMPT",
-    "MAX_REVALIDATE_ATTEMPT",
-    "MAX_SOAK_ATTEMPT",
-    "MAX_TEST_ATTEMPT",
-    "MAX_VERIFY_ATTEMPT",
-  ],
-  "bkit-ship-timeouts.sh": [
-    "SHIP_CI_WAIT_TIMEOUT_S",
-    "SHIP_DEV_LOCK_ACQUIRE_DEADLINE_S",
-    "SHIP_DEV_LOCK_STALE_S",
-    "SHIP_POLL_INTERVAL_S",
-    "SHIP_PROBE_ATTEMPTS",
-    "SHIP_PROBE_INTERVAL_S",
-  ],
-  "bkit-status-fold.sh": ["BKIT_STATUS_FOLD"],
-  "bkit-rebase-resolve.sh": ["BKIT_REBASE_LEDGERS"],
-  "bkit-status-route.sh": [],
-  "bkit-runtime.sh": [
-    "RUNTIME",
-    "RUNTIME_WORKTREES",
-    "RUNTIME_DEVPUSHES",
-    "RUNTIME_GITHUBCLI",
-    "RUNTIME_GITHUBCLI_EXIT",
-    "RUNTIME_GITHUBCLI_ERR",
-    "WORKTREE_PATH",
-    "BKIT_CLOSE_GUARD_ORIG_BRANCH",
-    "CI_WAIT_RESULT",
-    "CI_WAIT_ATTEMPTS",
-    "CI_WAIT_ELAPSED",
-    "CI_WAIT_ALL_ERRORED",
-    "CI_WAIT_BLOCKED",
-    "TEST_SCOPE",
-    "CI_DECLARED_WORKFLOW",
-  ],
-};
 
 // ---------------------------------------------------------------------------
 // Fence parsing
@@ -271,7 +207,6 @@ const FORVAR = /\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g;
 const CFORVAR = /\bfor\s*\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/g;
 const READVAR = /\bread\s+(?:-r\s+)?(?:-a\s+)?([A-Za-z_][A-Za-z0-9_ ]*)/g;
 const ARITH = /\(\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*[-+*/]?=/g;
-const SOURCED = /(?:^|[;&|]|\bthen\b|\belse\b)\s*(?:\.|source)\s+"?[^"\s;]*?\/([a-z-]+\.sh)/gm;
 const JQARG = /--arg(?:json)?\s+([A-Za-z_][A-Za-z0-9_]*)/g;
 const JQBIND = /\bas\s+\$([A-Za-z_][A-Za-z0-9_]*)/g;
 const REF = /\$\{?([A-Za-z_][A-Za-z0-9_]*)/g;
@@ -292,7 +227,13 @@ export interface Finding {
   blockStart: number;
 }
 
-/** Names assigned, sourced, or otherwise legitimately in scope for a block. */
+/**
+ * Names assigned or otherwise legitimately in scope for a block.
+ *
+ * Nothing sourced counts: workflows and prompts call `bkit <noun> <verb>`
+ * commands, which print JSON and set nothing in the caller's shell, so every
+ * value a block uses is assigned in that block.
+ */
 function inScope(masked: string, raw: string): Set<string> {
   const declared = new Set<string>();
   for (const n of allMatches(ASSIGN, masked)) declared.add(n);
@@ -301,9 +242,6 @@ function inScope(masked: string, raw: string): Set<string> {
   for (const n of allMatches(CFORVAR, masked)) declared.add(n);
   for (const group of allMatches(READVAR, masked)) {
     for (const n of group.trim().split(/\s+/)) if (n) declared.add(n);
-  }
-  for (const lib of allMatches(SOURCED, masked)) {
-    for (const n of PROVIDES[lib] ?? []) declared.add(n);
   }
   // jq-internal names are not shell variables
   for (const n of allMatches(JQARG, raw)) declared.add(n);
@@ -458,26 +396,26 @@ describe("#440: the detector itself works", () => {
     expect(auditContent("t.md", md)).toEqual([]);
   });
 
-  it("counts a sourced library's exported vars as in scope", () => {
+  it("does NOT count vars a sourced script would set — nothing sourced provides block state", () => {
     const md = [
       "```bash",
       "REPO_ROOT=/tmp",
-      '. "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh"',
-      `jq -s "$BKIT_STATUS_FOLD"' fold' f.jsonl`,
+      '. "$REPO_ROOT/.bkit/scripts/some-lib.sh"',
+      'echo "$LIB_VALUE"',
       "```",
     ].join("\n");
-    expect(auditContent("t.md", md)).toEqual([]);
+    expect(auditContent("t.md", md).map((h) => h.name)).toEqual(["LIB_VALUE"]);
   });
 
-  it("does NOT count vars from a library that is executed, not sourced", () => {
+  it("does NOT count a value a bkit command printed unless the block assigns it", () => {
     const md = [
       "```bash",
-      "WT=/tmp",
-      'bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh"',
-      'echo "$FID"',
+      'BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"',
+      '"$BKIT" counters derive --file=s.jsonl --workflow=build --step=x --position=next',
+      'echo "$value"',
       "```",
     ].join("\n");
-    expect(auditContent("t.md", md).map((h) => h.name)).toEqual(["FID"]);
+    expect(auditContent("t.md", md).map((h) => h.name)).toEqual(["value"]);
   });
 
   it("does not treat a nested ``` fence as closing a ```` block", () => {

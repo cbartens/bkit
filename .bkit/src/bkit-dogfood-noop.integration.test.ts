@@ -81,41 +81,31 @@ describe("runPayload() — zero writes when isDogfood() (in-repo install)", () =
 });
 
 // ---------------------------------------------------------------------------
-// Dogfood byte-identity — ship gate + timeout scripts (#384 SP2 Task 6)
+// Dogfood byte-identity — `.bkit/scripts`
 // ---------------------------------------------------------------------------
 //
 // `.bkit/scripts` is excluded from the npm `files` list — consumers receive
 // scripts from `.bkit/templates/.bkit/scripts/`; the root copy is the dogfood
-// mirror. `bkit-ship-gate.sh` + `bkit-ship-timeouts.sh` are byte-identical
-// pairs enforced here. Task 6 is the SOLE owner of this property's automation
-// (SP1 Tasks 1+4 satisfied byte-identity via manual `diff`).
+// mirror, so every shipped script must be byte-identical in both homes.
 
-describe("dogfood byte-identity — ship gate + timeout scripts", () => {
-  it("bkit-ship-gate.sh: root copy === template copy (byte-identical)", () => {
-    const pkgRoot = getPkgRoot();
-    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-gate.sh");
-    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-gate.sh");
+describe("dogfood byte-identity — .bkit/scripts", () => {
+  const pkgRoot = getPkgRoot();
+  const shipped = fs.readdirSync(path.join(pkgRoot, ".bkit/templates/.bkit/scripts")).sort();
+
+  it("ships at least one script", () => {
+    expect(shipped.length).toBeGreaterThan(0);
+  });
+
+  it.each(shipped)("%s: root copy === template copy (byte-identical)", (name) => {
+    const root = path.join(pkgRoot, ".bkit/scripts", name);
+    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts", name);
     expect(fs.existsSync(root)).toBe(true);
-    expect(fs.existsSync(tmpl)).toBe(true);
     expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
   });
 
-  it("bkit-ship-timeouts.sh: root copy === template copy (byte-identical)", () => {
-    const pkgRoot = getPkgRoot();
-    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-timeouts.sh");
-    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-timeouts.sh");
-    expect(fs.existsSync(root)).toBe(true);
-    expect(fs.existsSync(tmpl)).toBe(true);
-    expect(fs.readFileSync(root, "utf-8")).toBe(fs.readFileSync(tmpl, "utf-8"));
-  });
-
-  it("bkit-ship-gate.sh is executable in both homes (directly invoked via bash)", () => {
-    // The gate is executed via `bash "$GATE_SH"` — the executable bit must
-    // survive templating. The timeouts script is sourced (`. file`), so it
-    // does not require the executable bit.
-    const pkgRoot = getPkgRoot();
-    const root = path.join(pkgRoot, ".bkit/scripts/bkit-ship-gate.sh");
-    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-ship-gate.sh");
+  it("bkit-mirror-push-run.sh is executable in both homes (CI runs it via bash)", () => {
+    const root = path.join(pkgRoot, ".bkit/scripts/bkit-mirror-push-run.sh");
+    const tmpl = path.join(pkgRoot, ".bkit/templates/.bkit/scripts/bkit-mirror-push-run.sh");
     expect(fs.statSync(root).mode & 0o111).toBeTruthy();
     expect(fs.statSync(tmpl).mode & 0o111).toBeTruthy();
   });

@@ -561,6 +561,12 @@ describe("bkit prs cross-check", () => {
     expect((await check(bad, "mcp")).code).toBe(3);
     expect((await check(statusLog([]), "carrier-pigeon")).code).toBe(2);
   });
+
+  it("a malformed log exits 3 for every transport: the gh / git exemption never hides it", async () => {
+    const bad = statusLog([]);
+    fs.writeFileSync(bad, "{not json\n");
+    for (const t of ["mcp", "gh", "git"]) expect((await check(bad, t)).code, t).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------

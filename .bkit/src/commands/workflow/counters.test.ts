@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -144,6 +145,30 @@ describe("bkit counters derive", () => {
     ).toBe(3);
     expect((await derive(log(rows), "verify", "later")).code).toBe(2);
   });
+
+  it("counts only DONE rows: a FAILED row is not an attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "verify", "2026-10-01T00:01:00Z"),
+      done("build", "verify", "2026-10-01T00:02:00Z", { status: "FAILED" }),
+    ]);
+    expect((await derive(file, "verify", "count")).json.value).toBe(1);
+    const onlyFailed = log([
+      done("build", "remediate", "2026-10-01T00:01:00Z", { status: "FAILED" }),
+    ]);
+    expect((await derive(onlyFailed, "remediate", "current")).code).toBe(4);
+  });
+
+  it("a paused run keeps counting after another workflow's run interleaves", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "verify", "2026-10-01T00:01:00Z"),
+      started("debug", "2026-10-01T00:02:00Z"),
+      finished("debug", "2026-10-01T00:03:00Z"),
+      done("build", "verify", "2026-10-01T00:04:00Z"),
+    ]);
+    expect((await derive(file, "verify", "count")).json.value).toBe(2);
+  });
 });
 
 describe("bkit counters run", () => {
@@ -171,6 +196,37 @@ describe("bkit counters run", () => {
       finished("debug", "2026-10-01T00:02:00Z"),
     ];
     expect(await runOf(rows)).toBe(2);
+  });
+
+  it("is n+1 after a FAILED run too", async () => {
+    expect(
+      await runOf([
+        started("build", "2026-10-01T00:00:00Z"),
+        { type: "workflow-failed", workflow: "build", at: "2026-10-01T00:01:00Z" },
+      ]),
+    ).toBe(2);
+  });
+
+  it("counts only this workflow's runs; a union-merge duplicate is one run", async () => {
+    const rows = [
+      started("plan", "2026-10-01T00:00:00Z"),
+      finished("plan", "2026-10-01T00:01:00Z"),
+      started("build", "2026-10-02T00:00:00Z"),
+      finished("build", "2026-10-02T00:01:00Z"),
+      started("debug", "2026-10-03T00:00:00Z"),
+    ];
+    const file = log([...rows, ...rows]);
+    const n = async (w: string) =>
+      (await run(["counters", "run", `--file=${file}`, `--workflow=${w}`])).json.run;
+    expect(await n("build")).toBe(2);
+    expect(await n("plan")).toBe(2);
+    expect(await n("ship")).toBe(1);
+    expect(await n("debug")).toBe(1);
+  });
+
+  it("exits 3 on a missing file", async () => {
+    const missing = path.join(os.tmpdir(), "no-such-status.jsonl");
+    expect((await run(["counters", "run", `--file=${missing}`, "--workflow=build"])).code).toBe(3);
   });
 });
 
@@ -213,8 +269,12 @@ describe("bkit counters route", () => {
     },
   );
 
-  it("refuses an empty max", async () => {
-    expect((await route("1", "")).code).toBe(2);
+  it("refuses an empty or non-integer max with nothing on stdout", async () => {
+    for (const max of ["", "abc"]) {
+      const r = await route("1", max);
+      expect(r.code).toBe(2);
+      expect(r.out).toBe("");
+    }
   });
 
   it("takes the max from a threshold name with --limit", async () => {
@@ -262,5 +322,26 @@ describe("bkit counters max", () => {
       expect(Number.isInteger(value) && value >= 0, name).toBe(true);
       if (name !== "MAX_CHALLENGE_REMEDIATE_ATTEMPT") expect(value, name).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it("bkit-counter-bus-config.sh (still sourced by bkit-cloud.yml) names the same thresholds with the same values", () => {
+    const config = path.resolve(
+      __dirname,
+      "../../../templates/.bkit/scripts/bkit-counter-bus-config.sh",
+    );
+    const names = Object.keys(THRESHOLDS);
+    const res = spawnSync(
+      "sh",
+      [
+        "-c",
+        `. "${config}"; ${names.map((n) => `echo ${n}=$${n}`).join("; ")}; set | grep -c '^MAX_'`,
+      ],
+      { encoding: "utf-8" },
+    );
+    const lines = res.stdout.trim().split("\n");
+    expect(
+      Object.fromEntries(lines.slice(0, -1).map((l) => [l.split("=")[0], Number(l.split("=")[1])])),
+    ).toEqual(THRESHOLDS);
+    expect(Number(lines.at(-1))).toBe(names.length);
   });
 });

@@ -98,9 +98,9 @@ const MERGED_ON_ENTRY_SKIP = new Set([
  */
 export function deriveExpectedStepSetFromSource(shipMd) {
     const lines = shipMd.split("\n");
-    // 1. Collect every `step:"ship-..."` literal (anywhere — fenced or prose).
+    // 1. Collect every `step:"ship-..."` / `--step=ship-...` literal (anywhere — fenced or prose).
     const literalSet = new Set();
-    const literalRe = /step:"(ship-[a-z-]+)"/g;
+    const literalRe = /(?:step:"|--step=)(ship-[a-z-]+)/g;
     for (const line of lines) {
         let m;
         while ((m = literalRe.exec(line)) !== null) {
@@ -124,7 +124,7 @@ export function deriveExpectedStepSetFromSource(shipMd) {
         }
         if (inStep) {
             let m;
-            const re = /step:"(ship-[a-z-]+)"/g;
+            const re = /(?:step:"|--step=)(ship-[a-z-]+)/g;
             while ((m = re.exec(line)) !== null) {
                 headingSet.add(m[1]);
             }

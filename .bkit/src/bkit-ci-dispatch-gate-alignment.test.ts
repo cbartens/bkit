@@ -1,31 +1,27 @@
-// bkit-ci-dispatch-gate-alignment.test.ts — Cross-file alignment assertions for
-// the CI-Dispatch Gate (#261).
+// bkit-ci-dispatch-gate-alignment.test.ts — workflow-side wiring of the
+// CI-Dispatch Gate (#261) and of ship's own re-validate poll.
 //
-// The gate is authored inline at two sites:
-//   - .bkit/workflows/bkit-build.md   (Step 17 "Close Workflow & Create PR" gate block)
-//   - .bkit/workflows/bkit-debug.md   (Step 10 close-workflow PR-mode sub-step 3
-//                                      and create-pr LOCAL-mode sub-step 9)
-//
-// Ship is OUT of scope (keeps its pre-existing SQUASH_SHA-poll gate).
-//
-// The SHARED poll-loop + named-symbol sub-lines between the delimiter comments
-//   # --- CI-Dispatch Gate shared kernel ---
-//   # --- end CI-Dispatch Gate shared kernel ---
-// must be byte-identical across build and debug (WS-6 contract).
-// Only the AUTO_ROUTE sourcing tail + workflow/step jq strings legitimately differ.
-//
-// This file is modeled on bkit-workflow-lock-snippet.test.ts.
-//
-// The ciDispatch FOLD reducer round-trip (real bash + jq subprocess) is covered
-// in bkit-ci-dispatch-gate-alignment.integration.test.ts.
+// The gate itself — poll, one clean re-trigger, the four outcomes, every
+// unresolved sub-reason (retrigger-suppressed, autoroute-mismatch,
+// ci-declared-no-run, gh-error), the agent turn-loop hand-off, the capstone
+// namespace, and "nothing is pushed after the verdict" — is `bkit runs
+// dispatch`, covered in commands/workflow/runs.test.ts. What stays here is
+// what the workflows must do around it:
+//   - build and debug each run it after their last push, with the auto-route
+//     suffix read from the tracker in the same block;
+//   - the verdict is recorded as a local step-done row and never committed or
+//     pushed (a pushed `[skip ci]` record would empty the PR's check rollup —
+//     KN-11);
+//   - a hand-off (80 / 81) records nothing;
+//   - ship stays out of the gate and re-validates with a probe-first,
+//     bounded poll.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import * as os from "node:os";
+import { afterEach, describe, expect, it } from "vitest";
 
-// __dirname-anchored, not CWD-relative (G4, build-plan-gaps-remediate-1-1) —
-// matches every sibling suite (e.g. bkit-status-fold.test.ts's REPO_ROOT) so
-// this file resolves correctly regardless of vitest's invocation cwd.
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
 
@@ -37,345 +33,116 @@ const buildMd = readWorkflow("bkit-build.md");
 const debugMd = readWorkflow("bkit-debug.md");
 const shipMd = readWorkflow("bkit-ship.md");
 
-// ---------------------------------------------------------------------------
-// Helper: extract lines between the shared-kernel delimiter comments.
-// Returns null if no delimiters found.
-// DEPRECATED: use extractAllSharedKernelBlocks for multi-kernel files (bkit-debug.md has 2).
-// ---------------------------------------------------------------------------
-function extractSharedKernelLines(content: string): string[] | null {
-  const blocks = extractAllSharedKernelBlocks(content);
-  if (blocks === null || blocks.length === 0) return null;
-  return blocks[0];
+/** Fenced bash bodies, `\`-continuations joined so one command is one line. */
+function fences(content: string): string[] {
+  return [...content.matchAll(/^[ \t]*```bash\n([\s\S]*?)^[ \t]*```/gm)].map((m) =>
+    m[1]!.replace(/\\\n\s*/g, " "),
+  );
 }
 
-// ---------------------------------------------------------------------------
-// Helper: extract ALL kernel blocks from a file.
-// bkit-build.md has 1 block; bkit-debug.md has 2 (PR-mode + LOCAL-mode).
-// Each returned array includes the delimiter lines themselves.
-// Returns null if no start delimiter is found at all.
-// ---------------------------------------------------------------------------
-function extractAllSharedKernelBlocks(content: string): string[][] | null {
-  const START_DELIM = "# --- CI-Dispatch Gate shared kernel ---";
-  const END_DELIM = "# --- end CI-Dispatch Gate shared kernel ---";
-  const lines = content.split("\n");
-  const blocks: string[][] = [];
-  let searchFrom = 0;
-  while (searchFrom < lines.length) {
-    const startIdx = lines.findIndex((l, i) => i >= searchFrom && l.includes(START_DELIM));
-    if (startIdx === -1) break;
-    const endIdx = lines.findIndex((l, i) => i > startIdx && l.includes(END_DELIM));
-    if (endIdx === -1) break;
-    // Include delimiter lines themselves in the comparison (they must be present verbatim).
-    blocks.push(lines.slice(startIdx, endIdx + 1));
-    searchFrom = endIdx + 1;
-  }
-  return blocks.length > 0 ? blocks : null;
-}
+const dispatchFences = (md: string) => fences(md).filter((f) => /"\$BKIT" runs dispatch\b/.test(f));
 
 // ---------------------------------------------------------------------------
-// 1. Build close-workflow site carries the CI-Dispatch gate
+// 1. Build and debug run the gate, once each, and record its verdict locally
 // ---------------------------------------------------------------------------
-describe("bkit-build.md — CI-Dispatch gate presence", () => {
-  it("carries [bkit-ci-gate] log prefix", () => {
-    expect(buildMd).toContain("[bkit-ci-gate]");
+describe.each([
+  ["bkit-build.md", buildMd],
+  ["bkit-debug.md", debugMd],
+] as const)("%s — CI-Dispatch gate wiring", (name, md) => {
+  it("runs bkit runs dispatch in exactly one block", () => {
+    // Debug's PR-mode close and its created-PR path share one block.
+    expect(dispatchFences(md)).toHaveLength(1);
   });
 
-  it("carries POLL_BUDGET_S=60", () => {
-    expect(buildMd).toContain("POLL_BUDGET_S=60");
-  });
-
-  it("carries POLL_INTERVAL_S=10", () => {
-    expect(buildMd).toContain("POLL_INTERVAL_S=10");
-  });
-
-  it("carries all 4 outcome strings", () => {
-    expect(buildMd).toContain('"dispatched"');
-    expect(buildMd).toContain('"self-healed"');
-    expect(buildMd).toContain('"no-ci"');
-    expect(buildMd).toContain('"unresolved"');
-  });
-
-  it("carries ciDispatch field in the step-done jq object", () => {
-    expect(buildMd).toContain("ciDispatch");
-  });
-
-  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
-    expect(buildMd).toContain('test("bkit-tests|decide"; "i")');
-    // Anchoring on one lane's name is what broke when a consumer renamed the planner
-    // bkit-decide -> bkit-tests-scope: the probe matched nothing, so the gate reported
-    // no-ci forever and could no longer catch a genuinely undispatched run. The namespace
-    // survives a lane rename; `decide` stays for consumers still on the old planner name.
-    expect(buildMd).not.toContain('test("decide"; "i")');
-  });
-
-  it("shared kernel delimiters present", () => {
-    expect(buildMd).toContain("# --- CI-Dispatch Gate shared kernel ---");
-    expect(buildMd).toContain("# --- end CI-Dispatch Gate shared kernel ---");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 2. Debug close-workflow + create-pr site carries the CI-Dispatch gate
-// ---------------------------------------------------------------------------
-describe("bkit-debug.md — CI-Dispatch gate presence", () => {
-  it("carries [bkit-ci-gate] log prefix", () => {
-    expect(debugMd).toContain("[bkit-ci-gate]");
-  });
-
-  it("carries POLL_BUDGET_S=60", () => {
-    expect(debugMd).toContain("POLL_BUDGET_S=60");
-  });
-
-  it("carries POLL_INTERVAL_S=10", () => {
-    expect(debugMd).toContain("POLL_INTERVAL_S=10");
-  });
-
-  it("carries all 4 outcome strings", () => {
-    expect(debugMd).toContain('"dispatched"');
-    expect(debugMd).toContain('"self-healed"');
-    expect(debugMd).toContain('"no-ci"');
-    expect(debugMd).toContain('"unresolved"');
-  });
-
-  it("carries ciDispatch field in both step-done jq objects (debug-close-workflow + debug-create-pr)", () => {
-    // Both jq blocks should carry ciDispatch
-    const ciDispatchMatches = [...debugMd.matchAll(/ciDispatch/g)];
-    expect(ciDispatchMatches.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("anchors on the bkit-tests namespace (+ legacy decide), NOT a single lane name", () => {
-    expect(debugMd).toContain('test("bkit-tests|decide"; "i")');
-    expect(debugMd).not.toContain('test("decide"; "i")');
-  });
-
-  it("shared kernel delimiters present (at least once — two kernel sites)", () => {
-    expect(debugMd).toContain("# --- CI-Dispatch Gate shared kernel ---");
-    expect(debugMd).toContain("# --- end CI-Dispatch Gate shared kernel ---");
-  });
-
-  it("LOCAL-mode gate sets RETRIGGER_SUFFIX from AUTO_ROUTE_SUFFIX (not reorder rm)", () => {
-    expect(debugMd).toContain('RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"');
-  });
-
-  it("PR-mode gate re-derives PR_NUMBER in-block (pr list --json number --jq [0])", () => {
-    // Step 1 has one, PR-mode gate adds another — count must be >= 2.
-    const matches = [...debugMd.matchAll(/pr list.*--json number.*--jq.*\[0\]/g)];
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("autoroute-mismatch sub-reason present", () => {
-    expect(debugMd).toContain("autoroute-mismatch");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3. Byte-equality on the SHARED poll-loop + named-symbol sub-lines
-//    (NOT whole-gate — AUTO_ROUTE sourcing legitimately differs)
-//
-//    bkit-build.md has 1 kernel block.
-//    bkit-debug.md has 2 kernel blocks: PR-mode (sub-step 3) + LOCAL-mode (sub-step 9).
-//    ALL debug kernels must be byte-equal to the single build kernel so a one-sided
-//    edit to either debug site is caught immediately (guard-rot prevention).
-// ---------------------------------------------------------------------------
-describe("build vs debug — shared kernel byte-equality", () => {
-  it("extracts >= 1 kernel block from bkit-build.md (non-vacuous guard)", () => {
-    const blocks = extractAllSharedKernelBlocks(buildMd);
-    expect(blocks).not.toBeNull();
-    expect(blocks!.length).toBeGreaterThanOrEqual(1);
-    expect(blocks![0].length).toBeGreaterThan(0);
-  });
-
-  it("extracts >= 2 kernel blocks from bkit-debug.md (PR-mode + LOCAL-mode, non-vacuous guard)", () => {
-    const blocks = extractAllSharedKernelBlocks(debugMd);
-    expect(blocks).not.toBeNull();
-    // Debug MUST have both the PR-mode (sub-step 3) and LOCAL-mode (sub-step 9) kernel sites.
-    expect(blocks!.length).toBeGreaterThanOrEqual(2);
-    for (const block of blocks!) {
-      expect(block.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("every debug kernel block is byte-equal to the single build kernel (trimmed-line comparison)", () => {
-    const buildBlocks = extractAllSharedKernelBlocks(buildMd);
-    const debugBlocks = extractAllSharedKernelBlocks(debugMd);
-    expect(buildBlocks).not.toBeNull();
-    expect(debugBlocks).not.toBeNull();
-
-    // Build has exactly one reference kernel.
-    const buildKernel = buildBlocks![0];
-
-    // Normalise whitespace differences caused by indentation in if-block vs top-level
-    // (the plan requires the CONTENT to be identical; only leading whitespace may differ
-    // due to the PR-mode gate being nested inside `if [ "$PUSH_MODE" = "PR" ]`).
-    const trimmed = (lines: string[]) => lines.map((l) => l.trim());
-    const trimmedBuild = trimmed(buildKernel);
-
-    for (let i = 0; i < debugBlocks!.length; i++) {
-      expect(trimmed(debugBlocks![i])).toEqual(
-        trimmedBuild,
-        `debug kernel block ${i} (0-based) does not match build kernel — one-sided edit detected`,
-      );
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3b. #341 WS-8 — the shared kernel is EXTRACTED into bkit_wait_ci, not
-//     inlined. The poll loop + `sleep` + `poll_dispatch()` function body
-//     moved into `.bkit/templates/.bkit/scripts/bkit-runtime.sh`; each
-//     workflow kernel now only sources the shim and calls `bkit_wait_ci`.
-// ---------------------------------------------------------------------------
-describe("CI-Dispatch kernel is extracted into bkit_wait_ci (#341 WS-8)", () => {
-  const kernelText = (blocks: string[][]) => blocks.map((b) => b.join("\n"));
-
-  it("build kernel calls bkit_wait_ci and sources bkit-runtime.sh", () => {
-    const blocks = extractAllSharedKernelBlocks(buildMd)!;
-    const text = kernelText(blocks).join("\n");
-    expect(text).toContain("bkit_wait_ci");
-    expect(text).toContain(".bkit/scripts/bkit-runtime.sh");
-  });
-
-  it("debug kernels (both sites) call bkit_wait_ci and source bkit-runtime.sh", () => {
-    const blocks = extractAllSharedKernelBlocks(debugMd)!;
-    expect(blocks.length).toBeGreaterThanOrEqual(2);
-    for (const block of blocks) {
-      const text = block.join("\n");
-      expect(text).toContain("bkit_wait_ci");
-      expect(text).toContain(".bkit/scripts/bkit-runtime.sh");
-    }
-  });
-
-  it("no kernel block re-inlines the old poll_dispatch()/local-function pattern (build)", () => {
-    const blocks = extractAllSharedKernelBlocks(buildMd)!;
-    const text = kernelText(blocks).join("\n");
-    expect(text).not.toContain("poll_dispatch");
-    expect(text).not.toContain("local out rc");
-  });
-
-  it("no kernel block re-inlines the old poll_dispatch()/local-function pattern (debug)", () => {
-    const blocks = extractAllSharedKernelBlocks(debugMd)!;
-    for (const block of blocks) {
-      const text = block.join("\n");
-      expect(text).not.toContain("poll_dispatch");
-      expect(text).not.toContain("local out rc");
-    }
-  });
-
-  it("no bare `sleep` command remains inside any CI-Dispatch kernel block (moved into the timeout-wrapped bkit_wait_ci)", () => {
-    const buildBlocks = extractAllSharedKernelBlocks(buildMd)!;
-    const debugBlocks = extractAllSharedKernelBlocks(debugMd)!;
-    // Match a real shell `sleep N` command, not prose that mentions "sleep blocked".
-    const bareSleepCmd = /^\s*sleep\s+\S+/m;
-    for (const block of [...buildBlocks, ...debugBlocks]) {
-      const text = block.join("\n");
-      expect(text).not.toMatch(bareSleepCmd);
-      // Kernel must call the extracted helper (not re-inline the poll).
-      expect(text).toContain("bkit_wait_ci");
-    }
-  });
-
-  it("build.md/bkit-debug.md carry the measured-signal agent turn-loop handoff (D22 — no CAN_SLEEP flag)", () => {
-    // Sleep is probed inside bkit_wait_ci; a blocked sleep exits 3 and the
-    // orchestrator resolves the same poll via BKIT_CI_OUTCOME turn-loop.
-    expect(buildMd).toContain("CI_WAIT_BLOCKED");
-    expect(buildMd).toContain("BKIT_CI_OUTCOME");
-    expect(buildMd).toContain("agent turn-loop");
-    expect(buildMd).not.toContain("CAN_SLEEP");
-    const debugHandoffs = [...debugMd.matchAll(/BKIT_CI_OUTCOME/g)];
-    // Two sites: PR-mode close-workflow + LOCAL-mode create-pr (kernel + prose each).
-    expect(debugHandoffs.length).toBeGreaterThanOrEqual(2);
-    expect(debugMd).not.toContain("CAN_SLEEP");
-  });
-
-  it("the retrigger re-poll (self-healed path) also calls bkit_wait_ci, not a duplicated inline loop", () => {
-    for (const md of [buildMd, debugMd]) {
-      const selfHealedIdx = md.indexOf('CI_OUTCOME="self-healed"');
-      expect(selfHealedIdx).toBeGreaterThan(-1);
-      // The nearest preceding bkit_wait_ci call (within 400 chars) drives this outcome.
-      const preceding = md.slice(Math.max(0, selfHealedIdx - 400), selfHealedIdx);
-      expect(preceding).toContain("bkit_wait_ci");
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 4. Ship has NO CI-Dispatch gate (negative assertion)
-// ---------------------------------------------------------------------------
-describe("bkit-ship.md — no CI-Dispatch gate", () => {
-  it("does NOT contain [bkit-ci-gate] log prefix", () => {
-    expect(shipMd).not.toContain("[bkit-ci-gate]");
-  });
-
-  it("does NOT contain the shared kernel delimiter", () => {
-    expect(shipMd).not.toContain("# --- CI-Dispatch Gate shared kernel ---");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 4b. Ship Step 9 duplicate-dispatch probe.
-//
-// Ship stays out of the CI-Dispatch Gate (above) — no outcome vocabulary, no
-// self-heal, no pass-on-`no-ci`. But its Step 9 re-validate FOLLOWS a head move
-// (Path B `gh pr update-branch`) that has already fired a `pull_request` run at
-// that same SHA, so dispatching unconditionally produced a second, redundant run
-// every time. ci.yml's concurrency cannot absorb it: `pull_request` groups by
-// `head_ref`, `workflow_dispatch` by `run_id` — two groups, neither cancels the
-// other, both run to completion.
-//
-// Contract: probe for a run at `VALIDATED_HEAD` (presence-only) and dispatch
-// ONLY when there is none. The probe targets VALIDATED_HEAD, not the PR head:
-// the PR head is ship's own `[skip ci]` bookkeeping commit, which never gets a
-// run, so a PR-head probe (`bkit_wait_ci`, statusCheckRollup) would dispatch a
-// duplicate every time. The probe is never a pass condition — the completion
-// poll and `bkit-ship-gate.sh assert` at Gate 10 still own the verdict.
-// ---------------------------------------------------------------------------
-describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run)", () => {
-  const dispatchIdx = shipMd.indexOf('gh workflow run "$CI_DECLARED_WORKFLOW" --ref');
-
-  it("has exactly one gh workflow run dispatch site", () => {
-    expect(dispatchIdx).toBeGreaterThan(-1);
-    expect(shipMd.indexOf('gh workflow run "$CI_DECLARED_WORKFLOW" --ref', dispatchIdx + 1)).toBe(
+  it("reads the auto-route suffix from the tracker in the same block, exact-matched", () => {
+    const f = dispatchFences(md)[0]!;
+    const derive = f.search(
+      /gh issue view \{ISSUE_ID\} --json labels --jq '\.labels\[\]\.name' .*grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit \[auto route\]"/,
+    );
+    const call = f.search(/"\$BKIT" runs dispatch .*--auto-route-suffix="\$AUTO_ROUTE_SUFFIX"/);
+    expect(derive, `${name}: AUTO_ROUTE_SUFFIX not derived in the dispatch block`).toBeGreaterThan(
       -1,
     );
+    expect(call, `${name}: runs dispatch does not take the derived suffix`).toBeGreaterThan(derive);
   });
 
-  it("targets the bkit.ciWorkflow file, never a hard-coded ci.yml", () => {
-    // A consumer that renamed its CI workflow would otherwise poll and dispatch the wrong file.
-    expect(shipMd).not.toMatch(/--workflow ci\.yml|gh workflow run ci\.yml/);
-    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
-    expect(preceding).toContain("bkit_ci_declared || :");
-  });
-
-  it("probes for a run at VALIDATED_HEAD before that dispatch", () => {
-    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
-    expect(preceding).toContain(
-      'gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 20 --json headSha',
+  it("records the ciDispatch verdict as a local step-done row, after a hand-off exit is passed out", () => {
+    const f = dispatchFences(md)[0]!;
+    const call = f.indexOf('"$BKIT" runs dispatch');
+    const record = f.search(/"\$BKIT" steps done [^\n]*--field=?"?ciDispatch=/);
+    expect(record, `${name}: no steps done --field=ciDispatch after the gate`).toBeGreaterThan(
+      call,
     );
-    expect(preceding).toContain(`jq -e --arg h "$VALIDATED_HEAD" 'any(.[]; .headSha == $h)'`);
-    // Bounded: the presence probe gives up after a fixed number of polls.
-    expect(preceding).toContain('while [ "$PROBE_ATTEMPTS" -lt "${SHIP_PROBE_ATTEMPTS:-6}" ]; do');
+    expect(f.slice(record)).toMatch(/^[^\n]*--commit=none/);
+    // 80 / 81 (hand the poll to the agent's turn loop) leave before the row is
+    // written; the block is re-run with the turn loop's result.
+    const between = f.slice(call, record);
+    expect(between).toMatch(/case "\$RC" in [^\n]*\bexit "\$RC"/);
   });
 
-  it("guards the dispatch on the probe result, not on head movement alone", () => {
-    const preceding = shipMd.slice(Math.max(0, dispatchIdx - 1400), dispatchIdx);
-    expect(preceding).toContain('[ "$PROBE" = "found" ]');
-    // The pre-fix form. Its return means every rebase-integrating ship burns a
-    // duplicate run on the SHA the push already triggered.
-    expect(shipMd).not.toContain("dispatch CI unconditionally");
+  it("never commits or pushes after the gate — the verdict stays local (KN-11)", () => {
+    const f = dispatchFences(md)[0]!;
+    const after = f.slice(f.indexOf('"$BKIT" runs dispatch'));
+    expect(after).not.toMatch(/\bgit\s+(-C\s+"[^"]+"\s+)?(push|commit)\b/);
+    expect(after).not.toMatch(/"\$BKIT" (branches push|ledgers commit)\b/);
+    expect(after).not.toMatch(/--commit=(?!none)/);
+  });
+
+  it("the push the gate polls refuses a skip-CI HEAD (--require-ci)", () => {
+    // A `[skip ci]` HEAD would fire no run, so the gate would only ever see
+    // its own suppression.
+    expect(
+      fences(md).some((f) => /"\$BKIT" branches push --mode=feature [^\n]*--require-ci/.test(f)),
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. Ship has NO CI-Dispatch gate
+// ---------------------------------------------------------------------------
+describe("bkit-ship.md — no CI-Dispatch gate", () => {
+  it("never calls bkit runs dispatch", () => {
+    expect(shipMd).not.toMatch(/"\$BKIT" runs dispatch\b/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Ship Step 9 probes before dispatching (no duplicate CI run)
+//
+// Step 9 re-validate can FOLLOW a head move (Path B `gh pr update-branch`) that
+// already fired a `pull_request` run at that same SHA; dispatching
+// unconditionally produced a second, redundant run every time. The probe
+// targets VALIDATED_HEAD, not the PR head — the PR head is ship's own
+// `[skip ci]` bookkeeping commit, which never gets a run. `bkit runs wait
+// --dispatch-if-absent` owns probe-then-dispatch (commands/workflow/runs.test.ts);
+// the probe is never a pass condition — the completion poll and `bkit runs gate`
+// at Step 10 own the verdict.
+// ---------------------------------------------------------------------------
+describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run)", () => {
+  const step9 = fences(shipMd).find((f) => /"\$BKIT" runs wait [^\n]*--dispatch-if-absent/.test(f));
+
+  it("dispatches only through the probe — no hand-rolled gh workflow run anywhere", () => {
+    expect(step9, "Step 9 probe-then-dispatch block not found").toBeDefined();
+    expect(shipMd).not.toMatch(/gh workflow run\b/);
+  });
+
+  it("never names a hard-coded ci.yml (the CI file comes from bkit.ciWorkflow)", () => {
+    expect(shipMd).not.toMatch(/\bci\.yml\b/);
+  });
+
+  it("probes for a run at VALIDATED_HEAD, then polls completion at the same head", () => {
+    const probe = step9!.search(
+      /"\$BKIT" runs wait --head="\$VALIDATED_HEAD" [^\n]*--until=present [^\n]*--dispatch-if-absent/,
+    );
+    const poll = step9!.search(
+      /"\$BKIT" runs wait --head="\$VALIDATED_HEAD" [^\n]*--until=completed/,
+    );
+    expect(probe).toBeGreaterThan(-1);
+    expect(poll).toBeGreaterThan(probe);
   });
 
   it("records the probe outcome in a ship-revalidate-dispatch row", () => {
-    expect(shipMd).toContain("ship-revalidate-dispatch");
-    expect(shipMd).toContain("dispatched:$d");
-  });
-
-  it("anchors the completion poll on the head SHA (a superseded completed run must not pass it)", () => {
-    // Without a guaranteed-fresh dispatch, an unfiltered `--limit 1` can return
-    // a COMPLETED run from a head the rebase superseded.
-    expect(shipMd).toContain("select(.headSha == $h)");
-    expect(shipMd).not.toContain(
-      'gh run list --branch "{SHIP_BRANCH}" --workflow "$CI_DECLARED_WORKFLOW" --limit 1 --json status,conclusion --jq',
-    );
+    expect(step9!).toMatch(/type:"ship-revalidate-dispatch"[^\n]*dispatched:\.dispatched/);
   });
 
   it("keeps ship free of the gate's outcome vocabulary (probe is never a pass condition)", () => {
@@ -385,353 +152,98 @@ describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run
 });
 
 // ---------------------------------------------------------------------------
-// 4c. Step 10 gate refusal re-enters Step 9 as a POLL, and is bounded.
+// 4. Step 10 gate refusal re-enters Step 9 as a POLL, and is bounded.
 //
 // Codes 10/11/14/17 route back to Step 9. Before this, the poll was gated on
 // `CURRENT_HEAD != ENTRY_HEAD` alone, so a refusal at an UNCHANGED head skipped
-// the poll entirely and fell straight through to the deferred sweep — a
-// high-effort subagent re-run per poll, and for code 10 an unbounded loop with
-// nothing in it able to change the gate's answer.
+// the poll entirely — for code 10 an unbounded loop with nothing in it able to
+// change the gate's answer.
 // ---------------------------------------------------------------------------
 describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () => {
   it("Step 9 also polls on a gate-refusal re-entry, not head movement alone", () => {
-    expect(shipMd).toContain('[ "$REVALIDATE_REASON" = "gate-refusal" ]');
-    expect(shipMd).toContain('|| [ "$REVALIDATE_REASON" = "gate-refusal" ]; then');
+    expect(shipMd).toContain(
+      'if [ "$VALIDATED_HEAD" != "$ENTRY_HEAD" ] || [ "$REVALIDATE_REASON" = "gate-refusal" ]; then',
+    );
   });
 
-  it("a gate-refusal re-entry skips the deferred sweep and the bookkeeping commit", () => {
-    // Re-validate sits AFTER the sweep (Step 5) and the bookkeeping commit
-    // (Step 8), and the refusal route jumps straight to it, so both stay
-    // first-pass-only. Step 9 then routes forward to the merge gate.
-    expect(shipMd).toContain(
-      "**If** exit 0 (printed `step-9`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.",
-    );
+  it("re-validate sits after the deferred sweep and the bookkeeping commit, before the merge gate", () => {
+    // The refusal route jumps straight to Step 9, so the sweep and the
+    // bookkeeping commit stay first-pass-only.
     const order = [
-      "## 🤖 Step 5 — Deferred Sweep",
-      "## 🤖 Step 8 — Commit + Push Bookkeeping",
-      "## 🤖 Step 9 — Re-validate",
-      "## 🤖 Step 10 — Merge Gate",
+      /^## .*Step \d+ — Deferred Sweep$/m,
+      /^## .*Step \d+ — Commit \+ Push Bookkeeping$/m,
+      /^## .*Step \d+ — Re-validate$/m,
+      /^## .*Step \d+ — Merge Gate/m,
     ];
-    const idx = order.map((h) => shipMd.indexOf(h));
+    const idx = order.map((h) => shipMd.search(h));
     expect(
       idx.every((i) => i > -1),
       `missing heading in ${JSON.stringify(idx)}`,
     ).toBe(true);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
-    expect(shipMd).toContain("Carry `VALIDATED_HEAD` (echoed above) → Step 10.");
   });
 
-  it("bounds the re-entry against MAX_REVALIDATE_ATTEMPT via decide_next", () => {
-    expect(shipMd).toContain("MAX_REVALIDATE_ATTEMPT");
-    expect(shipMd).toContain(
-      'decide_next REVALIDATE_ATTEMPT "$REVALIDATE_ATTEMPT" "$MAX_REVALIDATE_ATTEMPT" step-9 failure-path',
+  it("bounds the re-entry by MAX_REVALIDATE_ATTEMPT through bkit counters route, never a local value", () => {
+    expect(shipMd).toMatch(
+      /"\$BKIT" counters route --name=REVALIDATE_ATTEMPT --value="\$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path/,
     );
-  });
-
-  it("derives the attempt from rows written since this run started, not all-runs", () => {
-    // An all-runs count would carry a prior ship's spent budget into a resumed
-    // run and refuse a legitimate first poll.
-    expect(shipMd).toContain('.step=="ship-start-workflow"');
-    expect(shipMd).toContain('select(.type=="ship-revalidate-dispatch" and .at > $s)');
-  });
-
-  it("MAX_REVALIDATE_ATTEMPT has exactly one definition, in bkit-counter-bus-config.sh", () => {
-    const config = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit/scripts/bkit-counter-bus-config.sh"),
-      "utf-8",
-    );
-    expect(config).toMatch(/^MAX_REVALIDATE_ATTEMPT=\d+/m);
-    // The workflow must SOURCE it, never re-declare it (last-sourced-wins drift).
+    // The value lives in `bkit counters max` (commands/workflow/counters.ts).
     expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
-    const timeouts = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit/scripts/bkit-ship-timeouts.sh"),
-      "utf-8",
-    );
-    expect(timeouts).not.toContain("MAX_REVALIDATE_ATTEMPT");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6. retrigger-suppressed maps to unresolved ONLY (never no-ci)
-//    The assignment CI_REASON="retrigger-suppressed" must ALWAYS appear on a
-//    line that also sets CI_OUTCOME="unresolved" (same shell statement).
-//    This is the plan constraint: "retrigger-suppressed maps to unresolved ONLY,
-//    never no-ci."
-// ---------------------------------------------------------------------------
-describe("retrigger-suppressed sub-reason — maps to unresolved only", () => {
-  it('bkit-build.md: every line with "retrigger-suppressed" also sets CI_OUTCOME=unresolved', () => {
-    const lines = buildMd.split("\n");
-    const assignmentLines = lines.filter((l) => l.includes("retrigger-suppressed"));
-    // There must be at least one such line (vacuous-match guard).
-    expect(assignmentLines.length).toBeGreaterThan(0);
-    for (const line of assignmentLines) {
-      // Each CI_REASON="retrigger-suppressed" assignment must be on the same line
-      // as CI_OUTCOME="unresolved" (the canonical form is the compound assignment:
-      // CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed").
-      // An echo line referencing the string does not carry an assignment.
-      if (
-        line.includes('CI_REASON="retrigger-suppressed"') ||
-        line.includes("CI_REASON=retrigger-suppressed")
-      ) {
-        expect(line).toContain("unresolved");
-      }
-    }
   });
 
-  it('bkit-debug.md: every line with "retrigger-suppressed" also sets CI_OUTCOME=unresolved', () => {
-    const lines = debugMd.split("\n");
-    const assignmentLines = lines.filter((l) => l.includes("retrigger-suppressed"));
-    expect(assignmentLines.length).toBeGreaterThan(0);
-    for (const line of assignmentLines) {
-      if (
-        line.includes('CI_REASON="retrigger-suppressed"') ||
-        line.includes("CI_REASON=retrigger-suppressed")
-      ) {
-        expect(line).toContain("unresolved");
-      }
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 6b. no-ci is a pass ONLY when no CI workflow is declared
-//
-// A workflow file that fails at startup (invalid YAML) produces zero check runs,
-// which from the PR side is indistinguishable from a repo with no CI. Every
-// no-ci assignment must therefore sit in the else-branch of bkit_ci_declared,
-// so a declared-but-silent workflow lands on unresolved(ci-declared-no-run).
-// ---------------------------------------------------------------------------
-describe("no-ci only when no CI workflow is declared", () => {
-  for (const [name, body, sites] of [
-    ["bkit-build.md", buildMd, 1],
-    ["bkit-debug.md", debugMd, 2],
-  ] as const) {
-    it(`${name}: every no-ci assignment is the else-branch of bkit_ci_declared`, () => {
-      const lines = body.split("\n");
-      const noCi = lines.flatMap((l, i) => (l.includes('CI_OUTCOME="no-ci"') ? [i] : []));
-      expect(noCi.length).toBe(sites);
-      for (const i of noCi) {
-        expect(lines[i - 1].trim()).toBe("else");
-        expect(lines[i - 4].trim()).toBe("if bkit_ci_declared; then");
-        expect(lines[i - 3]).toContain('CI_OUTCOME="unresolved"; CI_REASON="ci-declared-no-run"');
-      }
+  describe("the attempt counts only re-validate rows written since this run started", () => {
+    // An all-runs count would carry a prior ship's spent budget into a resumed
+    // run and refuse a legitimate first poll. Runs the derivation as written.
+    const dirs: string[] = [];
+    afterEach(() => {
+      for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
     });
-  }
-});
 
-// ---------------------------------------------------------------------------
-// 7. KN-11 regression guard — no post-gate verdict-commit push (FIX B lock-in)
-//
-//    The ciDispatch jq >> "$STATUS" verdict write must NOT be followed by a
-//    git push inside the same gate block. The only legitimate post-kernel push
-//    is the capped self-heal re-trigger, which happens BEFORE the jq verdict
-//    write (inside the self-heal branch). Adding any push after the verdict
-//    write would either:
-//      (a) re-hide CI via a [skip ci] commit → empty statusCheckRollup → KN-11
-//      (b) fire a second CI run on the already-confirmed HEAD
-//
-//    Approach: for each gate site, extract the slice of text from the ciDispatch
-//    jq write down to the end of the gate's closing `case "$CI_OUTCOME" in
-//    unresolved)` line and assert no `git push` appears in that slice.
-// ---------------------------------------------------------------------------
-
-// Helper: extract the post-verdict tail for each ciDispatch gate site.
-// Returns an array of slices (one per gate site), each being the lines from the
-// ciDispatch jq write to the nearest closing `case "$CI_OUTCOME" in unresolved)`
-// line (inclusive).
-//
-// Anchored on the jq write's own arg list, NOT on a comment: `.bkit/workflows.md`
-// § Workflow Authoring Rules bans rationale comments from the workflow files, so a
-// marker comment is deletable-by-policy and would silently vacate this guard.
-function extractPostVerdictSlices(content: string): string[][] {
-  const lines = content.split("\n");
-  const VERDICT_MARKER = '--arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD"';
-  const GATE_END_MARKER = 'case "$CI_OUTCOME" in unresolved)';
-  const slices: string[][] = [];
-  let searchFrom = 0;
-  while (searchFrom < lines.length) {
-    const startIdx = lines.findIndex((l, i) => i >= searchFrom && l.includes(VERDICT_MARKER));
-    if (startIdx === -1) break;
-    const endIdx = lines.findIndex((l, i) => i >= startIdx && l.includes(GATE_END_MARKER));
-    if (endIdx === -1) {
-      // No closing case line found — include to end of file as a safe fallback
-      slices.push(lines.slice(startIdx));
-      break;
-    }
-    slices.push(lines.slice(startIdx, endIdx + 1));
-    searchFrom = endIdx + 1;
-  }
-  return slices;
-}
-
-describe("no post-gate verdict-commit push — KN-11 regression guard (FIX B)", () => {
-  it("bkit-build.md: post-verdict slice present (vacuous-match guard — at least 1 site)", () => {
-    const slices = extractPostVerdictSlices(buildMd);
-    expect(slices.length).toBeGreaterThanOrEqual(1);
-    for (const slice of slices) {
-      expect(slice.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("bkit-debug.md: post-verdict slices present (vacuous-match guard — at least 2 sites)", () => {
-    const slices = extractPostVerdictSlices(debugMd);
-    expect(slices.length).toBeGreaterThanOrEqual(2);
-    for (const slice of slices) {
-      expect(slice.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("bkit-build.md: no git push in the post-verdict slice (the ciDispatch jq write is the last action)", () => {
-    const slices = extractPostVerdictSlices(buildMd);
-    expect(slices.length).toBeGreaterThanOrEqual(1);
-    for (let i = 0; i < slices.length; i++) {
-      const sliceText = slices[i].join("\n");
-      // git push must NOT appear after the verdict write; the self-heal re-trigger push
-      // happens before this slice, inside the suppressed/self-heal branch.
-      expect(sliceText).not.toMatch(
-        /git push/,
-        `bkit-build.md gate site ${i}: found a git push in the post-verdict slice — this would re-introduce KN-11 or fire a second CI run`,
+    function attempt(rows: object[]): string {
+      const block = fences(shipMd).find((f) => /^\s*REVALIDATE_ATTEMPT=\$\(jq -s/m.test(f));
+      expect(block, "REVALIDATE_ATTEMPT derivation block not found").toBeDefined();
+      const derive = block!
+        .split("\n")
+        .filter((l) => !/"\$BKIT" counters route\b/.test(l))
+        .join("\n");
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-revalidate-"));
+      dirs.push(dir);
+      const status = path.join(dir, "status.jsonl");
+      fs.writeFileSync(status, rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+      return execFileSync(
+        "bash",
+        ["-c", `${derive.replaceAll("{STATUS}", status)}\nprintf '%s' "$REVALIDATE_ATTEMPT"`],
+        { encoding: "utf-8" },
       );
     }
-  });
 
-  it("bkit-debug.md: no git push in any post-verdict slice (both PR-mode and LOCAL-mode gate sites)", () => {
-    const slices = extractPostVerdictSlices(debugMd);
-    expect(slices.length).toBeGreaterThanOrEqual(2);
-    for (let i = 0; i < slices.length; i++) {
-      const sliceText = slices[i].join("\n");
-      expect(sliceText).not.toMatch(
-        /git push/,
-        `bkit-debug.md gate site ${i}: found a git push in the post-verdict slice — this would re-introduce KN-11 or fire a second CI run`,
-      );
-    }
-  });
+    const start = (at: string) => ({
+      type: "step-done",
+      workflow: "ship",
+      step: "ship-start-workflow",
+      at,
+    });
+    const dispatch = (at: string) => ({ type: "ship-revalidate-dispatch", workflow: "ship", at });
 
-  it("bkit-build.md: no ci-dispatch-verdict commit message token after the ciDispatch jq write", () => {
-    // Locks out the specific rejected-fix pattern: a 'ci-dispatch-verdict' commit pushed after the gate.
-    const slices = extractPostVerdictSlices(buildMd);
-    expect(slices.length).toBeGreaterThanOrEqual(1);
-    for (let i = 0; i < slices.length; i++) {
-      const sliceText = slices[i].join("\n");
-      expect(sliceText).not.toContain(
-        "ci-dispatch-verdict",
-        `bkit-build.md gate site ${i}: 'ci-dispatch-verdict' commit token found after the ciDispatch jq write — this commit+push was rejected as KN-11 regression`,
-      );
-    }
-  });
+    it("a resumed run does not inherit the previous run's re-validate rows", () => {
+      expect(
+        attempt([
+          start("2026-10-01T00:00:00Z"),
+          dispatch("2026-10-01T00:10:00Z"),
+          dispatch("2026-10-01T00:20:00Z"),
+          start("2026-10-02T00:00:00Z"),
+        ]),
+      ).toBe("1");
+    });
 
-  it("bkit-debug.md: no ci-dispatch-verdict commit message token after the ciDispatch jq write", () => {
-    const slices = extractPostVerdictSlices(debugMd);
-    expect(slices.length).toBeGreaterThanOrEqual(2);
-    for (let i = 0; i < slices.length; i++) {
-      const sliceText = slices[i].join("\n");
-      expect(sliceText).not.toContain(
-        "ci-dispatch-verdict",
-        `bkit-debug.md gate site ${i}: 'ci-dispatch-verdict' commit token found after the ciDispatch jq write — this commit+push was rejected as KN-11 regression`,
-      );
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 8. Intentional-non-push rationale lives in workflows.md ONLY (FIX B + L48)
-//
-//    Per .bkit/workflows.md § "Workflow Authoring Rules" (instructions only:
-//    no inline comments justifying behaviour), the rationale for the
-//    deliberately-not-pushed ciDispatch record belongs in the workflows.md
-//    § CI-Dispatch Gate doctrine paragraph — NOT inline in the per-workflow
-//    files. These assertions lock in both halves: the doctrine is documented
-//    in workflows.md, and the inline justification stays OUT of the gate files.
-// ---------------------------------------------------------------------------
-describe("intentional-non-push rationale documented in workflows.md, not inline (FIX B + L48)", () => {
-  const workflowsMd = fs.readFileSync(path.resolve(".bkit/workflows.md"), "utf-8");
-
-  // The inline rationale anchor that must NOT appear in the per-workflow files.
-  const INLINE_RATIONALE_ANCHOR =
-    "written to the LOCAL status.jsonl ledger only and is deliberately";
-
-  it("workflows.md CI-Dispatch Gate section carries the LOCAL-only intentional non-push doctrine", () => {
-    // Doctrine paragraph must state: LOCAL-only, intentional non-push, and the
-    // failure it prevents. Assert the MECHANISM, never a ledger key — shipped
-    // docs carry no internal identifiers (bkit-shipped-docs-refs.test.ts).
-    expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
-    expect(workflowsMd).toMatch(/\[skip ci\][^.]*empt(?:y|ies)[^.]*rollup/i);
-    // Must explicitly forbid the rejected fix.
-    // Wording compressed on current `dev`; keep the forbid-the-rejected-fix lock-in.
-    expect(workflowsMd).toContain('Do NOT "fix" with post-gate commit+push');
-  });
-
-  it("bkit-build.md does NOT inline the non-push rationale (it belongs in workflows.md)", () => {
-    expect(buildMd).not.toContain(INLINE_RATIONALE_ANCHOR);
-    expect(buildMd).not.toContain("re-introduces KN-11");
-  });
-
-  it("bkit-debug.md does NOT inline the non-push rationale at either gate site", () => {
-    expect(debugMd).not.toContain(INLINE_RATIONALE_ANCHOR);
-    expect(debugMd).not.toContain("re-introduces KN-11");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 9. All-kernels equality is non-vacuous (FIX A lock-in — count guards)
-//
-//    These assertions verify the count guards in describe block 3 are
-//    non-vacuous: build yields exactly 1 kernel (not 0, not accidentally 2+),
-//    debug yields exactly 2 kernels (not 0 or 1 — both sites must be present).
-//    If a kernel were dropped the count check would fail immediately.
-// ---------------------------------------------------------------------------
-describe("all-kernels equality count guards are non-vacuous (FIX A)", () => {
-  it("bkit-build.md: extractAllSharedKernelBlocks returns EXACTLY 1 block (build has one gate site)", () => {
-    const blocks = extractAllSharedKernelBlocks(buildMd);
-    expect(blocks).not.toBeNull();
-    // Exactly 1 — if a second (spurious) kernel were added, this would catch it too.
-    expect(blocks!.length).toBe(1);
-  });
-
-  it("bkit-debug.md: extractAllSharedKernelBlocks returns EXACTLY 2 blocks (PR-mode + LOCAL-mode)", () => {
-    const blocks = extractAllSharedKernelBlocks(debugMd);
-    expect(blocks).not.toBeNull();
-    // Exactly 2 — dropping either site would fail this, adding a spurious third would also fail.
-    expect(blocks!.length).toBe(2);
-  });
-
-  it("bkit-build.md: the single kernel block has >= 10 lines (non-trivial content guard)", () => {
-    const blocks = extractAllSharedKernelBlocks(buildMd);
-    expect(blocks).not.toBeNull();
-    // The canonical kernel is 21 lines including delimiters; guard at >=10 to allow minor
-    // whitespace-only edits while catching accidental emptying.
-    expect(blocks![0].length).toBeGreaterThanOrEqual(10);
-  });
-
-  it("bkit-debug.md: both kernel blocks have >= 10 lines (non-trivial content guard)", () => {
-    const blocks = extractAllSharedKernelBlocks(debugMd);
-    expect(blocks).not.toBeNull();
-    for (let i = 0; i < blocks!.length; i++) {
-      expect(blocks![i].length).toBeGreaterThanOrEqual(10);
-    }
-  });
-
-  it("build kernel and both debug kernels are all byte-equal (trimmed) — dropping any one breaks equality", () => {
-    // This re-asserts the core FIX-A guarantee with explicit failure context.
-    const buildBlocks = extractAllSharedKernelBlocks(buildMd);
-    const debugBlocks = extractAllSharedKernelBlocks(debugMd);
-    expect(buildBlocks).not.toBeNull();
-    expect(debugBlocks).not.toBeNull();
-    expect(buildBlocks!.length).toBe(1);
-    expect(debugBlocks!.length).toBe(2);
-
-    const trimmed = (lines: string[]) => lines.map((l) => l.trim());
-    const buildKernel = trimmed(buildBlocks![0]);
-
-    // Both debug kernels must equal build — if LOCAL-mode kernel were quietly edited,
-    // this would catch it (it would fail on debug index 1 specifically).
-    expect(trimmed(debugBlocks![0])).toEqual(
-      buildKernel,
-      "debug PR-mode kernel (block 0) diverged from build kernel",
-    );
-    expect(trimmed(debugBlocks![1])).toEqual(
-      buildKernel,
-      "debug LOCAL-mode kernel (block 1) diverged from build kernel — one-sided edit detected",
-    );
+    it("counts this run's re-validate rows", () => {
+      expect(
+        attempt([
+          start("2026-10-02T00:00:00Z"),
+          dispatch("2026-10-02T00:10:00Z"),
+          dispatch("2026-10-02T00:20:00Z"),
+        ]),
+      ).toBe("3");
+    });
   });
 });

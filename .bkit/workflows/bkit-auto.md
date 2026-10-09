@@ -54,7 +54,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{BODY}` = `body` of the block below; `--stderr-file` = the failed shell command's stderr saved to a file, omitted otherwise:
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = a file holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    ERROR=$(cat <<'BKIT_ERROR'
@@ -112,7 +112,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    ```
    Route:
    - **If** exit 0 → hold `headRefName` as `{BRANCH}`, `headRefOid` as `{HEAD_SHA}`, `state` as `{PR_STATE}`, `url` as `{PR_URL}`.
-   - **If** exit 80 → `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → `head.ref` → `BRANCH`, `head.sha` → `HEAD_SHA`, `state` uppercased → `PR_STATE`, `html_url` → `PR_URL`.
+   - **If** exit 80 → `pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → `head.ref` → `BRANCH`, `head.sha` → `HEAD_SHA`, `state` uppercased → `PR_STATE`, `html_url` → `PR_URL`.
    - **Else** → **Failure Path**.
 7. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**. **If** `PR_STATE` != OPEN → **Failure Path**.
 8. Resolve CI run id that triggered the workflow:
@@ -122,7 +122,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
    RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
-9. Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → whole line starting `<!-- bkit:` → `{MARKER}`; empty when absent.
+9. Read PR body via `pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → whole line starting `<!-- bkit:` → `{MARKER}`; empty when absent.
 10. Recover `FID` and `ISSUE_ID` — marker first, `feat/{FID}` branch as fallback:
     ```bash
     BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"

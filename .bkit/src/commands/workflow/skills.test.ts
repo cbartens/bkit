@@ -158,6 +158,18 @@ describe("bkit skills prune", () => {
     const r = await prune(checkout({}));
     expect(r.json).toEqual({ removed: [], kept: [], failed: [] });
   });
+
+  it("keeps bkit-* skills, from folders or the lock, even when .agents/skills.md does not list them", async () => {
+    const cwd = checkout({
+      folders: ["bkit-build", "x-skill"],
+      lock: ["bkit-ship"],
+      registry: "# Skills\n",
+    });
+    const r = await prune(cwd);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ removed: ["x-skill"], kept: ["bkit-build", "bkit-ship"], failed: [] });
+    expect(called()).toEqual(["skills remove x-skill -y"]);
+  });
 });
 
 describe("helpers", () => {

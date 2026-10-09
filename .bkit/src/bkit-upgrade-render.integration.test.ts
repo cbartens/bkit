@@ -243,7 +243,7 @@ describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited
     expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
     // Whole-file managed: no manifest entry, no markers → drift-detected via diffFile.
-    const rel = ".bkit/scripts/bkit-ship-gate.sh";
+    const rel = ".bkit/scripts/bkit-mirror-push-run.sh";
     const abs = path.join(tmpDir, rel);
     const versionPath = path.join(tmpDir, ".bkit", "version");
     const recordedHash = (): string | undefined =>

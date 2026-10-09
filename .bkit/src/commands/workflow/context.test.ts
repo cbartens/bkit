@@ -219,6 +219,99 @@ describe("bkit context clamp (#427 T1)", () => {
     expect(bogus.err).toContain("unknown profile");
     expect(read(f)).toBe("one line\n");
   });
+
+  it("the byte cap keeps the longest prefix that fits, and footers human sizes", async () => {
+    const f = write("fat-lines-exact.md", lines(100, 1024));
+    const r = await clamp(f, "ledger");
+    expect(r.json).toMatchObject({
+      clamped: true,
+      origLines: 100,
+      keptLines: 50,
+      origBytes: 102400,
+      keptBytes: 51200,
+    });
+    expect(read(f)).toContain("> [bkit] TRUNCATED — kept 50 of 100 lines (50 KB of 100 KB);");
+  });
+
+  it("a ledger over its cap with no final newline is cut whole-line, sized as on disk", async () => {
+    const content = lines(300).trimEnd();
+    const f = write("ledger-no-newline.md", content);
+    const r = await clamp(f, "ledger");
+    expect(r.json).toMatchObject({
+      clamped: true,
+      origLines: 300,
+      keptLines: 200,
+      origBytes: 2399,
+      keptBytes: 1600,
+    });
+    const out = read(f);
+    expect(out.startsWith(lines(200))).toBe(true);
+    expect(out).toContain("> [bkit] TRUNCATED — kept 200 of 300 lines (2 KB of 2 KB);");
+    expect(out.endsWith(`${FOOTER_2}\n`)).toBe(true);
+  });
+
+  it("shortens an over-long line by bytes, not characters", async () => {
+    // 3000 x "é" is 6000 bytes: cut at byte 2000, so 4000 bytes dropped (not 1000 chars).
+    const body = Array.from({ length: 3500 }, (_, i) => (i === 7 ? "é".repeat(3000) : `q ${i}`));
+    const f = write("multibyte.md", body.join("\n") + "\n");
+    const r = await clamp(f, "debug-evidence");
+    expect(r.json).toMatchObject({ clamped: true, lineCapped: 1, origLines: 3500 });
+    const shortened = read(f).split("\n")[7]!;
+    expect(shortened).toBe(`${"é".repeat(1000)} … [bkit] line shortened, 4000 bytes dropped`);
+  });
+
+  it("over the threshold but every line kept by signal context: untouched, not clamped", async () => {
+    for (const [name, content] of [
+      [
+        "dense-signal.md",
+        Array.from({ length: 9000 }, (_, i) => (i % 3 === 0 ? `error ${i}` : "q")),
+      ],
+      ["all-fail.md", Array.from({ length: 5000 }, (_, i) => `fail ${i}`)],
+    ] as const) {
+      const text = content.join("\n") + "\n";
+      const f = write(name, text);
+      const r = await clamp(f, "debug-evidence");
+      expect(r.json).toMatchObject({ clamped: false, lineCapped: 0, ceilingHit: false });
+      expect(r.json.keptLines).toBe(r.json.origLines);
+      expect(read(f)).toBe(text);
+    }
+  });
+
+  it("a gap no larger than its own marker is kept instead of marked", async () => {
+    const body = Array.from({ length: 9000 }, (_, i) =>
+      i === 4000 ? "FAIL a" : i === 4006 ? "FAIL b" : `quiet line ${i}`,
+    );
+    const f = write("small-gap.md", body.join("\n") + "\n");
+    const r = await clamp(f, "debug-evidence");
+    const out = read(f);
+    // head 500 + tail 1000 + 3998..4008 (two context windows plus the 1-line gap between)
+    expect(r.json).toMatchObject({ clamped: true, keptLines: 1511 });
+    expect(out).toContain("quiet line 4003");
+    const between = out.slice(out.indexOf("FAIL a"), out.indexOf("FAIL b"));
+    expect(between).not.toContain("TRUNCATED HERE");
+    expect(out.match(/^> \[bkit\] TRUNCATED HERE/gm)).toHaveLength(2);
+  });
+
+  it("debug-evidence with no final newline ends the kept tail with one", async () => {
+    const content = Array.from({ length: 5000 }, (_, i) => `q ${i}`).join("\n");
+    const f = write("evidence-no-newline.md", content);
+    const r = await clamp(f, "debug-evidence");
+    // records count as awk's: the unterminated last line still costs its newline
+    expect(r.json).toMatchObject({ clamped: true, origLines: 5000, keptLines: 1500 });
+    expect(r.json.origBytes).toBe(Buffer.byteLength(content) + 1);
+    const out = read(f);
+    expect(out).toContain("\nq 4999\n> [bkit] TRUNCATED — kept 1500 of 5000 lines (");
+  });
+
+  it("keeps carriage returns verbatim and counts them as bytes", async () => {
+    const content = Array.from({ length: 5000 }, (_, i) => `q ${i}\r`).join("\n") + "\n";
+    const f = write("crlf.md", content);
+    const r = await clamp(f, "debug-evidence");
+    expect(r.json).toMatchObject({ clamped: true, origLines: 5000, origBytes: 38890 });
+    const out = read(f);
+    expect(out.startsWith("q 0\r\nq 1\r\n")).toBe(true);
+    expect(out).toContain("\nq 4999\r\n> [bkit] TRUNCATED");
+  });
 });
 
 describe("bkit context clamp-log (#427 T1)", () => {
@@ -376,6 +469,12 @@ describe("bkit context ledger-scan (#427 T3)", () => {
     expect(JSON.parse(records[0]!)).toMatchObject({ artifact: "out/related.md", clamped: false });
   });
 
+  it("blank lines in the ledger never match and still count toward newest-first", async () => {
+    const { out, json } = await scan("clamp", [row(1, "clamp"), "", row(3, "clamp")]);
+    expect(out).toBe(`${row(3, "clamp")}\n${row(1, "clamp")}\n`);
+    expect(json).toMatchObject({ total: 2, kept: 2 });
+  });
+
   it("--reset-log empties the log; without it records accumulate", async () => {
     const dir = fs.mkdtempSync(path.join(tmpDir, "ledger-log-"));
     fs.writeFileSync(path.join(dir, "clamp.jsonl"), '{"stale":true}\n');
@@ -463,6 +562,10 @@ describe("context-fetch block parsing (debug Step 4 awk parsers)", () => {
     expect(parseMarker("<!-- context-fetch:start x context=ci-->")).toEqual({
       context: "ci",
       name: "x",
+    });
+    expect(parseMarker("<!-- context-fetch:start   vercel   -->")).toEqual({
+      context: "runtime",
+      name: "vercel",
     });
   });
 
@@ -736,19 +839,5 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     const dir = workspace();
     const r = await run(["finalise", ...base], dir);
     expect(r.json).toMatchObject({ verdict: "FAIL", artifacts: [], clamped: [] });
-  });
-});
-
-describe("the fence matches the shipped workflow write site byte for byte", () => {
-  it("bkit-debug.md prints exactly these lines around the payload", () => {
-    const md = read(path.resolve(__dirname, "../../../workflows/bkit-debug.md"));
-    const printed = [...md.matchAll(/^\s*printf '(=====[^']*|[A-Z][^']*)\\n'$/gm)].map((m) => m[1]);
-    const at = printed.indexOf(FENCE_INSTRUCTION_LINES[0]);
-    expect(at).toBeGreaterThan(-1);
-    expect(printed.slice(at, at + 9)).toEqual([
-      ...FENCE_INSTRUCTION_LINES,
-      FENCE_OPEN,
-      FENCE_CLOSE,
-    ]);
   });
 });

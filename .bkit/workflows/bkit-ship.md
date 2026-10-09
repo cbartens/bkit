@@ -59,7 +59,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Single-write contract:** every step before the flush creates no git object. NEVER route back to the **Failure Path** — log and continue to the flush.
 
-1. Abort any in-progress rebase, record the failure, release the lock, clear sentinels — **state only, no `add` / `commit` / `push`**. `{MAX_EXCEEDED}` = true when the **Failure Path** was entered from a `bkit counters route` exit 1, else false:
+1. Abort any in-progress rebase, record the failure, release the lock, clear sentinels — **state only, no `add` / `commit` / `push`**; **Skip if** `{LOCK_TOKEN}` empty. `{MAX_EXCEEDED}` = true when the **Failure Path** was entered from a `bkit counters route` exit 1, else false:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    RUNTIME_DEVPUSHES="{RUNTIME_DEVPUSHES}"
@@ -68,9 +68,9 @@ description: "Ship Feature — Autonomous merge and archive"
    MX=""; [ "$MAX_EXCEEDED" = "true" ] && MX="--max-exceeded"
    "$BKIT" workflows fail --workflow=ship --fid="{FID}" --month="{YYYYMM}" --token="{LOCK_TOKEN}" $DEVP $MX
    ```
-   → hold `handoverNeeded`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
+   → hold `handoverNeeded` as `{HANDOVER_NEEDED}`. **If** exit non-zero → log `Lock removal failed` with the printed `lock` to stderr, continue.
 2. <!-- bkit:tracker true start -->
-   Resolve merge state and the label set — MERGED drops all phase labels for `bkit:merged`, else the prior phase label persists:
+   Resolve merge state and the label set — MERGED drops all phase labels for `bkit:merged`, else the prior phase label persists; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    PR_NUMBER="{PR_NUMBER}"
@@ -98,13 +98,17 @@ description: "Ship Feature — Autonomous merge and archive"
    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{BODY}` = `body` from the block below; `{STDERR_FILE}` = a file holding the failed shell's stderr (drop the flag when the failure was not a shell command):
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" issues comment --kind=failure --step-number="{N}" --step-title="{Step Name}" --sub-step="{M}" --error="{error message / tool response}" --stderr-file="{STDERR_FILE}"
+   ERROR=$(cat <<'BKIT_ERROR'
+   {error message / tool response}
+   BKIT_ERROR
+   )
+   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="{STDERR_FILE}"
    ```
    <!-- bkit:tracker true end -->
-4. **If** `handoverNeeded` = true → set `{HANDOVER_OK}` = true, step 5. **Else** → set `{HANDOVER_OK}` = false, step 7.
+4. **If** `HANDOVER_NEEDED` = true → set `{HANDOVER_OK}` = true, step 5. **Else** → set `{HANDOVER_OK}` = false, step 7.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
@@ -228,9 +232,6 @@ description: "Ship Feature — Autonomous merge and archive"
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-      <!-- bkit:tracker linear start -->
-      Lowercase `{ISSUE_ID}`.
-      <!-- bkit:tracker linear end -->
       <!-- bkit:tracker false start -->
       `ISSUE_ID` unset → `{branch-suffix}-{slug}`.
       <!-- bkit:tracker false end -->
@@ -256,7 +257,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    → hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`. **If** exit non-zero → **Failure Path**.
 7. <!-- bkit:tracker true start -->
-   Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per entry of `{LABELS}`:
+   Compute the label transition and board move — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --phase=ship --board=progress --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
@@ -293,7 +294,6 @@ description: "Ship Feature — Autonomous merge and archive"
    "$BKIT" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
    → hold `text` as `{ISSUE_TEXT}`. **If** exit non-zero → **Failure Path**.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
 10. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
@@ -347,6 +347,7 @@ description: "Ship Feature — Autonomous merge and archive"
    "$BKIT" runtime assert --workflow=ship --file="{STATUS}"
    ```
    **If** exit non-zero → **Failure Path**. Update `BRANCH` = `SHIP_BRANCH`; carry `SHIP_BRANCH` to every later step.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md` in `{WORKTREE_PATH}` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
 3. **If** `BRANCH` does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → emit `[bkit-ship] WARNING branch {BRANCH} not named for {FID} — shipping it as named` → continue.
 4. Find the branch's PR — open first, then merged:
    ```bash
@@ -369,7 +370,7 @@ description: "Ship Feature — Autonomous merge and archive"
      git push -u origin "$B" || exit 1
      OPEN_EXIT=0
      "$BKIT" prs open --fid="{FID}" --title="feat({FID}): {summary}" --issue="{ISSUE_ID}" --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --note="⚠️ PR opened by /bkit-ship — no PR existed for this branch." || OPEN_EXIT=$?
-     case "$OPEN_EXIT" in 0 | 80) jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"ship", at:$t, openedPr:true}' >> "$STATUS" ;; esac
+     case "$OPEN_EXIT" in 0 | 80) "$BKIT" status meta --file="$STATUS" --workflow=ship --opened-pr >/dev/null || exit $? ;; esac
      exit "$OPEN_EXIT"
      ```
      **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base`, `head`. **If** any other non-zero exit → **Failure Path**. Re-run the `bkit prs probe` above → hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, `state`. Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **Else** → **Failure Path**.
@@ -401,7 +402,7 @@ description: "Ship Feature — Autonomous merge and archive"
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    PARENT_SHA=$(git rev-parse HEAD)
-   "$BKIT" steps done --workflow=ship --step=ship-worktree-setup --file="$STATUS" --parent-sha="$PARENT_SHA" --commit=none || exit 1
+   "$BKIT" steps done --workflow=ship --step=ship-worktree-setup --file="$STATUS" --parent-sha="$PARENT_SHA" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md" --commit=none || exit 1
    "$BKIT" steps done --workflow=ship --step=ship-regression-guard --file="$STATUS" --verdict=PASS --parent-sha="$PARENT_SHA" --commit=none
    ```
    **If** exit non-zero → **Failure Path**.
@@ -538,10 +539,11 @@ description: "Ship Feature — Autonomous merge and archive"
    **If** exit non-zero → **Failure Path**.
 2. Plan check (bookkeeping to `$BOOK_ROOT`):
    ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    if ! ls "{WORKTREE_PATH}"/docs/plans/{YYYYMM}/{FID}-plan*.md >/dev/null 2>&1; then
      echo "[bkit-ship] WARNING no plan at docs/plans/{YYYYMM}/{FID}-plan*.md — sweeping best-effort against ship-input-{RUN}.md"
-     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"ship", at:$t, planSource:"brief"}' >> "$STATUS"
+     "$BKIT" status meta --file="$STATUS" --workflow=ship --plan-source=brief >/dev/null || exit $?
    fi
    ```
    **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
@@ -919,7 +921,9 @@ description: "Ship Feature — Autonomous merge and archive"
 8. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --workflow=ship --step=ship-merge-pr --file="{STATUS}" --verdict="{MERGE_VERDICT}" --failures="{MERGE_FAILURES}" --attempt="{MERGE_ATTEMPT}" --commit=none
+   STATUS="{STATUS}"
+   MERGE_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=ship --step=ship-merge-pr --position=next | jq -er .value) || exit 2
+   "$BKIT" steps done --workflow=ship --step=ship-merge-pr --file="$STATUS" --verdict="{MERGE_VERDICT}" --failures="{MERGE_FAILURES}" --attempt="$MERGE_ATTEMPT" --commit=none
    ```
    **If** exit non-zero → **Failure Path**.
 9. <!-- bkit:tracker github start -->
@@ -941,7 +945,8 @@ description: "Ship Feature — Autonomous merge and archive"
 - **If** `state` != MERGED — run counter routing:
   ```bash
   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-  "$BKIT" counters route --name=MERGE_ATTEMPT --value="{MERGE_ATTEMPT}" --limit=MAX_MERGE_ATTEMPT --continue=step-11 --exceeded=failure-path
+  MERGE_ATTEMPT=$("$BKIT" counters derive --file="{STATUS}" --workflow=ship --step=ship-merge-pr --position=current | jq -er .value) || exit 2
+  "$BKIT" counters route --name=MERGE_ATTEMPT --value="$MERGE_ATTEMPT" --limit=MAX_MERGE_ATTEMPT --continue=step-11 --exceeded=failure-path
   ```
   - **If** exit 0 (`next` = `step-11`) → Step 11.
   - **If** exit 1 (`next` = `failure-path`) → `{MAX_EXCEEDED}` = true → **Failure Path**.
@@ -985,9 +990,11 @@ description: "Ship Feature — Autonomous merge and archive"
 4. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --verdict="{DIAGNOSE_VERDICT}" --attempt="{MERGE_ATTEMPT}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md" --commit=none
+   STATUS="{STATUS}"
+   MERGE_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=ship --step=ship-merge-pr --position=current | jq -er .value) || exit 2
+   "$BKIT" steps done --workflow=ship --step=ship-failure-diagnose --file="$STATUS" --verdict="{DIAGNOSE_VERDICT}" --attempt="$MERGE_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md" --commit=none
    ```
-   **If** exit non-zero → **Failure Path**.
+   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{MERGE_ATTEMPT}`.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -1042,9 +1049,11 @@ description: "Ship Feature — Autonomous merge and archive"
 5. Update status (bookkeeping to `$BOOK_ROOT`):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --workflow=ship --step=ship-failure-remediate --file="{STATUS}" --verdict="{REMEDIATE_VERDICT}" --attempt="{MERGE_ATTEMPT}" --strategy="{STRATEGY}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md" --commit=none
+   STATUS="{STATUS}"
+   MERGE_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=ship --step=ship-merge-pr --position=current | jq -er .value) || exit 2
+   "$BKIT" steps done --workflow=ship --step=ship-failure-remediate --file="$STATUS" --verdict="{REMEDIATE_VERDICT}" --attempt="$MERGE_ATTEMPT" --strategy="{STRATEGY}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}-log.md" --commit=none
    ```
-   **If** exit non-zero → **Failure Path**.
+   **If** exit non-zero → **Failure Path**. Hold `row.attempt` as `{MERGE_ATTEMPT}`.
 6. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->

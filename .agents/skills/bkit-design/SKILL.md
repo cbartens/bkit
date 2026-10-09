@@ -25,17 +25,17 @@ description: "Design Feature — Autonomous design phase"
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, clean. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `set -C`, release via `trap ... EXIT`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step with `bkit locks acquire --kind=workflow`; release in last step with `bkit locks release` and in Failure Path with `bkit workflows fail`; release exit non-zero → **Failure Path** with `Lock removal failed`. **If** existing lock — its owning workflow's folded status.jsonl decides: `DONE` or `FAILED` → reclaimed only once the lock is >=30min old; `IN_PROGRESS` and last step <30min idle → **Failure Path**; `IN_PROGRESS` and last step >=30min idle → stale, reclaimed. **Dev lock:** hold `$REPO_ROOT/.bkit/.dev.lock` across every dev critical section (checkout / stage / commit / push of `dev` in the main checkout); acquire with `bkit locks acquire --kind=dev`, release with `bkit locks release --kind=dev` via `trap ... EXIT`.
 > - **Status branch:** status.jsonl committed on `{BRANCH}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle pushes. **If** `RUNTIME_DEVPUSHES` = true → state reaches `dev` once in Close Workflow by local squash-merge, **else** by PR squash-merge.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return; do NOT assume success.
 > - **Worktrees:** **If** `RUNTIME_WORKTREES=true` (mint mode) → setup `cd`s into `.worktrees/{FID}` , **else** adopt current branch in place `WORKTREE_PATH=$REPO_ROOT`; no `git worktree add`; cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 > - **Git:** Orchestrator commits; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev` / `main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}` branch ONLY. Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch. Standalone push steps MUST run EXACTLY ONE `git push`; NEVER put multiple push forms in one shell invocation.
-> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit_transport_fallback_row FROM TO REASON ASSERTED_BY AT`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
+> - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** `RUNTIME_GITHUBCLI` = false in `runtime-resolved` row in `status.jsonl` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `gh repo view --json nameWithOwner` → `get_me` and parse `git remote`; `gh pr create` → `create_pull_request`; `gh pr view {N} --json …` → `pull_request_read` (`get`, minimal fields); `gh pr list --head X` → `list_pull_requests`; `gh pr merge {N} --squash` → `merge_pull_request` (explicit skip-token-free `commit_message`); `gh pr edit {N} --title` → `update_pull_request`; `gh pr update-branch {N}` → `update_pull_request_branch`; `gh run list --branch X` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from= --to= --reason= --asserted-by=`. Tracker calls ALWAYS stay on MCP; NEVER invent `gh` read-paths for trackers.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (method: `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; all writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Comment ID tracking NOT required.
 
 
@@ -46,26 +46,26 @@ description: "Design Feature — Autonomous design phase"
 
 ## 🤖 Failure Path
 
-1. Update status, commit, and push:
+1. Update status, abort any rebase, and release the lock — **Skip if** `{LOCK_TOKEN}` empty:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   STATUS="$REPO_ROOT/.worktrees/{FID}/$REL"; [ -f "$STATUS" ] || STATUS="$REPO_ROOT/$REL"
-   [ -f "$STATUS" ] && jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed",workflow:"design",at:$t}' >> "$STATUS"
-   git rebase --abort 2>/dev/null || true
-   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
-   rm -f "$LOCK"
-   [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" workflows fail --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}
    ```
-2. Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+2. Add `bkit:failed` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues labels --failed=on {LABEL_FLAGS}
+   ```
 3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Workflow Failure
-   Step: {N} — {Step Name}; Sub-step: {M}
-   Error: {error message / tool response}
-   Stderr: {last 20 lines if shell}
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   ERROR=$(cat <<'BKIT_ERROR'
+   {error message / tool response}
+   BKIT_ERROR
+   )
+   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="{STDERR_FILE}"
    ```
 4. **STOP**, no further downstream steps.
 
@@ -73,13 +73,17 @@ description: "Design Feature — Autonomous design phase"
 
 ## 🤖 Step 1 — Start Workflow
 
-1. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-2. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-3. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
+1. Resolve repo and initial branch:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" repo info --fetch
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `ownerRepo` as `{OWNER_REPO}`, `owner` as `{OWNER}`, `repo` as `{REPO}`, `branch` as `{BRANCH}`.
+2. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else**:
    Extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → log `No issue ID in the session prompt.` NEVER create a tracker issue. → **STOP**, no further downstream steps.
-4. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
+3. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → sort `COMMENTS` oldest to newest → skip. **Else**:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open` / `closed`) → `STATE`, `labels` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → sort oldest to newest → `COMMENTS`.
-5. Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
+4. Resolve `FID` — first match wins; NEVER borrow another feature's `FID` from a leftover lock or the newest bucket:
    1. Session prompt names it — an `FID` slug, a `feat/{FID}` branch, or a path under `docs/plans/{YYYYMM}/` (`{FID}-design.md`, `{FID}-plan.md`, `logs/{FID}/`).
    2. `BRANCH` = `feat/{FID}` → that `FID`.
    3. `ISSUE_ID` non-empty → feature already logged for that issue:
@@ -90,59 +94,38 @@ description: "Design Feature — Autonomous design phase"
       ```
       One line → that `FID`. Several → **Failure Path** listing them (name the `FID` in the session prompt to pick one). None → next.
    4. Mint: `FID` from `{ISSUE_ID}` and kebab from title, no stopwords, <=3 tokens, lowercase. Format `{ISSUE_ID}-{slug}`.
-      Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+      Assert format:
+      ```bash
+      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+      "$BKIT" fids check --fid={FID}
+      ```
+      **If** exit non-zero → **Failure Path**. Hold `fid` as `{FID}`.
    One `FID` for all artifacts once set.
-6. Acquire concurrency lock:
+5. Acquire concurrency lock:
    ```bash
-   git fetch origin dev 2>/dev/null
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   BUCKET_COUNT=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
-   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
-   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
-   [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
-   mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
-   LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
-   STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-   if ! (set -C; printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null; then
-     LOCK_WORKFLOW=$(awk '{print $(2)}' "$LOCK")
-     SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
-     . "$REPO_ROOT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-     if [ -f "$SRC" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$BKIT_STATUS_FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
-     else
-       LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
-     fi
-     LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
-     LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
-     if [ "$LAST_STATUS" = "IN_PROGRESS" ] && [ -n "$LAST_AT" ]; then
-       LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
-       IDLE=$(( $(date +%s) - LAST_EPOCH ))
-       [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
-     else
-       LOCK_AGE=$(( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
-       [ "$LOCK_AGE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, lock age ${LOCK_AGE}s)" >&2; exit 1; }
-     fi
-     rm -f "$LOCK"
-     (set -C; printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK") 2>/dev/null || { echo "Lock contended for {FID}" >&2; exit 1; }
-   fi
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" locks acquire --kind=workflow --workflow=design --fid={FID}
    ```
-   **If** lock acquisition exits non-zero → **Failure Path**.
-7. Add `bkit:design` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-   **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.progressOptionId}" } })`.
-8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ## Design Workflow
-   ### Step 1 — Start Workflow
-   [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
+   **If** exit non-zero → **Failure Path**. Hold `token` as `{LOCK_TOKEN}`, `month` as `{YYYYMM}`.
+6. Set phase `bkit:design` → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   **If** `board` null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({board.addItem})` → resolve numeric item id `mcp__github__projects_list({board.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({board.updateItem}, item_id: {ITEM_ID})`.
+   `{LABELS}` = `labels`, `{LINEAR_STATE}` = `linearState`, `board`, `boardSkipped` of the block below; `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues labels --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
+   ```
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --workflow=design --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree=dev
    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
+- [ ] Lock acquired (`LOCK_TOKEN`, `YYYYMM` held)
 
 
 - [ ] Issue update attempted (phase label `bkit:design`, status/state `In Progress`)
@@ -155,111 +138,64 @@ description: "Design Feature — Autonomous design phase"
 
 1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
-     git status --short
-     bash "$REPO_ROOT/.bkit/scripts/bkit-book-commit.sh" --root="$REPO_ROOT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]" \
-       || { echo "[bkit-book] pre-worktree bookkeeping commit failed" >&2; exit 1; }
-   fi
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" ledgers commit --only-if-dirty-tracked --scope=core --mode=commit --month={YYYYMM} --fid={FID} --message="chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
    ```
+   **If** exit non-zero → **Failure Path**.
    **If** primary checkout dirty / unpushed → NOT blocker; do NOT stash, clean, or route to **Failure Path** → create `feat/{FID}` branch off `origin/dev` instead (never `main` / current branch).
 2. Create / resume worktree, or adopt current branch in place:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
-   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
-   bkit_runtime_assert_resolved || exit 2
-   if [ "$RUNTIME_WORKTREES" = "true" ]; then
-     git worktree prune
-     WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-     if [ -d "$WORKTREE_PATH" ]; then
-       cd "$WORKTREE_PATH"
-       git fetch origin dev
-       if ! git rebase --rebase-merges origin/dev; then
-         . "$REPO_ROOT/.bkit/scripts/bkit-rebase-resolve.sh" || { echo "[bkit-rebase] missing bkit-rebase-resolve.sh — run 'bkit install'" >&2; exit 2; }
-         bkit_rebase_resolve || { git rebase --abort 2>/dev/null || true; echo "Rebase conflict — resolve manually"; exit 1; }
-       fi
-     else
-       if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
-         git worktree add "$WORKTREE_PATH" "feat/{FID}"
-       elif git fetch origin "feat/{FID}" 2>/dev/null \
-            && git show-ref --verify --quiet "refs/remotes/origin/feat/{FID}"; then
-         git worktree add "$WORKTREE_PATH" --track -b "feat/{FID}" "origin/feat/{FID}"
-       else
-         git fetch origin dev
-         git worktree add "$WORKTREE_PATH" -b "feat/{FID}" origin/dev
-       fi
-       cd "$WORKTREE_PATH"
-     fi
-     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
-     for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
-       [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
-     done
-     [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
-     pnpm install --frozen-lockfile
-   else
-     WORKTREE_PATH="$REPO_ROOT"
-     cd "$WORKTREE_PATH"
-     [ "$(git branch --show-current)" != "dev" ] || { echo "Adopt mode: current branch is dev — refusing to work in place on dev" >&2; exit 1; }
-     mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
-   fi
-   RUNTIME_BASESHA=$(git merge-base origin/dev HEAD 2>/dev/null || echo "")
-   bkit_runtime_row design "$(date -u +%FT%TZ)" >> "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   DETECT=$("$BKIT" runtime detect --fid={FID}) || exit 2
+   WT_FLAG=""; [ "$(jq -r .runtimeWorktrees <<<"$DETECT")" = "true" ] && WT_FLAG=--worktrees
+   "$BKIT" worktrees setup --workflow=design --fid={FID} --month={YYYYMM} $WT_FLAG
    ```
-3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Join `DESCRIPTION` and `COMMENTS` into `ISSUE_TEXT` → drop any comments from `ISSUE_TEXT` whose first line is `###### bkit:generated`. **If** `ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `ISSUE_TEXT`. **Else** → continue with `ISSUE_TEXT` unchanged. Derive `{RUN}` from the folded status.jsonl:
+   Hold `worktreePath` as `{WORKTREE_PATH}`, `repoRoot` + `/.git/bkit-outbox/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}`, `logDir` as `{LOG_DIR}`, `sentinel` as `{SENTINEL}`, `baseSha` as `{BASE_SHA}` (empty when null).
+   Route:
+   - **If** exit 0 → step 3.
+   - **If** exit 3 → run the rebase block below; **If** it exits 0 → re-run step 2, **Else** → **Failure Path**.
+   - **Else** → **Failure Path**.
    ```bash
-   WT=$(git rev-parse --show-toplevel)
-   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   . "$WT/.bkit/scripts/bkit-counter-bus.sh"
-   run_number "$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" design || exit 2
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   cd "{WORKTREE_PATH}" || exit 1
+   "$BKIT" branches rebase --sentinel="{SENTINEL}" --log-file="{LOG_DIR}/rebase-resolve-log.md"
    ```
+3. Enter the worktree, open the run, record the runtime:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   cd "{WORKTREE_PATH}" || exit 1
+   mkdir -p "{OUTBOX}" || exit 1
+   "$BKIT" workflows start --workflow=design --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} || exit 1
+   "$BKIT" runtime row --workflow=design --base-sha="{BASE_SHA}" --file="{LOG_DIR}/status.jsonl" >/dev/null || exit 2
+   "$BKIT" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=design >/dev/null || exit 2
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `file` as `{STATUS}`, `run` as `{RUN}`.
+4. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON, oldest to newest; `[]` when none) to `{OUTBOX}/issue-comments.json` → build `ISSUE_TEXT`:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `text` as `ISSUE_TEXT`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md` = session prompt + `ISSUE_TEXT`.
 5. Update status and commit:
    ```bash
-   DIR="docs/plans/{YYYYMM}/logs/{FID}"
-   WT=$(git rev-parse --show-toplevel)
-   STATUS="$WT/$DIR/status.jsonl"
-   mkdir -p "$WT/$DIR"
-   if [ -f "$WT/$DIR/status.json" ] && [ ! -f "$STATUS" ]; then
-     jq -c '.[] as $w | ($w.workflow) as $wf
-       | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
-       , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
-       , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
-          elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
-          else empty end)' "$WT/$DIR/status.json" > "$STATUS"
-   fi
-   [ -f "$STATUS" ] || : > "$STATUS"
-   . "$WT/.bkit/scripts/bkit-status-fold.sh" || { echo "[bkit-telemetry] missing bkit-status-fold.sh — run 'bkit install'" >&2; exit 2; }
-   LATEST=$(jq -s "$BKIT_STATUS_FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
-   if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "design" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
-     jq -nc --arg t "$(date -u +%FT%TZ)" --arg p "$(git rev-parse HEAD 2>/dev/null || echo '')" '{type:"workflow-started", workflow:"design", at:$t, parentSha:$p}' >> "$STATUS"
-   fi
-   . "$WT/.bkit/scripts/bkit-counter-bus.sh"
-   RUN=$(run_number "$STATUS" design) || exit 2
-   [ -s "$WT/$DIR/design-input-$RUN.md" ] || { echo "[bkit-design] design-input-$RUN.md missing or empty" >&2; exit 1; }
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
-     >> "$STATUS"
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-input-'"${RUN}"'.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-start-workflow --commit=none >/dev/null || exit 1
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-worktree-setup \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md --message="chore({FID}): worktree-setup"
    ```
+   **If** exit non-zero → **Failure Path**.
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 2 — Worktree Setup
-   [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
-   [docs/plans/{YYYYMM}/logs/{FID}/status.jsonl](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=2 --step-title="Worktree Setup" --owner-repo={OWNER_REPO} --tree=dev --artifact=docs/plans/{YYYYMM}/logs/{FID}/status.jsonl
    ```
 
 ### 🔒 Gate 2 — Worktree Setup
 
-- [ ] Worktree created / resumed or current branch adopted
-- [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
+- [ ] Worktree created / resumed or current branch adopted (`WORKTREE_PATH`)
+- [ ] Branch non-empty (`BRANCH`, worktree branch)
 - [ ] Run number set (`{RUN}`)
 - [ ] Artifact written (`design-input-{RUN}.md`, non-empty)
 - [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `design-start-workflow` and `design-worktree-setup` recorded with `parentSha`)
@@ -273,12 +209,16 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 3 — Brainstorm & Ideate
 
 1. `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
-   - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → extract `body` → `RELATED_DESCRIPTION`.
-   - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Join `RELATED_DESCRIPTION` and `RELATED_COMMENTS` into `RELATED_ISSUE_TEXT` → drop any comments from `RELATED_ISSUE_TEXT` whose first line is `###### bkit:generated`.
-   - **If** `RELATED_ISSUE_TEXT` contains whole-line marker `###### bkit:ignore-earlier` → drop all text above last marker and ONLY keep remaining text as `RELATED_ISSUE_TEXT`. **Else** → continue with `RELATED_ISSUE_TEXT` unchanged.
+   - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `body` to `{OUTBOX}/related-description.md`.
+   - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → write JSON to `{OUTBOX}/related-comments.json`.
+   - Run the related-text block below → `text` → `RELATED_ISSUE_TEXT`. **If** exit non-zero → **Failure Path**.
    - Append `## #{number} — {title} ({state})` heading plus filtered `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   Related-text block:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
+   ```
 2. Launch all three subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
@@ -295,18 +235,19 @@ description: "Design Feature — Autonomous design phase"
 3. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 4. Update status and commit:
    ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md","docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-brainstorm-ideate --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md \
+     --message="chore({FID}): brainstorm-ideate"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 3 — Brainstorm & Ideate
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=3 --step-title="Brainstorm & Ideate"
    ```
 
 ### 🔒 Gate 3 — Brainstorm & Ideate
@@ -331,19 +272,16 @@ description: "Design Feature — Autonomous design phase"
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-generate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-generate"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-generate --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md --message="chore({FID}): design-generate"
    ```
+   **If** exit non-zero → **Failure Path**.
 4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 4 — Generate Design
-   [design-v1-draft.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=4 --step-title="Generate Design" --owner-repo={OWNER_REPO} --ref=dev --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md
    ```
 
 ### 🔒 Gate 4 — Generate Design
@@ -370,36 +308,49 @@ description: "Design Feature — Autonomous design phase"
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `design-review-1.md` and `design-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`); extract `Spike` from `design-review-1.md` as `SPIKE`.
-4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending subagent again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+3. Read `design-review-1.md` and `design-review-2.md` headers — extract `Verdict` (`verdict`) from each, running the block once per `{N}` in 1, 2:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-review-{N}.md --agent=bkit-design-review-{N}
+   ```
+   Route per review:
+   - **If** exit 0 → hold `verdict`; from `design-review-1.md` also hold `fields.Spike` as `SPIKE`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run its block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
+4. `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`).
 5. **If** `SPIKE` not in `TRUE|FALSE` → invoke `@bkit-design-review-1` again with `"Your prior output 'design-review-1.md' has an invalid 'Spike' header. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + 'Spike: TRUE|FALSE' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 6. **If** `REVIEW_VERDICT` = FAIL → **Failure Path**.
 7. Update status and commit:
    ```bash
-   REVIEW_VERDICT="{REVIEW_VERDICT}"
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REVIEW_VERDICT" \
-     '{type:"step-done", workflow:"design", step:"design-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md","docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-review"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-review --verdict={REVIEW_VERDICT} --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md \
+     --message="chore({FID}): design-review"
    ```
+   **If** exit non-zero → **Failure Path**.
 8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 5 — Design Review - Verdict: {REVIEW_VERDICT}
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=5 --step-title="Design Review" --verdict={REVIEW_VERDICT}
    ```
 
 ### 🔒 Gate 5 — Design Review
 
+```bash
+BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+"$BKIT" steps gate --file="{STATUS}" --workflow=design --step=design-review --attempt=1 \
+  --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md \
+  --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md
+```
+
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
-- [ ] Artifacts written (`design-review-1.md` and `design-review-2.md`, non-empty)
+- [ ] Mechanical checks passed (gate block exit 0: `design-review-1.md` and `design-review-2.md` non-empty, no PENDING placeholders, step `design-review` recorded with `parentSha`)
 - [ ] `Verdict` extracted and valid (`REVIEW_VERDICT` = worst-of-two; each review's `Verdict` in `PASS|CONCERNS|FAIL`)
 - [ ] Spike flag extracted and valid (`SPIKE` in `TRUE|FALSE`, from `design-review-1.md`)
-- [ ] No PENDING placeholders remain (`design-review-1.md` and `design-review-2.md`)
 - [ ] Routed correctly (FAIL → Failure Path; `PASS|CONCERNS` → Step 6)
-- [ ] Workflow status updated (step `design-review` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status recorded with `verdict` (step `design-review`, `REVIEW_VERDICT`)
 
 
 - [ ] Issue comment attempted (`Step 5` section)
@@ -416,37 +367,43 @@ description: "Design Feature — Autonomous design phase"
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `design-spike.md` until `<!-- verdict:end -->` → extract `Verdict` as `SPIKE_VERDICT`. **If** `SPIKE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending subagent again with `"Your prior output 'design-spike.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+3. Read `design-spike.md` header — extract `Verdict` (`verdict`) as `SPIKE_VERDICT`:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --agent=bkit-design-spike
+   ```
+   Route:
+   - **If** exit 0 → hold `verdict` as `SPIKE_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'design-spike.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Assert probe files stayed inside the artifact tree, then update status and commit:
    ```bash
-   SPIKE_VERDICT="{SPIKE_VERDICT}"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    git add -A
    ESCAPED=$(git diff --cached --name-only | grep -vE '^docs/plans/|^docs/(deferrals|decisions|failures)\.jsonl$|^\.bkit/(friction|stats)\.jsonl$' || true)
    [ -n "$ESCAPED" ] && { echo "spike wrote outside docs/plans/:" >&2; echo "$ESCAPED" >&2; exit 1; }
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SPIKE_VERDICT" \
-     '{type:"step-done", workflow:"design", step:"design-spike", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-spike.md"]}' \
-     >> "$STATUS"
-   git commit --allow-empty -m "chore({FID}): spike"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-spike --verdict={SPIKE_VERDICT} --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --message="chore({FID}): spike"
    ```
    **If** exit non-zero → **Failure Path**.
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 6 — Spike - Verdict: {SPIKE_VERDICT}
-   [design-spike.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-spike.md)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=6 --step-title=Spike --verdict={SPIKE_VERDICT} --owner-repo={OWNER_REPO} --ref=dev --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md
    ```
 
 ### 🔒 Gate 6 — Spike
 
+```bash
+BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+"$BKIT" steps gate --file="{STATUS}" --workflow=design --step=design-spike --attempt=1 \
+  --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --verdict-required --agent=bkit-design-spike
+```
+
 - [ ] Subagent invoked (`@bkit-design-spike`, no inline work)
-- [ ] Artifact written (`design-spike.md`, non-empty)
-- [ ] `Verdict` extracted and valid (`SPIKE_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] No PENDING placeholders remain (`design-spike.md`)
+- [ ] Mechanical checks passed (gate block exit 0: `design-spike.md` non-empty, no PENDING placeholders, `Verdict` valid and equal to `SPIKE_VERDICT`, step `design-spike` recorded with `parentSha`, `verdict`)
 - [ ] Probe files confined to the artifact tree (`docs/plans/{YYYYMM}/logs/{FID}/spike/`)
-- [ ] Workflow status updated (step `design-spike` recorded with `parentSha`, `verdict`)
 
 
 - [ ] Issue comment attempted (`Step 6` section)
@@ -461,23 +418,27 @@ description: "Design Feature — Autonomous design phase"
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`; append `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md` **If** Step 5 `SPIKE` = TRUE.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending subagent again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+3. Read `design-v2-reviewed.md` header — extract `Verdict` (`verdict`) as `APPLY_REVIEW_VERDICT`:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md --agent=bkit-design-update
+   ```
+   Route:
+   - **If** exit 0 → hold `verdict` as `APPLY_REVIEW_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. Update status and commit:
    ```bash
-   APPLY_REVIEW_VERDICT="{APPLY_REVIEW_VERDICT}"
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
-     '{type:"step-done", workflow:"design", step:"design-apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-apply-review --verdict={APPLY_REVIEW_VERDICT} --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md --message="chore({FID}): apply-review"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 7 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
-   [design-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=7 --step-title="Apply Review" --verdict={APPLY_REVIEW_VERDICT} --owner-repo={OWNER_REPO} --ref=dev --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md
    ```
 
 ### 🔒 Gate 7 — Apply Review
@@ -500,24 +461,28 @@ description: "Design Feature — Autonomous design phase"
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Read `design-v3-organised.md` until `<!-- verdict:end -->` → extract `Verdict` as `ORGANISE_VERDICT`. **If** `ORGANISE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending subagent again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+3. Read `design-v3-organised.md` header — extract `Verdict` (`verdict`) as `ORGANISE_VERDICT`:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --agent=bkit-design-organise
+   ```
+   Route:
+   - **If** exit 0 → hold `verdict` as `ORGANISE_VERDICT`.
+   - **If** exit 5 **or** 6 → invoke offending subagent again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+   - **Else** → **Failure Path**.
 4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path**.
 5. Update status and commit:
    ```bash
-   ORGANISE_VERDICT="{ORGANISE_VERDICT}"
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$ORGANISE_VERDICT" \
-     '{type:"step-done", workflow:"design", step:"design-organise", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-organise"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-organise --verdict={ORGANISE_VERDICT} --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --message="chore({FID}): design-organise"
    ```
+   **If** exit non-zero → **Failure Path**.
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 8 — Design Organise - Verdict: {ORGANISE_VERDICT}
-   [design-v3-organised.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=8 --step-title="Design Organise" --verdict={ORGANISE_VERDICT} --owner-repo={OWNER_REPO} --ref=dev --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md
    ```
 
 ### 🔒 Gate 8 — Design Organise
@@ -541,25 +506,31 @@ description: "Design Feature — Autonomous design phase"
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/design-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md`.
 3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
+4. Read `design-summary.md` header — extract `Verdict` (`verdict`) as `SUMMARY_VERDICT`:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --agent=bkit-design-summary
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`.
 5. Update status and commit:
    ```bash
-   SUMMARY_VERDICT="{SUMMARY_VERDICT}"
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '{type:"step-done", workflow:"design", step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip ci]"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-summary --verdict={SUMMARY_VERDICT} --attempt=1 \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --message="chore({FID}): summary bkit [skip ci]"
    ```
-6. Assert `{BRANCH}` non-empty, then push with EXACTLY ONE command: **If** `{BRANCH}` is `dev` / `main` → `git push origin "{BRANCH}"`. **Else** → `git push --force-with-lease origin "{BRANCH}"`.
+   **If** exit non-zero → **Failure Path**.
+6. Push with EXACTLY ONE command:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" branches push --mode=feature
+   ```
+   **If** exit non-zero → **Failure Path**.
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 9 — Summary - Verdict: {SUMMARY_VERDICT}
-   [design-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
-   {design-summary.md content verbatim}
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues comment --step-number=9 --step-title=Summary --verdict={SUMMARY_VERDICT} --owner-repo={OWNER_REPO} --ref=dev \
+     --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --body-file=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md
    ```
 8. Route:
    - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
@@ -587,26 +558,26 @@ description: "Design Feature — Autonomous design phase"
 
 **Run only if** `SUMMARY_VERDICT` = PASS **or** CONCERNS.
 
-1. Read `design-v3-organised.md` section `Suggested Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
+1. Parse workstreams:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" workstreams parse --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md
+   ```
+   **If** exit non-zero → **Failure Path**. Hold `workstreams` as `WORKSTREAMS`.
 2. Post the list on `{ISSUE_ID}` only. NEVER create a tracker issue. NEVER comment on any other issue. NEVER set blockers.
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below. One `- WS-{N}:` line per `WORKSTREAMS` entry.
-   ```comment
-   ###### bkit:generated
-   ### Step 10 — Suggested Workstreams
-   Advisory only. NEVER auto-trigger.
-   - WS-{N}: {NAME}. Requires: {REQUIRES}
-   [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)
+   `{BODY}` = `body` of the block below:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" workstreams comment --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO}
    ```
+   **If** exit non-zero → **Failure Path**.
 3. Update status and commit:
    ```bash
-   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-workstream-suggest", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
-     >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-suggest"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-workstream-suggest --message="chore({FID}): design-workstream-suggest"
    ```
+   **If** exit non-zero → **Failure Path**.
 
 ### 🔒 Gate 10 — Suggest Workstreams
 
@@ -623,55 +594,48 @@ description: "Design Feature — Autonomous design phase"
 
 1. Archive any superseded design and copy final design to canonical bucket:
    ```bash
-   BUCKET_COUNT=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | grep -c . || true)
-   [ "$BUCKET_COUNT" -gt 1 ] && { echo "{FID} has logs in more than one month bucket:" >&2; ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ >&2; echo "Consolidate into a single bucket, then re-run." >&2; exit 1; }
-   YYYYMM=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
-   [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
-   DESIGN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   DESIGN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
-   BASE_SHA=$(jq -s -r '[.[] | select(.type=="runtime-resolved")] | last | .baseSha // ""' \
-     "docs/plans/$YYYYMM/logs/{FID}/status.jsonl" 2>/dev/null || echo "")
-   [ -n "$BASE_SHA" ] && bkit_anchor_stamp "$DESIGN_FINAL" "$BASE_SHA"
-   CANONICAL="docs/plans/$YYYYMM/{FID}-design.md"
+   RT=$("$BKIT" runtime assert --file="{STATUS}" --workflow=design) || exit 2
+   ANCHOR_SHA=$(jq -r .baseSha <<<"$RT")
+   if [ -n "$ANCHOR_SHA" ]; then
+     "$BKIT" branches anchor-stamp --file="$DESIGN_FINAL" --base-sha="$ANCHOR_SHA" >/dev/null || exit 1
+   fi
+   CANONICAL="docs/plans/{YYYYMM}/{FID}-design.md"
    if [ -f "$CANONICAL" ] && ! cmp -s "$CANONICAL" "$DESIGN_FINAL"; then
-     mkdir -p "docs/plans/$YYYYMM/archive"
-     mv "$CANONICAL" "docs/plans/$YYYYMM/archive/$(date -u +%Y%m%dT%H%M%SZ)-{FID}-design.md"
+     mkdir -p "docs/plans/{YYYYMM}/archive"
+     mv "$CANONICAL" "docs/plans/{YYYYMM}/archive/$(date -u +%Y%m%dT%H%M%SZ)-{FID}-design.md"
    fi
    cp "$DESIGN_FINAL" "$CANONICAL"
    [ -s "$CANONICAL" ] || { echo "Canonical empty: $CANONICAL" >&2; exit 1; }
    ```
-2. Update status and commit:
+   **If** exit non-zero → **Failure Path**.
+2. Update status, write close telemetry, and commit:
    ```bash
-   WT=$(git rev-parse --show-toplevel)
-   STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"design", step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
-     >> "$STATUS"
-   jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" steps done --file="{STATUS}" --workflow=design --step=design-close-workflow --commit=none >/dev/null || exit 1
+   CLOSE=$("$BKIT" workflows close --workflow=design --fid={FID} --month={YYYYMM}) || exit 1
+   printf '%s\n' "$CLOSE"
+   printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md" || exit 1
+   "$BKIT" comply --phase=design || echo "[bkit-comply] grader unavailable, skipping" >&2
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
-3. Squash-merge to dev, write close telemetry, commit, push, and clean up:
+   **If** exit non-zero → **Failure Path**.
+3. Squash-merge to dev, commit, push, and clean up:
    ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    cd "$REPO_ROOT"
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
-   . "$REPO_ROOT/.bkit/scripts/bkit-runtime.sh" || { echo "[bkit-runtime] missing bkit-runtime.sh — run 'bkit install'" >&2; exit 2; }
-   bkit_runtime_detect "$REPO_ROOT" "{FID}" || { echo "[bkit-runtime] runtime detect failed" >&2; exit 2; }
-   bkit_runtime_assert_resolved || exit 2
+   RT=$("$BKIT" runtime assert --file="{STATUS}" --workflow=design) || exit 2
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
-     DEVLOCK="$REPO_ROOT/.bkit/.dev.lock"
-     DEADLINE=$(( $(date +%s) + 600 ))
-     until (set -C; printf '%s design {FID}\n' "$(date -u +%FT%TZ)" > "$DEVLOCK") 2>/dev/null; do
-       DEVLOCK_MTIME=$(stat -c %Y "$DEVLOCK" 2>/dev/null || stat -f %m "$DEVLOCK" 2>/dev/null || echo 0)
-       [ $(( $(date +%s) - DEVLOCK_MTIME )) -ge 900 ] && { rm -f "$DEVLOCK"; continue; }
-       [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "dev lock held by: $(cat "$DEVLOCK" 2>/dev/null) — serialise this run or use a separate clone" >&2; exit 1; }
-       sleep 10
-     done
-     trap 'rm -f "$DEVLOCK"' EXIT
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$("$BKIT" repo info 2>/dev/null | jq -r '.ownerRepo // empty'); [ -z "$REPO_SLUG" ] && REPO_SLUG="unknown/repo"
+   if [ "$(jq -r .runtimeDevPushes <<<"$RT")" = "true" ]; then
+     DEV=$("$BKIT" locks acquire --kind=dev --workflow=design --fid={FID}) || { echo "dev lock busy — serialise this run or use a separate clone" >&2; exit 1; }
+     DEV_TOKEN=$(jq -r .token <<<"$DEV")
+     trap '"$BKIT" locks release --kind=dev --workflow=design --fid={FID} --token="$DEV_TOKEN" >/dev/null' EXIT
      git checkout dev
      [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
      STRAY_MAIN=$(git status --porcelain -uall -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep '^??' || true)
@@ -683,104 +647,71 @@ description: "Design Feature — Autonomous design phase"
      DESIGN_DOC="docs/plans/{YYYYMM}/{FID}-design.md"
      BRANCH_BLOB=$(git rev-parse -q --verify "feat/{FID}:$DESIGN_DOC") || { echo "feat/{FID} carries no $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
      [ "$(git rev-parse -q --verify ":$DESIGN_DOC")" = "$BRANCH_BLOB" ] || { echo "squash did not stage the feat/{FID} copy of $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
-     WT=$(git rev-parse --show-toplevel)
-     STATUS="$WT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-     STATS="$WT/.bkit/stats.jsonl"
-     BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-     REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-     PARENT_SHA=$(git rev-parse HEAD)
-     COUNTER_VALUE=$(jq -s --arg wf "design" '[.[] | select(.type=="workflow-started" and .workflow==$wf)] | length' "$STATUS" 2>/dev/null)
-     case "$COUNTER_VALUE" in '' | *[!0-9]*) COUNTER_VALUE=1 ;; esac
-     jq -nc \
-       --arg repo "$REPO_SLUG" \
-       --arg bkitVersion "$BKIT_VER" \
-       --arg step "design-close-workflow" \
-       --arg counterName "DESIGN_ATTEMPT" \
-       --argjson counterValue "$COUNTER_VALUE" \
-       --arg counterSource "shell-bus" \
-       --arg parentSha "$PARENT_SHA" \
-       '. | .ts = (now*1000|floor) | .kind = "counter" | .workflow = "design" | .repo = $repo | .bkitVersion = $bkitVersion | .step = $step | .counterName = $counterName | .counterValue = $counterValue | .counterSource = $counterSource | .parentSha = $parentSha' \
-       >> "$STATS" || echo "[bkit-telemetry] append failed: $STATS"
-     bash "$WT/.bkit/scripts/bkit-workflow-telemetry.sh" design {YYYYMM} {FID} >/dev/null
-     ISSUES_JSONL="$WT/.bkit/issues.jsonl"
+     ISSUES_JSONL="$REPO_ROOT/.bkit/issues.jsonl"
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
        >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
-     ( . "$WT/.bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "$WT" ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
-     bash "$WT/.bkit/scripts/bkit-book-commit.sh" --root="$WT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit-allow-empty --squash-of="feat/{FID}" --message="docs({FID}): design DONE bkit [skip ci]" \
-       || { echo "[bkit-book] design-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
-     git push origin dev || { echo "dev push failed" >&2; exit 1; }
+     "$BKIT" roadmap fold --root="$REPO_ROOT" >/dev/null
+     "$BKIT" ledgers commit --root="$REPO_ROOT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit-allow-empty --squash-of="feat/{FID}" --message="docs({FID}): design DONE bkit [skip ci]" >/dev/null \
+       || { echo "[bkit-ledgers] design-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
+     "$BKIT" branches push --mode=dev >/dev/null || { echo "dev push failed" >&2; exit 1; }
      git show "dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
      CLOSE_SHAPE="local"
      LANDED_SHA=$(git rev-parse HEAD)
      CLOSE_TRANSPORT="git"
-     git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
+     "$BKIT" worktrees remove --fid={FID} --owned-only >/dev/null || echo "[bkit-worktrees] worktree removal failed" >&2
      git branch -D "feat/{FID}" 2>/dev/null || true
      git push origin --delete "feat/{FID}" 2>/dev/null || true
-     git worktree prune
    else
      git fetch origin dev "{BRANCH}"
-     BKIT_VER=$(jq -r '.pinnedVersion // empty' ".bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-     REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
        >> ".bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: .bkit/issues.jsonl"
-     ( . ".bkit/scripts/bkit-roadmap-fold.sh" && bkit_roadmap_fold "." ) || echo "[bkit-roadmap] fold skipped — bkit-roadmap-fold.sh missing, run 'bkit install'" >&2
+     "$BKIT" roadmap fold >/dev/null
      git add -- .bkit/issues.jsonl docs/roadmap.md
      git commit --allow-empty -m "docs({FID}): design roadmap update bkit [skip ci]" -- .bkit/issues.jsonl docs/roadmap.md
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
      [ -n "$STRAY" ] && { echo "design close-workflow diff carries non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
-     B=$(git branch --show-current)
-     [ -n "$B" ] || { echo "detached HEAD — refusing to push the design close commits" >&2; exit 1; }
-     git push --force-with-lease origin "$B" || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
-     PR_NUMBER=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
-     if [ -z "$PR_NUMBER" ]; then
-       gh pr create --base dev --head "{BRANCH}" --title "docs({FID}): design DONE" --body "" || { echo "gh pr create failed" >&2; exit 1; }
-       PR_NUMBER=$(gh pr list --head "{BRANCH}" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
-     fi
+     "$BKIT" branches push --mode=feature >/dev/null || { echo "close-commit push failed — the PR would not carry the roadmap row or the close status rows" >&2; exit 1; }
+     PR=$("$BKIT" prs open --fid={FID} --title="docs({FID}): design DONE" --issue="{ISSUE_ID}" --head="{BRANCH}" --existing=reuse) || { echo "PR open failed for {BRANCH}" >&2; exit 1; }
+     PR_NUMBER=$(jq -r '.number // empty' <<<"$PR")
      [ -n "$PR_NUMBER" ] || { echo "Could not resolve PR number for {BRANCH} to dev" >&2; exit 1; }
      gh pr merge "$PR_NUMBER" --squash --subject "docs({FID}): design DONE bkit [skip ci]" --body "" || { echo "gh pr merge failed" >&2; exit 1; }
-     MERGE_STATE=$(gh pr view "$PR_NUMBER" --json state --jq .state)
-     [ "$MERGE_STATE" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED (state=$MERGE_STATE)" >&2; exit 1; }
-     LANDED_SHA=$(gh pr view "$PR_NUMBER" --json mergeCommit --jq .mergeCommit.oid)
+     PROBE=$("$BKIT" prs probe --number="$PR_NUMBER") || { echo "Could not read PR $PR_NUMBER" >&2; exit 1; }
+     [ "$(jq -r .state <<<"$PROBE")" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED" >&2; exit 1; }
+     LANDED_SHA=$(jq -r '.mergeCommitOid // empty' <<<"$PROBE")
      [ -n "$LANDED_SHA" ] || { echo "Could not resolve landed SHA for PR $PR_NUMBER" >&2; exit 1; }
+     git fetch origin dev || { echo "fetch of origin/dev after the merge failed" >&2; exit 1; }
      git show "origin/dev:docs/plans/{YYYYMM}/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
      CLOSE_SHAPE="pr"
      CLOSE_TRANSPORT="gh"
    fi
-   bkit_close_guard_scan_body "$LANDED_SHA" dev; SCAN_RC=$?
+   "$BKIT" prs scan-body --sha="$LANDED_SHA" --remote-ref=dev >/dev/null; SCAN_RC=$?
    case "$SCAN_RC" in
      0) SCAN_RESULT="clean" ;;
      1) SCAN_RESULT="skip-token-found" ;;
      *) echo "Post-close body scan errored (rc=$SCAN_RC) on $LANDED_SHA" >&2; exit 1 ;;
    esac
-   bkit_close_guard_cross_check "$STATUS" "$CLOSE_TRANSPORT" || { echo "Close transport cross-check failed" >&2; exit 1; }
-   bkit_close_transport_row "$CLOSE_SHAPE" "$LANDED_SHA" "$SCAN_RESULT" "$(date -u +%FT%TZ)" >> "$STATUS"
+   "$BKIT" prs cross-check --file="$STATUS" --transport="$CLOSE_TRANSPORT" >/dev/null || { echo "Close transport cross-check failed" >&2; exit 1; }
+   "$BKIT" prs transport-row --file="$STATUS" --kind=close --shape="$CLOSE_SHAPE" --sha="$LANDED_SHA" --scan-result="$SCAN_RESULT" >/dev/null || exit 1
    [ "$SCAN_RESULT" = "clean" ] || { echo "Landed commit $LANDED_SHA inherited a CI-suppression token in its body" >&2; exit 1; }
-   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
-   rm -f "$LOCK"
-   [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
+   "$BKIT" locks release --kind=workflow --workflow=design --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || { echo "Lock removal failed" >&2; exit 1; }
    ```
-4. No issue changes.
-   **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
-5. Build `{ARTIFACTS}` link list:
+   **If** exit non-zero → **Failure Path**.
+4. No label changes. **If** `board` null → log `boardSkipped` → skip. **Else** ensure on board `mcp__github__projects_write({board.addItem})` → resolve numeric item id `mcp__github__projects_list({board.listItems})` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({board.updateItem}, item_id: {ITEM_ID})`.
+   `{LINEAR_STATE}` = `linearState`, `board`, `boardSkipped` of the block below:
    ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" issues labels --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
+   ```
+5. Build `{BODY}` = `body` of the block below — artifact links on `dev`, close telemetry report:
+   ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
-   ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/design-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
-   printf '%s\n' "$ARTIFACTS"
-   TELEMETRY=$( (cd "$RR" && pnpm bkit telemetry summary --phase=design) 2>&1 || echo "[bkit-telemetry] summary unavailable" )
-   printf '\n%s\n' "$TELEMETRY"
+   { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/design-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done > "{OUTBOX}/close-artifacts.md"
+   "$BKIT" issues comment --step-number=11 --step-title="Close Workflow" --section="Artifacts={OUTBOX}/close-artifacts.md" --section="Telemetry={OUTBOX}/close-telemetry.md"
    ```
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below:
-   ```comment
-   ###### bkit:generated
-   ### Step 11 — Close Workflow
-   #### Artifacts
-   {ARTIFACTS}
-   #### Telemetry
-   {TELEMETRY}
-   ```
 7. Final return: Display `design-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP** — do NOT invoke `/bkit-plan`.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})
 

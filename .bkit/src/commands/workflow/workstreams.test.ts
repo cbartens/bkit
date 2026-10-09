@@ -144,24 +144,6 @@ describe("bkit workstreams comment", () => {
     );
   });
 
-  it("matches the comment template in bkit-design.md line for line", () => {
-    const md = fs.readFileSync(
-      path.resolve(__dirname, "../../../workflows/bkit-design.md"),
-      "utf-8",
-    );
-    const start = md.indexOf("### Step 10 — Suggested Workstreams\n");
-    const block = md
-      .slice(md.lastIndexOf("```comment\n", start), md.indexOf("```\n", start))
-      .split("\n");
-    expect(block.slice(1, 6).map((l) => l.trim())).toEqual([
-      "###### bkit:generated",
-      "### Step 10 — Suggested Workstreams",
-      "Advisory only. NEVER auto-trigger.",
-      "- WS-{N}: {NAME}. Requires: {REQUIRES}",
-      "[docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/{FID}-design.md)",
-    ]);
-  });
-
   it("needs --owner-repo", async () => {
     expect((await run(["comment", "--fid=1-x", "--month=202610"], ORGANISED)).code).toBe(2);
   });

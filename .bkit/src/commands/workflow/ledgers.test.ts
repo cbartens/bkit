@@ -340,6 +340,27 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(res.code).toBe(0);
     expect(stat(r)).toContain(".bkit/x.jsonl");
   });
+
+  it("--stage-tracked-updates also stages tracked non-bookkeeping changes, never untracked ones", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/1-a/status.jsonl", "{}\n");
+    put(r, "src.ts", "a\n");
+    commitAll(r);
+    add(r, "src.ts", "b\n");
+    put(r, ".bkit/new.jsonl", "{}\n");
+    put(r, "scratch.txt", "x\n");
+    const before = head(r);
+    const base = ["--month=202608", "--fid=1-a", "--scope=full", "--mode=stage"];
+
+    expect((await run(r, commitArgs(r, ...base))).code).toBe(0);
+    expect(staged(r).split("\n")).toEqual([".bkit/new.jsonl"]);
+
+    const res = await run(r, commitArgs(r, ...base, "--stage-tracked-updates"));
+    expect(res.code).toBe(0);
+    expect(res.json.outcome).toBe("staged");
+    expect(staged(r).split("\n").sort()).toEqual([".bkit/new.jsonl", "src.ts"]);
+    expect(head(r)).toBe(before);
+  });
 });
 
 describe("--squash-of (tests/book-commit.bats, #493)", () => {
@@ -658,5 +679,48 @@ describe("bookPathspecs", () => {
     expect(core[0]).toBe("docs/plans/202610/logs/1-x/*");
     expect(full.slice(0, core.length)).toEqual(core);
     expect(pr).toEqual([...full, ":(glob)docs/*.md"]);
+  });
+});
+
+// The frozen bookkeeping allow-list (design § `BOOK_ROOT` / `BOOK_PATHS`, #446):
+// every ship stage/commit resolves through bookPathspecs — never `-A`, never a
+// bare `docs/`. A path dropped from the builder strands that ledger dirty.
+const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
+  // A .md, so the `docs/*.jsonl` glob does not reach it: named literally.
+  "docs/roadmap.md",
+  "docs/deferrals.jsonl",
+  "docs/failures.jsonl",
+  "docs/knowledge.jsonl",
+  "docs/decisions.jsonl",
+  ".bkit/friction.jsonl",
+  // Close telemetry, appended before the close commit.
+  ".bkit/stats.jsonl",
+  ".agents/skills",
+  "skills-lock.json",
+  // Host skill mirrors `npx skills remove` deletes alongside .agents/skills/<name>.
+  ".claude/skills",
+  ".cursor/skills",
+  ".opencode/skills",
+  // Top-level project docs the ship docs sync edits — `--scope=pr` only.
+  ":(glob)docs/*.md",
+];
+
+describe("bookPathspecs — frozen bookkeeping allow-list", () => {
+  it("scope=pr reaches every frozen entry, the FID log dir, and the docs/*.jsonl ledger glob", () => {
+    const pr = bookPathspecs("202610", "1-x", "pr");
+    for (const p of BOOK_PATHS_ALLOW_LIST) {
+      expect(
+        pr.some((s) => s === p || s === `${p}/*`),
+        p,
+      ).toBe(true);
+    }
+    expect(pr).toContain("docs/plans/202610/logs/1-x/*");
+    expect(pr).toContain("docs/*.jsonl"); // .bkit/issues.jsonl's route is the .bkit/*.jsonl glob
+  });
+
+  it("never names the retired docs/completed.md (#380)", () => {
+    for (const scope of ["core", "full", "pr"] as const) {
+      expect(bookPathspecs("202610", "1-x", scope)).not.toContain("docs/completed.md");
+    }
   });
 });

@@ -2,8 +2,8 @@
 //
 // Validates the detector's core contract:
 //   1. Source derivation: expected set parsed from bkit-ship.md (headings +
-//      literals), cross-checked against the frozen canonical set — NEVER a
-//      parallel table.
+//      the step keys its `bkit steps done --step=` calls write), cross-checked
+//      against the frozen canonical set — NEVER a parallel table.
 //   2. Path-conditional classification: Path A (skip conflict-resolve),
 //      Path B (include conflict-resolve), MERGED-on-entry (skip middle),
 //      Aborted (workflow-failed), In-progress.
@@ -176,6 +176,22 @@ describe("source derivation", () => {
     const { steps, headingSteps, literalSteps } = deriveExpectedStepSetFromSource(fakeMd);
     expect(steps).toContain("ship-start-workflow");
     expect(steps).toContain("ship-worktree-setup");
+    expect(headingSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
+    expect(literalSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
+  });
+
+  it("parses `bkit steps done --step=` calls, the shape the workflows write rows with", () => {
+    const fakeMd = [
+      "## Step 1 — Start",
+      "```bash",
+      '   "$BKIT" steps done --workflow=ship --step=ship-start-workflow --file="$STATUS" --commit=none',
+      "```",
+      "## Step 2 — Setup",
+      "```bash",
+      '   "$BKIT" steps done --workflow=ship --step=ship-worktree-setup --file="$STATUS"',
+      "```",
+    ].join("\n");
+    const { headingSteps, literalSteps } = deriveExpectedStepSetFromSource(fakeMd);
     expect(headingSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
     expect(literalSteps).toEqual(["ship-start-workflow", "ship-worktree-setup"]);
   });

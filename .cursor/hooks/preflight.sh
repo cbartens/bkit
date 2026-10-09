@@ -30,7 +30,7 @@ if ! printf '%s' "$INPUT" | grep -q '"is_background_agent"[[:space:]]*:[[:space:
 fi
 
 # Runtime bridge — `is_background_agent` arrives ONLY on this hook's stdin JSON,
-# so a workflow shell has no way to see it. Drop a marker `bkit-runtime.sh`
+# so a workflow shell has no way to see it. Drop a marker `bkit runtime detect`
 # reads back as RUNTIME=CLOUD_CURSOR. Gitignored, and a Cursor Cloud Agent gets
 # a fresh clone per session, so it cannot go stale. Best-effort: a failure here
 # degrades detection to LOCAL, it must never block the session.

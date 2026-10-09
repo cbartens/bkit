@@ -144,9 +144,9 @@ export function deriveExpectedStepSetFromSource(shipMd: string): {
 } {
   const lines = shipMd.split("\n");
 
-  // 1. Collect every `step:"ship-..."` literal (anywhere — fenced or prose).
+  // 1. Collect every `step:"ship-..."` / `--step=ship-...` literal (anywhere — fenced or prose).
   const literalSet = new Set<string>();
-  const literalRe = /step:"(ship-[a-z-]+)"/g;
+  const literalRe = /(?:step:"|--step=)(ship-[a-z-]+)/g;
   for (const line of lines) {
     let m: RegExpExecArray | null;
     while ((m = literalRe.exec(line)) !== null) {
@@ -171,7 +171,7 @@ export function deriveExpectedStepSetFromSource(shipMd: string): {
     }
     if (inStep) {
       let m: RegExpExecArray | null;
-      const re = /step:"(ship-[a-z-]+)"/g;
+      const re = /(?:step:"|--step=)(ship-[a-z-]+)/g;
       while ((m = re.exec(line)) !== null) {
         headingSet.add(m[1]);
       }

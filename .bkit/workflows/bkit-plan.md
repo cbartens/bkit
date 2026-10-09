@@ -59,7 +59,7 @@ description: "Plan Feature — Autonomous plan generation"
    "$BKIT" workflows fail --workflow=plan --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}
    ```
 2. <!-- bkit:tracker true start -->
-   Compute the labels — `{LABEL_FLAGS}` = one `--label=<name>` per entry in `LABELS`:
+   Compute the labels — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --failed=on {LABEL_FLAGS}
@@ -79,10 +79,14 @@ description: "Plan Feature — Autonomous plan generation"
    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{BODY}` = `body` from the block below — shell failure → write its last stderr to `tmp/bkit-{FID}-plan-stderr.txt` first; any other failure → drop `--stderr-file`:
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="{error message / tool response}" --stderr-file=tmp/bkit-{FID}-plan-stderr.txt
+   ERROR=$(cat <<'BKIT_ERROR'
+   {error message / tool response}
+   BKIT_ERROR
+   )
+   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="{STDERR_FILE}"
    ```
    <!-- bkit:tracker true end -->
 4. **STOP**, no further downstream steps.
@@ -144,7 +148,7 @@ description: "Plan Feature — Autonomous plan generation"
    - `PARENT_FID`: a `**Parent design:**` markdown link whose target is `docs/plans/{YYYYMM}/{FID}-design.md`. `PARENT_YYYYMM` = that bucket. Absent → `PARENT_FID` empty.
    - `AUDIT_PATHS`: every `docs/audits/{YYYYMM}/*.md` path, from a `**Audit reports:**` line or any markdown link or bare path. Absent → empty. A named path that is not a file → **Failure Path**.
 7. <!-- bkit:tracker true start -->
-   Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per entry in `LABELS`:
+   Compute the phase transition — `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels --phase=plan --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}
@@ -216,7 +220,7 @@ description: "Plan Feature — Autonomous plan generation"
    "$BKIT" runtime assert --file="$STATUS" --workflow=plan || exit 2
    ```
    Route:
-   - **If** exit 0 → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{BRANCH}` → skip sub-step 3.
+   - **If** exit 0 → hold `worktreePath` as `{WORKTREE_PATH}`, `repoRoot` + `/.git/bkit-outbox/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}` → skip sub-step 3.
    - **If** exit 3 → hold `worktreePath` as `{WORKTREE_PATH}`, `sentinel` as `{SENTINEL}`, `logDir` as `{LOG_DIR}` → sub-step 3.
    - **Else** → **Failure Path**.
 3. **Run only if** sub-step 2 exited 3 — finish the rebase:
@@ -230,13 +234,14 @@ description: "Plan Feature — Autonomous plan generation"
 4. Open the run:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   mkdir -p "{OUTBOX}" || exit 1
    "$BKIT" workflows start --workflow=plan --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN}
    ```
    **If** exit non-zero → **Failure Path**. Hold `run` as `{RUN}`, `file` as `{STATUS}`.
-5. Write `DESCRIPTION` to `tmp/bkit-{FID}-description.md` and `COMMENTS` (JSON array as the tracker read returned it, `[]` when none) to `tmp/bkit-{FID}-comments.json` → derive `ISSUE_TEXT`:
+5. Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON array as the tracker read returned it, `[]` when none) to `{OUTBOX}/issue-comments.json` → derive `ISSUE_TEXT`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" issues text --description-file=tmp/bkit-{FID}-description.md --comments-file=tmp/bkit-{FID}-comments.json
+   "$BKIT" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
    **If** exit non-zero → **Failure Path**. Hold `text` as `ISSUE_TEXT`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md` = session prompt + `ISSUE_TEXT`. **If** `PARENT_FID` empty → do NOT append a design. **Else** append `docs/plans/{PARENT_YYYYMM}/{PARENT_FID}-design.md`; missing file → **Failure Path**. **If** `AUDIT_PATHS` empty → do NOT append reports. **Else** append each path in order; a missing file → **Failure Path**.
@@ -246,6 +251,7 @@ description: "Plan Feature — Autonomous plan generation"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-start-workflow --commit=none || exit $?
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-worktree-setup --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md --message="chore({FID}): worktree-setup"
    ```
+   **If** exit non-zero → **Failure Path**.
 7. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -295,6 +301,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-generate --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --message="chore({FID}): generate-plan"
    ```
+   **If** exit non-zero → **Failure Path**.
 4. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -334,10 +341,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY_NL}", perPage: 15 })` → top 15 `items` in RANK ORDER; pass NO sort parameter, NEVER re-sort, drop any whose `number` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → extract `body` → `RELATED_DESCRIPTION`.
    - `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Write `RELATED_DESCRIPTION` to `tmp/bkit-{FID}-related-description.md` and `RELATED_COMMENTS` (JSON array, `[]` when none) to `tmp/bkit-{FID}-related-comments.json` → hold `text` as `RELATED_ISSUE_TEXT`:
+   - Write `RELATED_DESCRIPTION` to `{OUTBOX}/related-description.md` and `RELATED_COMMENTS` (JSON array, `[]` when none) to `{OUTBOX}/related-comments.json` → hold `text` as `RELATED_ISSUE_TEXT`:
      ```bash
      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-     "$BKIT" issues text --description-file=tmp/bkit-{FID}-related-description.md --comments-file=tmp/bkit-{FID}-related-comments.json
+     "$BKIT" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
      ```
    - Append `## #{number} — {title} ({state})` heading plus `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
@@ -346,10 +353,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    `{QUERY_NL}` = ONE natural-language sentence describing change, from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`; NEVER a keyword list → `mcp__linear__list_issues({ query: "{QUERY_NL}", team: "{LINEAR_TEAM}", limit: 15 })` → results in RANK ORDER; pass NO `orderBy`, NEVER re-sort, drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 in RANK ORDER → set `RELATED_ISSUES` empty → per hit:
    - `description` → `RELATED_DESCRIPTION`.
    - `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → sort oldest to newest → `RELATED_COMMENTS`.
-   - Write `RELATED_DESCRIPTION` to `tmp/bkit-{FID}-related-description.md` and `RELATED_COMMENTS` (JSON array, `[]` when none) to `tmp/bkit-{FID}-related-comments.json` → hold `text` as `RELATED_ISSUE_TEXT`:
+   - Write `RELATED_DESCRIPTION` to `{OUTBOX}/related-description.md` and `RELATED_COMMENTS` (JSON array, `[]` when none) to `{OUTBOX}/related-comments.json` → hold `text` as `RELATED_ISSUE_TEXT`:
      ```bash
      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-     "$BKIT" issues text --description-file=tmp/bkit-{FID}-related-description.md --comments-file=tmp/bkit-{FID}-related-comments.json
+     "$BKIT" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
      ```
    - Append `## {identifier} — {title} ({state.name})` heading plus `RELATED_ISSUE_TEXT` to `RELATED_ISSUES` → discard `RELATED_ISSUE_TEXT` before next hit.
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
@@ -367,6 +374,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ISSUES_ARTIFACT=""; [ -f docs/plans/{YYYYMM}/logs/{FID}/related-issues.md ] && ISSUES_ARTIFACT="--artifact=docs/plans/{YYYYMM}/logs/{FID}/related-issues.md"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-fetch-context --attempt=1 $ISSUES_ARTIFACT --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/related-failures.md --field="clamped=$CLAMPED" --message="chore({FID}): fetch-context"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -416,17 +424,18 @@ ISSUES_ARTIFACT=""; [ -f docs/plans/{YYYYMM}/logs/{FID}/related-issues.md ] && I
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract each review's verdict and failures:
+3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    for N in 1 2 3; do "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-review-$N.md --agent=bkit-plan-review-$N --field=Failures || exit $?; done
    ```
-   **If** exit non-zero → **Failure Path**. Compute `REVIEW_VERDICT` = worst `verdict` of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of `fields.Failures`.
+   **If** exit non-zero → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-review --verdict={REVIEW_VERDICT} --failures={REVIEW_FAILURES} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md --message="chore({FID}): review-plan"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -467,7 +476,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-3.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract the verdict:
+3. Read `plan-v2-reviewed.md` header — extract `Verdict` (`verdict`) as `APPLY_REVIEW_VERDICT`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --agent=bkit-plan-update
@@ -481,6 +490,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-apply-review --verdict={APPLY_REVIEW_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --message="chore({FID}): apply-review"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -525,17 +535,18 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
 2. Wait for all subagents to complete → assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract each scope check's verdict and failures:
+3. Read `plan-scope-check-1.md` and `plan-scope-check-2.md` headers — extract `Verdict` (`verdict`) and `Failures` (`fields.Failures`) from each → compute `SCOPE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `SCOPE_FAILURES` = sum of failures:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    for N in 1 2; do "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-$N.md --agent=bkit-plan-scope-check-$N --field=Failures || exit $?; done
    ```
-   **If** exit non-zero → **Failure Path**. Compute `SCOPE_VERDICT` = worst `verdict` of the two (`FAIL > CONCERNS > PASS`) and `SCOPE_FAILURES` = sum of `fields.Failures`.
+   **If** exit non-zero → **Failure Path**.
 4. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-scope-check --verdict={SCOPE_VERDICT} --failures={SCOPE_FAILURES} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md --message="chore({FID}): scope-check"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -576,7 +587,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract the verdict:
+3. Read `plan-v3-checked.md` header — extract `Verdict` (`verdict`) as `APPLY_SCOPE_VERDICT`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md --agent=bkit-plan-update
@@ -590,6 +601,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-apply-scope --verdict={APPLY_SCOPE_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md --message="chore({FID}): apply-scope"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -630,7 +642,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md`.
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract the verdict (`SINGLE` = no split, `SPLIT` = partition required):
+3. Read `plan-complexity-check.md` header — extract `Verdict` (`verdict`) as `COMPLEXITY_VERDICT` (`SINGLE` = no split, `SPLIT` = partition required):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --agent=bkit-plan-complexity-check
@@ -641,6 +653,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-complexity-check --field=complexity={COMPLEXITY_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-complexity-check.md --message="chore({FID}): complexity-check"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -683,7 +696,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-1.md` ... `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-N.md` (children).
 2. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-3. Extract the verdict:
+3. Read `plan-v4-split.md` header — extract `Verdict` (`verdict`) as `SPLIT_VERDICT`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --agent=bkit-plan-complexity-split
@@ -694,6 +707,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-complexity-split --verdict={SPLIT_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md --message="chore({FID}): complexity-split"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -739,7 +753,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/{YYYYMM}/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/plan-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md`.
 3. Assert subagent Update / Create files exist, are non-empty, and resolved under working directory supplied in Context; do NOT trust paths reported by subagents. **If** any file empty → **Failure Path**.
-4. Extract the verdict:
+4. Read `plan-summary.md` header — extract `Verdict` (`verdict`) as `SUMMARY_VERDICT`:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps verdict --file=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --agent=bkit-plan-summary
@@ -750,6 +764,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-summary --verdict={SUMMARY_VERDICT} --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]"
    ```
+   **If** exit non-zero → **Failure Path**.
 6. Push the summary commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -829,18 +844,24 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      rm -f "$f.bak"
    done
    ```
-2. Update status and commit:
+2. Update status, write close telemetry, and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-close-workflow --message="chore({FID}): close-workflow"
+   "$BKIT" steps done --file="{STATUS}" --workflow=plan --step=plan-close-workflow --commit=none >/dev/null || exit 1
+   CLOSE=$("$BKIT" workflows close --workflow=plan --fid={FID} --month={YYYYMM}) || exit 1
+   printf '%s\n' "$CLOSE"
+   printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md" || exit 1
+   "$BKIT" comply --phase=plan || echo "[bkit-comply] grader unavailable, skipping" >&2
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
-3. Squash-merge to dev, write close telemetry, commit, push, and clean up:
+   **If** exit non-zero → **Failure Path**.
+3. Squash-merge to dev, commit, push, and clean up:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
-   mkdir -p "$REPO_ROOT/tmp"
-   TELEMETRY_FILE="$REPO_ROOT/tmp/bkit-{FID}-plan-telemetry.md"
+   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
+   REPO_SLUG=$("$BKIT" repo info 2>/dev/null | jq -r '.ownerRepo // empty'); [ -z "$REPO_SLUG" ] && REPO_SLUG="unknown/repo"
    RUNTIME=$("$BKIT" runtime detect --fid={FID}) || exit 2
    if [ "$(printf '%s' "$RUNTIME" | jq -r .runtimeDevPushes)" = "true" ]; then
      cd "$REPO_ROOT"
@@ -859,12 +880,6 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      printf '%s\n' "$PLAN_DOCS" | grep -qx "docs/plans/{YYYYMM}/{FID}-plan.md" || { echo "feat/{FID} carries no docs/plans/{YYYYMM}/{FID}-plan.md — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
      UNLANDED=$(printf '%s\n' "$PLAN_DOCS" | while IFS= read -r DOC; do [ "$(git rev-parse -q --verify ":$DOC")" = "$(git rev-parse "feat/{FID}:$DOC")" ] || printf '%s\n' "$DOC"; done)
      [ -z "$UNLANDED" ] || { echo "squash did not stage the feat/{FID} copy of:" >&2; echo "$UNLANDED" >&2; echo "nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
-     CLOSE=$("$BKIT" workflows close --workflow=plan --fid={FID} --month={YYYYMM}) || { echo "workflow close failed — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
-     printf '%s\n' "$CLOSE"
-     printf '%s' "$CLOSE" | jq -r '.report[]' > "$TELEMETRY_FILE"
-     "$BKIT" comply --phase=plan || echo "[bkit-comply] grader unavailable, skipping" >&2
-     BKIT_VER=$(printf '%s' "$CLOSE" | jq -r '.counterRow.bkitVersion // "unknown"')
-     REPO_SLUG=$(printf '%s' "$CLOSE" | jq -r '.counterRow.repo // "unknown/repo"')
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
        >> "$REPO_ROOT/.bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: $REPO_ROOT/.bkit/issues.jsonl"
@@ -881,12 +896,6 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      git push origin --delete "feat/{FID}" 2>/dev/null || true
    else
      git fetch origin dev "{BRANCH}"
-     CLOSE=$("$BKIT" workflows close --workflow=plan --fid={FID} --month={YYYYMM}) || { echo "workflow close failed" >&2; exit 1; }
-     printf '%s\n' "$CLOSE"
-     printf '%s' "$CLOSE" | jq -r '.report[]' > "$TELEMETRY_FILE"
-     "$BKIT" comply --phase=plan || echo "[bkit-comply] grader unavailable, skipping" >&2
-     BKIT_VER=$(printf '%s' "$CLOSE" | jq -r '.counterRow.bkitVersion // "unknown"')
-     REPO_SLUG=$(printf '%s' "$CLOSE" | jq -r '.counterRow.repo // "unknown/repo"')
      jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
        '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
        >> ".bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: .bkit/issues.jsonl"
@@ -905,6 +914,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      [ "$MERGE_STATE" = "MERGED" ] || { echo "PR $PR_NUMBER did not reach MERGED (state=$MERGE_STATE)" >&2; exit 1; }
      LANDED_SHA=$(printf '%s' "$MERGED" | jq -r '.mergeCommitOid // empty')
      [ -n "$LANDED_SHA" ] || { echo "Could not resolve landed SHA for PR $PR_NUMBER" >&2; exit 1; }
+     git fetch origin dev || { echo "fetch of origin/dev after the merge failed" >&2; exit 1; }
      CLOSE_SHAPE="pr"
      CLOSE_TRANSPORT="gh"
      CANONICAL_REF="origin/dev"
@@ -951,9 +961,8 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
-   ARTIFACTS_FILE="$RR/tmp/bkit-{FID}-plan-artifacts.md"
-   { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/plan-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done > "$ARTIFACTS_FILE"
-   "$BKIT" issues comment --step-number=12 --step-title="Close Workflow" --section="Artifacts=$ARTIFACTS_FILE" --section="Telemetry=$RR/tmp/bkit-{FID}-plan-telemetry.md"
+   { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/plan-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done > "{OUTBOX}/close-artifacts.md"
+   "$BKIT" issues comment --step-number=12 --step-title="Close Workflow" --section="Artifacts={OUTBOX}/close-artifacts.md" --section="Telemetry={OUTBOX}/close-telemetry.md"
    ```
    Hold `body` as `{BODY}`.
    <!-- bkit:tracker true end -->

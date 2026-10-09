@@ -248,7 +248,7 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.envrc` | core | `.bkit/templates/.envrc` | Tier 2 hash-comment |
 | `.mcp.json` | core | `.bkit/templates/.mcp.json` | Tier 2 JSON deep-containment (consumer servers preserved) |
 | `.bkit/{cloud,jsonl,providers,prompts,trackers,workflows,README}.md` | core | mirrored from the installed package | Tier 1 (canonical-overwrite). The reference docs agents read at runtime. |
-| `.bkit/scripts/*.sh` | core | `.bkit/templates/.bkit/scripts/` | Tier 1 (canonical-overwrite), executable. `bkit-ship-gate.sh`, `bkit-mirror-push-run.sh`, `bkit-counter-bus.sh`, `bkit-counter-bus-config.sh`, `bkit-status-fold.sh`, `bkit-status-route.sh`, `bkit-rebase-resolve.sh`, `bkit-protect-main.sh`, `bkit-context-clamp.sh`, `bkit-runtime.sh`, `bkit-workflow-telemetry.sh`, `bkit-ship-timeouts.sh` — bkit-owned, no consumer-editable region; drift is re-rendered, not merged. |
+| `.bkit/scripts/*.sh` | core | `.bkit/templates/.bkit/scripts/` | Tier 1 (canonical-overwrite), executable. `bkit-counter-bus-config.sh` (`MAX_*` thresholds `bkit-cloud.yml` reads), `bkit-mirror-push-run.sh` (release-PR mirror) — bkit-owned, no consumer-editable region; drift is re-rendered, not merged. Workflow steps call `bkit <noun> <verb>` commands (`bkit help`), never a script. |
 | `.claude/commands/bkit-*.md` | claude | `.bkit/workflows/` (byte-identical) | Host pass — always overwrite |
 | `.claude/agents/bkit-*.md` | claude | `.bkit/prompts/` (byte-identical) | Host pass — always overwrite |
 | `.claude/settings.json` | claude | `.bkit/templates/.claude/settings.json` | Tier 2 JSON deep-containment. Permission allow/deny/ask + SessionStart / PreToolUse hook wiring. |
@@ -261,11 +261,10 @@ Comment prefixes (`# `, `// `) before markers preserved on block updates.
 | `.vale/styles/House/**` | ci | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed). Ships with `--ci`. |
 | `slop-scan.config.json` | lint | `.bkit/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
 | `.bkit/scripts/bkit-slop-type-suppression.mjs` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-type-suppression.mjs` | Tier 1 (canonical-overwrite). Slop plugin — `--typescript` only. |
-| `.bkit/scripts/bkit-slop-delta.sh` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-delta.sh` | Tier 1 (canonical-overwrite), executable. `slop:delta` gate helper — `--typescript` only. |
 | `.prettierignore` | lint | `.bkit/templates/.prettierignore` | Tier 2 hash-comment |
 | `package.json#scripts.typecheck` | lint | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing). TS-exclusive, under `lint`. |
 | `package.json#scripts.lint` | lint | hardcoded default (`npx eslint .` if an eslint config is present, else a skip line) | Managed-key (add-if-missing). bkit ships no linter, but without this key `bkit:gate:static`'s `pnpm lint` falls through to whatever `lint` binary is on PATH and the gate goes green through the wrong program. Your own `lint` always wins. |
-| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults | Managed-key (add-if-missing) |
+| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults (`slop:delta` = `bkit ci slop`, which takes the base sha as `--base=` or one bare argument) | Managed-key (add-if-missing) |
 | `package.json#scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` | lint | hardcoded defaults | Managed-key (add-if-missing). What hooks, workflows and prompts run; the name states which tiers. |
 | `package.json#scripts.bkit:deps:outdated` / `bkit:deps:audit` | lint | hardcoded defaults | Managed-key (add-if-missing). Read-only dependency inspection the remediate / diagnose agents call. |
 | `package.json#devDependencies.prettier` / `slop-scan` / `lint-staged` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`, `^15.2.10`) | Managed-key (add-if-missing) |

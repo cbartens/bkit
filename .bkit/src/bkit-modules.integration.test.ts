@@ -372,12 +372,14 @@ describe("ci.yml skeleton vs wired + --ci/--typescript footprint (#265)", () => 
     expect(
       fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
     ).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(true);
+    // The slop gate is the `bkit ci slop` command now, not a seeded script.
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(false);
     // Vale config still present (ci is co-installed under --typescript).
     expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
     // typecheck added by the lint module (moved ci→lint).
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
     expect(pkg.scripts?.typecheck).toBeDefined();
+    expect(pkg.scripts?.["slop:delta"]).toBe("bkit ci slop");
   });
 });
 

@@ -165,7 +165,6 @@ const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
     // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
     // consumer never receives them (#265). runLintModule emits them as Tier 1.
     path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
-    path.join(".bkit", "scripts", "bkit-slop-delta.sh"),
 ]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
@@ -262,17 +261,16 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
             const dstPath = relPath;
             const prevLen = ws.writes.length;
             if (relBase === path.join(".bkit", "scripts")) {
-                // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region —
-                // `bkit-ship-timeouts.sh` says so in its own header ("only bkit-owned defaults live
-                // here (Tier 1 — force-overwritten)"). They were being handed to writeTier2 with the
-                // html-comment marker style, which no shell script uses: `extractFullManagedBlock`
-                // returned null, writeTier2 returned early, and once seeded a modified script was
-                // never re-rendered and never entered the drift comparison — `bkit check` exited 0 on
-                // a tampered `bkit-ship-gate.sh`, the ONLY merge precondition for `/bkit-ship`. The
-                // upgrade engine already treats every one of them whole-file (non-markdown, no
-                // manifest entry → diffFile/conflict), so Tier 1 here is what makes install, upgrade
-                // and check agree. The two hash-comment `bkit:start` blocks in this directory are
-                // bkit-repo authoring markers, not a consumer ownership split.
+                // `.bkit/scripts/*` are bkit-owned executables with NO consumer-editable region.
+                // They were being handed to writeTier2 with the html-comment marker style, which no
+                // shell script uses: `extractFullManagedBlock` returned null, writeTier2 returned
+                // early, and once seeded a modified script was never re-rendered and never entered
+                // the drift comparison — `bkit check` exited 0 on a tampered script the merge gate
+                // relied on. The upgrade engine already treats every one of them whole-file
+                // (non-markdown, no manifest entry → diffFile/conflict), so Tier 1 here is what makes
+                // install, upgrade and check agree. The hash-comment `bkit:start` block in
+                // `bkit-counter-bus-config.sh` is a bkit-repo authoring marker, not a consumer
+                // ownership split.
                 writeTier1(srcPath, dstPath, tokens, dryRun, ws);
             }
             else {
@@ -2377,11 +2375,11 @@ export function runLintModule(ctx) {
             console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
         }
     }
-    // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
+    // slop-scan helper script — moved OUT of the core template walk (#265) so they ship
     // ONLY with the TS toolchain (--typescript), never to a non-Node --ci consumer. Tier 1
     // (bkit-owned, force-overwritten; core pass would preserve the +x bit, writeTier1 copies
-    // the source mode). Listed in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips them.
-    for (const script of ["bkit-slop-type-suppression.mjs", "bkit-slop-delta.sh"]) {
+    // the source mode). Listed in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips it.
+    for (const script of ["bkit-slop-type-suppression.mjs"]) {
         const scriptSrc = path.join(templatesBase, ".bkit", "scripts", script);
         if (!fs.existsSync(scriptSrc))
             continue;

@@ -73,6 +73,14 @@ describe("readBkitConfig", () => {
     );
     expect(cfg).toEqual(CONFIG_DEFAULTS);
   });
+
+  it("keeps only non-empty string lanes, and reads a non-array shipGateRequiredLanes as none", () => {
+    const lanes = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { shipGateRequiredLanes: v } })))
+        .shipGateRequiredLanes;
+    expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
+    expect(lanes("bkit-tests-unit")).toEqual([]);
+  });
 });
 
 describe("package manager", () => {

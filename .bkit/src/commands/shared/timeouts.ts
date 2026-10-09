@@ -1,10 +1,8 @@
 // commands/shared/timeouts.ts — bkit-owned waits, poll intervals and stale ages.
 //
-// One table so a command never hard-codes a number the shell already names: the
-// seven `.dev.lock` copies in the workflows typed 900 / 600 by hand although
-// `bkit-ship-timeouts.sh` defined them. Units are in the name (`_S` seconds), as
-// in the shell file. `timeouts.test.ts` holds this table equal to the shell file
-// while both exist.
+// One table so no command hard-codes a wait of its own: when the workflows typed
+// the `.dev.lock` ages 900 / 600 by hand in seven places, nothing kept the copies
+// equal. Units are in the name (`_S` seconds).
 
 export const TIMEOUTS = {
   /** Wall-clock seconds to wait for a CI run to appear and complete after a head move. */

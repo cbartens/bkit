@@ -6,10 +6,10 @@
 //   1. A deliberate `bkit [skip ci]` in a docs-only commit SUBJECT. This is
 //      the CI-minutes convention (`.agents/rules.md` § Docs-only commits) and
 //      it must STAY. Stripping it makes every phase close fire a full CI run
-//      on `dev` for a docs-only change — and breaks `bkit-ship.md`'s
-//      `AHEAD_NON_SKIP` promotion-lag guard, which hard-exits the ship when a
-//      commit ahead of `origin/dev` lacks the token. Ship's own Step 2
-//      pre-flight creates exactly such a commit.
+//      on `dev` for a docs-only change — and breaks ship's promotion-lag
+//      guard (`bkit branches switch`), which stops the ship for a human when a
+//      local `dev` commit ahead of `origin/dev` lacks the token. Ship's own
+//      bookkeeping commit is exactly such a commit.
 //
 //   2. A token INHERITED into a squash-merge BODY. `gh pr merge` and the MCP
 //      merge tool default the body to the head branch's concatenated commit
@@ -78,6 +78,11 @@ const SKIP_CI_SUBJECTS: Array<{
     literal: "docs({FID}): ship DONE bkit [skip ci]",
   },
   {
+    file: "bkit-ship.md",
+    description: "ship bookkeeping",
+    literal: "docs({FID}): ship bookkeeping bkit [skip ci]",
+  },
+  {
     file: "bkit-design.md",
     description: "design pre-worktree dirty-tree commit",
     literal: "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]",
@@ -119,10 +124,10 @@ describe("skip-ci subject convention", () => {
   describe("(i) docs-only and intermediate commit subjects keep the token", () => {
     for (const { file, description, literal } of SKIP_CI_SUBJECTS) {
       it(`${file}: ${description} carries bkit [skip ci]`, () => {
-        // #446: bookkeeping commits route through bkit-book-commit.sh, which
-        // takes the subject as `--message="..."` rather than a literal
-        // `git commit -m "..."` in the workflow markdown; either carrier is
-        // a legitimate match for the same invariant.
+        // Bookkeeping commits route through `bkit ledgers commit` / `bkit
+        // steps done`, which take the subject as `--message="..."` rather than
+        // a literal `git commit -m "..."`; either carrier is a legitimate
+        // match for the same invariant.
         const content = readWorkflow(file);
         const carriesLiteral =
           content.includes(`-m "${literal}"`) || content.includes(`--message="${literal}"`);
@@ -132,9 +137,17 @@ describe("skip-ci subject convention", () => {
   });
 
   describe("(ii) no PR title ever carries a suppression token", () => {
+    // Matches `bkit prs open --title="..."` and `gh pr edit --title "..."` alike.
+    const titlesOf = (file: string) =>
+      [...readWorkflow(file).matchAll(/--title(?:=|\s+)"([^"]*)"/g)].map((m) => m[1]);
+
+    it("the title scan finds the PR titles (non-vacuous guard)", () => {
+      expect(WORKFLOW_FILES.flatMap(titlesOf).length).toBeGreaterThanOrEqual(WORKFLOW_FILES.length);
+    });
+
     for (const file of WORKFLOW_FILES) {
-      it(`${file}: every gh pr create --title is token-free`, () => {
-        const titles = [...readWorkflow(file).matchAll(/--title\s+"([^"]*)"/g)].map((m) => m[1]);
+      it(`${file}: every PR --title is token-free`, () => {
+        const titles = titlesOf(file);
         for (const t of titles) {
           expect(SKIP_TOKEN_RE.test(t), `PR title must not suppress CI: ${t}`).toBe(false);
         }
@@ -161,27 +174,16 @@ describe("skip-ci subject convention", () => {
     }
   });
 
-  describe("(iv) ship's AHEAD_NON_SKIP guard stays satisfiable", () => {
+  describe("(iv) ship's promotion-lag guard stays satisfiable", () => {
+    // The guard itself (refuse to push local dev commits that would run CI)
+    // lives in `bkit branches switch`; commands/workflow/branches.test.ts
+    // covers both the all-skip-CI push and the stop-for-a-human case. What
+    // stays here is that ship actually goes through it, after writing its
+    // bookkeeping commit with the token — (i) pins the subject.
     const shipMd = readWorkflow("bkit-ship.md");
 
-    it("the promotion-lag guard is present", () => {
-      expect(shipMd).toContain("AHEAD_NON_SKIP");
-    });
-
-    // The guard greps for non-[skip ci] commits ahead of origin/dev. In the
-    // rewritten workflow (#384) the pre-merge dirty-dev commit is gone (no
-    // local rebase), but the guard still protects against any ahead-of-dev
-    // commit that would cancel the in-flight CI run validating the merge.
-    it("the guard greps for the same token the commit carries", () => {
-      expect(shipMd).toContain("git log --format=%s origin/dev..dev | grep -cv '\\[skip ci\\]'");
-    });
-  });
-
-  describe("(v) the post-close scan reads the body, not the subject", () => {
-    const sh = fs.readFileSync(path.resolve(REPO_ROOT, ".bkit/scripts/bkit-runtime.sh"), "utf-8");
-
-    it("bkit_close_guard_scan_body strips the subject line before scanning", () => {
-      expect(sh).toContain("tail -n +2");
+    it("ship switches to dev through bkit branches switch", () => {
+      expect(shipMd).toMatch(/"\$BKIT" branches switch --fid=/);
     });
   });
 });

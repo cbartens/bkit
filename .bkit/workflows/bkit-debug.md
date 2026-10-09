@@ -58,13 +58,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Failure Path
 
-1. Update status, abort any rebase, release the lock. `{MAX_EXCEEDED}` = true when max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) triggered the failure, else false:
+1. Update status, abort any rebase, and release the lock — **Skip if** `{LOCK_TOKEN}` empty. `{MAX_EXCEEDED}` = true when max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) triggered the failure, else false:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    MAX_EXCEEDED="{MAX_EXCEEDED}"
-   set --
-   [ "$MAX_EXCEEDED" = "true" ] && set -- --max-exceeded
-   "$BKIT" workflows fail --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} "$@"
+   MX=""; [ "$MAX_EXCEEDED" = "true" ] && MX="--max-exceeded"
+   "$BKIT" workflows fail --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} $MX
    ```
    → hold `handoverNeeded` as `{HANDOVER_NEEDED}`. **If** exit 5 → add `Lock removal failed` to the step 3 error.
 2. <!-- bkit:tracker github start -->
@@ -74,7 +73,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}", labels: [{LABELS}] })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per label the issue carries now; prior phase label persists):
+   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; prior phase label persists):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels {LABEL_FLAGS} --failed=on
@@ -87,18 +86,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{BODY}` = `body` printed by:
+   `{BODY}` = `body` of the block below; `{STDERR_FILE}` = `{OUTBOX}/stderr.log` holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command or `{OUTBOX}` is not set yet:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    ERROR=$(cat <<'BKIT_ERROR'
    {error message / tool response}
    BKIT_ERROR
    )
-   STDERR_FILE=$(mktemp)
-   cat > "$STDERR_FILE" <<'BKIT_STDERR'
-   {stderr of the failed shell command, empty if none}
-   BKIT_STDERR
-   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="$STDERR_FILE"
+   "$BKIT" issues comment --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error="$ERROR" --stderr-file="{STDERR_FILE}"
    ```
    <!-- bkit:tracker true end -->
 4. **If** `{HANDOVER_NEEDED}` = true **or** `DEBUG_MODE` = SOAK → step 5. **Else** → step 12. Gate on failure shape ONLY; NEVER on worktree presence.
@@ -110,16 +105,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip ci]"`.
-10. Push the abort commit — NEVER onto a branch with an open PR:
+10. Assert `{BRANCH}` non-empty and push the abort commit to it:
     ```bash
     BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-    "$BKIT" branches push --mode=abort {OPEN_PR_FLAG}
+    "$BKIT" branches push --mode=feature
     ```
-    → hold `ref` as `{HANDOVER_REF}` (null when nothing was pushed). `{OPEN_PR_FLAG}` is empty on the first run.
+    → hold `ref` as `{HANDOVER_REF}` (null when nothing was pushed).
     Route:
-    - **If** exit 0 or 7 (open PR, remote HEAD kept) → step 11.
-    - **If** exit 80 → `list_pull_requests` (head `{BRANCH}`, base `dev`, state open) → re-run with `{OPEN_PR_FLAG}` = `--open-pr=<number|none>`.
-    - **Else** → push failed; do NOT claim success on tracker → step 11.
+    - **If** exit 0 → step 11.
+    - **Else** → push failed; `{HANDOVER_REF}` empty; do NOT claim success on tracker → step 11.
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
@@ -241,7 +235,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{LINEAR_STATE}", labels: [{LABELS}] })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per label the issue carries now; adds `bkit:debug`, clears `bkit:failed`, phase label persists):
+   `{LABELS}` = entries of `labels`, `{LINEAR_STATE}` = `linearState`, `{BOARD}` = `board`, printed by (`{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry; adds `bkit:debug`, clears `bkit:failed`, phase label persists):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    "$BKIT" issues labels {LABEL_FLAGS} --failed=off --debug=on --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO}
@@ -292,7 +286,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    [ "$WORKTREES" = "true" ] && set -- --worktrees
    "$BKIT" worktrees setup --workflow=debug --fid={FID} --month={YYYYMM} "$@"
    ```
-   → hold `worktreePath` as `{WORKTREE_PATH}`, `branch` as `{BRANCH}`, `sentinel` as `{SENTINEL}`, `logDir` as `{LOG_DIR}`.
+   → hold `worktreePath` as `{WORKTREE_PATH}`, `repoRoot` + `/.git/bkit-outbox/{FID}` as `{OUTBOX}`, `branch` as `{BRANCH}`, `sentinel` as `{SENTINEL}`, `logDir` as `{LOG_DIR}`.
    Route:
    - **If** exit 0 → `cd "{WORKTREE_PATH}"` → verify with `pwd` → sub-step 2.
    - **If** exit 3 → `cd "{WORKTREE_PATH}"` → resolve the rebase below → exit 0 → re-run this sub-step; any other exit → **Failure Path**:
@@ -304,15 +298,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. Open the run inside the worktree:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   mkdir -p "{OUTBOX}" || exit 1
    "$BKIT" workflows start --workflow=debug --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN}
    ```
    → hold `file` as `{STATUS}`. **If** exit non-zero → **Failure Path**.
 3. Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + `ISSUE_TEXT` + `docs/plans/{YYYYMM}/{FID}-plan.md` (if present).
    <!-- bkit:tracker true start -->
-   Write `DESCRIPTION` to `tmp/bkit-issue-{FID}-description.md` and `COMMENTS` (JSON as read) to `tmp/bkit-issue-{FID}-comments.json` → `ISSUE_TEXT` = `text` printed by:
+   Write `DESCRIPTION` to `{OUTBOX}/issue-description.md` and `COMMENTS` (JSON as read) to `{OUTBOX}/issue-comments.json` → `ISSUE_TEXT` = `text` printed by:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" issues text --description-file=tmp/bkit-issue-{FID}-description.md --comments-file=tmp/bkit-issue-{FID}-comments.json
+   "$BKIT" issues text --description-file="{OUTBOX}/issue-description.md" --comments-file="{OUTBOX}/issue-comments.json"
    ```
    <!-- bkit:tracker true end -->
 4. Update status and commit (`{SOAK_ENTRY}` from Step 1):
@@ -323,12 +318,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "$BKIT" runtime row --workflow=debug --file="$STATUS" >/dev/null || exit $?
    "$BKIT" runtime assert --file="$STATUS" --workflow=debug >/dev/null || exit $?
    "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-start-workflow --commit=none >/dev/null || exit $?
-   "$BKIT" status meta --file="$STATUS" --workflow=debug --debug-attempt={DEBUG_ATTEMPT} --debug-mode={DEBUG_MODE} --push-mode={PUSH_MODE} >/dev/null || exit $?
+   DEBUG_ATTEMPT=$("$BKIT" counters run --file="$STATUS" --workflow=debug | jq -er .run) || exit 2
+   "$BKIT" status meta --file="$STATUS" --workflow=debug --debug-attempt="$DEBUG_ATTEMPT" --debug-mode={DEBUG_MODE} --push-mode={PUSH_MODE} >/dev/null || exit $?
    if [ "$SOAK_ENTRY" = "true" ]; then
-     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS" || exit 2
+     "$BKIT" status meta --file="$STATUS" --workflow=debug --soak-entry >/dev/null || exit $?
    fi
    "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-worktree-setup --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md --field=debugMode={DEBUG_MODE} --field=pushMode={PUSH_MODE} --message="chore({FID}): worktree-setup"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -441,8 +438,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      ```bash
      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
      STATUS="{STATUS}"
-     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS" || exit 2
-     "$BKIT" status meta --file="$STATUS" --workflow=debug --debug-mode=SOAK
+     "$BKIT" status meta --file="$STATUS" --workflow=debug --soak-entry --debug-mode=SOAK
      ```
      → set `DEBUG_MODE` = SOAK → Step 4.
    - **If** any other exit → **Failure Path**.
@@ -467,7 +463,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={NORMAL_ATTEMPT} --artifact=docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md
+STATUS="{STATUS}"
+NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+DEBUG_ATTEMPT=$("$BKIT" counters run --file="$STATUS" --workflow=debug | jq -er .run) || exit 2
+"$BKIT" steps gate --file="$STATUS" --workflow=debug --step=debug-run-tests --attempt="$NORMAL_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-${DEBUG_ATTEMPT}.md"
 ```
 
 - [ ] Mechanical gate passed (`bkit steps gate` exit 0: `context-tests-local-{DEBUG_ATTEMPT}.md` non-empty, `debug-run-tests` row with `parentSha` and `attempt`)
@@ -498,8 +497,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 2. **For each** entry in `{FETCH_BLOCKS}` (`{IDX}` = its `idx`) → its `body` is the starting template → customise per failure (severity, freshness, limit, query, filters) → run it through the block below; it writes stdout fenced as the context artifact, else the `[context-fetch:<name>]` skip breadcrumb. **If** `{DEBUG_ATTEMPT}` > 1 → vary customisations from prior attempts. Distinctly narrate each block outcome (`outcome`); ALWAYS note blocks with fetch issues:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   SCRIPT="tmp/bkit-context-fetch-{FID}-{IDX}.sh"
-   mkdir -p tmp
+   SCRIPT="{OUTBOX}/context-fetch-{IDX}.sh"
    cat > "$SCRIPT" <<'BKIT_CONTEXT_FETCH_BLOCK'
    {customised BLOCK}
    BKIT_CONTEXT_FETCH_BLOCK
@@ -530,21 +528,22 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    - After the last hit: create `docs/plans/{YYYYMM}/logs/{FID}/context-related-{DEBUG_ATTEMPT}.md` = `RELATED_ISSUES`; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
-   Per hit, write `RELATED_DESCRIPTION` to `tmp/bkit-related-{FID}-description.md` and `RELATED_COMMENTS` (JSON as read) to `tmp/bkit-related-{FID}-comments.json`, then:
+   Per hit, write `RELATED_DESCRIPTION` to `{OUTBOX}/related-description.md` and `RELATED_COMMENTS` (JSON as read) to `{OUTBOX}/related-comments.json`, then:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" issues text --description-file=tmp/bkit-related-{FID}-description.md --comments-file=tmp/bkit-related-{FID}-comments.json
+   "$BKIT" issues text --description-file="{OUTBOX}/related-description.md" --comments-file="{OUTBOX}/related-comments.json"
    ```
    <!-- bkit:tracker true end -->
 5. Update status and commit:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
-   FINAL=$("$BKIT" context finalise --fid={FID} --month={YYYYMM} --attempt={DEBUG_ATTEMPT}) || exit $?
+   DEBUG_ATTEMPT=$("$BKIT" counters run --file="$STATUS" --workflow=debug | jq -er .run) || exit 2
+   FINAL=$("$BKIT" context finalise --fid={FID} --month={YYYYMM} --attempt="$DEBUG_ATTEMPT") || exit $?
    printf '%s\n' "$FINAL"
    set --
    for f in $(printf '%s' "$FINAL" | jq -r '.artifacts[]'); do set -- "$@" --artifact="$f"; done
-   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=context-fetch --verdict="$(printf '%s' "$FINAL" | jq -r .verdict)" --attempt={DEBUG_ATTEMPT} "$@" --field=contextsConfigured="$(printf '%s' "$FINAL" | jq -c .contextsConfigured)" --field=clamped="$(printf '%s' "$FINAL" | jq -c .clamped)" --message="chore({FID}): fetch-context attempt {DEBUG_ATTEMPT}" >/dev/null
+   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=context-fetch --verdict="$(printf '%s' "$FINAL" | jq -r .verdict)" --attempt="$DEBUG_ATTEMPT" "$@" --field=contextsConfigured="$(printf '%s' "$FINAL" | jq -c .contextsConfigured)" --field=clamped="$(printf '%s' "$FINAL" | jq -c .clamped)" --message="chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}" >/dev/null
    ```
    → hold `verdict` as `{FETCH_VERDICT}`, `artifacts` as `{FETCH_ARTIFACTS}`, `contextsConfigured` as `{CONTEXTS_CONFIGURED}`.
 6. <!-- bkit:tracker github start -->
@@ -616,8 +615,10 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    STATUS="{STATUS}"
    DIAGNOSE_VERDICT="{DIAGNOSE_VERDICT}"
    STRATEGY="{STRATEGY}"
-   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-diagnose --verdict="$DIAGNOSE_VERDICT" --attempt={NORMAL_ATTEMPT} --strategy="$STRATEGY" --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md --message="chore({FID}): failure-diagnose attempt {NORMAL_ATTEMPT}"
+   NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-diagnose --verdict="$DIAGNOSE_VERDICT" --attempt="$NORMAL_ATTEMPT" --strategy="$STRATEGY" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-${NORMAL_ATTEMPT}.md" --message="chore({FID}): failure-diagnose attempt ${NORMAL_ATTEMPT}"
    ```
+   → hold `row.attempt` as `{NORMAL_ATTEMPT}`. **If** exit non-zero → **Failure Path**.
 6. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -638,8 +639,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      STATUS="{STATUS}"
      DEBUG_MODE=$("$BKIT" status route --file="$STATUS" --workflow=debug --require=debugMode | jq -r .debugMode)
      [ "$DEBUG_MODE" = "NORMAL" ] || exit 2
-     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-meta", workflow:"debug", at:$t, soakEntryAt:$t}' >> "$STATUS" || exit 2
-     "$BKIT" status meta --file="$STATUS" --workflow=debug --debug-mode=SOAK
+     "$BKIT" status meta --file="$STATUS" --workflow=debug --soak-entry --debug-mode=SOAK
      ```
    - **Else** → Step 6.
 
@@ -647,7 +647,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --file="{STATUS}" --workflow=debug --step=debug-failure-diagnose --attempt={NORMAL_ATTEMPT} --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-{NORMAL_ATTEMPT}.md --verdict-required --agent=bkit-debug-failure-diagnose
+STATUS="{STATUS}"
+NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+"$BKIT" steps gate --file="$STATUS" --workflow=debug --step=debug-failure-diagnose --attempt="$NORMAL_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-${NORMAL_ATTEMPT}.md" --verdict-required --agent=bkit-debug-failure-diagnose
 ```
 
 - [ ] Mechanical gate passed (`bkit steps gate` exit 0: artifact non-empty, no PENDING placeholders, `Verdict` valid in header and row, `debug-failure-diagnose` row with `parentSha`)
@@ -686,16 +688,18 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    REMEDIATE_VERDICT="{REMEDIATE_VERDICT}"
-   PUSH_MODE="{PUSH_MODE}"
-   FIX_DESC=$(grep -m1 '^DONE — Step' "docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-{NORMAL_ATTEMPT}-log.md" 2>/dev/null \
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
+   NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+   FIX_DESC=$(grep -m1 '^DONE — Step' "docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-${NORMAL_ATTEMPT}-log.md" 2>/dev/null \
      | sed -E 's/^DONE — Step [0-9]+: //; s/ — .*$//' \
      | tr -d '\r\n`"\\' \
      | sed -E 's/[[:space:]]+$//' \
      | cut -c1-72)
-   [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt {NORMAL_ATTEMPT}"
+   [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt ${NORMAL_ATTEMPT}"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-remediate --verdict="$REMEDIATE_VERDICT" --attempt={NORMAL_ATTEMPT} --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-{NORMAL_ATTEMPT}-log.md --message="fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
+   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-remediate --verdict="$REMEDIATE_VERDICT" --attempt="$NORMAL_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-${NORMAL_ATTEMPT}-log.md" --message="fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
+   → hold `row.attempt` as `{NORMAL_ATTEMPT}`. **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -715,7 +719,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --file="{STATUS}" --workflow=debug --step=debug-failure-remediate --attempt={NORMAL_ATTEMPT} --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-{NORMAL_ATTEMPT}-log.md --verdict-required --agent=bkit-debug-failure-remediate
+STATUS="{STATUS}"
+NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+"$BKIT" steps gate --file="$STATUS" --workflow=debug --step=debug-failure-remediate --attempt="$NORMAL_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-remediate-${NORMAL_ATTEMPT}-log.md" --verdict-required --agent=bkit-debug-failure-remediate
 ```
 
 - [ ] Mechanical gate passed (`bkit steps gate` exit 0: artifact non-empty, no PENDING placeholders, `Verdict` valid in header and row, `debug-failure-remediate` row with `parentSha`)
@@ -753,19 +759,20 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    SOAK_VERDICT="{SOAK_VERDICT}"
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    SOAK_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-failure-soak --position=next --since=soakEntryAt | jq -r .value)
    [ "$SOAK_ATTEMPT" -gt 0 ] || exit 2
-   FIX_DESC=$(grep -m1 '^DONE' "docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-{NORMAL_ATTEMPT}-log.md" 2>/dev/null \
+   NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+   FIX_DESC=$(grep -m1 '^DONE' "docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-${NORMAL_ATTEMPT}-log.md" 2>/dev/null \
      | sed -E 's/^DONE[^:]*: //; s/ — .*$//' \
      | tr -d '\r\n`"\\' \
      | sed -E 's/[[:space:]]+$//' \
      | cut -c1-72)
-   [ -z "$FIX_DESC" ] && FIX_DESC="soak attempt {NORMAL_ATTEMPT}"
+   [ -z "$FIX_DESC" ] && FIX_DESC="soak attempt ${NORMAL_ATTEMPT}"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-soak --verdict="$SOAK_VERDICT" --attempt={NORMAL_ATTEMPT} --field=soakAttempt="$SOAK_ATTEMPT" --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-{NORMAL_ATTEMPT}-log.md --message="fix({FID}): soak ${FIX_DESC}${VERBOSE_SUFFIX}"
+   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-failure-soak --verdict="$SOAK_VERDICT" --attempt="$NORMAL_ATTEMPT" --field=soakAttempt="$SOAK_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-${NORMAL_ATTEMPT}-log.md" --message="fix({FID}): soak ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
-   → hold `row.soakAttempt` as `{SOAK_ATTEMPT}`.
+   → hold `row.soakAttempt` as `{SOAK_ATTEMPT}`, `row.attempt` as `{NORMAL_ATTEMPT}`. **If** exit non-zero → **Failure Path**.
 5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -786,7 +793,9 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 
 ```bash
 BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-"$BKIT" steps gate --file="{STATUS}" --workflow=debug --step=debug-failure-soak --attempt={NORMAL_ATTEMPT} --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-{NORMAL_ATTEMPT}-log.md --verdict-required --agent=bkit-debug-failure-soak
+STATUS="{STATUS}"
+NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+"$BKIT" steps gate --file="$STATUS" --workflow=debug --step=debug-failure-soak --attempt="$NORMAL_ATTEMPT" --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-${NORMAL_ATTEMPT}-log.md" --verdict-required --agent=bkit-debug-failure-soak
 ```
 
 - [ ] Mechanical gate passed (`bkit steps gate` exit 0: artifact non-empty, no PENDING placeholders, `Verdict` valid in header and row, `debug-failure-soak` row with `parentSha`)
@@ -812,13 +821,16 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 1. Update status (NO commit):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   "$BKIT" steps done --file="{STATUS}" --workflow=debug --step=debug-push-remediation --attempt={NORMAL_ATTEMPT} --commit=none
+   STATUS="{STATUS}"
+   NORMAL_ATTEMPT=$("$BKIT" counters derive --file="$STATUS" --workflow=debug --step=debug-run-tests --position=current | jq -er .value) || exit 2
+   "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-push-remediation --attempt="$NORMAL_ATTEMPT" --commit=none
    ```
+   **If** exit non-zero → **Failure Path**.
 2. **If** `PUSH_MODE` = PR **and** `[verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    PR_NUMBER="{PR_NUMBER}"
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    if [ "$PUSH_MODE" = "PR" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$("$BKIT" prs probe --number="$PR_NUMBER" 2>/dev/null | jq -r '.title // ""')
      case "$CURRENT_TITLE" in
@@ -886,10 +898,11 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    SUMMARY_VERDICT="{SUMMARY_VERDICT}"
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    "$BKIT" steps done --file="$STATUS" --workflow=debug --step=debug-summary --verdict="$SUMMARY_VERDICT" --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md --message="chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
+   **If** exit non-zero → **Failure Path**.
 5. Push:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
@@ -944,7 +957,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    PR_NUMBER="{PR_NUMBER}"
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    if [ "$PUSH_MODE" = "PR" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$("$BKIT" prs probe --number="$PR_NUMBER" 2>/dev/null | jq -r '.title // ""')
      NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?(bkit )?\[verbose ci\]//')
@@ -964,15 +977,15 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    TEST_SCOPE="{TEST_SCOPE}"
    AUTO_ROUTE_SUFFIX=""
    gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    if git diff origin/dev..HEAD -- . ':(exclude)docs/plans' | grep -qE '^\+.*\[DEBUG-OBSERVE\]'; then
      echo "No-leak Assertion FAILED: [DEBUG-OBSERVE] instrumentation survived into the debug diff — soak did not strip it." >&2; exit 1
    fi
    CLOSE=$("$BKIT" workflows close --workflow=debug --fid={FID} --month={YYYYMM} --file="$STATUS" --owner-repo={OWNER_REPO}) || exit $?
    printf '%s\n' "$CLOSE"
-   mkdir -p tmp
-   printf '%s' "$CLOSE" | jq -r .artifactLinks > "tmp/bkit-close-{FID}-artifacts.md"
-   printf '%s' "$CLOSE" | jq -r '.report[]' > "tmp/bkit-close-{FID}-telemetry.md"
+   printf '%s' "$CLOSE" | jq -r .artifactLinks > "{OUTBOX}/close-artifacts.md"
+   printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md"
+   "$BKIT" comply --phase=debug || echo "[bkit-comply] grader unavailable, skipping" >&2
    WT=$(git rev-parse --show-toplevel)
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    ROADMAP_LINE=$(printf '%s' "$CLOSE" | jq -c --arg key "{FID}" '{ts:(now*1000|floor), kind:"feature", repo:.counterRow.repo, bkitVersion:.counterRow.bkitVersion, workflow:"debug", step:"debug-close-workflow", key:$key, category:"agentic", description:("Debug closed for " + $key), status:.featureStatus}')
@@ -1034,7 +1047,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
 5. **If** `TRIGGER_PR` = 1 → commit and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    AUTO_ROUTE_SUFFIX=""
    gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
@@ -1051,7 +1064,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    PR_URL="{PR_URL}"
    AUTO_ROUTE_SUFFIX=""
    gh issue view {ISSUE_ID} --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   PUSH_MODE="{PUSH_MODE}"
+   PUSH_MODE=$("$BKIT" status route --file="{STATUS}" --workflow=debug --require=pushMode | jq -er .pushMode) || exit 2
    DISPATCH=$("$BKIT" runs dispatch --fid={FID} --auto-route-suffix="$AUTO_ROUTE_SUFFIX" {CI_REENTRY}); RC=$?
    printf '%s\n' "$DISPATCH"
    case "$RC" in 80|81) exit "$RC" ;; esac
@@ -1111,7 +1124,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    set --
    [ "$TRIGGER_PR" = "1" ] && set -- --pr-number={PR_NUMBER} --pr-url="{PR_URL}"
    [ -n "$RUN_ID" ] && set -- "$@" --run-id="$RUN_ID"
-   "$BKIT" issues comment --step-number=10 --step-title="Close Workflow" --owner-repo={OWNER_REPO} --tree={BRANCH} "$@" --section=Artifacts=tmp/bkit-close-{FID}-artifacts.md --section=Telemetry=tmp/bkit-close-{FID}-telemetry.md
+   "$BKIT" issues comment --step-number=10 --step-title="Close Workflow" --owner-repo={OWNER_REPO} --tree={BRANCH} "$@" --section="Artifacts={OUTBOX}/close-artifacts.md" --section="Telemetry={OUTBOX}/close-telemetry.md"
    ```
    <!-- bkit:tracker true end -->
 10. Final return: Display `debug-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.

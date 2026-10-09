@@ -44,14 +44,13 @@ maxTurns: 150
 5. `git fetch origin dev` → `git rebase origin/dev` to recreate conflict state. **If** rebase succeeds with no conflicts → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass → append log entry.
 6. Run the Tier-2 auto-resolver BEFORE any hand-classification — it clears every append-only ledger and the dependency lockfile deterministically, leaving only conflicts that need judgement:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   . "$REPO_ROOT/.bkit/scripts/bkit-rebase-resolve.sh" || { echo "[bkit-rebase] missing bkit-rebase-resolve.sh — run 'bkit install'" >&2; exit 2; }
-   bkit_rebase_resolve && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
+   "$BKIT" branches rebase && echo "TIER2_COMPLETE" || echo "TIER2_REFUSED"
    ```
    **If** `TIER2_COMPLETE` → the rebase already ran to completion; skip to the verify gate → append log entry. **Else** → the rebase is still in progress with the unresolvable paths conflicted; continue to classification. Do NOT `git rebase --abort` here — the `FAIL` branch owns that.
 7. `git diff --name-only --diff-filter=U` → conflicted files; `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev` → recent commits per side → append log entry. Classify each conflicted file against `Allowed resolutions` / `Refused resolutions` → append log entry. **If** any file matches `Refused resolutions` → set `Verdict` = `FAIL` via `Edit` immediately; do NOT defer to final pass.
    - `Allowed resolutions`:
-     - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit_rebase_resolve` unions both sides; do NOT hand-merge these. Interleaved / duplicated rows are resolved by last-`ts`-wins fold; NEVER reason to emit `FAIL`.
+     - Append-only ledgers (`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `.bkit/issues.jsonl`, `.bkit/stats.jsonl`, `.bkit/friction.jsonl`, `docs/plans/**/status.jsonl`) → `bkit branches rebase` unions both sides; do NOT hand-merge these. Interleaved / duplicated rows are resolved by last-`ts`-wins fold; NEVER reason to emit `FAIL`.
      - `docs/roadmap.md` → union both sides; leave duplicated marker blocks in place. Board regenerated from `.bkit/issues.jsonl` later this cycle; NEVER reason to emit `FAIL`.
      - Non-overlapping additive edits to same file → concatenate preserving both sides.
      - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.

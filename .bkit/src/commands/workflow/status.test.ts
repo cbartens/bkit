@@ -99,6 +99,19 @@ describe("bkit status fold", () => {
     expect(r.code).toBe(3);
     expect(r.err).toContain("line 2 is not JSON");
   });
+
+  it("keeps an additive step field (ciDispatch) through the fold unchanged", async () => {
+    const ciDispatch = { outcome: "dispatched", head: SHA, attempts: 1, retrigger: false };
+    const file = log([
+      started("build", "2026-06-16T10:00:00Z"),
+      done("build", "build-close-workflow", "2026-06-16T10:01:00Z", { ciDispatch }),
+    ]);
+    const r = await run(["status", "fold", `--file=${file}`, "--workflow=build"]);
+    const step = r.json.last.steps.find((s: { step: string }) => s.step === "build-close-workflow");
+    expect(step.ciDispatch).toEqual(ciDispatch);
+    expect(step).not.toHaveProperty("type");
+    expect(step).not.toHaveProperty("workflow");
+  });
 });
 
 describe("bkit status route", () => {
@@ -224,6 +237,101 @@ describe("bkit status route", () => {
     expect((await run([...base, `--file=${path.join(tmp(), "x")}`, "--workflow=debug"])).code).toBe(
       3,
     );
+  });
+
+  it("falls back to the last step carrying debugMode / pushMode when no workflow-meta sets it", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-10-01T00:01:00Z", {
+        debugMode: "NORMAL",
+        pushMode: "LOCAL",
+      }),
+      { type: "workflow-meta", workflow: "debug", at: "2026-10-01T00:02:00Z", debugMode: "SOAK" },
+    ]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=debug",
+      "--require=debugMode",
+      "--require=pushMode",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ debugMode: "SOAK", pushMode: "LOCAL" });
+  });
+
+  it("reports an invalid mode as null, never as a mode", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      { type: "workflow-meta", workflow: "debug", at: "2026-10-01T00:01:00Z", debugMode: "TURBO" },
+    ]);
+    expect((await run([...base, `--file=${file}`, "--workflow=debug"])).json.debugMode).toBeNull();
+  });
+
+  it.each([
+    ["PIVOT", "FINAL"],
+    ["FINAL", "FINAL"],
+  ])("climbs the ladder: %s -> %s", async (prior, next) => {
+    const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: prior })]);
+    expect(
+      (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json,
+    ).toMatchObject({ strategy: prior, nextStrategy: next });
+  });
+
+  it("fails a --require'd strategy outside the ladder", async () => {
+    const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: "YOLO" })]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=s",
+      "--require=strategy",
+    ]);
+    expect(r.code).toBe(4);
+    expect(r.json.strategy).toBeNull();
+    expect(r.err).toContain('s strategy "YOLO" is not STANDARD|PIVOT|FINAL');
+  });
+
+  it("fails a --require'd verdict when the last DONE row carries none", async () => {
+    const file = log([
+      done("build", "s", "2026-10-01T00:01:00Z", { verdict: "PASS", failures: 0 }),
+      done("build", "s", "2026-10-01T00:02:00Z"),
+    ]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=s",
+      "--require=verdict",
+      "--require=failures",
+    ]);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ verdict: null, failures: null });
+  });
+
+  it("reads strategy per sub-plan, from the step's last DONE row, within its own workflow", async () => {
+    const file = log([
+      done("build", "s", "2026-10-01T00:01:00Z", { subPlan: 1, strategy: "PIVOT" }),
+      done("build", "s", "2026-10-01T00:02:00Z", { subPlan: 2 }),
+      done("debug", "s", "2026-10-01T00:03:00Z", { strategy: "FINAL" }),
+    ]);
+    const q = async (...f: string[]) =>
+      (await run([...base, `--file=${file}`, "--workflow=build", "--step=s", ...f])).json;
+    expect(await q("--sub-plan=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "FINAL" });
+    expect(await q("--sub-plan=2")).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
+    expect(await q()).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
+  });
+
+  it("a non-numeric debugAttempt reads as 0", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:01:00Z",
+        debugAttempt: "x[$(touch pwned)]",
+      },
+    ]);
+    expect((await run([...base, `--file=${file}`, "--workflow=debug"])).json.debugAttempt).toBe(0);
   });
 });
 

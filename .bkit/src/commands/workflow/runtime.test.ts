@@ -70,6 +70,9 @@ describe("normFlag", () => {
     ["", "false"],
     ["False", "false"],
     ["0", "false"],
+    ["NO", "false"],
+    ["no", "false"],
+    ["yes", "true"],
     ["banana", "ambiguous"],
   ])("%j -> %s", (value, expected) => {
     expect(normFlag(value)).toBe(expected);
@@ -159,6 +162,24 @@ describe("bkit runtime detect — the table", () => {
     const r = await detect();
     expect(r.json.runtime).toBe("UNKNOWN");
     expect(r.err).toContain("is not a valid runtime");
+  });
+
+  it("the marker outranks CLAUDE_CODE_REMOTE; BKIT_RUNTIME outranks the marker", async () => {
+    fs.mkdirSync(path.join(cwd, ".bkit"));
+    fs.writeFileSync(path.join(cwd, ".bkit", ".runtime-cursor"), "");
+    vi.stubEnv("CLAUDE_CODE_REMOTE", "true");
+    expect((await detect()).json).toMatchObject({
+      runtime: "CLOUD_CURSOR",
+      runtimeWorktrees: true,
+      runtimeDevPushes: true,
+      worktreePath: path.join(cwd, ".worktrees", "42-x"),
+    });
+    vi.stubEnv("BKIT_RUNTIME", "CLOUD_CLAUDE");
+    expect((await detect()).json).toMatchObject({
+      runtime: "CLOUD_CLAUDE",
+      runtimeWorktrees: false,
+      worktreePath: cwd,
+    });
   });
 });
 
