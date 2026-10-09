@@ -65,7 +65,8 @@ Each template's `Purpose` is its scope. Main ones: security, privacy, accessibil
 <!-- prettier-ignore -->
 | Tool | Version | Used for |
 | --- | --- | --- |
-| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) in worktrees, lint/typecheck/test gates. Also bkit CLI (`bkit install`; `pnpm tsx .bkit/src/bkit-install.ts` in bkit dev). |
+| Node | >= 20 (`engines.node`) | Runs the bkit CLI. |
+| `pnpm` | matches `package.json` `packageManager` | Required in every consumer repo, whatever the stack: bkit installs and upgrades itself with pnpm, which makes the repo a pnpm repo. Runs the worktree install (`pnpm install --frozen-lockfile`) and the `bkit:gate:*` scripts. Non-Node stack → stub `package.json` whose `bkit:gate:*` scripts wrap the stack's own commands (e.g. `ruff check && pytest`). Also bkit CLI (`bkit install`; `pnpm tsx .bkit/src/bkit-install.ts` in bkit dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | `status.jsonl` append in workflow Bash |
