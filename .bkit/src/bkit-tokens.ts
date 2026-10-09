@@ -3,11 +3,9 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { getPkgRoot } from "./bkit-paths.js";
 import { managedVersionMarker } from "./bkit-version.js";
-import { DEFAULT_RUNNER, parseRunnerLabel } from "./bkit-manifest.js";
 import { gitEnv, resolveRepoSlug } from "./bkit-telemetry.js";
 
 export interface TokenMap {
-  NODE_VERSION: string;
   DEFAULT_BRANCH: string;
   PROJECT_NAME: string;
   // `owner/repo` slug parsed from the `origin` remote. Consumed by the Renovate
@@ -23,12 +21,6 @@ export interface TokenMap {
   // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it
   // — applyTokens computes the marker on demand when the placeholder is present.
   BKIT_MANAGED_MARKER?: string;
-  // Configurable `runs-on` label for the bkit-managed cloud workflow (#362).
-  // CLOUD_RUNNER → `.github/workflows/bkit-cloud.yml` (both jobs share one label).
-  // Resolved from `bkit.runners` (per-workflow key → `runners.default` → `ubuntu-latest`).
-  // Optional so bare TokenMap literals need not set it — applyTokens falls back to
-  // DEFAULT_RUNNER.
-  CLOUD_RUNNER?: string;
 }
 
 // Read the INSTALLING bkit version from the package root (NOT the consumer's
@@ -44,44 +36,6 @@ function readInstallingBkitVersion(): string {
   } catch {
     return "0.0.0";
   }
-}
-
-// Extract the major version from a node version string.
-// Accepts: "22", "22.1.0", "v22", "v22.1.0", ">=20", "^18.0.0", "~16"
-// For .nvmrc content, pass the full file contents — blank/comment lines are skipped.
-function extractNodeMajor(raw: string): string | null {
-  // Scan line-by-line: skip blank lines and lines starting with '#'.
-  // Take the first non-empty/non-comment line as the version source.
-  const lines = raw.split("\n");
-  let versionLine: string | undefined;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-    versionLine = trimmed;
-    break;
-  }
-  if (!versionLine) return null;
-  const stripped = versionLine.replace(/^[v=^~<>!]+/, "");
-  const m = stripped.match(/^(\d+)/);
-  return m ? (m[1] ?? null) : null;
-}
-
-// Resolve NODE_VERSION: .nvmrc → package.json.engines.node → "22"
-function resolveNodeVersion(cwd: string, pkg: Record<string, unknown>): string {
-  const nvmrcPath = path.join(cwd, ".nvmrc");
-  if (fs.existsSync(nvmrcPath)) {
-    const raw = fs.readFileSync(nvmrcPath, "utf-8").trim();
-    const major = extractNodeMajor(raw);
-    if (major) return major;
-  }
-
-  const engines = pkg["engines"] as Record<string, string> | undefined;
-  if (engines?.["node"]) {
-    const major = extractNodeMajor(engines["node"]);
-    if (major) return major;
-  }
-
-  return "22";
 }
 
 // Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
@@ -101,26 +55,6 @@ function resolveDefaultBranch(cwd: string): string {
     // not a git repo or no remote HEAD configured — fall back
   }
   return "main";
-}
-
-// Resolve a bkit-managed workflow's `runs-on` label from `bkit.runners` config (#362).
-// Precedence: the per-workflow key (e.g. `runners.bkitCloud`) → `runners.default` →
-// literal `ubuntu-latest`. Invalid/blank labels are ignored (parseRunnerLabel returns
-// null) so a typo falls back rather than emitting broken YAML. Accepts the already-parsed
-// package.json so resolveTokens avoids a second read.
-export function resolveRunnerLabel(pkg: Record<string, unknown>, workflowKey: string): string {
-  const bkit = pkg["bkit"];
-  if (bkit && typeof bkit === "object") {
-    const runners = (bkit as Record<string, unknown>)["runners"];
-    if (runners && typeof runners === "object") {
-      const table = runners as Record<string, unknown>;
-      const specific = parseRunnerLabel(table[workflowKey]);
-      if (specific) return specific;
-      const fallback = parseRunnerLabel(table["default"]);
-      if (fallback) return fallback;
-    }
-  }
-  return DEFAULT_RUNNER;
 }
 
 // Read and parse package.json from cwd. Throws if absent.
@@ -144,12 +78,10 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
   }
 
   return {
-    NODE_VERSION: resolveNodeVersion(cwd, pkg),
     DEFAULT_BRANCH: resolveDefaultBranch(cwd),
     PROJECT_NAME: name.trim(),
     REPO_SLUG: resolveRepoSlug(cwd),
     BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
-    CLOUD_RUNNER: resolveRunnerLabel(pkg, "bkitCloud"),
   };
 }
 
@@ -158,19 +90,13 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
 // Uses function-form replacers to prevent $& / $1 / $$ substitution patterns from leaking
 // through when token values contain dollar signs.
 export function applyTokens(content: string, tokens: TokenMap): string {
-  const nodeVersion = tokens.NODE_VERSION;
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   const repoSlug = tokens.REPO_SLUG;
-  // Runner label defaults to ubuntu-latest when the TokenMap omits it (bare
-  // literals in tests / non-resolveTokens callers).
-  const cloudRunner = tokens.CLOUD_RUNNER ?? DEFAULT_RUNNER;
   let out = content
-    .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
-    .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug)
-    .replace(/\{\{CLOUD_RUNNER\}\}/g, () => cloudRunner);
+    .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
   // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
   // placeholder is actually present AND the caller's TokenMap omitted the value
   // (resolveTokens always sets it; bare literals in tests / the install fallback

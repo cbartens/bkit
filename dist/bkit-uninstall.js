@@ -5,7 +5,8 @@
 //      - "json"            : stripTier2JsonScope (strip bkit-owned JSON scope)
 //      - "markered-text"   : stripManagedBlock, remove file if empty remainder
 //      - "byte-equal-text" : delete only if unchanged since bkit wrote it (canonicalHashes)
-//   2. package.json: stripManagedKeys for scripts/devDeps
+//   2. package.json: the `bkit` install-state block (full/core uninstall). Scripts and
+//      devDeps are the consumer's — the bkit:gate:* names included — and are left alone.
 //   3. .agents/ mirror files (bkit-prefix .md files in .claude/ .cursor/)
 //
 // Flags:
@@ -13,9 +14,7 @@
 //   --force         override the byte-equal-text hash guard (delete even if consumer modified)
 //   --nuke          confirm prompt then wipe ALL bkit-managed files regardless of format
 //   --yes           skip interactive confirm for --nuke
-//   --package       also strip managed package.json keys
 //   --keep-npmrc    skip .npmrc removal (default: skip anyway — .npmrc is not bkit-managed)
-//   --keep-tooling  skip vale/husky/prettier devDep removal
 //
 // Observability: console.error("[bkit-uninstall] …") for all error paths.
 import * as fs from "node:fs";
@@ -24,7 +23,6 @@ import * as readline from "node:readline";
 import { stripManagedBlock, detectMarkerStyle } from "./bkit-markers.js";
 import { getInstallManifest, } from "./bkit-manifest.js";
 import { isConsumerModified, readBkitVersion } from "./bkit-version.js";
-import { stripManagedKeys } from "./bkit-package-json.js";
 import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "./bkit-cloud-env.js";
@@ -180,17 +178,7 @@ export function buildDecisionTable(modules, ctx) {
         ? [...modules].filter((m) => 
         // Include the opt-in add-ons (cloud) too — a Set caller passing
         // them must not have them silently dropped (zero-footprint trap). (#255 P3)
-        [
-            "core",
-            "claude",
-            "cursor",
-            "ci",
-            "lint",
-            "git-hooks",
-            "opencode",
-            "codex",
-            "cloud",
-        ].includes(m))
+        ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
         : modules;
     const entries = [
         ...getInstallManifest(moduleList),
@@ -205,7 +193,7 @@ export function buildDecisionTable(modules, ctx) {
         const absPath = path.join(ctx.cwd, entry.path);
         const key = entry.path;
         if (seen.has(key))
-            continue; // deduplicate (e.g. package.json appears in multiple modules)
+            continue; // deduplicate (a path listed by more than one module)
         seen.add(key);
         if (!fs.existsSync(absPath)) {
             table.push({
@@ -366,17 +354,7 @@ export async function runUninstall(modules, ctx) {
         ? [...modules].filter((m) => 
         // Include the opt-in add-ons (cloud) too — a Set caller passing
         // them must not have them silently dropped (zero-footprint trap). (#255 P3)
-        [
-            "core",
-            "claude",
-            "cursor",
-            "ci",
-            "lint",
-            "git-hooks",
-            "opencode",
-            "codex",
-            "cloud",
-        ].includes(m))
+        ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"].includes(m))
         : modules;
     // Nuke confirmation
     if (ctx.nuke && !ctx.yes && !ctx.dryRun) {
@@ -541,28 +519,10 @@ export async function runUninstall(modules, ctx) {
             }
         }
     }
-    // Package.json managed key stripping
-    if (ctx.stripPackage && !ctx.dryRun) {
-        try {
-            const originalCwd = process.cwd();
-            process.chdir(ctx.cwd);
-            const pkgResult = stripManagedKeys(moduleList, false);
-            process.chdir(originalCwd);
-            if (pkgResult.removedScripts.length > 0) {
-                console.log(`${ctx.logPrefix} package.json: removed scripts [${pkgResult.removedScripts.join(", ")}]`);
-            }
-            if (pkgResult.removedDevDeps.length > 0) {
-                console.log(`${ctx.logPrefix} package.json: removed devDependencies [${pkgResult.removedDevDeps.join(", ")}]`);
-            }
-        }
-        catch (err) {
-            console.error(`${ctx.logPrefix} error stripping package.json keys: ${err.message}`);
-        }
-    }
     // Full/core uninstall: strip the `bkit` install-state object from package.json
-    // (issueTracker / opencodeProvider(s) / cloudAgents / runners). Legacy
-    // depUpdater / renovateRunner keys go with the block. Scripts
-    // and devDeps still need `--package`; this clears the preference/manifest block so an
+    // (issueTracker / opencodeProvider(s) / cloudAgents). Legacy depUpdater /
+    // renovateRunner / runners keys go with the block. Scripts and devDeps are the
+    // consumer's and stay; this clears the preference/manifest block so an
     // "uninstalled" repo does not keep advertising prior bkit choices. No try/catch — malformed
     // package.json is a hard failure on full teardown (same as a missing dest would be).
     if (moduleList.includes("core") && !ctx.dryRun) {
@@ -582,7 +542,7 @@ export async function runUninstall(modules, ctx) {
     if (!ctx.dryRun) {
         const mirrorDirs = [
             // Each host's mirror dirs are gated on its own module so a targeted
-            // uninstall (e.g. --tooling / --dependency / --auto) leaves other hosts
+            // uninstall (e.g. --typescript / --auto) leaves other hosts
             // untouched — symmetric with install. A bare/full uninstall populates
             // moduleList with every host, so all mirrors are still swept then.
             ...(moduleList.includes("claude") ? [".claude/commands", ".claude/agents"] : []),
@@ -801,7 +761,6 @@ export async function runSurgicalOpencodeUninstall(providerKey, dryRun, cwd) {
             force: false,
             nuke: false,
             yes: false,
-            stripPackage: false,
             logPrefix: LOG_PREFIX,
         });
         return;

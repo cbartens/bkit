@@ -78,10 +78,9 @@ jobs:
           fetch-depth: 0
 
       # bkit:start ts-ci-steps optional
-      # Node/TS toolchain region. bkit seeds these step bodies ACTIVE when you
-      # install \`--typescript\` (or \`--tooling\`), and COMMENTED OUT when you install \`--ci\`
-      # alone (stack-agnostic skeleton). On a non-Node repo, adapt the commented examples to
-      # your stack's setup / install / typecheck / lint / test commands.
+      # Node/TS toolchain region. On a non-Node repo, replace these steps with your
+      # stack's setup / install commands (and the typecheck / lint / test steps below with
+      # its own). Replace \`{{NODE_VERSION}}\` with your Node major (\`.bkit/templates.md\`).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: {{NODE_VERSION}}

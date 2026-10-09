@@ -15,7 +15,6 @@ import { findLineAnchoredMarkers, replaceManagedBlock, selectMarkers, } from "./
 import { resolveTokens } from "./bkit-tokens.js";
 import { CLAUDE_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCursorCloudDoc, writeNetworkAllowlistArtifact, writeCursorCliPermissionsArtifact, parseDotenv, } from "./bkit-cloud-env.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
-import { repointLegacyLintProse } from "./bkit-package-json.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
 import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
@@ -1083,12 +1082,12 @@ export function detectInstalledHostModules(cwd) {
 }
 /**
  * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
- * subset of {claude, cursor, opencode, ci, lint, git-hooks}. Two callers:
+ * subset of {claude, cursor, opencode, codex, lint}. Two callers:
  *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo no longer
- *     reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for ci.yml/.vale.ini.
+ *     reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for lint files.
  *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
  *     module the consumer never installed (the install↔upgrade divergence: upgrade used to seed
- *     ci/lint/git-hooks/cursor files for a claude-only consumer, which `check` then flagged).
+ *     lint/cursor files for a claude-only consumer, which `check` then flagged).
  *
  * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
  * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
@@ -1109,27 +1108,18 @@ export function detectInstalledModules(cwd) {
         mods.add("opencode");
     if (fs.existsSync(path.join(cwd, ".codex", "agents")))
         mods.add("codex");
-    // ci (#265): the stack-agnostic foundation — ci.yml + vale config. Either is a sentinel.
-    if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml")) ||
-        fs.existsSync(path.join(cwd, ".vale.ini"))) {
-        mods.add("ci");
-    }
     // lint (#265, the --typescript toolchain): the owned slop-scan plugin. Its configs
     // (slop-scan.config.json, .prettierignore) are templates the consumer may adopt without
     // the module, so they cannot be sentinels.
     if (fs.existsSync(path.join(cwd, ".bkit", "scripts", "bkit-slop-type-suppression.mjs"))) {
         mods.add("lint");
     }
-    if (fs.existsSync(path.join(cwd, ".husky", "pre-commit")) ||
-        fs.existsSync(path.join(cwd, ".husky", "pre-push"))) {
-        mods.add("git-hooks");
-    }
     return mods;
 }
 /**
  * Render a resolved module set back into valid new-surface CLI flags (#252/#265) for
- * recovery-hint text. Skips core (implicit), collapses the CI/quality modules to
- * --ci / --typescript / --tooling, and maps opt-ins to their value-flag spellings.
+ * recovery-hint text. Skips core (implicit), maps lint to --typescript and opt-ins to
+ * their value-flag spellings.
  */
 export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
     const out = [];
@@ -1141,17 +1131,8 @@ export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
         out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
     if (mods.has("codex"))
         out.push("--codex");
-    // #265: ci+lint+git-hooks → --tooling; TS toolchain (lint/git-hooks, ± ci) → --typescript
-    // (re-adds ci on install); agnostic ci only → --ci.
-    if (mods.has("ci") && mods.has("lint") && mods.has("git-hooks")) {
-        out.push("--tooling");
-    }
-    else if (mods.has("lint") || mods.has("git-hooks")) {
+    if (mods.has("lint"))
         out.push("--typescript");
-    }
-    else if (mods.has("ci")) {
-        out.push("--ci");
-    }
     if (mods.has("cloud"))
         out.push(`--auto=${cloudVariant ?? "<variant>"}`);
     return out.join(" ");
@@ -1167,7 +1148,7 @@ export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
 export function validateModuleFlagsForVerb(verb, moduleFlags) {
     if (verb === "install" && moduleFlags.size === 0) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-            "--claude, --cursor, --codex, --opencode=<provider>, --ci, --typescript (plus opt-in " +
+            "--claude, --cursor, --codex, --opencode=<provider>, --typescript (plus opt-in " +
             "--auto=<claude|cursor>). Run `bkit help` for usage.");
     }
     if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
@@ -1625,7 +1606,7 @@ async function main() {
         console.log(`${LOG_PREFIX} Running advisory scan (no managed-file writes)`);
         console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
         const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
-        const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], { writes: [] }, modules, process.cwd());
+        const allFindings = runPostInstallCheck([...preflightAdvisories, ...blockers], modules, process.cwd());
         // #435 broken-install case: the opencode host is on disk but neither provider signal
         // survives. `bkit check` and `bkit upgrade` both exit 1 with the fix; doctor — the verb
         // whose help advertises diagnosing config drift — printed four opencode lines and never
@@ -1799,12 +1780,11 @@ async function main() {
             for (const entry of getModuleManifest(mod))
                 optInPaths.add(entry.path);
         }
-        // Host/tooling modules (claude, cursor, ci, lint, git-hooks) must ALSO not be force-created
-        // by upgrade — post-#252 each is separately installable, so a `--claude`-only consumer must
-        // not get cursor/ci/lint/git-hooks files seeded on upgrade (which `check` then flags for the
-        // package.json scripts the template walk never injects — the install↔upgrade divergence). We
-        // gate them on sentinel-detected installation, exactly like `bkit check` scopes its drift
-        // gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
+        // Host/tooling modules (claude, cursor, lint) must ALSO not be force-created by upgrade —
+        // post-#252 each is separately installable, so a `--claude`-only consumer must not get
+        // cursor/lint files seeded on upgrade (which `check` then flags — the install↔upgrade
+        // divergence). We gate them on sentinel-detected installation, exactly like `bkit check`
+        // scopes its drift gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
         // modules keep their dest-presence gating just below.
         const installedModules = detectInstalledModules(process.cwd());
         // Resolve the consumer's tracker so upgrade renders tracker-conditional files
@@ -1962,18 +1942,11 @@ async function main() {
         const migratedContextFetch = migrateContextFetchToContext(process.cwd(), upgradeFlags.dryRun);
         if (migratedContextFetch)
             console.log(`${LOG_PREFIX} ${migratedContextFetch}`);
-        // Same both-engines requirement as the context-fetch migration above: install
-        // re-points a superseded lint:prose via runLintModule, but upgrade never
-        // touches package.json scripts — and `bkit upgrade --latest` is the path the
-        // README tells consumers to use. Replace-only, so a consumer without the lint
-        // module is untouched.
-        const repointedLintProse = repointLegacyLintProse(process.cwd(), upgradeFlags.dryRun);
-        if (repointedLintProse)
-            console.log(`${LOG_PREFIX} ${repointedLintProse}`);
         // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
         // bkit-managed OUTPUT files install also produces but that are NOT templates — host
-        // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
-        // `.bkit/*.md` canonical docs (runBkitDocs). These are bkit-owned, force-overwritten
+        // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows), the
+        // `.bkit/*.md` canonical docs (runBkitDocs) and core's package.json scripts (the
+        // bkit:gate:* names, add-if-missing, and the legacy script re-point). These are bkit-owned, force-overwritten
         // output; without this a version bump ships new config but stale prompts/agents/
         // commands/docs (a consumer would have to re-run `bkit install` to get them). Only the
         // hosts the consumer installed are re-rendered (detected by their agents dir) so upgrade
@@ -2026,7 +1999,7 @@ async function main() {
         const renderWs = { writes: [] };
         const renderCtx = {
             dryRun: upgradeFlags.dryRun,
-            tokens: tokens ?? { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
+            tokens: tokens ?? { DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
             modelLookup: renderModelLookup,
             opencodeModelLookup: renderOpencodeModelLookup,
             codexModelLookup: renderCodexModelLookup,
@@ -2171,7 +2144,6 @@ async function main() {
             force: uninstallFlags.force,
             nuke: uninstallFlags.nuke,
             yes: uninstallFlags.yes,
-            stripPackage: uninstallFlags.stripPackage,
             logPrefix: LOG_PREFIX,
         };
         const moduleList = [...modules];
@@ -2422,7 +2394,7 @@ async function main() {
     catch (err) {
         void err; // Non-fatal — changelog header is informational
     }
-    const postFindings = runPostInstallCheck(ctx.advisories, ws, effectiveModules, process.cwd());
+    const postFindings = runPostInstallCheck(ctx.advisories, effectiveModules, process.cwd());
     const banner = formatChecklist(postFindings);
     if (banner)
         console.log(banner);
@@ -2485,7 +2457,6 @@ async function main() {
                 force: true,
                 nuke: false,
                 yes: true,
-                stripPackage: false,
                 logPrefix: "[bkit-uninstall]",
             };
             await runUninstall([...effectiveModules], uninstallCtx);

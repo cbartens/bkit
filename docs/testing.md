@@ -416,7 +416,7 @@ CI must catch every consumer `pnpm bkit install` hard-fail. Same `.bkit/src/*` c
 **Required coverage per consumer-runtime hard-fail** (`process.exit(1)` from `bkit install` / `bkit check`):
 
 1. **Unit test** — failure branch (bad input → exit).
-2. **Smoke spawn** — `bkit install --claude --cursor --tooling` on scratch consumer (`os.tmpdir()`, exit 0). `bkit-install.integration.test.ts` § Scenario 5.
+2. **Smoke spawn** — `bkit install --claude --cursor --typescript` on scratch consumer (`os.tmpdir()`, exit 0). `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn** — pre-seeded upgrade-skew consumer. Same file § Scenario 5.
 4. **Phase 3 blocker** — Scenario 6 (exit 1 + recovery) + 7 (`--auto-revert` → `runUninstall`). v0.7.0+.
 5. **Mid-failure rollback** — Scenario 9: post-first-module failure → `discardAllStaging`, byte-identical consumer. v0.9.0+.
@@ -632,7 +632,7 @@ const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
 if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
 const result = spawnSync(
   tsxBin,
-  [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+  [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
   {
     cwd: tmpDir,
     encoding: "utf-8",

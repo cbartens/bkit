@@ -34,14 +34,14 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
    ```
    @cbartens:registry=https://npm.pkg.github.com
    ```
-   Then auth + install + seed hosts/tooling in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
+   Then auth + install + seed hosts in one Bash call (`bkit install` requires named modules — core implicit; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    set -a; source <ENV-FILE-PATH>; set +a; \
      pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL" && \
      pnpm add -D @cbartens/bkit@latest && \
-     bkit install --claude --cursor --tooling
+     bkit install --claude --cursor --typescript
    ```
-   Writes `.agents/`, `.claude/`, `.cursor/` and the tooling `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs) into `.bkit/templates/` without applying them.
+   Writes `.agents/`, `.claude/`, `.cursor/` and the `bkit:gate:*` `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs, and the tool scripts and devDeps the gates chain, listed in `.bkit/templates.md`) into `.bkit/templates/` without applying them.
 4. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
 5. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
 6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
@@ -88,7 +88,7 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 2 | Add `BKIT_GH_TOKEN_INSTALL` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
 | 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
 | 4 | Export `BKIT_GH_TOKEN_INSTALL` for the `pnpm add` step (one-off — `export BKIT_GH_TOKEN_INSTALL=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
-| 5 | Run `bkit install --claude --cursor --tooling` to seed both hosts + tooling (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | [§ Install](#install) (this section) |
+| 5 | Run `bkit install --claude --cursor --typescript` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | [§ Install](#install) (this section) |
 | 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `BKIT_GH_TOKEN_INSTALL`, `BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `BKIT_GH_TOKEN_INSTALL` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
@@ -111,10 +111,8 @@ The `.github/workflows/ci.yml` template's install step writes token into pnpm us
 # Name the host(s) + stack you want — core is implicit. Hosts compose.
 bkit install --claude                    # .claude/** + CLAUDE.md + core
 bkit install --cursor                    # .cursor/** + core
-bkit install --ci                        # core only: ci.yml + Vale config are templates
-bkit install --claude --typescript       # Claude host + full Node/TS toolchain (implies --ci) + core
+bkit install --claude --typescript       # Claude host + the slop-scan plugin + core
 bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
-bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core (alias for --ci --typescript)
 
 # A bare install errors — name at least one module:
 bkit install                             # ✗ error: requires ≥1 module flag
@@ -129,7 +127,7 @@ bkit upgrade --latest                    # newest published; or --to=<version> t
 bkit check
 ```
 
-**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--opencode=<provider>` `--ci` `--typescript` `--tooling`. `--ci` writes no file: the CI workflow and the Vale config are templates you copy from `.bkit/templates/` (`.bkit/templates.md`); workflows still need pnpm and `bkit:gate:*` scripts declared for your stack, see `.bkit/README.md` § Required tools. `--typescript` adds the Node/TS toolchain's `package.json` scripts and devDeps (tsc/slop-scan/prettier/husky/lint-staged) plus the owned slop-scan plugin, implies `--ci`; the tool configs and git hooks are templates. `--tooling` = back-compat alias for `--ci --typescript` (interdependent `ci + lint + git-hooks` bundle). Core implicit on every install — no `--core`/`--full`/`--lint`/`--git-hooks` flag.
+**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--codex` `--opencode=<provider>` `--typescript`. `--typescript` writes the owned slop-scan type-suppression plugin, the one file `slop-scan.config.json` references that bkit keeps current. The CI workflow, the Vale config, the tool configs, the git hooks, and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`). Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs (add-if-missing; a name already present is never touched); point their values at your stack, see `.bkit/README.md` § Required tools. There is no `--core`/`--full`/`--ci`/`--tooling`/`--lint`/`--git-hooks` flag.
 
 **Opt-in flags:** `--tracker=github|linear`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (additive opencode execution host — `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). Dependency updaters: copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 
@@ -321,7 +319,7 @@ Module dispatch writes managed files. Same as before this feature shipped.
 
 **Phase 3 — Post-install (re-detect + unified output)**
 
-After writes, bkit re-runs token-surface and environment checks — some only accurate post-install (e.g. `.npmrc` content written by CI module, devDeps added to `package.json`).
+After writes, bkit re-runs token-surface and environment checks — some only accurate post-install (e.g. the `bkit:gate:*` scripts core just seeded into `package.json`). The table also lists the module advisories that render in the same checklist.
 
 <!-- prettier-ignore -->
 | `id` | When |
@@ -344,11 +342,12 @@ After writes, bkit re-runs token-surface and environment checks — some only ac
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
 | `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
-| `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
+| `gate-missing-called-scripts` | A `bkit:gate:*` script still at bkit's default chains a script `package.json` does not declare (e.g. `typecheck`, `format:check`, `test`). Add it (`.bkit/templates.md` lists the tool scripts and devDeps) or rewrite the gate. |
+| `gate-tier-not-wired` | `package.json` declares a deeper test tier (`test:integration`, `test:e2e`, `test:live`) that no `bkit:gate:*` script runs; the advisory prints the gate line to add. |
 
 Phase 1 and Phase 3 findings merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection more accurate post-write). Zero findings → no banner.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes (v2.2.3+). Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when rendered prompts/workflows / managed docs carry a stale managed-version marker (`bkit-rendered-prompts-stale` / `bkit-managed-docs-stale`, #256). Gate covers **installed** module set ({core, claude, cursor, ci, lint, git-hooks} plus **opencode**, each detected by sentinel files). opencode gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is NOT drift-gated. Updater configs are not bkit files, so `bkit check` does not report them. See `docs/knowledge.jsonl` KN-4 for original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus writes (v2.2.3+). Changes no managed file (regenerates `.bkit/advisories.md` artifact) and **exits 1 when any managed-file write would occur** in installed module — Tier-2 JSON deep-containment or markered-block drift, whole-file byte-equal mismatch, **host agent/command mirror content drift** (would-write / orphan delete), or when rendered prompts/workflows / managed docs carry a stale managed-version marker (`bkit-rendered-prompts-stale` / `bkit-managed-docs-stale`, #256). Gate covers **installed** module set ({core, claude, cursor, codex, lint} plus **opencode**, each detected by sentinel files). A missing `bkit:gate:*` name counts as a write. opencode gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — render inputs fall back to installed provider (`package.json` `bkit.opencodeProvider`, authoritative for `opencode-zen` / `opencode-go`; all installed providers tracked in `bkit.opencodeProviders: string[]`) and recorded tracker, so clean install across providers checks green (no false drift). Remaining **opt-in** module (cloud) is NOT drift-gated. Updater configs are not bkit files, so `bkit check` does not report them. See `docs/knowledge.jsonl` KN-4 for original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
 
 **`PreflightFinding` shape** — stable contract for downstream tooling:
 
@@ -395,7 +394,7 @@ Use one. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setu
 
 **How to decide:**
 
-1. Run `bkit install --claude --cursor --tooling` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
+1. Run `bkit install --claude --cursor --typescript` (or whichever modules you want). Post-install banner lists `tracker-setup-none`, `dep-updater-absent`, `cloud-router-none` if undecided.
 2. Pick tracker: `bkit install --tracker=github` (or `linear`). Persisted to `bkit.issueTracker`; future installs preserve (switching free).
 3. Copy one updater example (table above). Land Renovate config on the default branch before installing the App.
 4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. Persisted to `bkit.cloudAgents`; install prints secrets + permissions + dashboard checklist (`bkit-auto-setup`). Shipped `bkit-cloud.yml` carries claude job (`BKIT_ANTHROPIC_API_KEY`) and opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
@@ -429,18 +428,16 @@ Use `bkit doctor` to:
 # Uninstall EVERYTHING — all modules, including the cloud add-on if present.
 # The inverse of install is asymmetric: a full *install* skips cloud, a full
 # *uninstall* removes it. Your copies of templates (ci.yml, hooks, tool configs,
-# updater configs) are left in place.
+# updater configs) and every package.json script and devDep (the bkit:gate:* names
+# included) are left in place; only the `bkit` install-state block is removed.
 bkit uninstall
 
 # Preview what would be removed (no writes)
 bkit uninstall --dry-run
 
 # Uninstall specific modules (targeted — leaves core + the other modules intact)
-bkit uninstall --tooling      # removes the owned slop-scan plugin (and, with --package, the tooling scripts)
+bkit uninstall --typescript   # removes the owned slop-scan plugin
 bkit uninstall --auto         # removes only cloud-bootstrap.sh + the cloudAgents key
-
-# Also strip managed package.json scripts/devDeps
-bkit uninstall --package
 
 # Force-delete byte-equal-text files even if consumer modified them
 bkit uninstall --force

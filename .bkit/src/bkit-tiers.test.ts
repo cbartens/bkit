@@ -13,7 +13,6 @@ import {
   deepContains,
   deepMergeJson,
   ensurePackageJsonScripts,
-  ensurePackageJsonDevDeps,
   type WriteSet,
   type JsonValue,
 } from "./bkit-tiers";
@@ -42,7 +41,6 @@ afterEach(() => {
 });
 
 const TOKENS = {
-  NODE_VERSION: "22",
   DEFAULT_BRANCH: "main",
   PROJECT_NAME: "test-project",
   REPO_SLUG: "acme/test-project",
@@ -96,12 +94,12 @@ describe("writeTier1", () => {
   it("substitutes tokens in dest content", () => {
     const src = path.join(tmpDir, "tpl.yml");
     const dst = path.join(tmpDir, "out.yml");
-    fs.writeFileSync(src, "node: {{NODE_VERSION}}\n", "utf-8");
+    fs.writeFileSync(src, "branch: {{DEFAULT_BRANCH}}\n", "utf-8");
     const ws = makeWriteSet();
 
     writeTier1(src, dst, TOKENS, false, ws);
 
-    expect(fs.readFileSync(dst, "utf-8")).toBe("node: 22\n");
+    expect(fs.readFileSync(dst, "utf-8")).toBe("branch: main\n");
   });
 
   it("dry-run does not write to disk but records write in WriteSet", () => {
@@ -248,15 +246,15 @@ describe("writeTier2 — hash-comment markers", () => {
   it("substitutes tokens inside the appended block", () => {
     const src = path.join(tmpDir, "ci.yml");
     const dst = path.join(tmpDir, "ci-out.yml");
-    fs.writeFileSync(src, "# bkit:start\nnode-version: {{NODE_VERSION}}\n# bkit:end\n", "utf-8");
+    fs.writeFileSync(src, "# bkit:start\nbranch: {{DEFAULT_BRANCH}}\n# bkit:end\n", "utf-8");
     fs.writeFileSync(dst, "# existing yaml\n", "utf-8");
     const ws = makeWriteSet();
 
     writeTier2(src, dst, TOKENS, "hash-comment", false, ws);
 
     const result = fs.readFileSync(dst, "utf-8");
-    expect(result).toContain("node-version: 22");
-    expect(result).not.toContain("{{NODE_VERSION}}");
+    expect(result).toContain("branch: main");
+    expect(result).not.toContain("{{DEFAULT_BRANCH}}");
   });
 });
 
@@ -357,7 +355,6 @@ describe("writeTier2 — noMarkerMigration policy (#422)", () => {
 
 describe("writeIfAbsent", () => {
   const tokens = {
-    NODE_VERSION: "22",
     DEFAULT_BRANCH: "main",
     PROJECT_NAME: "p",
     REPO_SLUG: "o/p",
@@ -484,66 +481,6 @@ describe("ensurePackageJsonScripts", () => {
     expect(pkg.scripts).toBeUndefined(); // dryRun did NOT write
   });
 
-  // legacyValues — re-point a superseded bkit default without ever touching a
-  // consumer-authored value. Without this, correcting a shipped script default
-  // reaches new consumers ONLY (add-if-missing never overwrites), which is how
-  // the lint:prose worktree hole would have persisted on every existing install.
-  it("replaces a value byte-matching a legacy bkit default", () => {
-    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
-      "lint:prose": ["old-bkit-default"],
-    });
-    expect(result.replaced).toEqual(["lint:prose"]);
-    expect(result.preserved).toEqual([]);
-    expect(result.added).toEqual([]);
-    expect(readPkg().scripts?.["lint:prose"]).toBe("new-bkit-default");
-    expect(ws.writes).toHaveLength(1);
-  });
-
-  it("preserves a consumer-customised value that matches no legacy default", () => {
-    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "my-own-linter" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
-      "lint:prose": ["old-bkit-default"],
-    });
-    expect(result.preserved).toEqual(["lint:prose"]);
-    expect(result.replaced).toEqual([]);
-    expect(readPkg().scripts?.["lint:prose"]).toBe("my-own-linter");
-    expect(ws.writes).toHaveLength(0);
-  });
-
-  it("treats a value already at the current default as preserved, not replaced", () => {
-    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "new-bkit-default" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws, {
-      "lint:prose": ["old-bkit-default"],
-    });
-    expect(result.preserved).toEqual(["lint:prose"]);
-    expect(result.replaced).toEqual([]);
-    expect(ws.writes).toHaveLength(0); // idempotent — no rewrite on re-run
-  });
-
-  it("dryRun=true records a legacy replacement without writing it", () => {
-    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, true, ws, {
-      "lint:prose": ["old-bkit-default"],
-    });
-    expect(result.replaced).toEqual(["lint:prose"]);
-    expect(ws.writes).toHaveLength(1); // surfaces as drift in `bkit check`
-    expect(readPkg().scripts?.["lint:prose"]).toBe("old-bkit-default");
-  });
-
-  it("omitting legacyValues keeps the historical preserve-always behaviour", () => {
-    writePkg({ name: "x", version: "1.0.0", scripts: { "lint:prose": "old-bkit-default" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonScripts({ "lint:prose": "new-bkit-default" }, false, ws);
-    expect(result.preserved).toEqual(["lint:prose"]);
-    expect(result.replaced).toEqual([]);
-    expect(readPkg().scripts?.["lint:prose"]).toBe("old-bkit-default");
-  });
-
   it("preserves 4-space indent style of original package.json", () => {
     fs.writeFileSync(
       "package.json",
@@ -574,85 +511,6 @@ describe("ensurePackageJsonScripts", () => {
     const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws2);
     expect(result.added).toEqual([]);
     expect(ws2.writes).toHaveLength(0); // no second write
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ensurePackageJsonDevDeps — managed devDependencies (BAR-138 Finding 5)
-// ---------------------------------------------------------------------------
-
-describe("ensurePackageJsonDevDeps", () => {
-  function writePkg(content: object | string): void {
-    const body = typeof content === "string" ? content : JSON.stringify(content, null, 2) + "\n";
-    fs.writeFileSync("package.json", body, "utf-8");
-  }
-
-  function readPkg(): {
-    devDependencies?: Record<string, string>;
-    dependencies?: Record<string, string>;
-    [k: string]: unknown;
-  } {
-    return JSON.parse(fs.readFileSync("package.json", "utf-8"));
-  }
-
-  it("returns missingPkg=true when package.json absent", () => {
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9" }, false, ws);
-    expect(result.missingPkg).toBe(true);
-    expect(ws.writes).toHaveLength(0);
-  });
-
-  it("returns malformed=true when package.json is invalid JSON", () => {
-    fs.writeFileSync("package.json", "{ broken", "utf-8");
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9" }, false, ws);
-    expect(result.malformed).toBe(true);
-    expect(ws.writes).toHaveLength(0);
-  });
-
-  it("seeds devDependencies block when absent", () => {
-    writePkg({ name: "x", version: "1.0.0" });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7", prettier: "^3.5.3" }, false, ws);
-    expect(result.added).toEqual(["husky", "prettier"]);
-    expect(ws.writes).toEqual([{ path: "package.json", action: "update" }]);
-    expect(readPkg().devDependencies).toEqual({ husky: "^9.1.7", prettier: "^3.5.3" });
-  });
-
-  it("preserves consumer's pinned version (consumer wins)", () => {
-    writePkg({ name: "x", version: "1.0.0", devDependencies: { husky: "8.0.0" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws);
-    expect(result.added).toEqual([]);
-    expect(result.preserved).toEqual(["husky"]);
-    expect(readPkg().devDependencies?.husky).toBe("8.0.0");
-  });
-
-  it("skips devDeps add when package already has it under `dependencies` (consumer chose runtime)", () => {
-    writePkg({ name: "x", version: "1.0.0", dependencies: { husky: "9.1.0" } });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws);
-    expect(result.added).toEqual([]);
-    expect(result.preserved).toEqual(["husky"]);
-    expect(readPkg().devDependencies).toBeUndefined();
-  });
-
-  it("dryRun=true records drift but does not write", () => {
-    writePkg({ name: "x", version: "1.0.0" });
-    const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, true, ws);
-    expect(result.added).toEqual(["husky"]);
-    expect(ws.writes).toHaveLength(1);
-    expect(readPkg().devDependencies).toBeUndefined();
-  });
-
-  it("is idempotent across two consecutive runs", () => {
-    writePkg({ name: "x", version: "1.0.0" });
-    ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, makeWriteSet());
-    const ws2 = makeWriteSet();
-    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws2);
-    expect(result.added).toEqual([]);
-    expect(ws2.writes).toHaveLength(0);
   });
 });
 

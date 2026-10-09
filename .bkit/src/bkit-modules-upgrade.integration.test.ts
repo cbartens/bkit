@@ -453,7 +453,6 @@ function makeModuleCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
   return {
     dryRun: false,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
       REPO_SLUG: "owner/test-project",

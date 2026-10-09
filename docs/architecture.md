@@ -37,12 +37,12 @@ cbartens/bkit (this repo)
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
 │   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / create-if-missing) + deepContains/writeTier2JsonContained
-│   ├── bkit-tokens.ts      # Token resolver (node version, pnpm major, git branch, etc.)
+│   ├── bkit-tokens.ts      # Token resolver (default branch, project name, managed-version marker)
 │   ├── bkit-version.ts     # .bkit/version JSON schema (pinnedVersion, canonicalHashes, claudeAllowDerived)
-│   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + key stripping)
+│   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + the upgrade walk)
 │   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical format-aware removal
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
-│   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
+│   ├── bkit-package-json.ts # repointLegacyScripts (superseded bkit lint:prose / slop:delta values)
 │   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
 │   ├── bkit-paths-policy.ts # Single protected-path table (mirror prefixes + gate-config basenames); source of truth for the grader AND the committed generated .cjs
 │   ├── bkit-launch.ts      # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
@@ -84,7 +84,8 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │   ├─ fully-managed    → full overwrite (bkit fully owns file)
     │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
     │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+); MCP configs → bkit's tracker entry only
-    │   ├─ create-if-missing → write once when absent (.agents/context.md, skills.md), never again
+    │   ├─ create-if-missing → write once when absent (.agents/context.md, skills.md), never again;
+    │   │                      package.json bkit:gate:* / bkit:deps:* names added when missing, never overwritten
     │   ├─ templates       → raw copies into .bkit/templates/ only; never applied to the repo
     │   └─ On any error    → earlier modules' files stay written, .bkit/version not re-pinned — re-run install (idempotent)
     │
@@ -92,7 +93,6 @@ pnpm bkit install [--module-flags] [--auto-revert]
         ├─ Token-surface detectors (BKIT_GH_TOKEN_INSTALL at 4 surfaces)
         ├─ CI YAML env-var check
         ├─ Vale package sync check
-        ├─ devDeps freshness check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers (v0.7.0+) → exit 1 with recovery line; --auto-revert calls runUninstall first
         └─ Write .bkit-version JSON (pinnedVersion + canonicalHashes from this run's WriteSet)
@@ -104,7 +104,7 @@ CLI verbs:
 - `pnpm bkit check` — Phase 1 + Phase 3 read-only (v2.2.3+); exit 1 on Tier-1/Tier-2 drift, no writes.
 - `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exit 0.
 - `pnpm bkit status` (v4.0.0+) — read-only; installed host (claude/cursor/opencode) + configured provider.
-- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
+- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
 - `pnpm bkit upgrade` (v0.9.0+) — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Module-scoped (v4.0.0+). Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically — version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
 - `pnpm bkit harvest` (#234 WS-4, #343) — bkit-repo only; COPIES `stats.jsonl`, MOVES `friction.jsonl` (prunes consumer), count-only `docs/{deferrals,failures}.jsonl`. Never commits.

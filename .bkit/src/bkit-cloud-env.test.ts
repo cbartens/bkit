@@ -330,7 +330,6 @@ describe("renderCloudCacheBust", () => {
 
 describe("writeClaudeCloudDoc — end-to-end render (real template)", () => {
   const TOKENS: TokenMap = {
-    NODE_VERSION: "22",
     DEFAULT_BRANCH: "main",
     PROJECT_NAME: "test-repo",
     REPO_SLUG: "acme/test-repo",
@@ -637,7 +636,6 @@ describe("cursor template generation sentinels", () => {
 
 describe("writeCursorCloudDoc — end-to-end render (real template)", () => {
   const TOKENS: TokenMap = {
-    NODE_VERSION: "22",
     DEFAULT_BRANCH: "main",
     PROJECT_NAME: "test-repo",
     REPO_SLUG: "acme/test-repo",

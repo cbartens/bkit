@@ -14,7 +14,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PreflightFinding } from "./bkit-preflight";
-import type { WriteSet } from "./bkit-tiers";
 import {
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
@@ -59,10 +58,6 @@ afterEach(() => {
 
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
   return new Set(flags) as Set<import("./bkit-cli").ModuleFlag>;
-}
-
-function makeWs(...writes: import("./bkit-install").WriteEntry[]): WriteSet {
-  return { writes };
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +169,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
 
     // "npmrc-missing-gh-packages" must appear exactly once even though two
     // detectors (detectNpmrcAuth + mocked detectValePackageNotSynced) emitted it
@@ -202,7 +197,7 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
 
     const allMatches = result.filter((f) => f.id === "npmrc-missing-gh-packages");
     // Exactly one — intra-phase dedup dropped the second
@@ -403,7 +398,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
 
     // gh-bkit-token-unset-shell must appear, proving detectShellToken was
     // called and returned "missing" (env var is deleted → Boolean("") === false)
@@ -436,7 +431,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck([preflightAdvisory], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([preflightAdvisory], makeModules("lint"), tmpDir);
 
     const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
     // Exactly one occurrence
@@ -460,12 +455,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     process.env.BKIT_GH_TOKEN_INSTALL = "set";
     execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // gh secret present → no gh findings
 
-    const result = runPostInstallCheck(
-      [uniquePreflightAdvisory],
-      makeWs(),
-      makeModules("lint"),
-      tmpDir,
-    );
+    const result = runPostInstallCheck([uniquePreflightAdvisory], makeModules("lint"), tmpDir);
 
     const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
     expect(matches).toHaveLength(1);
@@ -482,7 +472,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     process.env.BKIT_GH_TOKEN_INSTALL = "set";
     execSync.mockReturnValue("BKIT_GH_TOKEN_INSTALL\n"); // no GH secret missing
 
-    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
 
     const ids = result.map((f) => f.id);
     const alphaIdx = ids.indexOf("alpha");

@@ -3,7 +3,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyTokens, resolveTokens } from "./bkit-tokens";
 import type { WriteSet } from "./bkit-tiers";
 import {
   parseModelLookup,
@@ -18,9 +17,6 @@ import {
   runCoreModule,
   runClaudeModule,
   runCursorModule,
-  runCiModule,
-  runLintModule,
-  runGitHooksModule,
   runCloudModule,
   runOpencodeModule,
   renderOpencodeJson,
@@ -28,9 +24,11 @@ import {
   reconcileMcpJson,
   opencodeProviderId,
   dispatchModules,
+  detectGateAdvisories,
   isTemplate,
   type ModuleContext,
 } from "./bkit-modules";
+import { BKIT_GATE_SCRIPTS } from "./bkit-manifest";
 import { readBkitVersion, writeBkitVersion, sha256 } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
@@ -48,7 +46,6 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
   return {
     dryRun: false,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
       REPO_SLUG: "acme/test-project",
@@ -148,45 +145,6 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task 6.1b — Substituted ci.yml end-to-end integration test
-// ---------------------------------------------------------------------------
-
-describe("ci.yml template token substitution (Task 6.1b)", () => {
-  it("resolveTokens + applyTokens fill every placeholder the ci.yml template carries", async () => {
-    fs.writeFileSync(path.join(tmpDir, ".nvmrc"), "22\n", "utf-8");
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", packageManager: "pnpm@10.4.1" }),
-      "utf-8",
-    );
-
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
-    expect(tokens.PROJECT_NAME).toBe("x");
-    // DEFAULT_BRANCH falls back to 'main' with no git remote
-    expect(tokens.DEFAULT_BRANCH).toBe("main");
-
-    const templatePath = path.resolve(
-      import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
-      "..",
-      "templates",
-      ".github",
-      "workflows",
-      "ci.yml",
-    );
-    const substituted = applyTokens(fs.readFileSync(templatePath, "utf-8"), tokens);
-
-    expect(substituted).toContain("node-version: 22");
-    expect(substituted).not.toContain("{{NODE_VERSION}}");
-    expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
-    expect(substituted).not.toContain("{{PROJECT_NAME}}");
-    // Registry-auth env var is present (BAR-138: replaced git auth-shim)
-    expect(substituted).toContain("BKIT_GH_TOKEN_INSTALL");
-    expect(substituted).not.toContain("git config --global url.");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // #489 — templates are the consumer's: install writes none outside .bkit/templates/
 // ---------------------------------------------------------------------------
 
@@ -195,9 +153,7 @@ describe("install writes no template path outside .bkit/templates/", () => {
     "core",
     "claude",
     "cursor",
-    "ci",
     "lint",
-    "git-hooks",
     "cloud",
   ]);
   const bkitDir = path.resolve(
@@ -288,12 +244,12 @@ describe("module dispatch: --claude seeds only .claude/** + core", () => {
   });
 });
 
-describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
-  it("--ci --lint writes core + CI + lint stack; nothing under Cursor/Claude/Husky", () => {
+describe("module dispatch: --typescript seeds core + lint only", () => {
+  it("--typescript writes core + the slop plugin; nothing under Cursor/Claude/Husky", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
 
-    dispatchModules(new Set(["core", "ci", "lint"]), ctx);
+    dispatchModules(new Set(["core", "lint"]), ctx);
 
     // Filter out internal payload paths (.bkit/templates/** are template copies)
     const consumerOutputPaths = ws.writes
@@ -308,55 +264,55 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
       expect(p).not.toMatch(/[/\\]\.claude[/\\]/);
       expect(p).not.toMatch(/[/\\]\.husky[/\\]/);
     }
-
-    // At least one CI or lint-related file should be written on fresh tmpdir
-    const allPaths = ws.writes.map((e) => e.path);
-    const hasCiOrLint = allPaths.some(
-      (p) =>
-        p.includes("ci.yml") ||
-        p.includes(".vale") ||
-        p.includes("slop-scan") ||
-        p.includes(".prettierignore") ||
-        p.includes(".bkit/version"),
+    expect(consumerOutputPaths).toContain(
+      path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
     );
-    expect(hasCiOrLint).toBe(true);
   });
 });
 
-describe("--ci/--typescript footprint (#265)", () => {
-  it("--ci alone writes nothing outside core and adds no package.json scripts", () => {
-    dispatchModules(new Set(["core", "ci"]), makeCtx({}));
-    expect(fs.existsSync(path.join(tmpDir, ".github", "workflows", "ci.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(false);
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
-    expect(pkg.scripts?.typecheck).toBeUndefined();
-  });
+describe("--typescript footprint (#265, narrowed by #489)", () => {
+  const TOOL_SCRIPTS = [
+    "typecheck",
+    "lint",
+    "format:check",
+    "lint:prose",
+    "lint:slop",
+    "slop:delta",
+  ];
 
-  it("--typescript writes the owned slop plugin and the package.json scripts, no tool configs", () => {
-    dispatchModules(new Set(["core", "ci", "lint", "git-hooks"]), makeCtx({}));
+  it("writes only the owned slop plugin: no tool config, tool script, devDep or prepare", () => {
+    dispatchModules(new Set(["core", "lint"]), makeCtx({}));
     expect(
       fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
     ).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, ".husky", "pre-push"))).toBe(false);
-    // The slop gate is the `bkit ci slop` command now, not a seeded script.
-    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(false);
+    for (const rel of [
+      "slop-scan.config.json",
+      ".prettierignore",
+      ".lintstagedrc.json",
+      ".vale.ini",
+      ".husky/pre-push",
+      ".github/workflows/ci.yml",
+    ]) {
+      expect(fs.existsSync(path.join(tmpDir, rel)), rel).toBe(false);
+    }
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
-    expect(pkg.scripts?.typecheck).toBeDefined();
-    expect(pkg.scripts?.["slop:delta"]).toBe("bkit ci slop");
+    for (const name of [...TOOL_SCRIPTS, "prepare"]) {
+      expect(pkg.scripts?.[name], name).toBeUndefined();
+    }
+    expect(pkg.devDependencies).toBeUndefined();
+  });
+
+  it("a fresh --claude install seeds every bkit:gate:* name and no tool script or devDep", () => {
+    dispatchModules(new Set(["core", "claude"]), makeCtx({}));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkg.scripts).toEqual(BKIT_GATE_SCRIPTS);
+    expect(pkg.devDependencies).toBeUndefined();
   });
 });
 
 describe("module dispatch: --full ≡ no flags (writeset equality)", () => {
   it("--full and no flags produce the same set of modules dispatched", () => {
-    const moduleSet = new Set<import("./bkit-cli").ModuleFlag>([
-      "core",
-      "claude",
-      "ci",
-      "lint",
-      "git-hooks",
-    ]);
+    const moduleSet = new Set<import("./bkit-cli").ModuleFlag>(["core", "claude", "lint"]);
 
     // Run 1: fresh tmpdir (beforeEach already set up)
     const cwd1 = process.cwd();
@@ -392,33 +348,25 @@ describe("module dispatch: --core is implicit before any other module", () => {
     const realWs = makeWriteSet();
     const ctx = makeCtx({ ws: realWs });
 
-    // Dispatch core + ci (core must run first per MODULE_DISPATCH_ORDER)
-    dispatchModules(new Set(["core", "ci"]), ctx);
+    // Dispatch core + lint (core must run first per MODULE_DISPATCH_ORDER)
+    dispatchModules(new Set(["core", "lint"]), ctx);
 
-    // .bkit-version is written in postDispatch — AFTER all module writes
-    const bkitVersionIdx = realWs.writes.findIndex((e) => e.path.endsWith(".bkit/version"));
-
-    // Consumer-facing ci.yml is written by ci module (before postDispatch)
-    // It's at a path like .github/workflows/ci.yml (NOT inside .agents/templates/)
-    const consumerCiIdx = realWs.writes.findIndex(
-      (e) =>
-        e.path.endsWith(path.join(".github", "workflows", "ci.yml")) &&
-        !e.path.includes(`${path.sep}.agents${path.sep}templates${path.sep}`),
+    const paths = realWs.writes.map((e) => e.path);
+    const agentsMdIdx = paths.indexOf("AGENTS.md");
+    const slopPluginIdx = paths.indexOf(
+      path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
     );
-
-    if (bkitVersionIdx !== -1 && consumerCiIdx !== -1) {
-      // .bkit-version (postDispatch) comes AFTER consumer ci.yml (from ci module)
-      expect(consumerCiIdx).toBeLessThan(bkitVersionIdx);
-    } else {
-      // At minimum verify .bkit-version was written (core module ran + postDispatch flushed)
-      expect(bkitVersionIdx).toBeGreaterThanOrEqual(0);
-    }
+    // .bkit-version is written in postDispatch — AFTER all module writes
+    const bkitVersionIdx = paths.findIndex((p) => p.endsWith(path.join(".bkit", "version")));
+    expect(agentsMdIdx).toBeGreaterThanOrEqual(0);
+    expect(agentsMdIdx).toBeLessThan(slopPluginIdx);
+    expect(slopPluginIdx).toBeLessThan(bkitVersionIdx);
   });
 });
 
 describe("module dispatch: idempotence — second install --full produces zero writes", () => {
   it("running dispatchModules twice stabilises: third run = zero writes (true idempotence)", () => {
-    const moduleSet = new Set<import("./bkit-cli").ModuleFlag>(["core", "ci", "lint", "git-hooks"]);
+    const moduleSet = new Set<import("./bkit-cli").ModuleFlag>(["core", "lint"]);
 
     // First run — creates files from scratch
     const ws1 = makeWriteSet();
@@ -577,7 +525,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   it("the default module set does NOT ship cloud scaffolding", () => {
     // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
     // modelLookup in this harness (see the dispatch tests above).
-    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), makeCtx({}));
+    dispatchModules(new Set(["core", "claude", "lint"]), makeCtx({}));
     // claude is in the set — proves cloud-bootstrap.sh moved out of it into --cloud (#119).
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
@@ -792,82 +740,107 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Managed package.json scripts (BAR-138 v0.4.0)
-//
-// Replaces the prior MED-1 contract: instead of advising consumers via
-// print-sink to add lint scripts manually, bkit now adds them directly
-// (Tier-2 managed: add-if-missing, preserve consumer values).
+// Core package.json scripts (#489): the bkit:gate:* / bkit:deps:* names are seeded
+// add-if-missing on every install; the tool scripts they chain are templates.
 // ---------------------------------------------------------------------------
 
-describe("managed package.json scripts: --ci adds typecheck, --lint adds format/prose/slop, --git-hooks adds prepare", () => {
-  function writePkg(scripts?: Record<string, string>): void {
-    const pkg: Record<string, unknown> = { name: "x", version: "1.0.0" };
-    if (scripts) pkg.scripts = scripts;
+describe("core package.json scripts — bkit:gate:* names, add-if-missing", () => {
+  function writePkg(pkg: Record<string, unknown>): void {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify(pkg, null, 2) + "\n",
+      JSON.stringify({ name: "x", version: "1.0.0", ...pkg }, null, 2) + "\n",
       "utf-8",
     );
   }
 
-  function readPkgScripts(): Record<string, string> {
-    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
-    return pkg.scripts ?? {};
+  function readPkg(): { scripts?: Record<string, string>; devDependencies?: unknown } {
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
   }
 
-  it("runLintModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit) (#265)", () => {
-    writePkg();
-    fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
-    const ctx = makeCtx({});
-    runLintModule(ctx);
-    const scripts = readPkgScripts();
-    expect(scripts.typecheck).toBe("tsc --noEmit");
+  it("an existing gate value is never touched; missing gate names are added", () => {
+    writePkg({ scripts: { "bkit:gate:static": "ruff check .", "bkit:gate:format": "true" } });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readPkg().scripts ?? {};
+    expect(scripts["bkit:gate:static"]).toBe("ruff check .");
+    expect(scripts["bkit:gate:format"]).toBe("true");
+    for (const name of Object.keys(BKIT_GATE_SCRIPTS)) {
+      expect(scripts[name], name).toBeDefined();
+    }
+    expect(scripts["bkit:gate:static-unit"]).toBe(BKIT_GATE_SCRIPTS["bkit:gate:static-unit"]);
   });
 
-  it("runLintModule preserves an existing `typecheck` value (consumer wins)", () => {
-    writePkg({ typecheck: "custom-runner" });
-    fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
-    const ctx = makeCtx({});
-    runLintModule(ctx);
-    const scripts = readPkgScripts();
-    expect(scripts.typecheck).toBe("custom-runner");
+  it("a second install writes nothing once every gate name is present", () => {
+    writePkg({});
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const ws = makeWriteSet();
+    dispatchModules(new Set(["core"]), makeCtx({ ws }));
+    expect(ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
   });
 
-  it("runCiModule adds NO package.json scripts (stack-agnostic, #265)", () => {
-    writePkg();
-    const ctx = makeCtx({});
-    runCiModule(ctx);
-    const scripts = readPkgScripts();
+  it("a missing gate name is a write in dry-run, so `bkit check` reports it", () => {
+    writePkg({});
+    const ws = makeWriteSet();
+    dispatchModules(new Set(["core"]), makeCtx({ ws, dryRun: true }));
+    expect(ws.writes.some((w) => w.path === "package.json")).toBe(true);
+    expect(readPkg().scripts).toBeUndefined();
+  });
+
+  it("re-points a superseded bkit slop:delta value without seeding the tool scripts", () => {
+    writePkg({ scripts: { "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh" } });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readPkg().scripts ?? {};
+    expect(scripts["slop:delta"]).toBe("bkit ci slop");
     expect(scripts.typecheck).toBeUndefined();
-    expect(Object.keys(scripts)).toHaveLength(0);
+    expect(scripts["lint:prose"]).toBeUndefined();
+  });
+});
+
+describe("detectGateAdvisories — gate advisories point at .bkit/templates.md", () => {
+  function writeScripts(scripts: Record<string, string>): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", scripts }, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  it("names the tool scripts a default gate chains that package.json lacks", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, typecheck: "tsc --noEmit" });
+    const finding = detectGateAdvisories(tmpDir).find(
+      (f) => f.id === "gate-missing-called-scripts",
+    );
+    expect(finding).toBeDefined();
+    for (const name of ["lint", "format:check", "lint:prose", "slop:delta", "test", "build"]) {
+      expect(finding!.detect).toContain(`\`${name}\``);
+    }
+    expect(finding!.detect).not.toContain("`typecheck`");
+    // pnpm subcommands and binaries are not scripts.
+    expect(finding!.detect).not.toContain("`lint-staged`");
+    expect(finding!.detect).not.toContain("`install`");
+    expect(finding!.action).toContain(".bkit/templates.md");
   });
 
-  it("runLintModule adds format:check, lint:prose, lint:slop scripts when missing", () => {
-    writePkg();
-    const ctx = makeCtx({});
-    runLintModule(ctx);
-    const scripts = readPkgScripts();
-    expect(scripts["format:check"]).toBe("prettier --check .");
-    expect(scripts["lint:slop"]).toBe("slop-scan scan .");
-    expect(scripts["lint:prose"]).toContain("vale");
+  it("stays silent about a gate the consumer rewrote", () => {
+    const rewritten = Object.fromEntries(Object.keys(BKIT_GATE_SCRIPTS).map((k) => [k, "true"]));
+    writeScripts(rewritten);
+    expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain(
+      "gate-missing-called-scripts",
+    );
   });
 
-  it("runGitHooksModule adds modern `prepare: husky` script (husky 9+ form)", () => {
-    writePkg();
-    const ctx = makeCtx({});
-    runGitHooksModule(ctx);
-    const scripts = readPkgScripts();
-    expect(scripts.prepare).toBe("husky");
+  it("hands over the gate line for a declared test tier no gate runs", () => {
+    writeScripts({ ...BKIT_GATE_SCRIPTS, "test:integration": "vitest run -c int" });
+    const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "gate-tier-not-wired");
+    expect(finding?.action).toContain(
+      '"bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration"',
+    );
   });
 
-  it("runLintModule warns via advisories when package.json is missing (#265)", () => {
-    // beforeEach seeds a package.json — remove it so we hit the missingPkg branch
+  it("returns nothing for an absent or malformed package.json", () => {
     fs.rmSync(path.join(tmpDir, "package.json"));
-    const advisories: PreflightFinding[] = [];
-    const ctx = makeCtx({ advisories });
-    runLintModule(ctx);
-    const combined = advisories.map((a) => `${a.detect} ${a.action}`).join("\n");
-    expect(combined).toMatch(/package\.json not found/i);
+    expect(detectGateAdvisories(tmpDir)).toEqual([]);
+    fs.writeFileSync(path.join(tmpDir, "package.json"), "{ nope", "utf-8");
+    expect(detectGateAdvisories(tmpDir)).toEqual([]);
   });
 });
 
@@ -1069,8 +1042,8 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     const ctx = makeCtx({ ws });
 
     // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
-    // Core + claude + ci + lint + git-hooks covers all consumer-facing non-cursor modules.
-    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+    // Core + claude + lint covers all consumer-facing non-cursor modules.
+    dispatchModules(new Set(["core", "claude", "lint"]), ctx);
 
     const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(true);
@@ -1094,7 +1067,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     const ctx = makeCtx({ ws });
 
     // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
-    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+    dispatchModules(new Set(["core", "claude", "lint"]), ctx);
 
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const parsed = readBkitVersion(versionFile);
@@ -1710,7 +1683,7 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
 });
 
 // ---------------------------------------------------------------------------
-// .husky/pre-push is a template: the git-hooks module never writes or reads it.
+// .husky/pre-push is a template: install never writes or reads it.
 // PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (a heavily
 // customised consumer hook carrying legacy bkit markers).
 // ---------------------------------------------------------------------------
@@ -1718,21 +1691,21 @@ describe("Task 23 — detectTier2TextDrift named-block logic (ci.yml template as
 describe(".husky/pre-push is the consumer's file", () => {
   const PREPUSH_FIXTURE = path.resolve("tests/fixtures/heavy-customised-prepush/.husky/pre-push");
 
-  it("runGitHooksModule leaves an existing .husky/pre-push byte-identical, with no advisory about it", () => {
+  it("install leaves an existing .husky/pre-push byte-identical, with no advisory about it", () => {
     const fixtureContent = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
     const prePushPath = path.join(tmpDir, ".husky", "pre-push");
     fs.mkdirSync(path.dirname(prePushPath), { recursive: true });
     fs.writeFileSync(prePushPath, fixtureContent, "utf-8");
 
     const ctx = makeCtx({});
-    runGitHooksModule(ctx);
+    dispatchModules(new Set(["core", "lint"]), ctx);
 
     expect(fs.readFileSync(prePushPath, "utf-8")).toBe(fixtureContent);
     expect(ctx.advisories.some((f) => f.detect.includes(".husky/pre-push"))).toBe(false);
   });
 
-  it("runGitHooksModule does not create .husky/pre-push when absent", () => {
-    runGitHooksModule(makeCtx({}));
+  it("install does not create .husky/pre-push when absent", () => {
+    dispatchModules(new Set(["core", "lint"]), makeCtx({}));
     expect(fs.existsSync(path.join(tmpDir, ".husky", "pre-push"))).toBe(false);
   });
 });
@@ -2050,7 +2023,6 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     return {
       dryRun: false,
       tokens: {
-        NODE_VERSION: "22",
         DEFAULT_BRANCH: "main",
         PROJECT_NAME: "test-project",
         REPO_SLUG: "acme/test-project",
@@ -2332,7 +2304,6 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
     const ctx = {
       dryRun: false,
       tokens: {
-        NODE_VERSION: "22",
         DEFAULT_BRANCH: "main",
         PROJECT_NAME: "test-project",
         REPO_SLUG: "acme/test-project",

@@ -1828,24 +1828,6 @@ export function detectCiRouterSecrets(cwd) {
     }
     return findings;
 }
-/**
- * Detect whether new devDependencies were added in this run (via WriteSet).
- * Returns null if no devDeps were added.
- */
-export function detectDevDepsNeedFetch(ws) {
-    const hasDevDepsAdded = ws.writes.some((w) => w.devDepsAdded && w.devDepsAdded.length > 0);
-    if (!hasDevDepsAdded)
-        return null;
-    const allAdded = ws.writes
-        .flatMap((w) => w.devDepsAdded ?? [])
-        .filter((v, i, a) => a.indexOf(v) === i);
-    return {
-        id: "devdeps-need-fetch",
-        severity: "advisory",
-        detect: `bkit added [${allAdded.join(", ")}] to package.json devDependencies in this run.`,
-        action: "Run `pnpm install` to fetch the newly-added devDependencies before running `pnpm bkit check` or pushing.",
-    };
-}
 // ---------------------------------------------------------------------------
 // BKIT_GH_TOKEN_INSTALL action strings (verbatim from bkit-modules.ts constants)
 // ---------------------------------------------------------------------------
@@ -2312,7 +2294,7 @@ export function detectLedgerAliasCollisions(cwd) {
     };
 }
 /**
- * Re-run token-surface + ci.yml + vale-sync + devDeps detectors after writes.
+ * Re-run token-surface + ci.yml + vale-sync detectors after writes.
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
  * - Cross-phase dedup: Phase 3 wins on id conflict (re-detection is more accurate).
@@ -2323,7 +2305,7 @@ export function detectLedgerAliasCollisions(cwd) {
  *
  * cwd defaults to process.cwd().
  */
-export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = process.cwd()) {
+export function runPostInstallCheck(preflightAdvisories, modules, cwd = process.cwd()) {
     const phase3 = [];
     // Rendered prompts/workflows version gate (#256) — in `bkit check`, a blocker on
     // main/dev (or a PR into them) and a non-blocking advisory on feature branches
@@ -2595,10 +2577,6 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const wfLintTools = detectWorkflowLintToolsMissing(cwd);
     if (wfLintTools)
         phase3.push(wfLintTools);
-    // devDeps need fetch
-    const devDeps = detectDevDepsNeedFetch(ws);
-    if (devDeps)
-        phase3.push(devDeps);
     // DE-<n>/KN-<n> alias collisions in the key-bearing ledgers (silent duplicate ids
     // from the retired scan-highest-and-increment scheme). Read-only fs scan.
     const ledgerCollisions = detectLedgerAliasCollisions(cwd);

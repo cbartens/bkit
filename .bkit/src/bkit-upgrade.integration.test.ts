@@ -334,7 +334,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(result.status).toBe(0);
   });
 
-  it("install --tooling does not write Serena or graphify examples", () => {
+  it("install --typescript does not write Serena or graphify examples", () => {
     if (!fs.existsSync(tsxBin)) return;
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -342,7 +342,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
       "utf-8",
     );
     fs.mkdirSync(path.join(tmpDir, ".git"));
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--tooling"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--typescript"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -565,7 +565,7 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
       JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
       "utf-8",
     );
-    expect(runCli(["install", "--claude", "--tooling"]).status).toBe(0);
+    expect(runCli(["install", "--claude", "--typescript"]).status).toBe(0);
     // context.md / skills.md were written once by install.
     expect(fs.existsSync(path.join(tmpDir, ".agents", "context.md"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills.md"))).toBe(true);
@@ -597,10 +597,9 @@ describe("#489 — upgrade leaves the consumer's own files byte-identical", () =
 // ---------------------------------------------------------------------------
 // #255 follow-up — upgrade must not force-create uninstalled host/tooling modules
 //
-// Post-#252 claude/cursor/ci/lint/git-hooks are each separately installable. The upgrade
-// template walk used to seed EVERY non-opt-in template, so a `--claude`-only consumer got
-// cursor/ci/lint/git-hooks FILES on upgrade — but not the matching package.json scripts the
-// install modules inject — and `bkit check` then flagged that as drift (install↔upgrade
+// Post-#252 claude/cursor/lint are each separately installable. The upgrade template walk
+// used to seed EVERY non-opt-in template, so a `--claude`-only consumer got cursor/lint
+// FILES on upgrade, and `bkit check` then flagged that as drift (install↔upgrade
 // divergence). The walk is now gated on sentinel-detected installation.
 // ---------------------------------------------------------------------------
 
@@ -623,7 +622,7 @@ describe("#255 follow-up — upgrade does not force-create uninstalled host/tool
     });
   }
 
-  it("claude-only install → upgrade seeds no cursor/ci/lint/git-hooks files, and check stays clean", () => {
+  it("claude-only install → upgrade seeds no cursor/lint files or templates, and check stays clean", () => {
     if (!fs.existsSync(tsxBin)) return; // CI without devDeps
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.writeFileSync(
@@ -660,6 +659,44 @@ describe("#255 follow-up — upgrade does not force-create uninstalled host/tool
     // No install↔upgrade divergence: check is clean after the upgrade.
     const check = runCli(["check"]);
     expect(check.status).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("upgrade seeds missing bkit:gate:* names and re-points a legacy slop:delta, so check stays clean (#489)", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const pkgPath = path.join(tmpDir, "package.json");
+    fs.writeFileSync(
+      pkgPath,
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude"]).status).toBe(0);
+
+    // A consumer from before core seeded the gates: no gate names, one custom gate,
+    // and the slop:delta value an older bkit wrote.
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    pkg.scripts = {
+      "bkit:gate:static": "ruff check .",
+      "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
+    };
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    const scripts = (
+      JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as { scripts: Record<string, string> }
+    ).scripts;
+    expect(scripts["bkit:gate:static"]).toBe("ruff check .");
+    expect(scripts["bkit:gate:static-unit"]).toBe("pnpm bkit:gate:static && pnpm test");
+    expect(scripts["bkit:deps:audit"]).toBe("pnpm audit");
+    expect(scripts["slop:delta"]).toBe("bkit ci slop");
+    expect(scripts.typecheck).toBeUndefined();
+
+    const check = runCli(["check"]);
+    expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 });

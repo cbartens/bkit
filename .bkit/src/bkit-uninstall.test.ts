@@ -22,7 +22,6 @@ function makeCtx(overrides: Partial<UninstallContext> = {}): UninstallContext {
     force: false,
     nuke: false,
     yes: false,
-    stripPackage: false,
     logPrefix: "[bkit-uninstall-test]",
     ...overrides,
   };
@@ -265,7 +264,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
   it("an adopted template is never in the table, whatever its content", () => {
     writeFile(".cursor/Dockerfile", "FROM node:22\n");
     writeFile(".github/workflows/ci.yml", "name: ci\n");
-    const table = buildDecisionTable(["core", "claude", "cursor", "ci", "cloud"], makeCtx());
+    const table = buildDecisionTable(["core", "claude", "cursor", "lint", "cloud"], makeCtx());
     expect(table.find((r) => r.file === ".cursor/Dockerfile")).toBeUndefined();
     expect(table.find((r) => r.file === ".github/workflows/ci.yml")).toBeUndefined();
   });

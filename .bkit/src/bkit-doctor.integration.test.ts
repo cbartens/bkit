@@ -316,8 +316,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     // No .bkit/.env
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const ws = { writes: [], reverts: [] };
-    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const findings = runPostInstallCheck([], modules, tmpDir);
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
   });
 
@@ -336,8 +335,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     );
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const ws = { writes: [], reverts: [] };
-    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const findings = runPostInstallCheck([], modules, tmpDir);
     const ids = findings.map((a) => a.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token_install");
@@ -358,8 +356,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     );
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const ws = { writes: [], reverts: [] };
-    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const findings = runPostInstallCheck([], modules, tmpDir);
     const ids = findings.map((a) => a.id);
     expect(ids).toContain("mcp-env-blank-key-bkit_gh_token");
     expect(ids).not.toContain("mcp-env-blank-key-bkit_linear_api_key");
@@ -375,8 +372,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     );
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
-    const ws = { writes: [], reverts: [] };
-    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const findings = runPostInstallCheck([], modules, tmpDir);
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(false);
     expect(findings.some((a) => a.id.startsWith("mcp-env-blank-key-"))).toBe(false);
     // direnv advisories depend on system state — we only check the non-system advisories

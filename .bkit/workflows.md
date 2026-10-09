@@ -1393,7 +1393,7 @@ All three resolve via `bkit tests run --gate=<deepest> --gate=<next> … --log=`
 
 A repo with no integration tier is visibly gated at `bkit:gate:static-unit` instead of quietly claiming more. `[live=off]` (from `debug-input-{DEBUG_ATTEMPT}.md`) drops debug's live candidate; no live gate declared → CONCERNS + `testsLiveSkipped`.
 
-Build does NOT run the live tier (post-merge `bkit-tests-live` canary). `bkit install` seeds lanes and gates with the lint module and advises on any script they chain that `package.json` does not declare; a customised value is never overwritten (`bkit upgrade` alone does NOT seed them — that needs a module flag).
+Build does NOT run the live tier (post-merge `bkit-tests-live` canary). Every `bkit install` and `bkit upgrade` seeds the missing `bkit:gate:*` names; install also advises on any script they chain that `package.json` does not declare (`.bkit/templates.md` lists those tool scripts). A gate name already present is never touched, whatever its value.
 
 ### Sub-plan boundary gate
 

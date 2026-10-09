@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyTokens, resolveTokens, resolveRunnerLabel } from "./bkit-tokens";
+import { applyTokens, resolveTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,42 +25,6 @@ function writeJson(filename: string, obj: unknown): void {
 function writeFile(filename: string, content: string): void {
   fs.writeFileSync(path.join(tmpDir, filename), content, "utf-8");
 }
-
-// ---------------------------------------------------------------------------
-// NODE_VERSION resolution chain
-// ---------------------------------------------------------------------------
-
-describe("resolveTokens — NODE_VERSION", () => {
-  it("reads major from .nvmrc (e.g. '22\\n')", async () => {
-    writeFile(".nvmrc", "22\n");
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
-  });
-
-  it("reads major from .nvmrc with 'v' prefix (e.g. 'v22.1.0')", async () => {
-    writeFile(".nvmrc", "v22.1.0");
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
-  });
-
-  it("falls back to package.json.engines.node when .nvmrc absent", async () => {
-    writeJson("package.json", { name: "proj", engines: { node: ">=20" } });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("20");
-  });
-
-  it("falls back to default '22' when both .nvmrc and engines.node absent", async () => {
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// DEFAULT_BRANCH resolution chain
-// ---------------------------------------------------------------------------
 
 describe("resolveTokens — DEFAULT_BRANCH", () => {
   it("falls back to 'main' when git command fails or no remote HEAD", async () => {
@@ -124,91 +88,26 @@ describe("resolveTokens — BKIT_MANAGED_MARKER", () => {
 // Runner labels — configurable runs-on for bkit-managed workflows (#362)
 // ---------------------------------------------------------------------------
 
-describe("resolveRunnerLabel — bkit.runners precedence (#362)", () => {
-  it("returns the per-workflow key when set", () => {
-    const pkg = { bkit: { runners: { renovate: "depot-ubuntu-24.04-4" } } };
-    expect(resolveRunnerLabel(pkg, "renovate")).toBe("depot-ubuntu-24.04-4");
-  });
-
-  it("falls back to runners.default when the per-workflow key is absent", () => {
-    const pkg = { bkit: { runners: { default: "depot-ubuntu-24.04" } } };
-    expect(resolveRunnerLabel(pkg, "renovate")).toBe("depot-ubuntu-24.04");
-    expect(resolveRunnerLabel(pkg, "bkitCloud")).toBe("depot-ubuntu-24.04");
-  });
-
-  it("per-workflow key wins over default", () => {
-    const pkg = { bkit: { runners: { default: "ubuntu-latest", bkitCloud: "self-hosted-gpu" } } };
-    expect(resolveRunnerLabel(pkg, "bkitCloud")).toBe("self-hosted-gpu");
-  });
-
-  it("defaults to ubuntu-latest when bkit.runners is unset (zero behaviour change)", () => {
-    expect(resolveRunnerLabel({}, "renovate")).toBe("ubuntu-latest");
-    expect(resolveRunnerLabel({ bkit: {} }, "bkitCloud")).toBe("ubuntu-latest");
-  });
-
-  it("ignores an invalid/blank label and falls back rather than emitting broken YAML", () => {
-    expect(resolveRunnerLabel({ bkit: { runners: { renovate: "" } } }, "renovate")).toBe(
-      "ubuntu-latest",
-    );
-    expect(resolveRunnerLabel({ bkit: { runners: { renovate: "has space" } } }, "renovate")).toBe(
-      "ubuntu-latest",
-    );
-    // A bad per-workflow value still falls back to a valid default.
-    expect(
-      resolveRunnerLabel(
-        { bkit: { runners: { renovate: "bad label", default: "depot-ubuntu-24.04" } } },
-        "renovate",
-      ),
-    ).toBe("depot-ubuntu-24.04");
-  });
-
-  it("ignores a non-object runners field", () => {
-    expect(resolveRunnerLabel({ bkit: { runners: "ubuntu-latest" } }, "renovate")).toBe(
-      "ubuntu-latest",
-    );
-  });
-});
-
-describe("resolveTokens — runner labels (#362)", () => {
-  it("populates CLOUD_RUNNER from bkit.runners.bkitCloud", async () => {
-    writeJson("package.json", {
-      name: "proj",
-      bkit: { runners: { bkitCloud: "depot-ubuntu-24.04" } },
-    });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.CLOUD_RUNNER).toBe("depot-ubuntu-24.04");
-    expect("RENOVATE_RUNNER" in tokens).toBe(false);
-  });
-
-  it("defaults CLOUD_RUNNER to ubuntu-latest when unset", async () => {
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.CLOUD_RUNNER).toBe("ubuntu-latest");
-  });
-});
-
 // ---------------------------------------------------------------------------
 // applyTokens — substitution
 // ---------------------------------------------------------------------------
 
 describe("applyTokens", () => {
   const tokens = {
-    NODE_VERSION: "22",
     DEFAULT_BRANCH: "main",
     PROJECT_NAME: "my-project",
     REPO_SLUG: "acme/widget",
   };
 
   it("substitutes all tokens in a string", () => {
-    const content =
-      "node: {{NODE_VERSION}}\nbranch: {{DEFAULT_BRANCH}}\nname: {{PROJECT_NAME}}\nslug: {{REPO_SLUG}}";
+    const content = "branch: {{DEFAULT_BRANCH}}\nname: {{PROJECT_NAME}}\nslug: {{REPO_SLUG}}";
     const result = applyTokens(content, tokens);
-    expect(result).toBe("node: 22\nbranch: main\nname: my-project\nslug: acme/widget");
+    expect(result).toBe("branch: main\nname: my-project\nslug: acme/widget");
   });
 
   it("substitutes multiple occurrences of the same token", () => {
-    const content = "{{NODE_VERSION}} and {{NODE_VERSION}} again";
-    expect(applyTokens(content, tokens)).toBe("22 and 22 again");
+    const content = "{{DEFAULT_BRANCH}} and {{DEFAULT_BRANCH}} again";
+    expect(applyTokens(content, tokens)).toBe("main and main again");
   });
 
   it("leaves content without placeholders unchanged", () => {
@@ -216,18 +115,9 @@ describe("applyTokens", () => {
     expect(applyTokens(content, tokens)).toBe(content);
   });
 
-  it("substitutes {{CLOUD_RUNNER}} and leaves {{RENOVATE_RUNNER}} untouched", () => {
-    const content = "renovate: {{RENOVATE_RUNNER}}\ncloud: {{CLOUD_RUNNER}}";
-    const result = applyTokens(content, {
-      ...tokens,
-      CLOUD_RUNNER: "depot-ubuntu-24.04",
-    });
-    expect(result).toBe("renovate: {{RENOVATE_RUNNER}}\ncloud: depot-ubuntu-24.04");
-  });
-
-  it("falls back to ubuntu-latest for CLOUD_RUNNER when omitted", () => {
-    const result = applyTokens("b: {{CLOUD_RUNNER}}", tokens);
-    expect(result).toBe("b: ubuntu-latest");
+  it("leaves the template-only placeholders untouched (templates are copied raw)", () => {
+    const content = "node: {{NODE_VERSION}}\nruns-on: {{CLOUD_RUNNER}}";
+    expect(applyTokens(content, tokens)).toBe(content);
   });
 
   it("substitutes {{BKIT_MANAGED_MARKER}} from the token value when provided", () => {
@@ -253,9 +143,8 @@ describe("applyTokens", () => {
   it("template source still has {{TOKEN}} placeholders after substitution (write-time semantics)", async () => {
     // Verify that the template file on disk is NOT mutated — substitution is write-time only
     writeJson("package.json", { name: "proj", packageManager: "pnpm@10.4.1" });
-    writeFile(".nvmrc", "22\n");
     const templatePath = path.join(tmpDir, "template.yml");
-    const templateContent = "node-version: {{NODE_VERSION}}\nbranches: [{{DEFAULT_BRANCH}}]\n";
+    const templateContent = "name: {{PROJECT_NAME}}\nbranches: [{{DEFAULT_BRANCH}}]\n";
     writeFile("template.yml", templateContent);
 
     const resolvedTokens = await resolveTokens(tmpDir);
@@ -264,8 +153,8 @@ describe("applyTokens", () => {
     // Template file on disk is unchanged
     expect(fs.readFileSync(templatePath, "utf-8")).toBe(templateContent);
     // Output has substituted values
-    expect(output).toContain("node-version: 22");
-    expect(output).not.toContain("{{NODE_VERSION}}");
+    expect(output).toContain("name: proj");
+    expect(output).not.toContain("{{PROJECT_NAME}}");
   });
 
   // -------------------------------------------------------------------------
@@ -274,20 +163,18 @@ describe("applyTokens", () => {
 
   it("MED-7: token value '$&' substitutes as literal '$&', not as regex back-reference", () => {
     const dangerTokens = {
-      NODE_VERSION: "$&",
-      DEFAULT_BRANCH: "main",
+      DEFAULT_BRANCH: "$&",
       PROJECT_NAME: "my-project",
       REPO_SLUG: "acme/widget",
     };
-    const content = "node: {{NODE_VERSION}}";
+    const content = "branch: {{DEFAULT_BRANCH}}";
     const result = applyTokens(content, dangerTokens);
-    // Must be the literal string "$&" — not the matched token "{{NODE_VERSION}}"
-    expect(result).toBe("node: $&");
+    // Must be the literal string "$&" — not the matched token "{{DEFAULT_BRANCH}}"
+    expect(result).toBe("branch: $&");
   });
 
   it("MED-7: token value '$$' substitutes as literal '$$', not as escaped dollar", () => {
     const dangerTokens = {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "$$evil",
       REPO_SLUG: "acme/widget",
@@ -299,7 +186,6 @@ describe("applyTokens", () => {
 
   it("MED-7: token value '$1' substitutes as literal '$1', not as capture-group reference", () => {
     const dangerTokens = {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "$1-branch",
       PROJECT_NAME: "proj",
       REPO_SLUG: "acme/widget",
@@ -307,39 +193,5 @@ describe("applyTokens", () => {
     const content = "branches: [{{DEFAULT_BRANCH}}]";
     const result = applyTokens(content, dangerTokens);
     expect(result).toBe("branches: [$1-branch]");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// MED-6 regression — .nvmrc with leading comments / blank lines
-// ---------------------------------------------------------------------------
-
-describe("resolveTokens — .nvmrc comment/blank-line stripping (MED-6)", () => {
-  it("MED-6: .nvmrc with leading comment extracts version from first non-comment line", async () => {
-    writeFile(".nvmrc", "# pinned\n\n22\n");
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
-  });
-
-  it("MED-6: .nvmrc with multiple comment lines and blank lines before version", async () => {
-    writeFile(".nvmrc", "# pinned for foo project\n# do not change\n\n\n20\n");
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("20");
-  });
-
-  it("MED-6: .nvmrc that is only comments falls through to engines.node fallback", async () => {
-    writeFile(".nvmrc", "# no version here\n# just comments\n");
-    writeJson("package.json", { name: "proj", engines: { node: ">=18" } });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("18");
-  });
-
-  it("MED-6: .nvmrc version with 'v' prefix after leading comment parses correctly", async () => {
-    writeFile(".nvmrc", "# pinned\nv22.1.0\n");
-    writeJson("package.json", { name: "proj" });
-    const tokens = await resolveTokens(tmpDir);
-    expect(tokens.NODE_VERSION).toBe("22");
   });
 });

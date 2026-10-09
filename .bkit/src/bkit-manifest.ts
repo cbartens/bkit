@@ -1,9 +1,9 @@
 // bkit-manifest.ts — Per-module install-write manifest.
 // Each module declares the set of files it writes; consumed by bkit-uninstall.ts
-// and bkit-package-json.ts (key strippers).
+// and the upgrade walk.
 //
 // Design: pure data — no fs access, no side effects. Re-exported as a public
-// contract consumed by uninstall and package.json strippers.
+// contract consumed by uninstall and upgrade.
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,14 +32,6 @@ export interface ManifestEntry {
    */
   generated?: boolean;
   /**
-   * Optional: package.json keys managed by this module (scripts / devDependencies).
-   * Used by bkit-package-json.ts to strip default-only managed keys.
-   */
-  packageJsonKeys?: {
-    scripts?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-  /**
    * `markered-text` only. Opt in to the no-marker migration policy in `writeTier2`:
    * when a consumer's file predates this entry's marker adoption (exists, no markers),
    * distinguish "ours, unmodified" (hash matches a prior canonical hash — replace
@@ -51,8 +43,7 @@ export interface ManifestEntry {
   noMarkerMigration?: string;
 }
 
-export type ModuleName =
-  "core" | "claude" | "cursor" | "opencode" | "codex" | "ci" | "lint" | "git-hooks" | "cloud";
+export type ModuleName = "core" | "claude" | "cursor" | "opencode" | "codex" | "lint" | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -81,29 +72,6 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
   return typeof value === "string" && (ISSUE_TRACKERS as readonly string[]).includes(value)
     ? (value as IssueTracker)
     : null;
-}
-
-// ---------------------------------------------------------------------------
-// Runner labels — configurable `runs-on` for bkit-managed workflows (#362)
-// ---------------------------------------------------------------------------
-
-/**
- * Default GitHub Actions `runs-on` label for bkit-managed canonical workflows
- * (`bkit-cloud.yml`). Substituted when `bkit.runners` is unset.
- */
-export const DEFAULT_RUNNER = "ubuntu-latest";
-
-/**
- * Validate a single GitHub Actions `runs-on` label supplied via `bkit.runners.*`
- * config (#362). The label is arbitrary — a GitHub-hosted size (`ubuntu-latest`),
- * a GitHub larger runner, a Depot label (`depot-ubuntu-24.04-4`), or a self-hosted
- * alias. Accepts letters, digits, dot, dash, underscore (the charset GitHub allows
- * for a single label); rejects empty/whitespace strings, YAML-breaking characters,
- * and non-strings (arrays/objects) so the caller falls back to `DEFAULT_RUNNER`.
- * Only the single-label form is supported here, not a label matrix/array.
- */
-export function parseRunnerLabel(value: unknown): string | null {
-  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value) ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,13 +298,11 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// lint:prose — the managed prose-gate script (single source of truth)
+// lint:prose — the prose-gate script value (single source of truth)
 //
-// Declared here (pure data, no cycle) because THREE surfaces must carry the
-// identical string or the gate silently degrades:
-//   - this manifest's packageJsonKeys default (what install seeds, what the
-//     uninstall stripper byte-compares to decide "still ours?")
-//   - runLintModule's ensurePackageJsonScripts call (bkit-modules.ts)
+// bkit no longer seeds `lint:prose` (it is a template script, `.bkit/templates.md`),
+// but two surfaces still carry this string and must agree:
+//   - the legacy re-point target (repointLegacyScripts, bkit-package-json.ts)
 //   - the F9 advisory remedy text (bkit-preflight.ts)
 //
 // F9 (BAR-138) contract, preserved: symmetric soft-skip — never hard-fail a
@@ -355,32 +321,12 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
 export const LINT_PROSE_SCRIPT =
   'bash -c \'if command -v vale >/dev/null 2>&1; then if [ ! -d .vale/styles/write-good ]; then echo "[bkit] .vale/styles/write-good absent (fresh checkout or worktree) - restoring" >&2; G=$(git rev-parse --git-common-dir 2>/dev/null) && M=$(dirname "$(cd "$G" && pwd)") && [ -d "$M/.vale/styles/write-good" ] && mkdir -p .vale/styles && cp -R "$M/.vale/styles/write-good" .vale/styles/ || vale sync || true; fi; if [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync" >&2; fi; else echo "[bkit] vale not installed - skipping prose lint (install vale, then run vale sync, to enable)"; fi\'';
 
-// The `typecheck` default install seeds in a repo with NO `tsconfig.json`. Both this
-// and `tsc --noEmit` are current bkit defaults — which one lands depends on the repo,
-// not on the bkit version — so the uninstall stripper must recognise both or it orphans
-// the script it seeded. Single source of truth for runLintModule and the stripper.
-// `bkit:gate:static` chains `pnpm lint`, and bkit ships no linter of its own — so in a
-// repo with no `lint` script pnpm falls back to whatever `lint` binary is on PATH and
-// the gate can go GREEN THROUGH THE WRONG PROGRAM (an Android SDK `lint` was observed).
-// Seed the eslint-aware default bkit already runs on itself: eslint where a config
-// exists, an honest skip line where none does — never a silent fall-through to a
-// stranger's binary. Add-if-missing, so a consumer's own `lint` always wins. The
-// `gate-missing-called-scripts` advisory still names what bkit cannot supply
-// (`build`, `test`).
-export const LINT_SCRIPT =
-  "bash -c 'if [ -f eslint.config.js ] || [ -f eslint.config.mjs ] || [ -f .eslintrc.json ]; then npx eslint .; else echo \"[bkit] no eslint config - skipping lint (bkit typechecks with tsc and scans with slop-scan)\"; fi'";
-
-export const TYPECHECK_NO_TSCONFIG_SCRIPT =
-  'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
-
 // Prior bkit-shipped lint:prose defaults, newest first.
 //
-// Why this list exists: `ensurePackageJsonScripts` is add-if-missing — it NEVER
-// overwrites an existing script — so changing LINT_PROSE_SCRIPT above reaches
-// new consumers only. An existing consumer would keep the silently-self-disabling
-// version forever. Any value byte-matching an entry here is provably bkit's own
-// (never consumer-authored), so install/upgrade may safely replace it, and the
-// uninstall stripper may safely reclaim it. A value matching NEITHER the current
+// Why this list exists: bkit once seeded `lint:prose`, and an existing consumer
+// would keep the silently-self-disabling version forever. Any value byte-matching
+// an entry here is provably bkit's own (never consumer-authored), so install and
+// upgrade re-point it at LINT_PROSE_SCRIPT. A value matching NEITHER the current
 // default NOR a legacy entry is consumer-customised and is left strictly alone.
 //
 // Append the outgoing string here whenever LINT_PROSE_SCRIPT changes.
@@ -393,8 +339,8 @@ export const LEGACY_LINT_PROSE_SCRIPTS: readonly string[] = [
 export const SLOP_DELTA_SCRIPT = "bkit ci slop";
 
 // Same rule as LEGACY_LINT_PROSE_SCRIPTS: a value byte-matching an entry is bkit's
-// own, so install / upgrade re-point it and uninstall reclaims it. Append the
-// outgoing string whenever SLOP_DELTA_SCRIPT changes.
+// own, so install / upgrade re-point it. Append the outgoing string whenever
+// SLOP_DELTA_SCRIPT changes.
 export const LEGACY_SLOP_DELTA_SCRIPTS: readonly string[] = [
   "bash .bkit/scripts/bkit-slop-delta.sh",
 ];
@@ -419,10 +365,12 @@ export const LEGACY_SLOP_DELTA_SCRIPTS: readonly string[] = [
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
 // whether a name is declared.
 //
-// Declared here (pure data, no cycle) and consumed by BOTH the manifest entry
-// below and runLintModule's ensurePackageJsonScripts call — one object, so the
-// install default and the value the uninstall stripper byte-compares cannot
-// drift apart (the failure mode the LINT_PROSE_SCRIPT comment above describes).
+// Seeded by core on every install and upgrade (seedCorePackageJsonScripts,
+// bkit-modules.ts): add-if-missing, so a name already present is never touched,
+// and uninstall leaves every name in place. The tool scripts the defaults chain
+// (typecheck, lint, format:check, lint:prose, slop:delta, lint-staged) are the
+// consumer's to add — `.bkit/templates.md` lists them; the
+// `gate-missing-called-scripts` advisory names any that are missing.
 //
 // The SAME names are what the git hooks run (`.husky/pre-commit`, `.husky/pre-push`),
 // so agent and human gates cannot drift: one edit here changes both. `ci.yml` is
@@ -430,7 +378,7 @@ export const LEGACY_SLOP_DELTA_SCRIPTS: readonly string[] = [
 // conditionals, and tiers the local gate excludes, so it calls the scripts directly.
 //
 // `lint:slop` is in no gate by design: `slop-scan scan` is report-only and never
-// fails (see runLintModule). The gate that fails on new findings is `slop:delta`.
+// fails. The gate that fails on new findings is `slop:delta`.
 //
 // NOT SEEDED — and that is the point. The three deeper gates (…-integration,
 // …-integration-e2e, …-integration-e2e-live) are absent unless the consumer
@@ -514,30 +462,26 @@ export const BKIT_BUILD_GATES: readonly string[] = [
  * Absence is therefore load-bearing, which leaves discoverability as the real
  * problem: a repo that HAS an integration tier and never declares the gate is
  * silently gated at `bkit:gate:static-unit` by both build and debug. `declaredBy`
- * is how install detects exactly that case and advises — see runLintModule.
+ * is how install detects exactly that case and advises — see detectGateAdvisories.
  */
 export const BKIT_OPTIONAL_GATES: ReadonlyArray<{
   gate: string;
   parent: string;
-  tier: string;
   declaredBy: readonly string[];
 }> = [
   {
     gate: "bkit:gate:static-unit-integration",
     parent: "bkit:gate:static-unit",
-    tier: "test:integration",
     declaredBy: ["test:integration"],
   },
   {
     gate: "bkit:gate:static-unit-integration-e2e",
     parent: "bkit:gate:static-unit-integration",
-    tier: "test:e2e",
     declaredBy: ["test:e2e"],
   },
   {
     gate: "bkit:gate:static-unit-integration-e2e-live",
     parent: "bkit:gate:static-unit-integration-e2e",
-    tier: "test:live",
     declaredBy: ["test:live", "test:integration:live", "test:e2e:live"],
   },
 ];
@@ -642,10 +586,6 @@ export const CODEX_MANIFEST: ManifestEntry[] = [
   // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
 
-// --ci: writes no files. ci.yml and the Vale config ship as templates
-// (`.bkit/templates.md`); the consumer copies and owns them.
-const CI_MANIFEST: ManifestEntry[] = [];
-
 // Cloud agent integration is opt-in — NOT included in --full, so a default install
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
@@ -678,67 +618,19 @@ const CLOUD_MANIFEST: ManifestEntry[] = [
   ...CLOUD_MANIFEST_CURSOR,
 ];
 
-// --typescript (#265): the Node/TS toolchain (most of it is plain Node — prettier/husky/
-// slop work on .js; only tsc + the cast/@ts-* rule are TS-exclusive). Always installed
-// alongside `ci` (--typescript implies --ci). Vale CONFIG lives under `ci` (agnostic); the
-// `lint:prose` npm wrapper stays here because it is a package.json/Node convenience.
-// slop-scan.config.json, .prettierignore and .lintstagedrc.json ship as templates
-// (`.bkit/templates.md`); the consumer copies and owns them.
+// --typescript (#265): the owned slop-scan type-suppression plugin, the one file
+// `slop-scan.config.json` references that bkit keeps current. The tool scripts and
+// devDeps, slop-scan.config.json, .prettierignore, .lintstagedrc.json, the Vale config
+// and the husky hooks ship as templates (`.bkit/templates.md`); the consumer copies
+// and owns them.
 const LINT_MANIFEST: ManifestEntry[] = [
-  // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
-  // ONLY with the TS toolchain, never to a non-Node --ci consumer. Tier 1 (bkit-owned,
-  // force-overwritten). Mirrors .bkit/templates/.bkit/scripts/. See CORE_TEMPLATE_PATH_EXCLUDE.
+  // Moved OUT of the core template walk (#265) so it ships only with --typescript.
+  // Tier 1 (bkit-owned, force-overwritten). Mirrors .bkit/templates/.bkit/scripts/.
+  // See CORE_TEMPLATE_PATH_EXCLUDE.
   {
     path: ".bkit/scripts/bkit-slop-type-suppression.mjs",
     format: "byte-equal-text",
     module: "lint",
-  },
-  {
-    path: "package.json",
-    format: "markered-text",
-    module: "lint",
-    packageJsonKeys: {
-      scripts: {
-        // typecheck moved here from the (now agnostic) ci module — it is TS-exclusive (#265).
-        typecheck: "tsc --noEmit",
-        // Placeholder so `bkit:gate:static`'s `pnpm lint` cannot silently resolve to an
-        // unrelated PATH binary. Add-if-missing — a consumer's own `lint` always wins.
-        lint: LINT_SCRIPT,
-        "format:check": "prettier --check .",
-        "lint:prose": LINT_PROSE_SCRIPT,
-        "lint:slop": "slop-scan scan .",
-        "slop:delta": SLOP_DELTA_SCRIPT,
-        // The local gate (#437). Lives with the lint module because that is
-        // where its constituents already live (typecheck, format:check,
-        // lint:prose, lint:slop, slop:delta are all seeded above) — a consumer
-        // without the lint module has none of them, so a seeded gate would just
-        // chain missing scripts. runLintModule advises that case instead.
-        ...BKIT_GATE_SCRIPTS,
-      },
-      devDependencies: {
-        prettier: "^3.5.3",
-        "slop-scan": "^0.3.0",
-        // lint-staged is injected by runLintModule (pairs with .lintstagedrc.json +
-        // the pre-commit hook's `pnpm lint-staged` call). It MUST be declared here so
-        // getManagedPackageJsonKeys surfaces it to the uninstall stripper — otherwise
-        // a default-only lint-staged devDep is orphaned on uninstall.
-        "lint-staged": "^15.2.10",
-      },
-    },
-  },
-];
-
-// The husky hooks (.husky/pre-commit, .husky/pre-push) ship as templates
-// (`.bkit/templates.md`); the consumer copies and owns them.
-const GIT_HOOKS_MANIFEST: ManifestEntry[] = [
-  {
-    path: "package.json",
-    format: "markered-text",
-    module: "git-hooks",
-    packageJsonKeys: {
-      scripts: { prepare: "husky" },
-      devDependencies: { husky: "^9.1.7" },
-    },
   },
 ];
 
@@ -752,9 +644,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   cursor: CURSOR_MANIFEST,
   opencode: OPENCODE_MANIFEST,
   codex: CODEX_MANIFEST,
-  ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
-  "git-hooks": GIT_HOOKS_MANIFEST,
   cloud: CLOUD_MANIFEST,
 };
 
@@ -765,9 +655,6 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
 /**
  * Return a flat array of all ManifestEntry records for the given module names.
  * When `modules` is empty, returns entries for all modules.
- *
- * Caller is responsible for deduplication (e.g. `package.json` appears in
- * multiple module manifests when more than one module writes to it).
  */
 export function getInstallManifest(modules: ModuleName[] | Set<string> = []): ManifestEntry[] {
   const keys =
@@ -785,30 +672,4 @@ export function getInstallManifest(modules: ModuleName[] | Set<string> = []): Ma
  */
 export function getModuleManifest(module: ModuleName): ManifestEntry[] {
   return MODULE_MANIFESTS[module] ?? [];
-}
-
-/**
- * Return the aggregated package.json scripts/devDependencies keys managed
- * across ALL modules (or a subset). Used by bkit-package-json.ts to strip
- * default-only keys during uninstall.
- */
-export function getManagedPackageJsonKeys(modules: ModuleName[] | Set<string> = []): {
-  scripts: Record<string, string>;
-  devDependencies: Record<string, string>;
-} {
-  const entries = getInstallManifest(modules);
-  const scripts: Record<string, string> = {};
-  const devDependencies: Record<string, string> = {};
-
-  for (const entry of entries) {
-    if (!entry.packageJsonKeys) continue;
-    if (entry.packageJsonKeys.scripts) {
-      Object.assign(scripts, entry.packageJsonKeys.scripts);
-    }
-    if (entry.packageJsonKeys.devDependencies) {
-      Object.assign(devDependencies, entry.packageJsonKeys.devDependencies);
-    }
-  }
-
-  return { scripts, devDependencies };
 }

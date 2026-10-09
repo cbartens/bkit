@@ -43,7 +43,6 @@ function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
   return {
     dryRun,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
       REPO_SLUG: "acme/test-project",
@@ -81,10 +80,8 @@ function runParityCheck(modules: Set<ModuleFlag>, testLabel: string): void {
   });
 }
 
-runParityCheck(new Set(["core", "ci"]), "ci");
 runParityCheck(new Set(["core", "claude"]), "claude");
 runParityCheck(new Set(["core", "lint"]), "lint");
-runParityCheck(new Set(["core", "git-hooks"]), "git-hooks");
 runParityCheck(new Set(["core"]), "core");
 
 // ---------------------------------------------------------------------------
@@ -99,7 +96,6 @@ function makeCloudModuleCtx(
   return {
     dryRun,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
       REPO_SLUG: "acme/test-project",
@@ -204,7 +200,6 @@ describe("check ≡ install writeset parity — --opencode=opencode-go (Task 2.2
     return {
       dryRun,
       tokens: {
-        NODE_VERSION: "22",
         DEFAULT_BRANCH: "main",
         PROJECT_NAME: "test-project",
         REPO_SLUG: "acme/test-project",

@@ -46,7 +46,6 @@ import {
 import type { ModuleFlag, Verb, CloudVariant } from "./bkit-cli";
 import type { IssueTracker } from "./bkit-manifest";
 import { DEFAULT_ISSUE_TRACKER } from "./bkit-manifest";
-import { applyTokens } from "./bkit-tokens";
 import { substituteWorkflow } from "./bkit-trackers";
 import { stampManagedVersion } from "./bkit-version";
 
@@ -986,23 +985,6 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     expect(installLine).toBeGreaterThan(-1);
     expect(envTokenLine).toBeGreaterThan(installLine);
   });
-
-  it("ci.yml template after applyTokens has no {{PLACEHOLDER}} tokens remaining", () => {
-    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
-    const content = fs.readFileSync(templatePath, "utf-8");
-    const tokens = {
-      NODE_VERSION: "22",
-      DEFAULT_BRANCH: "main",
-      PROJECT_NAME: "test-project",
-      REPO_SLUG: "acme/test-project",
-    };
-    const substituted = applyTokens(content, tokens);
-    expect(substituted).not.toContain("{{NODE_VERSION}}");
-    expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
-    expect(substituted).not.toContain("{{PROJECT_NAME}}");
-    expect(substituted).toContain("node-version: 22");
-    expect(substituted).toContain("branches: [main, dev]");
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1590,17 +1572,8 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
     expect(flags(["opencode"], null)).toBe("--opencode=<provider>");
   });
 
-  it("collapses ci+lint+git-hooks to --tooling", () => {
-    expect(flags(["core", "ci", "lint", "git-hooks"])).toBe("--tooling");
-  });
-
-  it("maps a partial TS toolchain (lint or git-hooks) to --typescript", () => {
-    expect(flags(["lint"])).toBe("--typescript");
-    expect(flags(["git-hooks"])).toBe("--typescript");
-  });
-
-  it("maps agnostic ci alone to --ci", () => {
-    expect(flags(["ci"])).toBe("--ci");
+  it("maps lint to --typescript", () => {
+    expect(flags(["core", "lint"])).toBe("--typescript");
   });
 
   it("maps the cloud opt-in (placeholder when the variant is unknown)", () => {
@@ -1609,9 +1582,9 @@ describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags"
   });
 
   it("composes multiple modules in flag order", () => {
-    expect(
-      flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "cloud"], null, "claude"),
-    ).toBe("--claude --cursor --tooling --auto=claude");
+    expect(flags(["core", "claude", "cursor", "lint", "cloud"], null, "claude")).toBe(
+      "--claude --cursor --typescript --auto=claude",
+    );
   });
 });
 
@@ -1727,35 +1700,23 @@ describe("detectInstalledModules — sentinel-file module detection", () => {
     expect(mods.has("opencode")).toBe(true);
   });
 
-  it("detects ci via ci.yml", () => {
-    touch(".github/workflows/ci.yml");
-    expect(detectInstalledModules(cwd).has("ci")).toBe(true);
-  });
-
-  it("detects ci via .vale.ini alone (either sentinel)", () => {
-    touch(".vale.ini");
-    expect(detectInstalledModules(cwd).has("ci")).toBe(true);
-  });
-
   it("detects lint via the owned slop-scan plugin", () => {
     touch(".bkit/scripts/bkit-slop-type-suppression.mjs");
     expect(detectInstalledModules(cwd).has("lint")).toBe(true);
   });
 
-  it("does not detect lint from adopted templates (slop-scan.config.json, .prettierignore)", () => {
-    touch("slop-scan.config.json");
-    touch(".prettierignore");
-    expect(detectInstalledModules(cwd).has("lint")).toBe(false);
-  });
-
-  it("detects git-hooks via a husky pre-commit hook", () => {
-    touch(".husky/pre-commit");
-    expect(detectInstalledModules(cwd).has("git-hooks")).toBe(true);
-  });
-
-  it("detects git-hooks via pre-push alone (either sentinel)", () => {
-    touch(".husky/pre-push");
-    expect(detectInstalledModules(cwd).has("git-hooks")).toBe(true);
+  it("detects no module from adopted templates (ci.yml, .vale.ini, husky, lint configs)", () => {
+    for (const rel of [
+      ".github/workflows/ci.yml",
+      ".vale.ini",
+      ".husky/pre-commit",
+      ".husky/pre-push",
+      "slop-scan.config.json",
+      ".prettierignore",
+    ]) {
+      touch(rel);
+    }
+    expect([...detectInstalledModules(cwd)]).toEqual(["core"]);
   });
 });
 

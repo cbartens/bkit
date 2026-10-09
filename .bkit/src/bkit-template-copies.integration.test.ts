@@ -32,7 +32,6 @@ function makeCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
   return {
     dryRun,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
       REPO_SLUG: "acme/test-project",
@@ -268,7 +267,6 @@ describe("uninstall", () => {
       force: false,
       nuke: false,
       yes: true,
-      stripPackage: false,
       logPrefix: "[bkit-test]",
     });
     expect(fs.existsSync(path.join(tmpDir, COPIES))).toBe(false);

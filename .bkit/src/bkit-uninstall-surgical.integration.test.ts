@@ -15,7 +15,7 @@
 //     by bkit-preflight.ts detectHooksConfigOverwriteRisk which blocks install, not by uninstall.
 //     Uninstall simply removes T1 files.
 //   - Tier-2 files: consumer content PRESERVED byte-identical; bkit block removed
-//   - package.json consumer scripts: PRESERVED (different from bkit defaults)
+//   - package.json scripts and devDeps: PRESERVED, whatever their value (bkit owns none)
 //
 // Re-used by sub-plan-3 P3.T9 and sub-plan-4 P4.T7.
 
@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runUninstall, type UninstallContext } from "./bkit-uninstall";
 import { serializeBkitVersion } from "./bkit-version";
+import { BKIT_GATE_SCRIPTS } from "./bkit-manifest";
 
 const FIXTURE_DIR = path.resolve(__dirname, "../../tests/fixtures/heavy-customised-consumer");
 
@@ -37,7 +38,6 @@ function makeCtx(overrides: Partial<UninstallContext> = {}): UninstallContext {
     force: false,
     nuke: false,
     yes: false,
-    stripPackage: false,
     logPrefix: "[bkit-uninstall-surgical-test]",
     ...overrides,
   };
@@ -133,19 +133,15 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     expect(postContent).not.toContain("<!-- bkit:end -->");
   });
 
-  it(".husky/pre-commit: heavily customised legacy fixture preserved byte-identically (Tier 3 byte-equal-text, v2.0.4)", async () => {
-    // v2.0.4: .husky/* is byte-equal-text. Uninstall only deletes when content
-    // matches install-time hash (recorded in .bkit/version#canonicalHashes).
-    // The heavy-customised fixture has consumer-written lines + a legacy bkit:start/end
-    // block — content does NOT match any bkit install-time hash, so uninstall PRESERVES
-    // the file byte-identically rather than mutating it. This is a stronger guarantee
-    // than the prior strip-block behaviour: bkit never touches a consumer-modified hook.
+  it(".husky/pre-commit: heavily customised legacy fixture preserved byte-identically", async () => {
+    // .husky/* is a template the consumer owns: no module lists it, so uninstall never
+    // touches it — not even the legacy bkit:start/end block the fixture still carries.
     const originalContent = fs.readFileSync(path.join(tmpDir, ".husky", "pre-commit"), "utf-8");
 
     expect(originalContent).toContain("Consumer custom check");
     expect(originalContent).toContain("Running consumer pre-commit checks");
 
-    await runUninstall(["git-hooks"], makeCtx());
+    await runUninstall(["core", "claude", "lint"], makeCtx());
 
     const postContent = fs.readFileSync(path.join(tmpDir, ".husky", "pre-commit"), "utf-8");
 
@@ -153,22 +149,29 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     expect(postContent).toBe(originalContent);
   });
 
-  it("package.json: consumer-customised scripts/devDeps preserved when not stripping", async () => {
-    const originalContent = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
-    const originalPkg = JSON.parse(originalContent) as {
-      scripts?: Record<string, string>;
-      devDependencies?: Record<string, string>;
+  it("package.json: a full uninstall leaves every script and devDep, bkit defaults included (#489)", async () => {
+    // bkit seeds the bkit:gate:* names but never owns them, and it no longer adds the
+    // tool scripts, `prepare: husky` or the husky devDep. So even values byte-equal to
+    // what an older bkit wrote stay: only the `bkit` install-state block goes.
+    const pkgPath = path.join(tmpDir, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      scripts: Record<string, string>;
+      devDependencies: Record<string, string>;
+      bkit?: unknown;
     };
+    pkg.scripts = { ...pkg.scripts, ...BKIT_GATE_SCRIPTS, prepare: "husky" };
+    pkg.devDependencies = { ...pkg.devDependencies, husky: "^9.1.7", "lint-staged": "^15.2.10" };
+    pkg.bkit = { issueTracker: "github" };
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
 
-    // Consumer has custom lint:slop and non-default prettier version
-    expect(originalPkg.scripts?.["lint:slop"]).toBe("slop-scan scan . --extra-flag");
-    expect(originalPkg.devDependencies?.["prettier"]).toBe("^3.5.3"); // matches default
+    await runUninstall(
+      ["core", "claude", "cursor", "lint", "opencode", "codex", "cloud"],
+      makeCtx(),
+    );
 
-    // Run without --package flag: package.json should be unchanged
-    await runUninstall(["lint", "git-hooks"], makeCtx({ stripPackage: false }));
-
-    const postContent = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
-    expect(postContent).toBe(originalContent); // byte-identical when not stripping
+    const { bkit, ...rest } = pkg;
+    expect(bkit).toBeDefined();
+    expect(JSON.parse(fs.readFileSync(pkgPath, "utf-8"))).toEqual(rest);
   });
 
   it("JSON file (.claude/settings.json) has bkit scope stripped by uninstall (format: json semantics)", async () => {
@@ -195,10 +198,10 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 
   it("round-trip: uninstall is idempotent on heavy-customised consumer", async () => {
     // First uninstall
-    await runUninstall(["core", "git-hooks", "claude"], makeCtx());
+    await runUninstall(["core", "lint", "claude"], makeCtx());
 
     // Second uninstall (idempotency check)
-    const result2 = await runUninstall(["core", "git-hooks", "claude"], makeCtx());
+    const result2 = await runUninstall(["core", "lint", "claude"], makeCtx());
     // Files already absent → all skip-absent
     const nonSkipAbsent = result2.deleted.filter((f) => {
       // These were deleted in first run

@@ -49,10 +49,6 @@ function makeModules(...flags: string[]): Set<ModuleFlag> {
   return new Set(flags) as Set<ModuleFlag>;
 }
 
-function makeWriteSet(): WriteSet {
-  return { writes: [] };
-}
-
 // ---------------------------------------------------------------------------
 // Scenario 1: Blocker exit — package.json absent → exit 1, zero writes
 //
@@ -103,7 +99,7 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -147,9 +143,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     );
     // .git dir — so not-git-repo does NOT fire
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    // .husky/pre-commit is no longer a preflight-advisory trigger as of v2.0.4
-    // (husky moved to Tier 3 seed-or-print — no markers expected, no drift gate).
-    // Tier-3 advisory emission is now handled in-module by runGitHooksModule.
+    // .husky/pre-commit is not a preflight-advisory trigger: the hooks are templates
+    // the consumer owns, so bkit neither writes nor checks them.
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
@@ -185,7 +180,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
   it("runPostInstallCheck adds gh-bkit-token-unset-shell when token is unset", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    const ws = makeWriteSet();
 
     // Temporarily unset BKIT_GH_TOKEN_INSTALL
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
@@ -194,7 +188,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     try {
       const postFindings = runPostInstallCheck(
         preflightAdvisories,
-        ws,
         makeModules("core", "lint"),
         tmpDir,
         false, // not dry-run
@@ -210,7 +203,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     expect(preflightAdvisories.length).toBeGreaterThan(0);
 
-    const ws = makeWriteSet();
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
     delete process.env.BKIT_GH_TOKEN_INSTALL;
 
@@ -218,7 +210,6 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     try {
       postFindings = runPostInstallCheck(
         preflightAdvisories,
-        ws,
         makeModules("core", "lint"),
         tmpDir,
         false,
@@ -241,10 +232,8 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
   it("no duplicate ids in the final checklist", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    const ws = makeWriteSet();
     const postFindings = runPostInstallCheck(
       preflightAdvisories,
-      ws,
       makeModules("core", "lint"),
       tmpDir,
       false,
@@ -281,13 +270,12 @@ describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with insta
 
   it("runPostInstallCheck includes Phase 3 detector findings (gh-bkit-token-unset-shell when token unset)", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    const ws = makeWriteSet();
     const savedToken = process.env.BKIT_GH_TOKEN_INSTALL;
     delete process.env.BKIT_GH_TOKEN_INSTALL;
 
     let findings: ReturnType<typeof runPostInstallCheck>;
     try {
-      findings = runPostInstallCheck(preflightAdvisories, ws, makeModules("core", "lint"), tmpDir);
+      findings = runPostInstallCheck(preflightAdvisories, makeModules("core", "lint"), tmpDir);
     } finally {
       if (savedToken !== undefined) process.env.BKIT_GH_TOKEN_INSTALL = savedToken;
     }
@@ -420,7 +408,7 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -467,7 +455,7 @@ describe("Scenario 5b — docs/roadmap.md is consumer-owned: bkit install never 
 
     const installResult = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -527,8 +515,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       "utf-8",
     );
 
-    const ws: WriteSet = { writes: [] };
-    const findings = runPostInstallCheck([], ws, makeModules("core", "ci"), tmpDir, false);
+    const findings = runPostInstallCheck([], makeModules("core"), tmpDir);
     const blocker = findings.find((f) => f.severity === "blocker");
     expect(blocker).toBeDefined();
     expect(blocker!.id).toBe("ci-yml-missing-token-env");
@@ -548,8 +535,7 @@ describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => 
       "//npm.pkg.github.com/:_authToken=${BKIT_GH_TOKEN_INSTALL}\n",
     );
 
-    const ws: WriteSet = { writes: [] };
-    const findings = runPostInstallCheck([], ws, makeModules("ci"), tmpDir, false);
+    const findings = runPostInstallCheck([], makeModules("core"), tmpDir);
     const blockerFindings = findings.filter((f) => f.severity === "blocker");
     expect(blockerFindings.length).toBeGreaterThan(0);
     expect(blockerFindings[0]!.id).toBe("ci-yml-missing-token-env");
@@ -595,7 +581,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--tooling"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--typescript"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
@@ -804,7 +790,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -861,7 +847,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling", "--tracker=github"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript", "--tracker=github"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -942,7 +928,7 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 
     const result = spawnSync(
       tsxBin,
-      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      [bkitInstallPath, "install", "--claude", "--cursor", "--typescript"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -1180,7 +1166,6 @@ function makeClaudeContext(dryRun: boolean): ModuleContext {
   return {
     dryRun,
     tokens: {
-      NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test",
       REPO_SLUG: "acme/test",
@@ -1626,9 +1611,9 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
 
-  it("`bkit upgrade --tooling` (stray module flag) errors", () => {
+  it("`bkit upgrade --typescript` (stray module flag) errors", () => {
     if (!fs.existsSync(tsxPath())) return;
-    const r = run(["upgrade", "--tooling"]);
+    const r = run(["upgrade", "--typescript"]);
     expect(r.status).toBe(1);
     expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
   });
@@ -1653,9 +1638,17 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
   });
 
-  it("`bkit install --tooling` writes no ci.yml, .vale.ini or hooks (templates); no host dirs", () => {
+  it("`bkit install --ci` is an unknown flag and writes nothing (#489)", () => {
     if (!fs.existsSync(tsxPath())) return;
-    const r = run(["install", "--tooling"]);
+    const r = run(["install", "--claude", "--ci"]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("Unknown flag: --ci");
+    expect(fs.existsSync(path.join(tmp, ".bkit"))).toBe(false);
+  });
+
+  it("`bkit install --typescript` writes no ci.yml, .vale.ini or hooks (templates); no host dirs", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["install", "--typescript"]);
     expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
     expect(fs.existsSync(path.join(tmp, ".github", "workflows", "ci.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmp, ".vale.ini"))).toBe(false);
@@ -1827,7 +1820,7 @@ describe("T10 — claudeAllowDerived survives a real install", () => {
   });
 
   const install = (tsxBin: string, bkitInstallPath: string) =>
-    spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--tooling"], {
+    spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--typescript"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },

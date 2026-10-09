@@ -57,14 +57,14 @@ echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh
 
 ```bash
 pnpm install --frozen-lockfile                                          # workspace deps + husky git hooks
-pnpm tsx .bkit/src/bkit-install.ts install --claude --cursor --tooling  # dogfood install (this repo only)
+pnpm tsx .bkit/src/bkit-install.ts install --claude --cursor --typescript  # dogfood install (this repo only)
 pnpm tsx .bkit/src/bkit-install.ts check                                # drift gate
 vale sync                                                               # one-off; pulls lint:prose styles
 ```
 
 `install` requires ≥1 module flag (v4.0.0+) — bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
 
-Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --tooling` (not the dogfood call).
+Consumer repos: `pnpm add -D @cbartens/bkit && pnpm exec bkit install --claude --cursor --typescript` (not the dogfood call).
 
 ## Roadmap ledger migration
 

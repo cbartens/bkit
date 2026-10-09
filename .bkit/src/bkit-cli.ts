@@ -10,16 +10,10 @@ export type ModuleFlag =
   | "cursor"
   | "opencode"
   | "codex"
-  | "ci"
   | "lint"
-  | "git-hooks"
   | "cloud"
-  // `tooling` and `typescript` are accepted CLI tokens only — parseArgs expands them
-  // (tooling → ci/lint/git-hooks; typescript → ci+lint+git-hooks on install, lint/git-hooks
-  // on uninstall), so they never appear in a resolved module set or the dispatch registry.
-  // `ci` IS a real internal module (the stack-agnostic CI/vale foundation) and is accepted
-  // bare; `lint`/`git-hooks` are reachable only via --typescript/--tooling, never bare.
-  | "tooling"
+  // `typescript` is an accepted CLI token only — parseArgs expands it to the internal
+  // `lint` module, so it never appears in a resolved module set or the dispatch registry.
   | "typescript";
 export type { IssueTracker };
 
@@ -174,7 +168,7 @@ export interface ParsedArgs {
   modules: Set<ModuleFlag>;
   /**
    * The module flags the user EXPLICITLY named, as internal module names (core is
-   * never here — it is implicit; `--tooling` is expanded to ci/lint/git-hooks). Drives
+   * never here — it is implicit; `--typescript` is expanded to lint). Drives
    * the install "≥1 flag required" guard and the check/upgrade "no module flags" guard
    * in main(). `--tracker` / `--auto-revert` are modifiers and are NOT counted here.
    */
@@ -214,9 +208,7 @@ export interface UninstallFlags {
   force: boolean;
   nuke: boolean;
   yes: boolean;
-  stripPackage: boolean;
   keepNpmrc: boolean;
-  keepTooling: boolean;
   autoRevert: boolean;
 }
 
@@ -236,25 +228,17 @@ export interface UpgradeFlags {
   latest: boolean;
 }
 
-// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing), `tooling`,
-// `ci`, and `typescript` are intercepted by dedicated branches in parseArgs before this
-// set is consulted; the generic check only ever validates claude/cursor. `full`, `core`,
-// `lint`, `git-hooks`, and `cloud` are NOT accepted as bare flags
-// (#252/#265): use `--ci`/`--typescript`/`--tooling` and `--auto=<claude|cursor>`; core is implicit.
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
+// `typescript` are intercepted by dedicated branches in parseArgs before this set is
+// consulted; the generic check only ever validates claude/cursor/codex. `full`, `core`,
+// `lint` and `cloud` are NOT accepted as bare flags (#252/#265): use `--typescript` and
+// `--auto=<claude|cursor>`; core is implicit.
 // There is no dependency-updater flag. Copy an example; CI warns when none is present.
-const MODULE_FLAGS = new Set<ModuleFlag>([
-  "claude",
-  "cursor",
-  "opencode",
-  "codex",
-  "tooling",
-  "ci",
-  "typescript",
-]);
+const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "codex", "typescript"]);
 
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
-const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
+const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "lint"];
 
 /**
  * Opt-in modules: never installed implicitly; each requires an explicit flag
@@ -268,15 +252,14 @@ export const OPTIN_MODULES = new Set<ModuleFlag>(["cloud", "opencode", "codex"])
 /**
  * Resolve the explicit module-flag set into the concrete module set to dispatch.
  * `flags` holds the internal module names the user explicitly named — core is NOT
- * among them (it is implicit) and `tooling` is already expanded to ci/lint/git-hooks
- * by parseArgs. The install "≥1 flag required" rule is enforced by the caller
+ * among them (it is implicit) and `typescript` is already expanded to lint by parseArgs. The install "≥1 flag required" rule is enforced by the caller
  * (bkit-install.ts main), not here.
  *
  *   install / check / upgrade / doctor / status → core implicit + the named modules.
  *   uninstall (bare)     → every module incl. opt-in add-ons + core (zero footprint).
  *   uninstall (targeted) → the named modules ONLY (core is removed only by a bare
  *                          uninstall — a targeted uninstall must not strip the shared
- *                          foundation, e.g. `uninstall --tooling` keeps AGENTS.md).
+ *                          foundation, e.g. `uninstall --typescript` keeps AGENTS.md).
  */
 export function resolveModules(flags: Set<ModuleFlag>, verb: Verb): Set<ModuleFlag> {
   if (verb === "uninstall") {
@@ -298,9 +281,7 @@ function defaultUninstallFlags(): UninstallFlags {
     force: false,
     nuke: false,
     yes: false,
-    stripPackage: false,
     keepNpmrc: false,
-    keepTooling: false,
     autoRevert: false,
   };
 }
@@ -368,13 +349,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
     args.shift();
   } else if (firstArg !== undefined && !firstArg.startsWith("-")) {
     // Unknown verb (`init` removed in v0.2.0 — name modules explicitly, e.g.
-    // `install --claude --tooling`).
+    // `install --claude --typescript`).
     console.error(`[bkit] Unknown verb: ${firstArg}. Run \`bkit help\` for usage.`);
     process.exit(1);
   }
 
   // Accumulates the internal module names the user explicitly named (no core;
-  // `--tooling` expanded to ci/lint/git-hooks). resolveModules turns this into the
+  // `--typescript` expanded to lint). resolveModules turns this into the
   // dispatch set; main() reads it for the install/check/upgrade flag guards.
   const moduleFlags = new Set<ModuleFlag>();
   const uninstallFlags = defaultUninstallFlags();
@@ -554,16 +535,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         uninstallFlags.yes = true;
         continue;
       }
-      if (flag === "package") {
-        uninstallFlags.stripPackage = true;
-        continue;
-      }
       if (flag === "keep-npmrc") {
         uninstallFlags.keepNpmrc = true;
-        continue;
-      }
-      if (flag === "keep-tooling") {
-        uninstallFlags.keepTooling = true;
         continue;
       }
       if (flag === "auto-revert") {
@@ -591,39 +564,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
-      // --tooling (#252): back-compat alias = --ci --typescript. Expands to the
-      // interdependent ci+lint+git-hooks bundle (husky hooks run vale/slop; CI runs
-      // lint+check). Symmetric install↔uninstall (removes all three).
-      if (flag === "tooling") {
-        moduleFlags.add("ci");
-        moduleFlags.add("lint");
-        moduleFlags.add("git-hooks");
-        continue;
-      }
-
-      // --ci (#265): the stack-agnostic CI/quality foundation — ci.yml skeleton + vale
-      // prose-lint. No Node/TS footprint. Maps to the internal `ci` module only.
-      if (flag === "ci") {
-        moduleFlags.add("ci");
-        continue;
-      }
-
-      // --typescript (#265): the Node/TS toolchain — slop-scan (+ type-suppression rule),
-      // prettier, tsc typecheck, husky + lint-staged, and the WIRED ci.yml step bodies.
-      // Depends-on --ci: on install we auto-add `ci` so the wired ci.yml is seeded. On
-      // uninstall we DROP only the TS bits (lint + git-hooks), leaving the agnostic ci
-      // foundation in place (a downgrade to --ci, not a full teardown). `--tooling`
-      // remains the symmetric remove-all-three alias for legacy consumers.
+      // --typescript (#265): the owned slop-scan type-suppression plugin (internal `lint`
+      // module). The tool scripts, devDeps, configs and hooks are templates.
       if (flag === "typescript") {
         moduleFlags.add("lint");
-        moduleFlags.add("git-hooks");
-        if (verb !== "uninstall") moduleFlags.add("ci");
         continue;
       }
 
-      // Bare module flags. opencode/tooling are intercepted above; only claude/cursor
-      // reach here. Everything else (incl. the dropped --full/--core/--lint/
-      // --git-hooks/--cloud) hits the generic unknown-flag error.
+      // Bare module flags. opencode/typescript are intercepted above; only
+      // claude/cursor/codex reach here. Everything else (incl. the dropped --full/--core/
+      // --lint/--cloud/--ci/--tooling) hits the generic unknown-flag error.
       const moduleFlag = flag as ModuleFlag;
       if (!MODULE_FLAGS.has(moduleFlag)) {
         console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
@@ -706,7 +656,7 @@ Usage:
                                  files, the docs/ payload, and generated artefacts
                                  (.bkit/advisories.md, .bkit/friction.jsonl) are preserved (use
                                  --nuke to force-remove manifest-listed files). Target with the
-                                 same module flags as install (e.g. uninstall --tooling); a
+                                 same module flags as install (e.g. uninstall --typescript); a
                                  targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
@@ -794,7 +744,11 @@ Usage:
 Core (implicit — no flag; installed/upgraded on every install):
   AGENTS.md (cross-host dispatch router), .agents/rules.md + payload, .gitignore +
   .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies
-  in .bkit/templates/, and .agents/context.md + skills.md (written once, then yours).
+  in .bkit/templates/, .agents/context.md + skills.md (written once, then yours), and
+  the bkit:gate:* / bkit:deps:* package.json scripts every workflow runs (added when
+  missing, never overwritten, left by uninstall). The tool scripts those gates chain
+  (typecheck, lint, format:check, lint:prose, slop:delta) and their devDeps are yours
+  to add: see .bkit/templates.md.
 
 Module flags (composable; symmetric install ↔ uninstall):
   --claude        .claude/agents/ + .claude/commands/ (byte-identical mirror) + CLAUDE.md
@@ -816,14 +770,9 @@ Module flags (composable; symmetric install ↔ uninstall):
                   + .codex/hooks.json + .codex/hooks/gateguard.cjs, plus the workflow skills
                   (.agents/skills/bkit-*/). Codex loads project-local hooks ONLY once the
                   .codex/ layer is trusted — until then GateGuard is installed and never fires.
-  --ci            Writes no files: ci.yml and the Vale config are templates
-                  (.bkit/templates.md).
-  --typescript    Node/TS toolchain (implies --ci): the tool package.json scripts and
-                  devDeps (tsc, slop-scan, prettier, husky, lint-staged) plus the owned
-                  slop-scan type-suppression plugin. The tool configs and hooks are
-                  templates (.bkit/templates.md).
-  --tooling       Back-compat alias for \`--ci --typescript\` (the full ci+lint+git-hooks
-                  bundle). Symmetric install↔uninstall (removes all three).
+  --typescript    The owned slop-scan type-suppression plugin
+                  (.bkit/scripts/bkit-slop-type-suppression.mjs). ci.yml, the tool scripts,
+                  devDeps, configs and hooks are templates (.bkit/templates.md).
 
 Dependency updaters (copy an example and own it):
   .bkit/templates/.github/renovate.json5
@@ -863,15 +812,11 @@ Uninstall flags:
   --force         Delete owned whole-file files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
   --yes           Skip interactive confirm for --nuke.
-  --package       Also strip managed package.json scripts/devDependencies.
   --keep-npmrc    Preserve .npmrc (default: .npmrc is not bkit-managed, always preserved).
-  --keep-tooling  Preserve tooling devDependencies (prettier/slop-scan/husky).
 
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
-  bkit install --claude --ci                  Claude host + stack-agnostic CI skeleton + core.
-  bkit install --claude --cursor --typescript Both hosts + full Node/TS toolchain (implies --ci).
-  bkit install --claude --cursor --tooling    Same as --ci --typescript (back-compat alias).
+  bkit install --claude --cursor --typescript Both hosts + the slop-scan plugin + core.
   bkit install --opencode=opencode-zen          opencode host (Zen built-in gateway, additive).
   bkit install --opencode=opencode-go           opencode host (Go built-in gateway, additive).
   bkit install --opencode=openrouter            add openrouter alongside an opencode gateway.
@@ -881,8 +826,7 @@ Examples:
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
   bkit uninstall                              Full uninstall (all modules; artefacts kept, --nuke to purge).
-  bkit uninstall --typescript                 Remove Node/TS toolchain only (keep --ci + core).
-  bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
+  bkit uninstall --typescript                 Remove the slop-scan plugin only (core kept).
   bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
   bkit opencode                               Launch opencode with .bkit/.env (API key).
 

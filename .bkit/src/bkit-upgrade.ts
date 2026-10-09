@@ -40,7 +40,6 @@ import { TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS: TokenMap = {
-  NODE_VERSION: "",
   DEFAULT_BRANCH: "",
   PROJECT_NAME: "",
   REPO_SLUG: "",

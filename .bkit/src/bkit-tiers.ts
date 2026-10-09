@@ -612,14 +612,7 @@ export function writeTier2(
 //   - script key absent     → add with default value (recorded as one update)
 //   - script key exists     → preserve consumer value (never overwrite)
 //
-// `legacyValues` narrows that last rule WITHOUT weakening consumer ownership:
-// a key whose current value byte-matches a listed PRIOR bkit default is provably
-// bkit's own (never consumer-authored), so it is re-pointed at the new default
-// rather than preserved. Without this, correcting a shipped script default is a
-// no-op for every consumer who already installed it. Anything matching neither
-// the new default nor a legacy value is consumer-customised and left untouched.
-//
-// One WriteSet entry per call when any script was added or replaced. Drift
+// One WriteSet entry per call when any script was added. Drift
 // surfaces in `bkit check` because `dryRun=true` still pushes to ws.writes.
 // ---------------------------------------------------------------------------
 
@@ -627,89 +620,12 @@ export function ensurePackageJsonScripts(
   scripts: Record<string, string>,
   dryRun: boolean,
   ws: WriteSet,
-  legacyValues: Record<string, readonly string[]> = {},
 ): {
   added: string[];
   preserved: string[];
-  replaced: string[];
   missingPkg: boolean;
   malformed: boolean;
 } {
-  const pkgPath = "package.json";
-  if (!fs.existsSync(pkgPath)) {
-    return { added: [], preserved: [], replaced: [], missingPkg: true, malformed: false };
-  }
-  const raw = fs.readFileSync(pkgPath, "utf-8");
-  let pkg: Record<string, unknown>;
-  try {
-    pkg = JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return { added: [], preserved: [], replaced: [], missingPkg: false, malformed: true };
-  }
-
-  let pkgScripts = (pkg.scripts as Record<string, string> | undefined) ?? undefined;
-  const added: string[] = [];
-  const preserved: string[] = [];
-  const replaced: string[] = [];
-
-  for (const [name, value] of Object.entries(scripts)) {
-    if (pkgScripts && Object.prototype.hasOwnProperty.call(pkgScripts, name)) {
-      // Superseded bkit default → re-point at the current one. Byte-match against
-      // the known-prior list is what proves the value is bkit's and not the
-      // consumer's; anything else is theirs and stays.
-      if (pkgScripts[name] !== value && (legacyValues[name] ?? []).includes(pkgScripts[name])) {
-        pkgScripts[name] = value;
-        replaced.push(name);
-      } else {
-        preserved.push(name);
-      }
-    } else {
-      if (!pkgScripts) {
-        pkgScripts = {};
-        pkg.scripts = pkgScripts;
-      }
-      pkgScripts[name] = value;
-      added.push(name);
-    }
-  }
-
-  if (added.length > 0 || replaced.length > 0) {
-    ws.writes.push({ path: pkgPath, action: "update" });
-    if (!dryRun) {
-      // Preserve indent style and trailing newline of the original file.
-      const indentMatch = raw.match(/\n([ \t]+)"/);
-      const indent = indentMatch ? indentMatch[1] : "  ";
-      const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
-    }
-  }
-  return { added, preserved, replaced, missingPkg: false, malformed: false };
-}
-
-// ---------------------------------------------------------------------------
-// Managed package.json devDependencies — add-if-missing with consumer ownership
-//
-// Mirrors ensurePackageJsonScripts. Closes the bootstrap-half-done gap where
-// bkit installs configs + scripts but doesn't ensure the tools those scripts
-// invoke are installed (e.g. `prepare: husky install` script gets added but
-// husky devDep doesn't, so `pnpm install` fails).
-//
-// Semantics:
-//   - File absent           → no-op, returns missingPkg: true
-//   - File malformed JSON   → no-op, returns malformed: true
-//   - dep key absent        → add with default version-spec
-//   - dep key exists        → preserve consumer value (never overwrite the pin)
-//
-// Note: this only ensures the entry in package.json. Actually fetching the
-// package requires the consumer to run `pnpm install` after bkit install —
-// runLintModule/runGitHooksModule print a hint when new devDeps are added.
-// ---------------------------------------------------------------------------
-
-export function ensurePackageJsonDevDeps(
-  deps: Record<string, string>,
-  dryRun: boolean,
-  ws: WriteSet,
-): { added: string[]; preserved: string[]; missingPkg: boolean; malformed: boolean } {
   const pkgPath = "package.json";
   if (!fs.existsSync(pkgPath)) {
     return { added: [], preserved: [], missingPkg: true, malformed: false };
@@ -722,23 +638,19 @@ export function ensurePackageJsonDevDeps(
     return { added: [], preserved: [], missingPkg: false, malformed: true };
   }
 
-  let pkgDevDeps = (pkg.devDependencies as Record<string, string> | undefined) ?? undefined;
+  let pkgScripts = (pkg.scripts as Record<string, string> | undefined) ?? undefined;
   const added: string[] = [];
   const preserved: string[] = [];
 
-  for (const [name, version] of Object.entries(deps)) {
-    // Also treat presence in `dependencies` as preserved (consumer chose runtime
-    // dep instead of devDep — don't double-add).
-    const alreadyInDeps =
-      pkg.dependencies && Object.prototype.hasOwnProperty.call(pkg.dependencies, name);
-    if (alreadyInDeps || (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))) {
+  for (const [name, value] of Object.entries(scripts)) {
+    if (pkgScripts && Object.prototype.hasOwnProperty.call(pkgScripts, name)) {
       preserved.push(name);
     } else {
-      if (!pkgDevDeps) {
-        pkgDevDeps = {};
-        pkg.devDependencies = pkgDevDeps;
+      if (!pkgScripts) {
+        pkgScripts = {};
+        pkg.scripts = pkgScripts;
       }
-      pkgDevDeps[name] = version;
+      pkgScripts[name] = value;
       added.push(name);
     }
   }
@@ -746,6 +658,7 @@ export function ensurePackageJsonDevDeps(
   if (added.length > 0) {
     ws.writes.push({ path: pkgPath, action: "update" });
     if (!dryRun) {
+      // Preserve indent style and trailing newline of the original file.
       const indentMatch = raw.match(/\n([ \t]+)"/);
       const indent = indentMatch ? indentMatch[1] : "  ";
       const trailingNewline = raw.endsWith("\n") ? "\n" : "";

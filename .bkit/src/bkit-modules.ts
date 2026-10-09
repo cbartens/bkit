@@ -2,7 +2,7 @@
 // Each module function receives { dryRun, tokens, modelLookup, advisories, ws, … } (ModuleContext)
 // and emits writes into the shared WriteSet.
 //
-// Dispatch order: core → claude → cursor → ci → lint → git-hooks
+// Dispatch order: core → claude → cursor → opencode → codex → lint → cloud
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
@@ -15,7 +15,6 @@ import {
   deepMergeJson,
   migrateLegacyBkitEnvelope,
   ensurePackageJsonScripts,
-  ensurePackageJsonDevDeps,
   ensureDir,
   type WriteSet,
   type JsonValue,
@@ -56,12 +55,6 @@ import {
   type IssueTracker,
   DEFAULT_ISSUE_TRACKER,
   type CloudAgents,
-  LINT_SCRIPT,
-  LINT_PROSE_SCRIPT,
-  SLOP_DELTA_SCRIPT,
-  TYPECHECK_NO_TSCONFIG_SCRIPT,
-  LEGACY_LINT_PROSE_SCRIPTS,
-  LEGACY_SLOP_DELTA_SCRIPTS,
   BKIT_GATE_SCRIPTS,
   BKIT_OPTIONAL_GATES,
   GATEGUARD_CJS_WIRING_INSTRUCTIONS,
@@ -85,6 +78,7 @@ import {
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
 import { isRetiredHashKey, retireOwnedFiles, withoutRetiredHashes } from "./bkit-retire.js";
+import { repointLegacyScripts } from "./bkit-package-json.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -255,7 +249,7 @@ export type ModuleFn = (ctx: ModuleContext) => void;
 
 // ---------------------------------------------------------------------------
 // Core template files — directories/basenames owned ONLY by core module.
-// These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
+// These are templates that don't belong to the lint/claude/cursor modules.
 // ---------------------------------------------------------------------------
 
 // Top-level template directories/files that belong to core (not other modules)
@@ -319,10 +313,11 @@ export function isTemplate(relPath: string): boolean {
 // Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
 // NOT shipped by the plain core pass — skip them there so the right owner writes them.
 // Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
+const SLOP_PLUGIN = "bkit-slop-type-suppression.mjs";
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
-  // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
-  // consumer never receives them (#265). runLintModule emits them as Tier 1.
-  path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
+  // The slop-scan plugin belongs to the `lint` module (--typescript), so a consumer
+  // without it never receives the file (#265). runLintModule emits it as Tier 1.
+  path.join(".bkit", "scripts", SLOP_PLUGIN),
 ]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
@@ -372,7 +367,8 @@ function runCoreTemplates(
     if (NON_CORE_TEMPLATE_DIRS.has(name)) continue;
     // Only process known core files or core dirs
     if (!CORE_TEMPLATE_FILES.has(name) && !CORE_TEMPLATE_DIRS.has(name) && !ent.isDirectory()) {
-      // Allow slop-scan.config.json through (lint module handles it), skip others
+      // Root-level template files outside the core set belong to another module or are
+      // templates (copied by syncTemplateCopies) — skip.
       continue;
     }
     if (ent.isDirectory() && !CORE_TEMPLATE_DIRS.has(name)) continue;
@@ -885,9 +881,9 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
 // ---------------------------------------------------------------------------
 // renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
 // `bkit upgrade` template walk (runUpgrade over .bkit/templates/) does NOT cover
-// (#251): host agents/commands (source-rendered) and the `.bkit/*.md` canonical
-// docs (runBkitDocs). All are bkit-owned, not consumer config, so a version bump
-// must refresh them. `.bkit/prompts.md` is markered → runBkitDocs block-merges it
+// (#251): host agents/commands (source-rendered), the `.bkit/*.md` canonical
+// docs (runBkitDocs) and core's package.json scripts (seedCorePackageJsonScripts).
+// A version bump must refresh them. `.bkit/prompts.md` is markered → runBkitDocs block-merges it
 // (managed block refreshed, consumer `## Model Overrides` below bkit:end preserved).
 //
 // CRITICAL (#204/#219): docs stay single-source PACKAGE-side and are mirrored from
@@ -910,6 +906,10 @@ export function renderManagedOutputs(modules: Set<ModuleFlag>, ctx: ModuleContex
   for (let i = docsBefore; i < ctx.ws.writes.length; i++) {
     written.push(String(ctx.ws.writes[i].path));
   }
+
+  // Core package.json scripts — the same pass install runs, so `bkit check` after a
+  // clean upgrade finds no missing gate name and no superseded script value.
+  written.push(...seedCorePackageJsonScripts(ctx));
 
   // Host agents/commands — only for hosts the consumer has installed.
   if (modules.has("claude")) written.push(...renderClaudeAgentsCommands(ctx));
@@ -958,6 +958,118 @@ function copyAdditive(
     );
   }
   return writes;
+}
+
+/**
+ * The package.json scripts core keeps: the `bkit:gate:*` / `bkit:deps:*` names every
+ * workflow, prompt and hook runs, seeded add-if-missing (a name already declared is
+ * never touched, whatever its value), and the re-point of superseded bkit script
+ * values. Install (runCoreModule) and upgrade (renderManagedOutputs) both run it, so a
+ * clean upgrade leaves `bkit check` nothing to write. A missing gate name is a write,
+ * so `bkit check` reports it. A missing or malformed package.json is preflight's to
+ * report. Returns the paths written.
+ */
+export function seedCorePackageJsonScripts(
+  ctx: Pick<ModuleContext, "dryRun" | "ws" | "logPrefix">,
+): string[] {
+  const { dryRun, ws, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+  const written: string[] = [];
+
+  const gates = ensurePackageJsonScripts({ ...BKIT_GATE_SCRIPTS }, dryRun, ws);
+  if (gates.added.length > 0) {
+    written.push("package.json");
+    console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
+  }
+
+  const repointed = repointLegacyScripts(process.cwd(), dryRun);
+  if (repointed.length > 0) {
+    ws.writes.push({ path: "package.json", action: "update" });
+    if (written.length === 0) written.push("package.json");
+    console.log(
+      `${logPrefix} ${tag}core: package.json scripts re-pointed from a superseded bkit default [${repointed.join(", ")}]`,
+    );
+  }
+  return written;
+}
+
+// Tokens that follow `pnpm` in a gate value but are not package.json scripts: the
+// package manager's own subcommands (`install` in bkit:gate:install-static-unit-build,
+// `audit` / `outdated` in the bkit:deps:* pair) and node_modules binaries pnpm resolves
+// directly (`lint-staged` in bkit:gate:format). None can be "missing" as a script.
+const PNPM_NOT_A_SCRIPT = new Set([
+  "install",
+  "run",
+  "exec",
+  "dlx",
+  "audit",
+  "outdated",
+  "lint-staged",
+]);
+
+/**
+ * Advisories for the `bkit:gate:*` scripts (#437): the scripts a still-default gate
+ * chains that package.json does not declare, and the deeper test tiers the repo has
+ * but no gate runs. Read-only; an absent or unparseable package.json yields none.
+ */
+export function detectGateAdvisories(cwd: string): PreflightFinding[] {
+  let declared: Record<string, string>;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
+      scripts?: Record<string, string>;
+    };
+    declared = pkg.scripts ?? {};
+  } catch {
+    // Absent or malformed package.json — preflight's no-package-json /
+    // malformed-package-json blockers already report it.
+    return [];
+  }
+  const findings: PreflightFinding[] = [];
+
+  // Every script a seeded gate default chains MUST exist, or the gate dies on the first
+  // missing one and the workflow reads that as a real failure. Checked only where the
+  // value is still bkit's default — a consumer who rewrote the gate owns what it calls.
+  const missing = new Set<string>();
+  for (const [name, seeded] of Object.entries(BKIT_GATE_SCRIPTS)) {
+    if (declared[name] !== seeded) continue;
+    for (const [, called] of seeded.matchAll(/\bpnpm ([\w:-]+)/g)) {
+      if (PNPM_NOT_A_SCRIPT.has(called)) continue;
+      if (!(called in declared) && !(called in BKIT_GATE_SCRIPTS)) missing.add(called);
+    }
+  }
+  if (missing.size > 0) {
+    const names = [...missing].sort().map((n) => `\`${n}\``);
+    findings.push({
+      id: "gate-missing-called-scripts",
+      severity: "advisory",
+      detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.join(", ")}.`,
+      action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.join(", ")} to package.json (\`.bkit/templates.md\` lists the tool scripts and the devDeps they need), or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
+    });
+  }
+
+  // A repo that HAS a deeper tier but never declares its gate is silently gated at
+  // bkit:gate:static-unit by both /bkit-build and /bkit-debug — the tier exists, CI runs
+  // it, and the agent loop never does. bkit cannot seed these (a stub would exit 0 and
+  // claim the coverage), so it detects the mismatch and hands over the line to paste.
+  const unwired: string[] = [];
+  for (const { gate, parent, declaredBy } of BKIT_OPTIONAL_GATES) {
+    const tierCall = declaredBy.find((s) => s in declared);
+    if (tierCall === undefined || gate in declared) continue;
+    unwired.push(`    "${gate}": "pnpm ${parent} && pnpm ${tierCall}"`);
+  }
+  if (unwired.length > 0) {
+    findings.push({
+      id: "gate-tier-not-wired",
+      severity: "advisory",
+      detect:
+        "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build` and `/bkit-debug` gate at `bkit:gate:static-unit` and never execute them.",
+      action:
+        "Each workflow runs the DEEPEST gate you declare; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
+        unwired.join("\n") +
+        "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.",
+    });
+  }
+  return findings;
 }
 
 export function runCoreModule(ctx: ModuleContext): void {
@@ -1059,6 +1171,11 @@ export function runCoreModule(ctx: ModuleContext): void {
     if (moved) console.log(`${logPrefix} ${tag}${moved}`);
   }
 
+  // 3d. The bkit:gate:* / bkit:deps:* package.json scripts (add-if-missing) and the
+  // re-point of superseded bkit script values. The advisories read the result.
+  seedCorePackageJsonScripts(ctx);
+  if (!dryRun) advisories.push(...detectGateAdvisories(cwd));
+
   // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
   // This ensures a mid-install crash in a subsequent module does not suppress the first-install
   // banner on retry (MED-4).
@@ -1125,8 +1242,6 @@ export function runCoreModule(ctx: ModuleContext): void {
   });
 
   // 5. First-run extra logging (only when .bkit-version was absent at start of install)
-  // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, slop:delta,
-  // prepare) are auto-added by their respective modules — no manual copy-paste required.
   if (isFirstInstall) {
     advisories.push({
       id: "first-install-postinstall-steps",
@@ -1147,10 +1262,10 @@ export function runCoreModule(ctx: ModuleContext): void {
         "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${BKIT_GH_TOKEN_INSTALL} ref:\n" +
         '     pnpm config set "//npm.pkg.github.com/:_authToken=$BKIT_GH_TOKEN_INSTALL"\n\n' +
         "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
-        "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
-        "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
-        "`pnpm bkit install --typescript` to seed them all. Existing scripts are preserved\n" +
-        "(consumer values always win).",
+        "Note: bkit seeded the bkit:gate:* / bkit:deps:* package.json scripts every workflow\n" +
+        "runs (existing values are never touched). The tool scripts they chain (typecheck,\n" +
+        "lint, format:check, lint:prose, slop:delta) and the devDeps those need are yours to\n" +
+        "add: see .bkit/templates.md.",
     });
   }
 }
@@ -2226,285 +2341,26 @@ export function reconcileMcpJson(
 }
 
 // ---------------------------------------------------------------------------
-// runCiModule — writes no files: ci.yml and the Vale config ship as templates.
-// ---------------------------------------------------------------------------
-
-export function runCiModule(ctx: ModuleContext): void {
-  const tag = ctx.dryRun ? "[dry-run] " : "";
-  console.log(
-    `${ctx.logPrefix} ${tag}ci: nothing to write — ci.yml and the Vale config are templates (see .bkit/templates.md)`,
-  );
-}
-
-// ---------------------------------------------------------------------------
-// runLintModule — the owned slop-scan plugin + the package.json scripts/devDeps.
-// slop-scan.config.json, .prettierignore, .lintstagedrc.json and the Vale config ship
-// as templates (`.bkit/templates.md`).
+// runLintModule — the owned slop-scan type-suppression plugin. The tool scripts and
+// devDeps, slop-scan.config.json, .prettierignore, .lintstagedrc.json, the Vale config
+// and the husky hooks ship as templates (`.bkit/templates.md`).
 // ---------------------------------------------------------------------------
 
 export function runLintModule(ctx: ModuleContext): void {
-  const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
-  const tag = dryRun ? "[dry-run] " : "";
-  const templatesBase = getTemplatesRoot();
-
-  // slop-scan helper script — moved OUT of the core template walk (#265) so they ship
-  // ONLY with the TS toolchain (--typescript), never to a non-Node --ci consumer. Tier 1
-  // (bkit-owned, force-overwritten; core pass would preserve the +x bit, writeTier1 copies
-  // the source mode). Listed in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips it.
-  for (const script of ["bkit-slop-type-suppression.mjs"]) {
-    const scriptSrc = path.join(templatesBase, ".bkit", "scripts", script);
-    if (!fs.existsSync(scriptSrc)) continue;
-    const scriptDst = path.join(".bkit", "scripts", script);
-    ensureDir(path.dirname(scriptDst));
-    const prevLen = ws.writes.length;
-    writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
-    if (ws.writes.length > prevLen) {
-      console.log(`${logPrefix} ${tag}lint: ${scriptDst}`);
-    }
-  }
-
-  // Ensure the package.json scripts the seeded configs + wired ci.yml expect actually
-  // exist. Add-if-missing; consumer values win. `typecheck` moved here from the (now
-  // agnostic) ci module (#265) — it is TS-exclusive; default is tsconfig-aware.
-  const typecheckDefault = fs.existsSync("tsconfig.json")
-    ? "tsc --noEmit"
-    : TYPECHECK_NO_TSCONFIG_SCRIPT;
-  const lintScripts = ensurePackageJsonScripts(
-    {
-      typecheck: typecheckDefault,
-      // Runs eslint where a config exists, prints an honest skip line where none does —
-      // either way `bkit:gate:static`'s `pnpm lint` cannot fall through to an unrelated
-      // `lint` binary on PATH. Add-if-missing — a real consumer lint wins.
-      lint: LINT_SCRIPT,
-      "format:check": "prettier --check .",
-      // F9 (BAR-138) soft-skip + worktree self-heal. Single source of truth in
-      // bkit-manifest.ts — the manifest default, this call, and the F9 advisory
-      // remedy MUST stay byte-identical or the uninstall stripper stops
-      // recognising the script as bkit-managed.
-      "lint:prose": LINT_PROSE_SCRIPT,
-      "lint:slop": "slop-scan scan .",
-      // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
-      "slop:delta": SLOP_DELTA_SCRIPT,
-      // The local gate every workflow and prompt now dispatches through (#437).
-      // Same single-source-of-truth rule as lint:prose above, enforced structurally
-      // here: both this call and the manifest default spread the SAME object.
-      ...BKIT_GATE_SCRIPTS,
-    },
-    dryRun,
-    ws,
-    // Re-point a superseded bkit lint:prose at the current one. add-if-missing
-    // alone would leave every existing consumer on the version that silently
-    // self-disables in worktrees and fresh checkouts.
-    { "lint:prose": LEGACY_LINT_PROSE_SCRIPTS, "slop:delta": LEGACY_SLOP_DELTA_SCRIPTS },
-  );
-  if (lintScripts.added.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`,
-    );
-  }
-  if (lintScripts.replaced.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}lint: package.json scripts updated from a superseded bkit default [${lintScripts.replaced.join(", ")}]`,
-    );
-  }
-  if (lintScripts.missingPkg) {
-    advisories.push({
-      id: "lint-package-json-missing",
-      severity: "advisory",
-      detect: "package.json not found — cannot ensure lint scripts.",
-      action:
-        "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`, `slop:delta` scripts to package.json.",
-    });
-  } else if (lintScripts.malformed) {
-    advisories.push({
-      id: "lint-package-json-malformed",
-      severity: "advisory",
-      detect: "package.json failed to parse — cannot ensure lint scripts.",
-      action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
-    });
-  }
-  // The unit-test script is the consumer's responsibility — flag if absent so they
-  // know (the wired ci.yml step bodies call it). Moved here from runCiModule (#265):
-  // the agnostic --ci skeleton has the test step commented, so the advisory belongs
-  // with the TS toolchain that activates it.
-  //
-  // Stays `test`, not `test:unit`, despite the siblings being test:integration /
-  // test:e2e / test:live: `npm test` is a package-manager builtin (its own npm-test(1)
-  // man page), runs without `run` on npm/pnpm/yarn, and fires pretest/posttest hooks.
-  // The irregularity is the ecosystem's, and renaming would forfeit all of that.
-  if (!dryRun && !lintScripts.missingPkg && !lintScripts.malformed) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
-        scripts?: Record<string, string>;
-      };
-      if (!pkg.scripts || !pkg.scripts.test) {
-        advisories.push({
-          id: "ci-no-test-script",
-          severity: "advisory",
-          detect: "package.json has no `test` script.",
-          action:
-            'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
-        });
-      }
-      // Every script a seeded bkit:gate* default chains MUST exist, or the gate
-      // dies on the first missing one and the workflow reads that as a real
-      // failure. Checked only where the value is still bkit's default — a
-      // consumer who rewrote the gate owns what it references (#437).
-      const declared = pkg.scripts ?? {};
-      // Tokens that follow `pnpm` but are not package.json scripts: the package
-      // manager's own subcommands (`install` in bkit:gate:install-static-unit-build,
-      // `audit` / `outdated` in the bkit:deps:* pair) and node_modules binaries pnpm
-      // resolves directly (`lint-staged` in bkit:gate:format). None can be "missing"
-      // in the sense this advisory reports.
-      const PNPM_NOT_A_SCRIPT = new Set([
-        "install",
-        "run",
-        "exec",
-        "dlx",
-        "audit",
-        "outdated",
-        "lint-staged",
-      ]);
-      const missing = new Set<string>();
-      for (const [name, seeded] of Object.entries(BKIT_GATE_SCRIPTS)) {
-        if (declared[name] !== seeded) continue;
-        for (const [, called] of seeded.matchAll(/\bpnpm ([\w:-]+)/g)) {
-          if (PNPM_NOT_A_SCRIPT.has(called)) continue;
-          if (!(called in declared) && !(called in BKIT_GATE_SCRIPTS)) missing.add(called);
-        }
-      }
-      if (missing.size > 0) {
-        const names = [...missing].sort();
-        advisories.push({
-          id: "gate-missing-called-scripts",
-          severity: "advisory",
-          detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.map((n) => `\`${n}\``).join(", ")}.`,
-          action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.map((n) => `\`${n}\``).join(", ")} to package.json, or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
-        });
-      }
-      // A repo that HAS a deeper tier but never declares its gate is silently
-      // gated at bkit:gate:static-unit by both /bkit-build and /bkit-debug — the
-      // tier exists, CI runs it, and the agent loop never does. bkit cannot seed
-      // these (a stub would exit 0 and claim the coverage), so it detects the
-      // mismatch and hands over the exact line to paste (#437).
-      const unwired: string[] = [];
-      for (const { gate, parent, tier, declaredBy } of BKIT_OPTIONAL_GATES) {
-        const hasTier = declaredBy.some((s) => s in declared);
-        if (!hasTier || gate in declared) continue;
-        const tierCall = declaredBy.find((s) => s in declared) ?? tier;
-        unwired.push(`    "${gate}": "pnpm ${parent} && pnpm ${tierCall}"`);
-      }
-      if (unwired.length > 0) {
-        advisories.push({
-          id: "gate-tier-not-wired",
-          severity: "advisory",
-          detect:
-            "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build` and `/bkit-debug` gate at `bkit:gate:static-unit` and never execute them.",
-          action:
-            "Each workflow runs the DEEPEST gate you declare; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
-            unwired.join("\n") +
-            "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt).",
-        });
-      }
-    } catch {
-      // Fail-open: a malformed package.json is already surfaced by the
-      // lint-package-json-malformed advisory above (the guard at this point
-      // guarantees the first read succeeded); a transient re-read failure after
-      // the devDeps write only skips the no-test-script check, which is non-fatal.
-    }
-  }
-
-  // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
-  // (binary) and is documented as a prereq instead of a managed devDep.
-  const lintDevDeps = ensurePackageJsonDevDeps(
-    {
-      prettier: "^3.5.3",
-      "slop-scan": "^0.3.0",
-      "lint-staged": "^15.2.10",
-    },
-    dryRun,
-    ws,
-  );
-  if (lintDevDeps.added.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}lint: package.json devDependencies added [${lintDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`,
-    );
-    // Thread devDepsAdded through the WriteSet for Phase 3 detection
-    const lastWrite = ws.writes[ws.writes.length - 1];
-    if (lastWrite && lastWrite.path === "package.json") {
-      lastWrite.devDepsAdded = lintDevDeps.added;
-    }
-  }
-
-  // vale sync advisory removed in v2.1.0 — duplicated by `vale-package-not-synced`
-  // (Phase 3, gated on `vale --version` actually succeeding). The Phase 3 variant
-  // is actionable; this one fired on every install regardless of vale presence.
-}
-
-// ---------------------------------------------------------------------------
-// runGitHooksModule — the `prepare: husky` script + the husky devDep. The hooks
-// themselves (.husky/pre-commit, .husky/pre-push) ship as templates (`.bkit/templates.md`).
-// ---------------------------------------------------------------------------
-
-export function runGitHooksModule(ctx: ModuleContext): void {
-  const { dryRun, advisories, ws, logPrefix } = ctx;
+  const { dryRun, tokens, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
-  // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.
-  // Husky 9+ requires this; without it, the .husky/* files exist but never run.
-  // Husky 9+: `husky install` was renamed to plain `husky` (legacy form prints
-  // "DEPRECATED" warning on every `pnpm install`). Bkit ships the modern form
-  // for new consumers; existing consumers with `husky install` keep theirs
-  // (consumer-value-wins) — they can manually shorten to silence the warning.
-  const hookScripts = ensurePackageJsonScripts({ prepare: "husky" }, dryRun, ws);
-  if (hookScripts.added.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}git-hooks: package.json scripts added [${hookScripts.added.join(", ")}]`,
-    );
-  }
-  if (hookScripts.missingPkg) {
-    advisories.push({
-      id: "git-hooks-package-json-missing",
-      severity: "advisory",
-      detect: "package.json not found — cannot ensure `prepare` script.",
-      action:
-        'Husky hooks (copied from .bkit/templates/.husky/) won\'t activate until you add `"prepare": "husky"` to package.json and run `pnpm install`.',
-    });
-  } else if (hookScripts.malformed) {
-    advisories.push({
-      id: "git-hooks-package-json-malformed",
-      severity: "advisory",
-      detect: "package.json failed to parse — cannot ensure `prepare` script.",
-      action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
-    });
-  } else if (hookScripts.preserved.includes("prepare")) {
-    // Consumer has a custom `prepare` value — note it but don't override.
-    // Either `husky` (modern, 9+) or `husky install` (legacy) activates the
-    // hooks; the legacy form just emits a deprecation warning on each install.
-    advisories.push({
-      id: "git-hooks-package-json-preserved-prepare",
-      severity: "advisory",
-      detect: "package.json `prepare` already set (preserved — consumer value wins).",
-      action:
-        "Ensure it runs `husky` (or legacy `husky install`) for hooks to activate. The modern form is plain `husky`; `husky install` emits a deprecation warning on each `pnpm install`.",
-    });
-  }
-
-  // Ensure husky devDep — without it, the `prepare: husky install` script we
-  // just added blows up on `pnpm install` with `husky: not found`. Surfaced
-  // by BAR-138 Finding 5 during consumer-repo smoke testing.
-  const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
-  if (hookDevDeps.added.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`,
-    );
-    // husky-devdep-added advisory removed in v2.1.0 — duplicated by the generic
-    // `devdeps-need-fetch` Phase 3 advisory which fires for any added devDep.
-    // Thread devDepsAdded through the WriteSet for Phase 3 detection.
-    const lastWrite = ws.writes[ws.writes.length - 1];
-    if (lastWrite && lastWrite.path === "package.json") {
-      lastWrite.devDepsAdded = hookDevDeps.added;
-    }
+  // Moved OUT of the core template walk (#265) so it ships only with --typescript.
+  // Tier 1 (bkit-owned, force-overwritten; writeTier1 copies the source mode). Listed
+  // in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips it.
+  const scriptSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", SLOP_PLUGIN);
+  if (!fs.existsSync(scriptSrc)) return;
+  const scriptDst = path.join(".bkit", "scripts", SLOP_PLUGIN);
+  ensureDir(path.dirname(scriptDst));
+  const prevLen = ws.writes.length;
+  writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
+  if (ws.writes.length > prevLen) {
+    console.log(`${logPrefix} ${tag}lint: ${scriptDst}`);
   }
 }
 
@@ -2885,9 +2741,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   cursor: runCursorModule,
   opencode: runOpencodeModule,
   codex: runCodexModule,
-  ci: runCiModule,
   lint: runLintModule,
-  "git-hooks": runGitHooksModule,
   cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
@@ -2899,9 +2753,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "cursor",
   "opencode",
   "codex",
-  "ci",
   "lint",
-  "git-hooks",
   "cloud",
 ];
 

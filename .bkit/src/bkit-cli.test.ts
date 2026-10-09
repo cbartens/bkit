@@ -1,6 +1,6 @@
 // bkit-cli.test.ts — CLI dispatch surface (#252 redesign + #234 comply/telemetry verbs).
 // Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
-// core implicit; --tooling expands to ci/lint/git-hooks; --auto replaces --cloud;
+// core implicit; --typescript expands to lint; --auto replaces --cloud;
 // --dependency= and --renovate= are unknown flags; --full/--core dropped.
 // comply verb: --phase=<design|plan|build|debug|ship> (WS2-T5, #234).
 // telemetry verb: `bkit telemetry migrate [--dry-run]` (WS5-T2, #234).
@@ -88,23 +88,9 @@ describe("parseArgs — module flags", () => {
     expect(result.moduleFlags.has("cursor")).toBe(true);
   });
 
-  it("--tooling expands to ci + lint + git-hooks (+ core)", () => {
-    const result = parseArgs(["install", "--tooling"]);
-    expect([...result.modules].sort()).toEqual(["ci", "core", "git-hooks", "lint"]);
-    // moduleFlags carries the expanded internal names, not the literal "tooling".
-    expect([...result.moduleFlags].sort()).toEqual(["ci", "git-hooks", "lint"]);
-  });
-
-  it("hosts compose: --claude --cursor --tooling → both hosts + tooling + core", () => {
-    const result = parseArgs(["install", "--claude", "--cursor", "--tooling"]);
-    expect([...result.modules].sort()).toEqual([
-      "ci",
-      "claude",
-      "core",
-      "cursor",
-      "git-hooks",
-      "lint",
-    ]);
+  it("hosts compose: --claude --cursor --typescript → both hosts + lint + core", () => {
+    const result = parseArgs(["install", "--claude", "--cursor", "--typescript"]);
+    expect([...result.modules].sort()).toEqual(["claude", "core", "cursor", "lint"]);
   });
 
   it("bare `install` records zero module flags (the ≥1 guard lives in main())", () => {
@@ -163,8 +149,9 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
   const dropped = [
     "--full",
     "--core",
-    // --ci is now ACCEPTED again (#265: stack-agnostic CI foundation) — see the
-    // "--ci / --typescript (#265)" describe block below.
+    // #489: the ci and git-hooks modules are gone; ci.yml and the hooks are templates.
+    "--ci",
+    "--tooling",
     "--lint",
     "--git-hooks",
     "--renovate",
@@ -181,6 +168,12 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
     });
   }
 
+  it("uninstall --ci / --tooling / --package / --keep-tooling → Unknown flag (#489)", () => {
+    for (const flag of ["--ci", "--tooling", "--package", "--keep-tooling"]) {
+      expect(expectExit(() => parseArgs(["uninstall", flag]))).toMatch(/Unknown flag/);
+    }
+  });
+
   it("--non-interactive → Unknown flag (renamed to --auto-apply)", () => {
     const msg = expectExit(() => parseArgs(["upgrade", "--non-interactive"]));
     expect(msg).toMatch(/Unknown flag/);
@@ -188,41 +181,24 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
 });
 
 // ---------------------------------------------------------------------------
-// --ci / --typescript (#265): split of --tooling into the stack-agnostic CI
-// foundation (--ci) + the opt-in Node/TS toolchain (--typescript, implies --ci).
+// --typescript (#265, narrowed by #489): the owned slop-scan plugin (internal `lint`)
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — --ci / --typescript (#265)", () => {
-  it("install --ci → {ci, core}; moduleFlags = {ci}", () => {
-    const result = parseArgs(["install", "--ci"]);
-    expect([...result.modules].sort()).toEqual(["ci", "core"]);
-    expect([...result.moduleFlags].sort()).toEqual(["ci"]);
-  });
-
-  it("install --typescript → {ci, lint, git-hooks, core} (implies --ci)", () => {
+describe("parseArgs — --typescript", () => {
+  it("install --typescript → {lint, core}; moduleFlags = {lint}", () => {
     const result = parseArgs(["install", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["ci", "core", "git-hooks", "lint"]);
+    expect([...result.modules].sort()).toEqual(["core", "lint"]);
+    expect([...result.moduleFlags]).toEqual(["lint"]);
   });
 
   it("install --typescript composes with hosts", () => {
     const result = parseArgs(["install", "--claude", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["ci", "claude", "core", "git-hooks", "lint"]);
+    expect([...result.modules].sort()).toEqual(["claude", "core", "lint"]);
   });
 
-  it("install --ci --typescript == install --tooling", () => {
-    const split = [...parseArgs(["install", "--ci", "--typescript"]).modules].sort();
-    const tooling = [...parseArgs(["install", "--tooling"]).modules].sort();
-    expect(split).toEqual(tooling);
-  });
-
-  it("uninstall --typescript → {lint, git-hooks} only (keeps --ci foundation + core)", () => {
+  it("uninstall --typescript → {lint} only (targeted, core preserved)", () => {
     const result = parseArgs(["uninstall", "--typescript"]);
-    expect([...result.modules].sort()).toEqual(["git-hooks", "lint"]);
-  });
-
-  it("uninstall --ci → {ci} only (targeted, core preserved)", () => {
-    const result = parseArgs(["uninstall", "--ci"]);
-    expect([...result.modules].sort()).toEqual(["ci"]);
+    expect([...result.modules]).toEqual(["lint"]);
   });
 });
 
@@ -235,12 +211,7 @@ describe("resolveModules — verb-aware resolution", () => {
 
   it("install: named modules + implicit core", () => {
     expect([...resolveModules(set("claude"), "install")].sort()).toEqual(["claude", "core"]);
-    expect([...resolveModules(set("ci", "lint", "git-hooks"), "install")].sort()).toEqual([
-      "ci",
-      "core",
-      "git-hooks",
-      "lint",
-    ]);
+    expect([...resolveModules(set("lint"), "install")].sort()).toEqual(["core", "lint"]);
   });
 
   it("install: empty flags → core only (main() guards the empty case)", () => {
@@ -249,27 +220,14 @@ describe("resolveModules — verb-aware resolution", () => {
 
   it("uninstall (bare): every module incl. opt-ins + core (zero footprint)", () => {
     const all = resolveModules(set(), "uninstall");
-    for (const m of [
-      "core",
-      "claude",
-      "cursor",
-      "ci",
-      "lint",
-      "git-hooks",
-      "cloud",
-      "opencode",
-    ] as ModuleFlag[]) {
+    for (const m of ["core", "claude", "cursor", "lint", "cloud", "opencode"] as ModuleFlag[]) {
       expect(all.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
   });
 
   it("uninstall (targeted): named modules ONLY — core is NOT added", () => {
     expect([...resolveModules(set("claude"), "uninstall")]).toEqual(["claude"]);
-    expect([...resolveModules(set("ci", "lint", "git-hooks"), "uninstall")].sort()).toEqual([
-      "ci",
-      "git-hooks",
-      "lint",
-    ]);
+    expect([...resolveModules(set("lint"), "uninstall")]).toEqual(["lint"]);
     expect([...resolveModules(set("cloud"), "uninstall")]).toEqual(["cloud"]);
   });
 
@@ -322,9 +280,7 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--claude");
     expect(output).toContain("--cursor");
     expect(output).toContain("--opencode=");
-    expect(output).toContain("--ci");
     expect(output).toContain("--typescript");
-    expect(output).toContain("--tooling");
     expect(output).toContain("renovate.json5");
     expect(output).toContain("dependabot.yml");
     expect(output).not.toMatch(/--dependency=/);
@@ -334,17 +290,15 @@ describe("printUsage — help output", () => {
 
   it("does NOT advertise the dropped flags", () => {
     const output = usage();
-    // The dropped bare flags must not appear as offered options. --ci / --typescript
-    // ARE advertised again (#265); only --full/--core/--lint/--git-hooks stay hidden.
-    expect(output).not.toMatch(/^\s*--full\b/m);
-    expect(output).not.toMatch(/^\s*--core\b/m);
-    expect(output).not.toMatch(/^\s*--lint\b/m);
-    expect(output).not.toMatch(/^\s*--git-hooks\b/m);
+    // The dropped bare flags must not appear as offered options.
+    for (const flag of ["full", "core", "lint", "git-hooks", "ci", "tooling", "package"]) {
+      expect(output).not.toMatch(new RegExp(`^\\s*--${flag}\\b`, "m"));
+    }
   });
 
   it("documents compose + core examples", () => {
     const output = usage();
-    expect(output).toContain("--claude --cursor --tooling");
+    expect(output).toContain("--claude --cursor --typescript");
     expect(output).toMatch(/[Cc]ore \(implicit/);
   });
 
@@ -387,23 +341,14 @@ describe("parseArgs — uninstall verb", () => {
 
   it("bare uninstall → all modules incl. opt-in add-ons + core (zero footprint)", () => {
     const result = parseArgs(["uninstall"]);
-    for (const m of [
-      "core",
-      "claude",
-      "cursor",
-      "ci",
-      "lint",
-      "git-hooks",
-      "cloud",
-      "opencode",
-    ] as ModuleFlag[]) {
+    for (const m of ["core", "claude", "cursor", "lint", "cloud", "opencode"] as ModuleFlag[]) {
       expect(result.modules.has(m), `bare uninstall should include ${m}`).toBe(true);
     }
   });
 
-  it("uninstall --tooling → ci + lint + git-hooks ONLY (targeted leaves core)", () => {
-    const result = parseArgs(["uninstall", "--tooling"]);
-    expect([...result.modules].sort()).toEqual(["ci", "git-hooks", "lint"]);
+  it("uninstall --typescript → lint ONLY (targeted leaves core)", () => {
+    const result = parseArgs(["uninstall", "--typescript"]);
+    expect([...result.modules]).toEqual(["lint"]);
     expect(result.modules.has("core")).toBe(false);
   });
 
@@ -440,14 +385,6 @@ describe("parseArgs — uninstall verb", () => {
     expect(parseArgs(["uninstall", "--yes"]).uninstallFlags.yes).toBe(true);
   });
 
-  it("uninstall --package sets stripPackage flag", () => {
-    expect(parseArgs(["uninstall", "--package"]).uninstallFlags.stripPackage).toBe(true);
-  });
-
-  it("uninstall --keep-tooling sets keepTooling flag", () => {
-    expect(parseArgs(["uninstall", "--keep-tooling"]).uninstallFlags.keepTooling).toBe(true);
-  });
-
   it("uninstall --nuke --yes --force compose correctly", () => {
     const result = parseArgs(["uninstall", "--nuke", "--yes", "--force"]);
     expect(result.uninstallFlags.nuke).toBe(true);
@@ -461,7 +398,6 @@ describe("parseArgs — uninstall verb", () => {
     expect(uninstallFlags.force).toBe(false);
     expect(uninstallFlags.nuke).toBe(false);
     expect(uninstallFlags.yes).toBe(false);
-    expect(uninstallFlags.stripPackage).toBe(false);
   });
 
   it("install --auto-revert sets autoRevert flag", () => {

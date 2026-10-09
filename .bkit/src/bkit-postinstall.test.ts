@@ -5,7 +5,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dedupeById, type PreflightFinding } from "./bkit-preflight";
-import type { WriteSet } from "./bkit-tiers";
 import {
   detectShellToken,
   detectShellGhMcpToken,
@@ -24,7 +23,6 @@ import {
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
-  detectDevDepsNeedFetch,
   detectLedgerAliasCollisions,
   detectBkitStubs,
   detectTurboIntegrationInputs,
@@ -97,10 +95,6 @@ afterEach(() => {
 
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
   return new Set(flags) as Set<import("./bkit-cli").ModuleFlag>;
-}
-
-function makeWs(...writes: import("./bkit-install").WriteEntry[]): WriteSet {
-  return { writes };
 }
 
 // ---------------------------------------------------------------------------
@@ -838,30 +832,6 @@ describe("detectValePackageNotSynced", () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe("vale-package-not-synced");
     expect(result!.severity).toBe("advisory");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDevDepsNeedFetch
-// ---------------------------------------------------------------------------
-
-describe("detectDevDepsNeedFetch", () => {
-  it("returns finding when WriteSet has an entry with devDepsAdded", () => {
-    const ws = makeWs({ path: "package.json", action: "update", devDepsAdded: ["prettier"] });
-    const result = detectDevDepsNeedFetch(ws);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("devdeps-need-fetch");
-    expect(result!.severity).toBe("advisory");
-    expect(result!.detect).toContain("prettier");
-  });
-
-  it("returns null when no WriteSet entries have devDepsAdded", () => {
-    const ws = makeWs({ path: "package.json", action: "update" });
-    expect(detectDevDepsNeedFetch(ws)).toBeNull();
-  });
-
-  it("returns null when WriteSet is empty", () => {
-    expect(detectDevDepsNeedFetch(makeWs())).toBeNull();
   });
 });
 
@@ -1917,8 +1887,7 @@ describe("runPostInstallCheck deduplication", () => {
       },
     ];
 
-    const ws = makeWs();
-    const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
 
     // Should appear exactly once
     const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
@@ -1929,7 +1898,7 @@ describe("runPostInstallCheck deduplication", () => {
 
   it("gh-bkit-token-unset-shell is emitted when BKIT_GH_TOKEN_INSTALL is unset", () => {
     delete process.env.BKIT_GH_TOKEN_INSTALL;
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
   });
 
@@ -1941,22 +1910,15 @@ describe("runPostInstallCheck deduplication", () => {
     );
     // Ensure token is set so only npmrc advisory fires
     process.env.BKIT_GH_TOKEN_INSTALL = "test";
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(true);
   });
 
   it("no finding is emitted for .npmrc when file is absent (silent skip)", () => {
     process.env.BKIT_GH_TOKEN_INSTALL = "test";
     // No .npmrc file
-    const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck([], makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "npmrc-missing-gh-packages")).toBe(false);
-  });
-
-  it("devdeps-need-fetch emitted when WriteSet has devDepsAdded", () => {
-    process.env.BKIT_GH_TOKEN_INSTALL = "test";
-    const ws = makeWs({ path: "package.json", action: "update", devDepsAdded: ["prettier"] });
-    const result = runPostInstallCheck([], ws, makeModules("lint"), tmpDir);
-    expect(result.some((f) => f.id === "devdeps-need-fetch")).toBe(true);
   });
 
   it("B2: cross-phase dedup is position-stable — preflight order preserved, Phase 3 appended", () => {
@@ -1972,7 +1934,7 @@ describe("runPostInstallCheck deduplication", () => {
     ];
 
     // Use an empty ws so no devdeps finding fires
-    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
 
     // All preflight advisories that Phase 3 doesn't supersede must come first
     const p1Idx = result.findIndex((f) => f.id === "husky-no-markers-precommit");
@@ -1991,7 +1953,7 @@ describe("runPostInstallCheck deduplication", () => {
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "first", action: "a1" },
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "second", action: "a2" },
     ];
-    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
+    const result = runPostInstallCheck(preflightAdvisories, makeModules("lint"), tmpDir);
     const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
     expect(matches).toHaveLength(1);
     expect(matches[0]!.detect).toBe("first"); // first occurrence wins

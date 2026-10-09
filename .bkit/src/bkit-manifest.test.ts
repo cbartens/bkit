@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getInstallManifest,
   getModuleManifest,
-  getManagedPackageJsonKeys,
-  LINT_SCRIPT,
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
   CLOUD_MANIFEST_OPENCODE,
@@ -187,8 +185,10 @@ describe("getInstallManifest", () => {
     expect(promptsEntry!.format).toBe("markered-text");
   });
 
-  it("the ci module owns no files (ci.yml and the Vale config are templates)", () => {
-    expect(getInstallManifest(["ci"])).toEqual([]);
+  it("the lint module owns only the slop-scan plugin (its tool files are templates)", () => {
+    expect(getInstallManifest(["lint"]).map((e) => e.path)).toEqual([
+      ".bkit/scripts/bkit-slop-type-suppression.mjs",
+    ]);
   });
 
   it("cloud manifest includes cloud-bootstrap.sh as markered-text (moved out of claude — #119)", () => {
@@ -207,10 +207,10 @@ describe("getInstallManifest", () => {
 // ---------------------------------------------------------------------------
 
 describe("getModuleManifest", () => {
-  const ALL_MODULES: ModuleName[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
+  const ALL_MODULES: ModuleName[] = ["core", "claude", "cursor", "lint"];
 
-  it("every module except ci has at least one entry", () => {
-    for (const m of ALL_MODULES.filter((m) => m !== "ci")) {
+  it("every module has at least one entry", () => {
+    for (const m of ALL_MODULES) {
       const entries = getModuleManifest(m);
       expect(entries.length).toBeGreaterThan(0);
     }
@@ -234,10 +234,6 @@ describe("getModuleManifest", () => {
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// getManagedPackageJsonKeys — aggregate scripts + devDependencies
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // OPENCODE_MANIFEST — round-trip + format contracts (Task 2.1 "Done when")
@@ -355,91 +351,12 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
   });
 });
 
-describe("seeded lint script (dogfood parity)", () => {
-  it("is byte-identical to the `lint` script bkit runs on itself", () => {
-    // The shipped default exists because `bkit:gate:static` chains `pnpm lint` and bkit
-    // ships no linter: with no `lint` script, pnpm falls through to whatever `lint`
-    // binary is on PATH and the gate goes green through the wrong program. Pinning it to
-    // this repo's own script keeps the default one bkit actually exercises every run,
-    // rather than a second version that only consumers ever execute.
-    const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
-      scripts: Record<string, string>;
-    };
-    expect(pkg.scripts.lint).toBe(LINT_SCRIPT);
-  });
-
-  it("never resolves to a bare `lint` invocation", () => {
-    // The failure mode this guards: any default that shells out to `lint` (rather than a
-    // named linter) reintroduces the PATH fall-through it was written to prevent.
-    expect(LINT_SCRIPT).not.toMatch(/(^|[;&|]\s*)lint\b/);
-  });
-});
-
-describe("getManagedPackageJsonKeys", () => {
-  it("aggregates scripts from lint module: format:check, lint:prose, lint:slop", () => {
-    const { scripts } = getManagedPackageJsonKeys(["lint"]);
-    expect(Object.keys(scripts)).toContain("format:check");
-    expect(Object.keys(scripts)).toContain("lint:prose");
-    expect(Object.keys(scripts)).toContain("lint:slop");
-  });
-
-  it("aggregates devDependencies from lint module: prettier, slop-scan, lint-staged", () => {
-    const { devDependencies } = getManagedPackageJsonKeys(["lint"]);
-    expect(Object.keys(devDependencies)).toContain("prettier");
-    expect(Object.keys(devDependencies)).toContain("slop-scan");
-    // lint-staged is injected by runLintModule; it must be manifest-declared so the
-    // uninstall stripper reclaims a default-only lint-staged devDep (regression #265).
-    expect(Object.keys(devDependencies)).toContain("lint-staged");
-  });
-
-  it("aggregates prepare script from git-hooks module", () => {
-    const { scripts } = getManagedPackageJsonKeys(["git-hooks"]);
-    expect(Object.keys(scripts)).toContain("prepare");
-  });
-
-  it("aggregates devDependencies from git-hooks module: husky", () => {
-    const { devDependencies } = getManagedPackageJsonKeys(["git-hooks"]);
-    expect(Object.keys(devDependencies)).toContain("husky");
-  });
-
-  it("aggregates typecheck from lint module (moved ci→lint, #265)", () => {
-    const { scripts } = getManagedPackageJsonKeys(["lint"]);
-    expect(Object.keys(scripts)).toContain("typecheck");
-  });
-
-  it("ci module has NO package.json footprint (stack-agnostic, #265)", () => {
-    const { scripts, devDependencies } = getManagedPackageJsonKeys(["ci"]);
-    expect(scripts).toEqual({});
-    expect(devDependencies).toEqual({});
-  });
-
-  it("returns empty objects when no packageJsonKeys entries present", () => {
-    const { scripts, devDependencies } = getManagedPackageJsonKeys(["core"]);
-    // core has no packageJsonKeys in its manifest entries
-    expect(scripts).toEqual({});
-    expect(devDependencies).toEqual({});
-  });
-
-  it("aggregates across all modules when called with empty array", () => {
-    const { scripts, devDependencies } = getManagedPackageJsonKeys([]);
-    expect(Object.keys(scripts).length).toBeGreaterThan(0);
-    expect(Object.keys(devDependencies).length).toBeGreaterThan(0);
-  });
-
-  it("manifest snapshot: all expected managed scripts present across full install", () => {
-    const { scripts } = getManagedPackageJsonKeys([]);
-    const expected = ["typecheck", "format:check", "lint:prose", "lint:slop", "prepare"];
-    for (const s of expected) {
-      expect(Object.keys(scripts)).toContain(s);
-    }
-  });
-});
-
 // ---------------------------------------------------------------------------
 // LINT_PROSE_SCRIPT — shipped prose-gate contract
 //
-// This script runs in every consumer's pre-commit hook, so a quoting slip or a
-// dropped guard degrades the gate silently rather than loudly. These assert the
+// This is the value bkit re-points a superseded lint:prose at, so it runs in
+// consumers' pre-push hooks: a quoting slip or a dropped guard degrades the gate
+// silently rather than loudly. These assert the
 // invariants that make it safe to embed and safe to trust.
 // ---------------------------------------------------------------------------
 
@@ -499,11 +416,6 @@ describe("LINT_PROSE_SCRIPT", () => {
     expect(LEGACY_LINT_PROSE_SCRIPTS).toContain(
       'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
     );
-  });
-
-  it("is the exact value the lint module seeds into package.json", () => {
-    const { scripts } = getManagedPackageJsonKeys(["lint"]);
-    expect(scripts["lint:prose"]).toBe(LINT_PROSE_SCRIPT);
   });
 });
 

@@ -134,7 +134,7 @@ describe("T14 — the provenance field contributes no bkit check drift", () => {
         timeout: 120_000,
       });
 
-    expect(run(["install", "--claude", "--tooling"]).status).toBe(0);
+    expect(run(["install", "--claude", "--typescript"]).status).toBe(0);
 
     const writeCount = (out: string) => /(\d+) write\(s\) would occur/.exec(out)?.[1] ?? "unknown";
 
