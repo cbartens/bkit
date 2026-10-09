@@ -19,7 +19,7 @@
 > - Read `.agents/docs.md` → load docs for workflow / step / task; skip missing; cite docs inline where required.
 > - Every claim cites evidence (`file:line`, or command / query and its output) and tool behind it.
 > - Read this document ONCE at session start; do NOT trust session memory; do NOT re-read on every loop iteration.
-> - NEVER print or copy a secret value; names, presence, and dates only.
+> - NEVER print or copy a secret value; names, presence, dates, and truncated SHA-256 fingerprints only.
 > - Dashboards, CLIs, and APIs read-only; NEVER change a setting, secret, or DNS record.
 > - Every drift claim names the environment and where each side was read.
 
@@ -45,6 +45,7 @@ Code is reviewed; dashboards are not. Dashboard changes (hosting, database, paym
 ### Scope
 
 - Variables across every environment and secret store.
+- Secret values matching across stores; one declared source per secret.
 - Platform dashboard settings vs repo and docs.
 - Runtime versions; scheduled jobs wherever defined.
 - Dashboard change history since previous run; secret-free settings snapshot.
@@ -87,6 +88,7 @@ Always verify.
 Verify only when applicable.
 
 - [ ] **Built Bundle:** Build-time public variables → Step 3 — preview build's client bundle to search. Fallback: source search only; bundle `Not Checked`.
+- [ ] **Secret Fingerprints:** Secret held in ≥2 stores → Step 3 — read-only value compare by SHA-256 (e.g. repo sync tooling's drift mode `node scripts/secrets/bkit-secrets.mjs drift` from bkit package template `.bkit/templates/scripts/secrets/`; or hash of value read in-process). Fallback: names + `updated_at` only; values `Not Checked`.
 - [ ] **Registrar Account:** Owned domains → Steps 8, 11 — renewal, auto-renew, lock, MFA, contact (e.g. registrar dashboard / API). Fallback: RDAP for lock and expiry; rest `Not Checked`.
 - [ ] **Test Devices:** Native app with deep / invite links → Step 9 — device or emulator with and without the app. Fallback: `.well-known` validation only; link opening `Not Checked`.
 - [ ] **Mailbox-Provider Tools:** Sends email → Step 10 — e.g. Google Postmaster Tools, email-provider dashboard / API. Fallback: headers of one sent message; rates `Not Checked`.
@@ -102,7 +104,7 @@ Verify only when applicable.
 
 - [ ] **Step 1 — Previous Run:** Record `git rev-parse HEAD`. Read newest prior report for this slug under `docs/audits/`. Count findings fixed / still open; age of oldest open. Open after 2 runs → re-raise with age. **Done when:** closure rate in `Previous Run`, or run marked baseline.
 - [ ] **Step 2 — Variables:** Every variable the env schema / loader declares → where set: example env files, each hosting environment (development / preview / production), CI secrets and variables, secret manager, mobile build service. One matrix, names only. Missing from an environment that runs code reading it = finding unless a doc says why. Set where nothing declares it → `bkit-audit-dead-code`. **Done when:** `Variables` matrix: variable × environment, names only.
-- [ ] **Step 3 — Variable Handling:** Per matrix variable: (a) build-time public prefix (e.g. `NEXT_PUBLIC_*`, `EXPO_PUBLIC_*`, `VITE_*`) inlined into shipped bundle → never a secret; change needs rebuild, not env change. Search preview build's client bundle for server-only names and secret-key prefixes (e.g. `sk_live_`); presence only. (b) Secret held as host's secret type (unreadable back from dashboard / CLI). Preview holding production secret (e.g. DB service-role key, live payments key) = finding. (c) Loader rejects missing / malformed value at startup in every environment, not first use; silent default differing between environments = finding. (d) Feature flags: owner, date added, value per environment; preview ≠ production with no doc saying why = drift; same everywhere → `bkit-audit-dead-code`. **Done when:** every matrix variable answers (a)–(d) in `Variables`.
+- [ ] **Step 3 — Variable Handling:** Per matrix variable: (a) build-time public prefix (e.g. `NEXT_PUBLIC_*`, `EXPO_PUBLIC_*`, `VITE_*`) inlined into shipped bundle → never a secret; change needs rebuild, not env change. Search preview build's client bundle for server-only names and secret-key prefixes (e.g. `sk_live_`); presence only. (b) Secret held as host's secret type (unreadable back from dashboard / CLI). Preview holding production secret (e.g. DB service-role key, live payments key) = finding. (c) Loader rejects missing / malformed value at startup in every environment, not first use; silent default differing between environments = finding. (d) Feature flags: owner, date added, value per environment; preview ≠ production with no doc saying why = drift; same everywhere → `bkit-audit-dead-code`. (e) Value parity: secret held in ≥2 stores for one environment (env file, hosting, CI, secret manager, mobile build service, function secrets) → same value everywhere; name present everywhere proves nothing (rotated in one store, stale in the rest). Compare SHA-256 fingerprints, never values: readable store → hash live value in-process; write-only store (e.g. GitHub Actions secrets) → fingerprint at last recorded push vs source, and `updated_at` vs that push (later = changed outside the sync). Store holding a name the deployed code no longer reads (renamed, stale) = finding. Unprovable → `Not Checked`, never pass. (f) Source: every secret has one declared source every store is compared against (e.g. sync config with one row per secret naming every store); copy no API reaches (pasted into a provider dashboard, e.g. webhook signing secret) → listed in a copy inventory with how to update it. No declared source, or unlisted hand-set copy = finding; no sync tooling → `Process Improvements` proposes one (e.g. bkit package template `.bkit/templates/scripts/secrets/`). Push path bypassing the sync → `bkit-audit-security`. **Done when:** every matrix variable answers (a)–(f) in `Variables`.
 - [ ] **Step 4 — Platform Settings:** Per platform, dashboard vs repo / docs — hosting: build command, function regions / durations, deployment protection, deployment checks; DB + auth: config file vs each hosted project (auth settings, redirect URLs, email templates, rate limits, extensions, scheduled DB jobs vs docs); background jobs: registered per environment vs code registry; webhooks (payments, email): endpoints, subscribed events, inbound routes vs docs; error tracker: alert rules, monitors vs docs; mobile: build profiles / environments vs build config. Auth (config file, dev, production): site URL, redirect allow-list (no wildcard preview URLs in production), token / OTP expiry, leaked-password protection, SMTP sender, auth rate limits. Mobile config vs builds: runtime version, OTA-update channel per branch, bundle ids — mismatch breaks OTA silently. Classify: in code / documented / recorded nowhere; recorded nowhere = finding even when value is right (next environment will not get it). **Done when:** `Platform Settings` row per setting: platform · environment · where recorded · verdict.
 - [ ] **Step 5 — Runtimes and Crons:** Runtime version (e.g. `.nvmrc`, `engines`) vs hosting, CI, mobile build images; DB major version (config file) vs each hosted environment; platform CLI version pinned. Every scheduled job wherever defined (hosting crons, job-runner cron triggers, DB scheduler, scheduled CI workflows) → timezone each runs in; job defined in two places runs twice = finding. **Done when:** `Platform Settings` holds row per runtime and per schedule.
 - [ ] **Step 6 — Dashboard Changes:** Today's diff misses a setting changed and changed back → read each platform audit log since previous report; list each settings change: who, what, recorded in repo / doc? Snapshot dashboard config as secret-free JSON (hosting project API; DB management API: auth config, network restrictions, SSL enforcement, pooler; source-host API: rulesets); confirm no secret value; diff vs previous report's `Snapshot`, or committed project copy if any. No previous → baseline. **Done when:** `Dashboard Changes` lists every settings change; `Snapshot` holds JSON and diff, or marked baseline.
@@ -120,7 +122,7 @@ Verify only when applicable.
 
 - [ ] **Steps complete:** every step `[x]`, or explicit skip with evidence the surface is absent.
 - [ ] **Evidence:** every finding cites re-checkable evidence and the tool behind it.
-- [ ] **No secrets:** no secret value anywhere in the report, incl. `Snapshot`.
+- [ ] **No secrets:** no secret value anywhere in the report, incl. `Snapshot`; fingerprints truncated SHA-256 only.
 - [ ] **Remote untouched:** no dashboard setting, secret, or DNS record changed.
 - [ ] **Gate 2 - Verified:** Every checkbox above independently verified and checked off.
 
@@ -130,8 +132,8 @@ Verify only when applicable.
 | Severity | Use |
 | --- | --- |
 | `CRITICAL` | Secret in a public build-time variable or client bundle; production secret reachable from preview; dangling record on a live domain; expired domain / certificate / credential still in use |
-| `HIGH` | Required check that no longer reports; anything expiring ≤30 days; variable missing from an environment that runs code reading it; wildcard redirect in production auth; job scheduled in two places; bypass wider than needed or repository security setting off; CAA blocking the issuing CA; broken `.well-known` file or invite link |
-| `MEDIUM` | Setting recorded nowhere; silent default differing between environments; flag drift with no doc; expiry 31–60 days or unknown; hand-renewed certificate; secret not held as secret type; runtime version drift; registrar hardening gap; deliverability rule not met |
+| `HIGH` | Required check that no longer reports; anything expiring ≤30 days; variable missing from an environment that runs code reading it; secret value differing between stores of one environment, or code reading a name no store holds; wildcard redirect in production auth; job scheduled in two places; bypass wider than needed or repository security setting off; CAA blocking the issuing CA; broken `.well-known` file or invite link |
+| `MEDIUM` | Setting recorded nowhere; secret with no declared source; hand-set secret copy missing from the inventory; silent default differing between environments; flag drift with no doc; expiry 31–60 days or unknown; hand-renewed certificate; secret not held as secret type; runtime version drift; registrar hardening gap; deliverability rule not met |
 | `LOW` | Doc describing a setting wrongly while the value is right; naming drift changing no behaviour |
 
 Scale per `.bkit/jsonl.md` § Severity. Within a severity: secrets / production first.

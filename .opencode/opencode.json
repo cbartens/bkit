@@ -59,6 +59,8 @@
       "wget *commonmark.org*": "allow",
       "curl *cursor.com*": "allow",
       "wget *cursor.com*": "allow",
+      "curl *datacurve.ai*": "allow",
+      "wget *datacurve.ai*": "allow",
       "curl *depot.dev*": "allow",
       "wget *depot.dev*": "allow",
       "curl *designarena.ai*": "allow",

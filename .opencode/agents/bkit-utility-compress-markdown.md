@@ -29,7 +29,7 @@ reasoningEffort: high
 **Contract:**
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
-- **Mandate:** Compress prose; do NOT just analyse; do NOT rewrite, rename, or restructure.
+- **Mandate:** Compress prose; do NOT just analyse; do NOT rename, merge, drop, or reorder sections.
 
 **Process:**
 
@@ -37,14 +37,20 @@ reasoningEffort: high
 2. Read target file fully → inventory load-bearing tokens that MUST appear verbatim in the rewrite:
    - All `#` / `##` / `###` headers — exact string.
    - All bold field labels (e.g., `**Verdict:**`, `**Strategy:**`, `**Files modified:**`).
-   - All paths (`docs/...`, `apps/...`, file globs).
+   - All paths (`docs/...`, `apps/...`, file globs) and URLs.
    - All agent / tool / command names (`@build-execute-plan`, `pnpm bkit:gate:static-unit`, `gh pr …`).
    - All code / SQL / JSON / YAML fences and inline `` `code` `` spans.
+   - YAML frontmatter — every key and value.
+   - All HTML comments and marker lines (`<!-- prettier-ignore -->`, `<!-- bkit:start -->`, `###### bkit:ignore-earlier`) — exact string and position.
    - All admonitions (`> [!CAUTION]`, `> [!NOTE]`, `🔒 Gate`, `⛔`, verdict markers `✅` / `⚠️` / `❌`).
    - All `{TOKEN}` placeholders (`{FID}`, `{ATTEMPT}`, `{PHASE}`, etc.).
+   - All numbers, dates, versions, and thresholds in prose (`40%`, `2 retries`, `v4.12.0`).
+   - All normative keywords (`MUST`, `DO NOT`, `ONLY`, `NEVER`, `ALWAYS`) — count per section.
+   - All Good / Bad example pairs — both sides.
    - All numbered / ordered lists — preserve numbering and order.
-3. Skim sibling files in the same directory for cross-refs (`see X.md`, `per template.md`); referenced anchors must stay greppable here.
-4. When rewriting prose:
+3. **If** target's wording IS its content (style / tone / voice guide) **or** target is mostly code fences / examples → STOP and report reason; do NOT save.
+4. Skim sibling files in the same directory for cross-refs (`see X.md`, `per template.md`); referenced anchors must stay greppable here.
+5. When rewriting prose:
    - NEVER drop, rename, or rewrap headers, field labels, paths, agent / tool / identifier names.
    - NEVER modify ANY content inside fenced code blocks, inline code spans, or tables.
    - NEVER merge, drop, or reorder sections.
@@ -52,7 +58,9 @@ reasoningEffort: high
    - NEVER drop 🔒 Gates, ⛔ stops, `[!CAUTION]` / `[!NOTE]` blocks, or numbered steps.
    - NEVER summarise or paraphrase normative rules — `MUST`, `DO NOT`, `ONLY`, `NEVER`, `ALWAYS` survive verbatim.
    - NEVER resolve `{TOKEN}` placeholders or change `{FID}` / `{ATTEMPT}`-style refs.
-5. Match good pairs; do NOT produce the bad pairs:
+   - NEVER swap a term for a synonym or abbreviation; reuse the file's existing word for each concept; NEVER coin abbreviations.
+   - NEVER trim either side of a Good / Bad example pair.
+6. Match good pairs; do NOT produce the bad pairs:
    - Good: `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `Verify build: run test suite, check output for failures.`
    - Good: `Read the plan and update the checkboxes in the plan file.` → `Read plan, update checkboxes.`
    - Good: `[docs/security.md](../../docs/security.md)` → `docs/security.md`.
@@ -62,20 +70,23 @@ reasoningEffort: high
    - Bad: two sibling sections merged into one paragraph.
    - Bad: `in the same directory` → `in same directory`.
    - Bad: `at the time of merge` → `at time of merge`.
-6. Compress prose only:
+   - Bad: `Append a row to the deferral ledger.` → `Append row to defer log.`
+   - Bad: `Retry at most 3 times.` → `Retry a few times.`
+7. Compress prose only:
    - Dense token-efficient phrasing.
    - Strip redundant context already stated earlier.
    - Strip filler / hedging: "in order to" → "to"; "due to the fact that" → "because"; drop "very" / "really" / "simply" / "perhaps" / "it might be useful to".
    - Strip articles where dense imperative style works → `Read the plan` → `Read plan`, `Update the file` → `Update file`; keep articles in set phrases → `in the same directory`, `at the time of merge`.
    - Convert paragraphs → bullet points.
    - Convert multi-sentence run-ons → terse one-liners; preserve meaning.
-   - Convert parallel content / lables → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do NOT split across rows.
+   - Convert parallel content / labels → compact tables / value pairs / matrix-style enumerations; keep atomic instructions on one row, do NOT split across rows.
    - Convert sequential process prose into `→` chains: `first X, then Y, finally Z` becomes `X → Y → Z`; use for transformations (`A → B`), conditional flows (`If X → Y`), and step ordering; do NOT collapse numbered / ordered lists into chains — preserve numbering.
    - Convert internal file references → bare path: `[docs/foo.md](../../docs/foo.md)` → `docs/foo.md`.
-   - Collpase trailing / duplicate whitespace → one blank line between blocks.
-7. **If** word reduction > 40% → STOP and report original vs new line / word counts; do NOT save.
-8. Re-grep every inventoried load-bearing token in the output; each MUST match exactly. **If** missing → restore that section from the original and re-run.
-9. Re-read the rewrite end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
-10. Report to caller; do NOT write the report into the file: original vs new line / word counts; list blocks restored verbatim due to ambiguity.
+   - Collapse trailing / duplicate whitespace → one blank line between blocks.
+8. **If** word reduction > 40% → STOP and report original vs new line / word counts; do NOT save.
+9. **If** word reduction < 5% → STOP and report target already dense; do NOT save.
+10. Re-grep every inventoried load-bearing token in the output; each MUST match exactly, normative keyword counts per section included. **If** missing → restore that section from the original and re-run; max 2 re-runs. **If** still missing → STOP and report missing tokens; do NOT save.
+11. Re-read the rewrite end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
+12. Report to caller; do NOT write the report into the file: original vs new line / word counts; list blocks restored verbatim due to ambiguity.
 
 > ⛔ **STOP after compressing prose and producing output. Do NOT make other modifications.**
