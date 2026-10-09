@@ -1,6 +1,7 @@
 # Example self-hosted Renovate runner. Copy it to `.github/workflows/renovate.yml`
-# and own it. Rules live in
-# `.github/renovate.json5` (Renovate clones the repo and reads that file).
+# and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Rules live in `.github/renovate.json5` (Renovate clones the repo and reads that file).
 #
 # Runs `renovatebot/github-action` on `ubuntu-latest` (~16 GB) instead of Mend's
 # 3 GB hosted microvm, which OOMs (`kernel-out-of-memory`) on large pnpm monorepos.

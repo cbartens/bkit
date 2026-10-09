@@ -23,6 +23,8 @@
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 
+- `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted (`{{...}}` placeholders stay). `bkit upgrade` lists changed / added / removed paths; `git diff .bkit/templates` shows the change. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) → ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini` and `slop-scan.config.json` templates already do.
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
 - No manifest key for Serena / graphify / secrets sync / prettier tables.
 

@@ -1,15 +1,14 @@
 # Cursor Background Agents Dockerfile.
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
 #
-# bkit manages the toolchain between the `# <!-- bkit:start -->` and
-# `# <!-- bkit:end -->` markers below (vale, gh, jq, python3, corepack-pinned
-# pnpm). Everything OUTSIDE those markers is yours to customise:
+# The block between the `# <!-- bkit:start -->` and `# <!-- bkit:end -->` markers
+# below installs the toolchain bkit's workflows use (vale, gh, jq, python3,
+# corepack-pinned pnpm). Adapt the rest to your stack:
 #   - `FROM` base image
 #   - Node major (default 20; pin to match `engines.node` / `.nvmrc`)
 #   - System deps (curl, ca-certificates baseline; add libpq, ruby, etc.)
 #   - Per-repo dev tooling (Playwright, Supabase CLI, AWS CLI, etc.)
-#
-# Edit canonical via `.bkit/templates/.cursor/Dockerfile` in the bkit repo;
-# never edit this generated mirror directly in consumer repos.
 
 # Base image digest-pinned — an `ubuntu:26.04` tag is mutable, so pinning the digest keeps builds
 # reproducible and the supply chain fixed. Refresh with `docker pull ubuntu:26.04` (prints `Digest:`),

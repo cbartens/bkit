@@ -32,7 +32,7 @@ import {
 } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
-import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 import { removeOpencodeProviderBlock, renderOpencodeJson } from "./bkit-modules.js";
 import {
   CLAUDE_CLOUD_RELPATH,
@@ -794,6 +794,18 @@ export async function runUninstall(
           fs.rmSync(path.join(scriptsDir, f), { force: true });
           console.log(`${ctx.logPrefix} delete: ${rel}`);
         }
+      }
+    }
+
+    // The consumer's template copies (`.bkit/templates/`) are bkit's folder, refreshed
+    // whole on every install and upgrade, so they go whole. Never in dogfood, where that
+    // folder is bkit's own template source. Adopted copies elsewhere in the repo stay.
+    const templatesDir = path.join(ctx.cwd, TEMPLATE_COPIES_DIR);
+    if (path.resolve(ctx.cwd) !== getPkgRoot() && fs.existsSync(templatesDir)) {
+      result.deleted.push(TEMPLATE_COPIES_DIR);
+      if (!ctx.dryRun) {
+        fs.rmSync(templatesDir, { recursive: true, force: true });
+        console.log(`${ctx.logPrefix} delete: ${TEMPLATE_COPIES_DIR}/`);
       }
     }
   }

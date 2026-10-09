@@ -9,7 +9,7 @@ import { readBkitVersion, MANAGED_MARKER_LINE_RE, MANAGED_MARKER_VERSION_RE, } f
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { findLineAnchoredMarkers, selectMarkers } from "./bkit-markers.js";
 import { lintLedgers } from "./bkit-telemetry-lint.js";
-import { detectOpencodeYmlProviderDrift } from "./bkit-modules.js";
+import { detectOpencodeYmlProviderDrift, TEMPLATES_POINTER } from "./bkit-modules.js";
 /**
  * Detect whether BKIT_GH_TOKEN_INSTALL is set in the shell environment.
  * - "present"  → set and non-empty
@@ -472,7 +472,7 @@ export function detectCiYmlRunInjection(cwd) {
             '        MSG="$PR_TITLE"   # NOT MSG="${{ github.event.pull_request.title }}"\n\n' +
             "Apply the same env-indirection to every flagged line (github.event.*, github.head_ref). " +
             "bkit's current ci.yml template already uses this form — re-sync the affected steps from " +
-            "node_modules/@cbartens/bkit/.bkit/templates/.github/workflows/ci.yml if you seeded before the hardening.",
+            ".bkit/templates/.github/workflows/ci.yml if you adopted it before the hardening.",
     };
 }
 /**
@@ -1565,9 +1565,9 @@ export function detectGithubProjectFieldIdFormat(cwd) {
     };
 }
 const UPDATER_EXAMPLE_PATHS = [
-    "node_modules/@cbartens/bkit/.bkit/templates/.github/renovate.json5",
-    "node_modules/@cbartens/bkit/.bkit/templates/.github/workflows/renovate.yml",
-    "node_modules/@cbartens/bkit/.bkit/templates/.github/dependabot.yml",
+    ".bkit/templates/.github/renovate.json5",
+    ".bkit/templates/.github/workflows/renovate.yml",
+    ".bkit/templates/.github/dependabot.yml",
 ].join("\n  ");
 const BKIT_OWNED_WORKFLOW = ".github/workflows/bkit-cloud.yml";
 function updaterConfigPaths(cwd) {
@@ -1945,12 +1945,7 @@ export function formatChecklist(findings) {
     lines.push(banner);
     lines.push("\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
         "coding assistant to apply each item. Each ACTION is self-contained.\n" +
-        "\nTemplate reference (MANDATORY): canonical bkit-managed files (husky hooks,\n" +
-        "CI workflows, .claude/settings.json, .cursor/ config, renovate, vale, etc.)\n" +
-        "live at node_modules/@cbartens/bkit/.bkit/templates/. You MUST read these\n" +
-        "templates and reconcile them against this repo's existing config — adopt as\n" +
-        "much as possible WITHOUT breaking existing functionality. For any template\n" +
-        "you do not adopt, state which one and why.\n");
+        `\n${TEMPLATES_POINTER}\n`);
     for (let i = 0; i < findings.length; i++) {
         const f = findings[i];
         lines.push(`\n--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
@@ -1992,7 +1987,7 @@ export function renderAdvisoriesMarkdown(findings, opts) {
     lines.push("");
     lines.push("> INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.");
     lines.push("");
-    lines.push("> **Template reference (MANDATORY):** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/@cbartens/bkit/.bkit/templates/`. You **MUST** read these templates and reconcile them against this repo's existing config — adopt as much as possible without breaking existing functionality. For any template you do not adopt, state which one and why.");
+    lines.push(`> ${TEMPLATES_POINTER}`);
     lines.push("");
     const total = findings.length;
     for (let i = 0; i < total; i++) {

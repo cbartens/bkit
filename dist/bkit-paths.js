@@ -45,9 +45,14 @@ export function getPkgRoot() {
 //
 // WS-1 (pre-move): resolves to <pkgRoot>/.agents/templates
 // WS-3 (post-move): resolves to <pkgRoot>/.bkit/templates
+//
+// The consumer keeps its copies of the template set at the same relative path,
+// TEMPLATE_COPIES_DIR (bkit-modules.ts syncTemplateCopies). In dogfood the two are
+// the same folder.
 // ---------------------------------------------------------------------------
+export const TEMPLATE_COPIES_DIR = path.join(".bkit", "templates");
 export function getTemplatesRoot() {
-    return path.join(getPkgRoot(), ".bkit", "templates");
+    return path.join(getPkgRoot(), TEMPLATE_COPIES_DIR);
 }
 // ---------------------------------------------------------------------------
 // Mirror-source roots. `.bkit/workflows` and `.bkit/prompts` are the canonical

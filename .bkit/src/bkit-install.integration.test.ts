@@ -1517,19 +1517,18 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
 
 // ---------------------------------------------------------------------------
 // Scenario P1-A — Orphan cleanup gate: bkit-auto.yml removal is gated on
-// bkit-cloud.yml being present or in upgrade candidates.
+// bkit-cloud.yml being present.
 //
 // Regression guard for the P1 fix: before the fix, `bkit upgrade` would delete
-// bkit-auto.yml even when bkit-cloud.yml was not present and not being installed
-// in the same run — silently removing the cloud workflow without a replacement.
+// bkit-auto.yml even when bkit-cloud.yml was not present — silently removing the
+// cloud workflow without a replacement.
 //
-// Three cases:
-//   A) bkit-auto.yml exists, bkit-cloud.yml absent, NOT in candidates → NOT deleted.
+// Two cases:
 //   B) bkit-auto.yml exists, bkit-cloud.yml already present on disk → deleted.
-//   C) bkit-auto.yml exists, bkit-cloud.yml IS in candidates (will be installed) → deleted.
+//   C) bkit-auto.yml exists, bkit-cloud.yml absent → NOT deleted.
 // ---------------------------------------------------------------------------
 
-describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when bkit-cloud.yml present/in candidates", () => {
+describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when bkit-cloud.yml present", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
   const getTsxBin = () =>
@@ -1564,25 +1563,6 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     }
   }
 
-  it("Case A: bkit-auto.yml is NOT deleted when bkit-cloud.yml is absent and not in candidates", () => {
-    // Source-level verification of the gate condition.
-    // The upgrade path in bkit-install.ts must check:
-    //   fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled
-    // before deleting oldAutoWorkflow.
-    const src = fs.readFileSync(
-      path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts"),
-      "utf-8",
-    );
-    // Gate: oldAutoWorkflow removal requires newCloudWorkflow present OR cloudWillBeInstalled
-    expect(src).toContain("fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled");
-    // The gate must appear BEFORE the rmSync call
-    const gateIdx = src.indexOf("fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled");
-    const rmIdx = src.indexOf("fs.rmSync(oldAutoWorkflow, { force: true })");
-    expect(gateIdx).toBeLessThan(rmIdx);
-    expect(gateIdx).toBeGreaterThan(-1);
-    expect(rmIdx).toBeGreaterThan(-1);
-  });
-
   it("Case B: bkit-auto.yml IS deleted when bkit-cloud.yml is already on disk (subprocess upgrade)", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
@@ -1610,7 +1590,7 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     ).toBe(false);
   }, 90_000);
 
-  it("Case C: bkit-auto.yml is NOT deleted when bkit-cloud.yml absent and not installed (dry-run gate verification)", () => {
+  it("Case C: bkit-auto.yml is NOT deleted when bkit-cloud.yml absent (dry-run gate verification)", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
 
@@ -1620,8 +1600,8 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
 
     // Run upgrade --dry-run — even in dry-run mode the gate logic executes
-    // (the log line appears but no FS write occurs). Since bkit-cloud.yml is absent
-    // and not in candidates, the orphan removal code must NOT log the removal message.
+    // (the log line appears but no FS write occurs). Since bkit-cloud.yml is absent,
+    // the orphan removal code must NOT log the removal message.
     const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--auto-apply", "--dry-run"], {
       cwd: tmpDir,
       encoding: "utf-8",

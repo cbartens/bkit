@@ -8,7 +8,8 @@
     "**/*.generated.ts",
     "**/.agents/skills/**",
     "**/.claude/skills/**",
-    "**/.cursor/skills/**"
+    "**/.cursor/skills/**",
+    "**/.bkit/templates/**"
   ],
   "plugins": {
     "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"

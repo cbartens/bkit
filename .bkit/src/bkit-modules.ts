@@ -39,6 +39,7 @@ import {
   applyEffortRemap,
   applyOpencodeCommand,
   remapTemplateDest,
+  listFilesRecursive,
   type EffortMap,
 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
@@ -48,6 +49,7 @@ import {
   getWorkflowsRoot,
   getPromptsRoot,
   getBkitDocsRoot,
+  TEMPLATE_COPIES_DIR,
 } from "./bkit-paths.js";
 import {
   getInstallManifest,
@@ -82,7 +84,7 @@ import {
 } from "./bkit-cloud-env.js";
 import { OPENCODE_PROVIDER_DEFAULTS } from "./bkit-registry.js";
 import { migrateConfigMdToContext, migrateContextFetchToContext } from "./bkit-context-migrate.js";
-import { isRetiredOwned, retireOwnedFiles } from "./bkit-retire.js";
+import { isRetiredHashKey, retireOwnedFiles, withoutRetiredHashes } from "./bkit-retire.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -276,39 +278,44 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
-// Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
-// NOT shipped by the plain core pass — skip them there so the right owner writes them.
-// Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
-/** Paths bkit used to own and now only ships as copy-paste examples. Dropped from `.bkit/version` hashes so a stale key cannot exempt them from checks. */
-const RETIRED_MANAGED_PATHS = new Set([
-  ".github/renovate.json5",
-  ".github/renovate-local.json5",
-  ".github/workflows/renovate.yml",
-  ".github/dependabot.yml",
-  path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
-]);
 
 /**
- * Copy-paste examples. Install and upgrade never write them and never
- * drift-check them. A consumer copies the file and owns it.
+ * Templates. Install and upgrade copy them into the consumer's `.bkit/templates/`
+ * and never apply them. A consumer copies the file into the repo and owns it.
  */
-const COPY_PASTE_EXAMPLE_EXACT = new Set([
+const TEMPLATE_EXACT = new Set([
   ".github/renovate.json5",
   ".github/dependabot.yml",
   ".github/workflows/renovate.yml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/bkit-cloud.yml",
+  ".husky/pre-commit",
+  ".husky/pre-push",
+  ".vale.ini",
+  ".lintstagedrc.json",
+  "slop-scan.config.json",
+  ".prettierignore",
+  ".envrc",
+  ".cursor/settings.json",
+  ".cursor/environment.json",
+  ".cursor/Dockerfile",
   ".graphifyignore",
   ".serena/project.yml",
   "docs/capabilities.md",
 ]);
 
-export function isCopyPasteExample(relPath: string): boolean {
+export function isTemplate(relPath: string): boolean {
   const norm = relPath.split(path.sep).join("/");
-  if (COPY_PASTE_EXAMPLE_EXACT.has(norm)) return true;
+  if (TEMPLATE_EXACT.has(norm)) return true;
+  if (norm.startsWith(".vale/styles/House/")) return true;
   // Root `scripts/` in the templates holds only per-tool examples (`scripts/<tool>/`).
   // bkit's own scripts live under `.bkit/scripts/`.
   return norm === "scripts" || norm.startsWith("scripts/");
 }
 
+// Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
+// NOT shipped by the plain core pass — skip them there so the right owner writes them.
+// Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
   // consumer never receives them (#265). runLintModule emits them as Tier 1.
@@ -417,8 +424,8 @@ function processCoreTemplateDir(
     if (ent.isDirectory()) {
       processCoreTemplateDir(srcPath, relPath, dryRun, tokens, ws, logPrefix);
     } else if (ent.isFile()) {
-      // Copy-paste examples live under core dirs (scripts/, docs/) but are not installed.
-      if (isCopyPasteExample(relPath)) continue;
+      // Templates live under core dirs (scripts/, docs/) but are not installed.
+      if (isTemplate(relPath)) continue;
       // Skip opt-in-module-owned files that happen to live under a core dir.
       if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath)) continue;
       const dstPath = relPath;
@@ -541,6 +548,92 @@ export function runBkitDocs(
       console.log(`${logPrefix} ${tag}core: ${dstPath}`);
     }
   }
+}
+
+/** Template paths (relative to `.bkit/templates/`) a sync changed, added or removed. */
+export interface TemplateCopyChanges {
+  changed: string[];
+  added: string[];
+  removed: string[];
+}
+
+// Copy the template set (isTemplate) from the package into the consumer's
+// `.bkit/templates/`, raw: no token substitution, so the copy is the package bytes and
+// `git diff .bkit/templates` on an upgrade commit is the template changelog. Byte-compares
+// first, keeps the source mode (hooks and scripts are executable), and prunes copies that
+// left the set. Every change pushes a ws write in dry-run and live alike, so `bkit check`
+// flags a stale copy. No-op in dogfood: there the folder IS the package's template source.
+export function syncTemplateCopies(
+  cwd: string,
+  opts: { dryRun: boolean; ws: WriteSet },
+): TemplateCopyChanges {
+  const changes: TemplateCopyChanges = { changed: [], added: [], removed: [] };
+  if (path.resolve(cwd) === getPkgRoot()) return changes;
+  const srcRoot = getTemplatesRoot();
+  const dstRoot = path.join(cwd, TEMPLATE_COPIES_DIR);
+
+  const shipped = new Set<string>();
+  for (const srcPath of listFilesRecursive(srcRoot)) {
+    const rel = path.relative(srcRoot, srcPath);
+    if (!isTemplate(remapTemplateDest(rel))) continue;
+    shipped.add(rel);
+    const dstPath = path.join(dstRoot, rel);
+    const exists = fs.existsSync(dstPath);
+    if (exists && fs.readFileSync(srcPath).equals(fs.readFileSync(dstPath))) continue;
+    (exists ? changes.changed : changes.added).push(rel);
+    if (!opts.dryRun) {
+      fs.mkdirSync(path.dirname(dstPath), { recursive: true });
+      fs.copyFileSync(srcPath, dstPath);
+      fs.chmodSync(dstPath, fs.statSync(srcPath).mode);
+    }
+    opts.ws.writes.push({
+      path: path.join(TEMPLATE_COPIES_DIR, rel),
+      action: exists ? "update" : "write",
+    });
+  }
+
+  for (const dstPath of listFilesRecursive(dstRoot)) {
+    const rel = path.relative(dstRoot, dstPath);
+    if (shipped.has(rel)) continue;
+    changes.removed.push(rel);
+    if (!opts.dryRun) fs.rmSync(dstPath);
+    opts.ws.writes.push({ path: path.join(TEMPLATE_COPIES_DIR, rel), action: "update" });
+  }
+  if (!opts.dryRun) pruneEmptyDirs(dstRoot);
+  return changes;
+}
+
+// Remove empty folders under `root`, deepest first. `root` itself stays.
+function pruneEmptyDirs(root: string): void {
+  if (!fs.existsSync(root)) return;
+  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!ent.isDirectory()) continue;
+    const dir = path.join(root, ent.name);
+    pruneEmptyDirs(dir);
+    if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+  }
+}
+
+/** One-line pointer to the template docs, shared by the install and upgrade messages. */
+export const TEMPLATES_POINTER =
+  "Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).";
+
+/**
+ * The upgrade report for a template sync: one line per changed, added or removed
+ * template, then where to read about adopting them. Empty when nothing changed.
+ */
+export function formatTemplateChanges(changes: TemplateCopyChanges): string {
+  const lines = [
+    ...changes.changed.map((p) => `  changed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
+    ...changes.added.map((p) => `  added:   ${path.join(TEMPLATE_COPIES_DIR, p)}`),
+    ...changes.removed.map((p) => `  removed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
+  ];
+  if (lines.length === 0) return "";
+  return [
+    `Templates updated (${lines.length}). bkit never applies these; diff them against your own copies and adopt what you want:`,
+    ...lines,
+    TEMPLATES_POINTER,
+  ].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -936,6 +1029,16 @@ export function runCoreModule(ctx: ModuleContext): void {
   console.log(`${logPrefix} ${tag}Running bkit docs pass`);
   runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
 
+  // 3b2. Template copies — the template set into the consumer's `.bkit/templates/`
+  // (never applied to the repo; no-op in dogfood).
+  console.log(`${logPrefix} ${tag}Running template copies pass`);
+  const templateChanges = syncTemplateCopies(cwd, { dryRun, ws });
+  for (const [verb, paths] of Object.entries(templateChanges)) {
+    for (const p of paths) {
+      console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
+    }
+  }
+
   // 3c. Auto-migrate consumer context-fetch config onto .agents/context.md. Runs AFTER the
   // templates pass has (re)written context.md's managed block, so carried blocks land below a
   // header that already exists. Idempotent no-op once nothing remains. Consumers do nothing —
@@ -985,6 +1088,9 @@ export function runCoreModule(ctx: ModuleContext): void {
       const relPath = path.relative(cwd, absPath);
       if (relPath === path.join(".bkit", "version")) continue;
       if (relPath.startsWith(".agents" + path.sep)) continue;
+      // Template copies carry no hash; retired paths no longer keep one.
+      if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
+      if (isRetiredHashKey(relPath)) continue;
       if (!fs.existsSync(absPath)) continue;
       const hash = hashFile(absPath);
       if (hash) {
@@ -1001,18 +1107,15 @@ export function runCoreModule(ctx: ModuleContext): void {
     // paths (uninstall safety — shouldDeleteTier3 needs the hash if the file was written before
     // this narrowing landed).
     const narrowedExistingTier3: Record<string, string> = {};
-    for (const [p, h] of Object.entries(existingTier3Hashes)) {
+    for (const [p, h] of Object.entries(withoutRetiredHashes(existingTier3Hashes))) {
       if (byteEqualPaths.has(p)) narrowedExistingTier3[p] = h;
     }
     const tier3Hashes: Record<string, string> = { ...narrowedExistingTier3, ...newTier3Entries };
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    // Drop paths bkit no longer manages (dependency-updater examples). A stale key
-    // would keep exempting that workflow from the floating-tag check.
-    const canonicalHashes: Record<string, string> = {};
-    for (const [p, h] of Object.entries({ ...existingCanonical, ...newCanonicalEntries })) {
-      if (!RETIRED_MANAGED_PATHS.has(p) && !isRetiredOwned(p)) canonicalHashes[p] = h;
-    }
+    // Drop paths bkit no longer keeps (retired owned files, templates). A stale key
+    // would keep exempting that file from checks such as the floating-tag check.
+    const canonicalHashes = withoutRetiredHashes({ ...existingCanonical, ...newCanonicalEntries });
 
     // Decide whether a write is needed: version mismatch, first install, or new
     // canonical entries.
@@ -1023,9 +1126,8 @@ export function runCoreModule(ctx: ModuleContext): void {
       JSON.stringify(claudeAllowDerived) !==
       JSON.stringify(existingVersion?.claudeAllowDerived ?? []);
     const droppedRetired =
-      Object.keys(existingCanonical).some(
-        (p) => RETIRED_MANAGED_PATHS.has(p) || isRetiredOwned(p),
-      ) || Object.keys(existingTier3Hashes).some((p) => RETIRED_MANAGED_PATHS.has(p));
+      Object.keys(existingCanonical).some(isRetiredHashKey) ||
+      Object.keys(existingTier3Hashes).some(isRetiredHashKey);
     const needsWrite = versionChanged || hasNewEntries || derivedChanged || droppedRetired;
 
     if (needsWrite) {

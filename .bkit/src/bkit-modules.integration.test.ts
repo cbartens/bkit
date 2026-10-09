@@ -283,10 +283,10 @@ describe("module dispatch: --claude seeds only .claude/** + core", () => {
     // Run only core + claude modules
     dispatchModules(new Set(["core", "claude"]), ctx);
 
-    // Filter out internal payload paths (.bkit/templates/** are template source copies, not consumer outputs)
+    // Filter out internal payload paths (.bkit/templates/** are template copies, not consumer outputs)
     const consumerOutputPaths = ws.writes
       .map((e) => e.path)
-      .filter((p) => !p.includes(`${path.sep}.agents${path.sep}templates${path.sep}`))
+      .filter((p) => !/(^|[/\\])\.bkit[/\\]templates[/\\]/.test(p))
       .filter((p) => !p.includes(`${path.sep}.agents${path.sep}workflows${path.sep}`))
       .filter((p) => !p.includes(`${path.sep}.agents${path.sep}prompts${path.sep}`));
 
@@ -307,10 +307,10 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
 
     dispatchModules(new Set(["core", "ci", "lint"]), ctx);
 
-    // Filter out internal payload paths
+    // Filter out internal payload paths (.bkit/templates/** are template copies)
     const consumerOutputPaths = ws.writes
       .map((e) => e.path)
-      .filter((p) => !p.includes(`${path.sep}.agents${path.sep}templates${path.sep}`))
+      .filter((p) => !/(^|[/\\])\.bkit[/\\]templates[/\\]/.test(p))
       .filter((p) => !p.includes(`${path.sep}.agents${path.sep}workflows${path.sep}`))
       .filter((p) => !p.includes(`${path.sep}.agents${path.sep}prompts${path.sep}`));
 

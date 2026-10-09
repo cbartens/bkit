@@ -43,7 +43,7 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
    ```
    Seeds `.agents/`, `.claude/`, `.cursor/`, CI, lint, git-hooks.
 4. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
-5. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+5. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
 6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
@@ -65,7 +65,7 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
    ```
    If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
-3. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
 4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
@@ -382,9 +382,9 @@ Two capabilities **opt-in** — never wired by plain host/tooling install. Defau
 <!-- prettier-ignore -->
 | Updater | Copy from |
 | --- | --- |
-| Renovate rules | `node_modules/@cbartens/bkit/.bkit/templates/.github/renovate.json5` |
-| Renovate self-hosted runner | `node_modules/@cbartens/bkit/.bkit/templates/.github/workflows/renovate.yml` |
-| Dependabot | `node_modules/@cbartens/bkit/.bkit/templates/.github/dependabot.yml` |
+| Renovate rules | `.bkit/templates/.github/renovate.json5` |
+| Renovate self-hosted runner | `.bkit/templates/.github/workflows/renovate.yml` |
+| Dependabot | `.bkit/templates/.github/dependabot.yml` |
 
 Use one. The examples exclude `.github/workflows/bkit-cloud.yml` (`ignorePaths` / `exclude-paths`). `enabled: false` does not stop Renovate's digest pin. `bkit.depUpdater: "none"` skips the install-time absence advisory. Setup: `docs/deployments.md` § Dependency updaters.
 

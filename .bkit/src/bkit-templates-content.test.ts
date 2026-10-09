@@ -7,6 +7,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MARKERED_TEXT_DRIFT_PATHS } from "./bkit-preflight";
+import { isTemplate } from "./bkit-modules";
+import { listFilesRecursive } from "./bkit-install";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
@@ -534,10 +536,23 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
   });
 });
 
-describe("copy-paste code-graph examples", () => {
+describe("templates", () => {
   const root = path.resolve(".bkit/templates");
 
-  it("ships the copy-paste scripts and says to copy them", () => {
+  // JSON has no comment syntax; `.bkit/templates.md` covers those.
+  it("every template that can carry a comment says it is an example bkit install does not write", () => {
+    const templates = listFilesRecursive(root)
+      .map((abs) => path.relative(root, abs))
+      .filter((rel) => isTemplate(rel) && !rel.endsWith(".json"));
+    expect(templates).toContain(path.join(".github", "workflows", "ci.yml"));
+    for (const rel of templates) {
+      const text = fs.readFileSync(path.join(root, rel), "utf-8");
+      expect(text, rel).toMatch(/Example/);
+      expect(text, rel).toMatch(/does not write this file|does not write it/);
+    }
+  });
+
+  it("ships the code-graph scripts without a bkit managed block", () => {
     for (const rel of [
       "scripts/graphify/bkit-graphify.sh",
       "scripts/graphify/bkit-graphify-rollup.py",
@@ -550,10 +565,7 @@ describe("copy-paste code-graph examples", () => {
       ".serena/project.yml",
       "docs/capabilities.md",
     ]) {
-      const text = fs.readFileSync(path.join(root, rel), "utf-8");
-      expect(text).toMatch(/Copy/);
-      expect(text).toMatch(/does not write this file|does not write it/);
-      expect(text).not.toMatch(/bkit:start/);
+      expect(fs.readFileSync(path.join(root, rel), "utf-8"), rel).not.toMatch(/bkit:start/);
     }
   });
 

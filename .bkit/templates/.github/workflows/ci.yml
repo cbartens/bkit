@@ -1,7 +1,8 @@
-# This workflow is yours to own — bkit seeds it once and never rewrites it (Tier-3
-# seed-or-print). Edit freely. The one exception is the `# bkit:start verbose-ci-env`
-# block below: bkit's preflight checks for it by name to confirm the `[verbose ci]`
-# marker still works, so keep that named block intact if you want verbose-CI support.
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# Keep the `# bkit:start verbose-ci-env` block below intact if you want verbose-CI
+# support: bkit's preflight checks for it by name to confirm the `[verbose ci]` marker
+# still works.
 name: CI
 
 on:
@@ -156,8 +157,7 @@ jobs:
       # quiet. The default branch is read at runtime, so this block is identical for every repo.
       # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
       # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
-      # bkit-owned: edit it in the bkit template, not here. `bkit check` raises a (non-blocking)
-      # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
+      # See docs/deployments.md § "Promotion-lag warning".
       - name: Check Default Branch Lags Dev
         if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:

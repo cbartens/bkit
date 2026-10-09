@@ -180,7 +180,7 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
    ```
    If `bkit` not on PATH: `pnpm bkit upgrade --latest`. Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why.
-3. Read canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky, CI, `.claude/settings.json`, `.cursor/`, renovate, vale, etc.). MUST reconcile against this repo and adopt unless adoption would break existing functionality — seed-or-print files (e.g. `ci.yml`) do NOT overwrite existing files, so adoption is your job. For any template not adopted, state which and why.
+3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
 4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
 ````
 
@@ -405,7 +405,7 @@ bare `.bkit/comparison.md` or `.bkit/prompts/` in your own repo will not resolve
 | `node_modules/@cbartens/bkit/.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks |
 | `node_modules/@cbartens/bkit/.bkit/workflows/` | Canonical slash-command source (rendered into `.claude/commands/`, `.cursor/commands/`, `.opencode/commands/`) |
 | `node_modules/@cbartens/bkit/.bkit/prompts/` | Canonical subagent source (rendered into `.claude/agents/`, `.cursor/agents/`, `.opencode/agents/`) |
-| `node_modules/@cbartens/bkit/.bkit/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
+| `node_modules/@cbartens/bkit/.bkit/templates/` | Sources `bkit install` writes from (see § What install writes), plus the templates it copies into the consumer's `.bkit/templates/` (see `.bkit/templates.md`) |
 | `node_modules/@cbartens/bkit/dist/bkit-install.js` | Install engine — renders host outputs and applies templates (`.bkit/src/bkit-install.ts` is the TypeScript source, not shipped as such) |
 
 ---

@@ -249,12 +249,7 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
       INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
       coding assistant to apply each item. Each ACTION is self-contained.
 
-      Template reference (MANDATORY): canonical bkit-managed files (husky hooks,
-      CI workflows, .claude/settings.json, .cursor/ config, renovate, vale, etc.)
-      live at node_modules/@cbartens/bkit/.bkit/templates/. You MUST read these
-      templates and reconcile them against this repo's existing config — adopt as
-      much as possible WITHOUT breaking existing functionality. For any template
-      you do not adopt, state which one and why.
+      Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).
 
 
       --- 1/2 [advisory] husky-no-markers-precommit ---
@@ -295,12 +290,7 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
       INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
       coding assistant to apply each item. Each ACTION is self-contained.
 
-      Template reference (MANDATORY): canonical bkit-managed files (husky hooks,
-      CI workflows, .claude/settings.json, .cursor/ config, renovate, vale, etc.)
-      live at node_modules/@cbartens/bkit/.bkit/templates/. You MUST read these
-      templates and reconcile them against this repo's existing config — adopt as
-      much as possible WITHOUT breaking existing functionality. For any template
-      you do not adopt, state which one and why.
+      Templates: see .bkit/templates.md; copies live in .bkit/templates/ (if your own gates scan the repo, ignore .bkit/templates/).
 
 
       --- 1/1 [blocker] no-package-json ---

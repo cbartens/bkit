@@ -158,8 +158,7 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
-// ci.yml: Tier-3 (seed-or-print). Consumer-owned; bkit seeds once and never
-//   rewrites. It carries NAMED bkit-managed blocks (`verbose-ci-env`,
+// ci.yml: a template the consumer copies and owns. It carries NAMED blocks (`verbose-ci-env`,
 //   `main-lag-warning`), whose drift/absence is surfaced generically by the
 //   preflight `detectTier2TextDrift` advisory (named-block-aware — no per-block
 //   detector). The bare whole-file `# bkit:start`/`# bkit:end` markers were
@@ -200,12 +199,6 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     const content = readTemplate(".github/workflows/ci.yml");
     expect(countMatches(content, /^\s*# bkit:start$/m)).toBe(0);
     expect(countMatches(content, /^\s*# bkit:end$/m)).toBe(0);
-  });
-
-  it("ci.yml carries the Tier-3 seed-or-print ownership header", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    expect(content).toContain("yours to own");
-    expect(content).toContain("Tier-3");
   });
 
   it("ci.yml verbose-ci-env block contains the verbose-CI env wiring", () => {

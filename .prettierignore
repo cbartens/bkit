@@ -21,11 +21,10 @@ dist/
 .husky/_/
 *.tsbuildinfo
 pnpm-lock.yaml
-# bkit-seeded / reconciled JSON — bkit writes these with its own JSON.stringify
+# bkit-written / reconciled files — bkit writes these with its own JSON.stringify
 # layout (2-space, expanded arrays) and consumers have no prettier at install
 # time, so prettier must not reformat them or the next install / `bkit check`
-# would just revert the rewrite (permanent drift). Tier-3 byte-equal seeds plus
-# the Tier-2 reconciled .opencode/opencode.json.
+# would just revert the rewrite (permanent drift).
 .mcp.json
 .envrc
 .bkit/.env.example

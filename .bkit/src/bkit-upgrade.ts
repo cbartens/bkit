@@ -35,6 +35,8 @@ import { detectMarkerStyle } from "./bkit-markers.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";
+import { isRetiredHashKey, withoutRetiredHashes } from "./bkit-retire.js";
+import { TEMPLATE_COPIES_DIR } from "./bkit-paths.js";
 
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
 const EMPTY_TOKENS: TokenMap = {
@@ -479,13 +481,22 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const seedablePaths = new Set([...result.updated, ...result.skippedSeedable]);
 
-  const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
+  // Drop the keys bkit no longer keeps (retired owned files, templates), exactly as
+  // install's postDispatch does, so a clean upgrade is followed by a zero-write check.
+  const newCanonicalHashes = withoutRetiredHashes(bkitVersion.canonicalHashes);
+  const tier3Hashes = withoutRetiredHashes(bkitVersion.tier3Hashes);
+  const droppedRetired =
+    Object.keys(newCanonicalHashes).length !== Object.keys(bkitVersion.canonicalHashes).length ||
+    Object.keys(tier3Hashes).length !== Object.keys(bkitVersion.tier3Hashes).length;
   for (const relPath of seedablePaths) {
     // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
     // .env.example etc.) from canonicalHashes — they are not consumer-facing files
     // whose hashes bkit uses for drift detection. Mirrors the same filter applied
-    // in the install path (bkit-modules.ts postDispatch, line ~470).
+    // in the install path (bkit-modules.ts postDispatch). Template copies and
+    // retired paths carry no hash there either.
     if (relPath.startsWith(".agents" + path.sep)) continue;
+    if (relPath.startsWith(TEMPLATE_COPIES_DIR + path.sep)) continue;
+    if (isRetiredHashKey(relPath)) continue;
     const absolutePath = path.join(cwd, relPath);
     if (!fs.existsSync(absolutePath)) continue;
     newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
@@ -502,7 +513,8 @@ export function updateCanonicalHashesAfterUpgrade(
   if (
     seedablePaths.size === 0 &&
     pinnedVersion === bkitVersion.pinnedVersion &&
-    webFetchUnchanged
+    webFetchUnchanged &&
+    !droppedRetired
   ) {
     return;
   }
@@ -510,6 +522,7 @@ export function updateCanonicalHashesAfterUpgrade(
   const updated: BkitVersion = {
     ...bkitVersion,
     pinnedVersion,
+    tier3Hashes,
     canonicalHashes: newCanonicalHashes,
     ...(options.claudeAllowDerived == null
       ? {}

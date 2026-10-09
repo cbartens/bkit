@@ -9,7 +9,7 @@ import { CLASSIC_VERBS, parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS
 import { runGrader, buildComplianceRows, appendComplianceRows, formatComplianceSummary, readBkitVersion, } from "./bkit-comply.js";
 import { resolveGitSha } from "./bkit-telemetry.js";
 import { launchApp } from "./bkit-launch.js";
-import { dispatchModules, getPkgRoot, listMdFiles, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsAllows, pruneRetiredClaudeAskRules, opencodeProviderId, isCopyPasteExample, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, listMdFiles, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, enrichClaudeSettingsAllows, pruneRetiredClaudeAskRules, opencodeProviderId, isTemplate, syncTemplateCopies, formatTemplateChanges, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { findLineAnchoredMarkers, replaceManagedBlock, selectMarkers, } from "./bkit-markers.js";
 import { resolveTokens } from "./bkit-tokens.js";
@@ -763,7 +763,7 @@ export function updateManagedBlock(filePath, newContent, dryRun = false, markerS
         fs.writeFileSync(filePath, result.content, "utf-8");
     return true;
 }
-function listFilesRecursive(dir) {
+export function listFilesRecursive(dir) {
     if (!fs.existsSync(dir))
         return [];
     const out = [];
@@ -1831,9 +1831,8 @@ async function main() {
         // gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
         // modules keep their dest-presence gating just below.
         const installedModules = detectInstalledModules(process.cwd());
-        // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
-        // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
-        const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
+        // Resolve the consumer's tracker so upgrade renders tracker-conditional files
+        // (opencode.json, the mcp.json files) the same way install does.
         let upgradeTracker = DEFAULT_ISSUE_TRACKER;
         try {
             const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"));
@@ -1882,9 +1881,9 @@ async function main() {
                         // (host-gated, non-dry-run).
                         if (relPath === CLAUDE_CLOUD_RELPATH || relPath === CURSOR_CLOUD_RELPATH)
                             continue;
-                        // Copy-paste examples (updaters, Serena, graphify). Not in the install
-                        // manifest, so this walk would otherwise force-create them on upgrade.
-                        if (isCopyPasteExample(relPath))
+                        // Templates are never applied: upgrade refreshes the consumer's
+                        // `.bkit/templates/` copies instead (syncTemplateCopies below).
+                        if (isTemplate(relPath))
                             continue;
                         // Skip opt-in-module files the consumer hasn't opted into (dest absent).
                         if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
@@ -1901,16 +1900,11 @@ async function main() {
                             !installedModules.has(ownerModule)) {
                             continue;
                         }
-                        // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
-                        // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
-                        // so upgrade emits byte-identical output (install/upgrade can never disagree).
-                        const contentOverride = relPath === CLOUD_WORKFLOW_RELPATH
-                            ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
-                            : relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
-                                ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
-                                : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
-                                    ? buildMcpJson(entAbs, upgradeTracker)
-                                    : undefined;
+                        const contentOverride = relPath === OPENCODE_JSON_RELPATH && upgradeOpencodeProvider
+                            ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider, process.cwd())
+                            : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
+                                ? buildMcpJson(entAbs, upgradeTracker)
+                                : undefined;
                         candidates.push({
                             relPath,
                             templatePath: entAbs,
@@ -1925,14 +1919,11 @@ async function main() {
             collectTemplates(tplRoot, "");
         }
         // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
-        // Only remove when bkit-cloud.yml is already present or being installed in this run —
-        // otherwise a plain `bkit install` (no --cloud flag) would silently delete the old
-        // cloud workflow without seeding the replacement.
+        // Only remove when bkit-cloud.yml is present — otherwise the old cloud workflow
+        // would go with no replacement.
         const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
         const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
-        const cloudWillBeInstalled = candidates.some((c) => c.relPath === path.join(".github", "workflows", "bkit-cloud.yml"));
-        if (fs.existsSync(oldAutoWorkflow) &&
-            (fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled)) {
+        if (fs.existsSync(oldAutoWorkflow) && fs.existsSync(newCloudWorkflow)) {
             const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
             console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`);
             if (!upgradeFlags.dryRun) {
@@ -1948,6 +1939,16 @@ async function main() {
             cwd: process.cwd(),
             tokens,
         });
+        // Refresh the consumer's `.bkit/templates/` copies and name what changed. The
+        // list is computed before overwriting, so it is exactly the package's template
+        // diff. The copies carry no hash, so nothing here feeds `.bkit/version`.
+        const templateChanges = syncTemplateCopies(process.cwd(), {
+            dryRun: upgradeFlags.dryRun,
+            ws: { writes: [] },
+        });
+        const templateReport = formatTemplateChanges(templateChanges);
+        if (templateReport)
+            console.log(`${LOG_PREFIX} ${templateReport}`);
         // Task 3 (#281): re-render all installed provider blocks for upgrade.
         // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
         // For each ADDITIONAL installed provider, reconcile their template block into opencode.json

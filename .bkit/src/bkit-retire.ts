@@ -58,6 +58,44 @@ export const isRetiredOwned = (
   list: readonly RetiredFile[] = RETIRED_OWNED_FILES,
 ) => list.some((r) => r.path === relPath);
 
+/**
+ * Paths bkit used to write and now ships only as templates. The consumer's file
+ * stays; only its `.bkit/version` hash goes, so a stale key cannot exempt it from
+ * checks. Never list these in RETIRED_OWNED_FILES: that list deletes unedited copies.
+ */
+export const RETIRED_MANAGED_PATHS: ReadonlySet<string> = new Set([
+  ".github/renovate.json5",
+  ".github/renovate-local.json5",
+  ".github/workflows/renovate.yml",
+  ".github/dependabot.yml",
+  ".bkit/scripts/bkit-set-dependabot.sh",
+  ".github/workflows/ci.yml",
+  ".github/workflows/bkit-cloud.yml",
+  ".husky/pre-commit",
+  ".husky/pre-push",
+  ".vale.ini",
+  ".vale/styles/House/Filler.yml",
+  ".vale/styles/House/Hedging.yml",
+  ".vale/styles/House/LLMSlop.yml",
+  ".vale/styles/House/Verbose.yml",
+  ".lintstagedrc.json",
+  "slop-scan.config.json",
+  ".prettierignore",
+  ".envrc",
+  ".cursor/settings.json",
+  ".cursor/environment.json",
+  ".cursor/Dockerfile",
+]);
+
+/** A `.bkit/version` hash key bkit no longer keeps: a retired owned file or a retired managed path. */
+export const isRetiredHashKey = (relPath: string): boolean =>
+  RETIRED_MANAGED_PATHS.has(relPath) || isRetiredOwned(relPath);
+
+/** `hashes` without the keys bkit no longer keeps. */
+export function withoutRetiredHashes(hashes: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(hashes).filter(([p]) => !isRetiredHashKey(p)));
+}
+
 export interface RetireResult {
   /** Deleted (or, on dry-run, would be deleted): unchanged since bkit wrote them. */
   deleted: string[];
