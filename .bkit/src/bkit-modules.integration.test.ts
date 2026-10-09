@@ -1982,6 +1982,61 @@ describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .husky/pre-push delete-only skip — runs the real hook with a stub `pnpm` on PATH
+// that records each gate call, feeding git's pre-push stdin shape.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push delete-only push", () => {
+  const ZERO = "0".repeat(40);
+  const SHA = "a".repeat(40);
+  const REPO = process.cwd();
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-"));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/pnpm.log"\nexit 1\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const runHook = (hook: string, stdin: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "pnpm.log");
+    return { status: result.status, gated: fs.existsSync(log) };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: every ref deleted → exits 0 without running a gate`, () => {
+      const stdin =
+        `(delete) ${ZERO} refs/heads/a ${SHA}\n` + `(delete) ${ZERO} refs/heads/b ${SHA}\n`;
+      expect(runHook(hook, stdin)).toEqual({ status: 0, gated: false });
+    });
+
+    it(`${hook}: a delete mixed with an update → gates still run`, () => {
+      const stdin =
+        `(delete) ${ZERO} refs/heads/a ${SHA}\n` + `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`;
+      const r = runHook(hook, stdin);
+      expect(r.gated).toBe(true);
+      expect(r.status).not.toBe(0);
+    });
+
+    it(`${hook}: empty stdin → gates still run`, () => {
+      expect(runHook(hook, "").gated).toBe(true);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Challenge regression tests — Finding 1 (SHARED-DERIV portability + pipefail safety)
 //
 // The build challenge (Finding 1 HIGH) identified two coexisting defects in the

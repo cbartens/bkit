@@ -488,6 +488,8 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 | 7 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 | 8 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough — actionlint catches valid-YAML-but-invalid-GHA. |
 
+**Delete-only push (pre-push, first):** every stdin ref carries an all-zero local SHA (`git push origin --delete <branch>`) → exit 0, no gates. Any ref with a non-zero local SHA, empty stdin, or stdin a terminal (hook run by hand) → all gates run.
+
 **CI-suppressor HEAD guard (pre-push, before gates):** non-`dev`/`main` branch + HEAD carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]` → probe `gh pr list --head <branch> --state open`. Open PR → **BLOCKED** (vacuously green checks); add clean trigger commit + re-push. No open PR → allowed (sanctioned `[skip ci]` for mid-loop status, abort handover). `gh` unavailable → warn + allow (manual-push backstop; workflow CI-Dispatch Gate covers close push).
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 4–8 still run — prose unaffected; slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.

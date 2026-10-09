@@ -12,6 +12,31 @@
 # Revert-branch bypass: rolling back leaves the tree intentionally inconsistent (deleted
 # files referenced by surviving tests) — skip the suite so recovery lands; lint + typecheck still run.
 set -e
+
+# ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
+# `git push origin --delete <branch>` runs this hook too. Git feeds one line per ref on
+# stdin — "<local-ref> <local-sha> <remote-ref> <remote-sha>" — and a deleted ref has an
+# all-zero local sha. When EVERY line is a delete, the push carries no commits. A push
+# mixing a delete with a real update still gates, and so does an empty ref list. Reading
+# stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
+# hand-run hook from hanging.
+PUSH_SAW_REF=0
+PUSH_HAS_COMMITS=0
+if [ ! -t 0 ]; then
+  while read -r _push_local_ref push_local_sha _push_remote_ref _push_remote_sha; do
+    [ -n "$push_local_sha" ] || continue
+    PUSH_SAW_REF=1
+    case "$push_local_sha" in
+      *[!0]*) PUSH_HAS_COMMITS=1 ;;
+    esac
+  done
+fi
+if [ "$PUSH_SAW_REF" = "1" ] && [ "$PUSH_HAS_COMMITS" = "0" ]; then
+  echo "[pre-push] delete-only push — no commits to check, gates skipped" >&2
+  exit 0
+fi
+# ── end delete-only push
+
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0
