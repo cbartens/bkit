@@ -10,7 +10,7 @@
 //            0 is a legal answer (that step simply has not run).
 import { activeDoneSteps, runNumber } from "../../bkit-status.js";
 import { CommandError, EXIT } from "../lib.js";
-import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, statusFile, str, } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, STEP_FLAG, SUB_PLAN_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, readStatusRows, statusFile, str, } from "./status.js";
 /** Every MAX_* threshold the workflows route on. */
 export const THRESHOLDS = {
     // build
@@ -149,6 +149,45 @@ export const countersCommand = {
             run: (ctx) => {
                 const name = str(ctx.flags.name);
                 ctx.emit(name === undefined ? { thresholds: THRESHOLDS } : { value: threshold(name) });
+                return EXIT.OK;
+            },
+        },
+        rows: {
+            summary: "Count rows of one audit type in the active run (since its workflow-started row).",
+            flags: [
+                FILE_FLAG,
+                WORKFLOW_FLAG,
+                {
+                    name: "type",
+                    type: "string",
+                    required: true,
+                    help: "row type, e.g. ship-revalidate-dispatch",
+                },
+                {
+                    name: "position",
+                    type: "string",
+                    required: true,
+                    help: "next (count+1, the attempt about to start) | count",
+                },
+            ],
+            output: { value: "the counter at that position", count: "rows counted" },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+            run: (ctx) => {
+                const position = String(ctx.flags.position);
+                if (!["next", "count"].includes(position))
+                    throw new CommandError(EXIT.USAGE, "--position must be next or count");
+                const workflow = String(ctx.flags.workflow);
+                const type = String(ctx.flags.type);
+                const rows = readStatusRows(statusFile(ctx));
+                let start = -1;
+                rows.forEach((r, i) => {
+                    if (r.type === "workflow-started" && r.workflow === workflow)
+                        start = i;
+                });
+                const count = rows
+                    .slice(start + 1)
+                    .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
+                ctx.emit({ value: position === "next" ? count + 1 : count, count });
                 return EXIT.OK;
             },
         },

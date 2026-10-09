@@ -1184,13 +1184,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    printf '%s' "$CLOSE" | jq -r .artifactLinks > "{OUTBOX}/close-artifacts.md"
    printf '%s' "$CLOSE" | jq -r '.report | join("\n")' > "{OUTBOX}/close-telemetry.md"
    "$BKIT" comply --phase=build || echo "[bkit-comply] grader unavailable, skipping" >&2
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's|.*github\.com[:/]||; s|\.git$||' || echo "unknown/repo")
-   jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "build-close-workflow" --arg key "{FID}" \
-     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="build" | .step=$step | .key=$key | .category="agentic" | .description="Build closed for {FID}" | .status="BUILT"' \
-     >> "$WT/.bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: $WT/.bkit/issues.jsonl"
-   ROADMAP_LINE=$(tail -1 "$WT/.bkit/issues.jsonl" 2>/dev/null)
-   "$BKIT" roadmap fold >/dev/null || echo "[bkit-roadmap] fold skipped" >&2
+   ROADMAP_ROW=$("$BKIT" roadmap feature --root="$WT" --workflow=build --fid={FID} | jq -c .row)
    (
      if [ "$WT" = "$REPO_ROOT" ]; then
        echo "[bkit-roadmap] skipping dev-side roadmap mirror — adopt mode (worktree == main checkout); a dev checkout here would swap the branch under the run (feat-side row already written)" >&2
@@ -1202,8 +1196,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      cd "$REPO_ROOT" || exit 0
      CUR_BRANCH=$(git branch --show-current)
      if git checkout dev 2>/dev/null && git pull --ff-only origin dev 2>/dev/null; then
-       printf '%s\n' "$ROADMAP_LINE" >> .bkit/issues.jsonl
-       "$BKIT" roadmap fold >/dev/null || echo "[bkit-roadmap] fold skipped on dev" >&2
+       "$BKIT" roadmap feature --root=. --row="$ROADMAP_ROW" >/dev/null || echo "[bkit-roadmap] roadmap row skipped on dev" >&2
        git add -- .bkit/issues.jsonl docs/roadmap.md
        git commit --allow-empty -m "docs({FID}): build roadmap update bkit [skip ci]" -- .bkit/issues.jsonl docs/roadmap.md
        "$BKIT" branches push --mode=dev >/dev/null || echo "[bkit-roadmap] dev push failed — feat-side row already written" >&2

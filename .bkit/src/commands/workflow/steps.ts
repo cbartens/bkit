@@ -19,6 +19,7 @@ import {
   STEP_FLAG,
   SUB_PLAN_FLAG,
   WORKFLOW_FLAG,
+  extraField,
   positiveInt,
   readRuns,
   statusFile,
@@ -165,23 +166,6 @@ export function failuresProblem(
   if (verdict === "PASS" && failures !== 0) return `PASS needs failures=0, got ${failures}`;
   if (verdict === "FAIL" && failures <= 0) return `FAIL needs failures>0, got ${failures}`;
   return undefined;
-}
-
-/** `--field key=value`: value parsed as JSON when it parses, else kept as a string. */
-function extraField(spec: string): [string, unknown] {
-  const eq = spec.indexOf("=");
-  if (eq <= 0) throw new CommandError(EXIT.USAGE, `--field ${spec}: expected key=value`);
-  const key = spec.slice(0, eq);
-  const raw = spec.slice(eq + 1);
-  if (!/^[a-z][a-zA-Z0-9]*$/.test(key))
-    throw new CommandError(EXIT.USAGE, `--field key ${key} is not camelCase`);
-  return [key, parseJsonOrString(raw)];
-}
-
-/** Not JSON: a plain-text value, kept as written. */
-function parseJsonOrString(raw: string): unknown {
-  const parsed = parseJson(raw);
-  return parsed.ok ? parsed.value : raw;
 }
 
 const CORE_ROW_KEYS = new Set([

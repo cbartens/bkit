@@ -322,6 +322,15 @@ describe("bkit prs probe", () => {
     expect(gh.calls()[0]).toMatch(/^pr view 7 /);
   });
 
+  it("reports a CI-suppressing token in the title, any spelling, else null", async () => {
+    gh.view(pr({ title: "feat: thing [CI Skip]" }));
+    expect((await run(repo(), ["prs", "probe", "--number=7"])).json.titleSkipToken).toBe(
+      "[CI Skip]",
+    );
+    gh.view(pr({ title: "feat: thing" }));
+    expect((await run(repo(), ["prs", "probe", "--number=7"])).json.titleSkipToken).toBeNull();
+  });
+
   it("exits 4 when gh errors and 80 when it needs auth", async () => {
     gh.exit("list", 1);
     expect((await run(repo(), ["prs", "probe"])).code).toBe(4);

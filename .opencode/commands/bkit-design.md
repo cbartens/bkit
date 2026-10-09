@@ -632,8 +632,6 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    RT=$("$BKIT" runtime assert --file="{STATUS}" --workflow=design) || exit 2
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$("$BKIT" repo info 2>/dev/null | jq -r '.ownerRepo // empty'); [ -z "$REPO_SLUG" ] && REPO_SLUG="unknown/repo"
    if [ "$(jq -r .runtimeDevPushes <<<"$RT")" = "true" ]; then
      DEV=$("$BKIT" locks acquire --kind=dev --workflow=design --fid={FID}) || { echo "dev lock busy — serialise this run or use a separate clone" >&2; exit 1; }
      DEV_TOKEN=$(jq -r .token <<<"$DEV")
@@ -649,11 +647,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      DESIGN_DOC="docs/plans/{YYYYMM}/{FID}-design.md"
      BRANCH_BLOB=$(git rev-parse -q --verify "feat/{FID}:$DESIGN_DOC") || { echo "feat/{FID} carries no $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
      [ "$(git rev-parse -q --verify ":$DESIGN_DOC")" = "$BRANCH_BLOB" ] || { echo "squash did not stage the feat/{FID} copy of $DESIGN_DOC — nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
-     ISSUES_JSONL="$REPO_ROOT/.bkit/issues.jsonl"
-     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
-       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
-       >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
-     "$BKIT" roadmap fold --root="$REPO_ROOT" >/dev/null
+     "$BKIT" roadmap feature --root="$REPO_ROOT" --workflow=design --fid={FID} >/dev/null
      "$BKIT" ledgers commit --root="$REPO_ROOT" --month={YYYYMM} --fid={FID} --scope=core --mode=commit-allow-empty --squash-of="feat/{FID}" --message="docs({FID}): design DONE bkit [skip ci]" >/dev/null \
        || { echo "[bkit-ledgers] design-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
      "$BKIT" branches push --mode=dev >/dev/null || { echo "dev push failed" >&2; exit 1; }
@@ -666,10 +660,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      git push origin --delete "feat/{FID}" 2>/dev/null || true
    else
      git fetch origin dev "{BRANCH}"
-     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "design-close-workflow" --arg key "{FID}" \
-       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="design" | .step=$step | .key=$key | .category="agentic" | .description="Design closed for {FID}" | .status="DESIGNED"' \
-       >> ".bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: .bkit/issues.jsonl"
-     "$BKIT" roadmap fold >/dev/null
+     "$BKIT" roadmap feature --root=. --workflow=design --fid={FID} >/dev/null
      git add -- .bkit/issues.jsonl docs/roadmap.md
      git commit --allow-empty -m "docs({FID}): design roadmap update bkit [skip ci]" -- .bkit/issues.jsonl docs/roadmap.md
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)

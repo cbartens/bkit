@@ -345,3 +345,67 @@ describe("bkit counters max", () => {
     expect(Number(lines.at(-1))).toBe(names.length);
   });
 });
+
+describe("bkit counters rows", () => {
+  const probe = (at: string) => ({ type: "ship-revalidate-dispatch", workflow: "ship", at });
+  it("counts rows of the type since the active run's workflow-started row", async () => {
+    const file = log([
+      started("ship", "2026-10-01T00:00:00Z"),
+      probe("2026-10-01T00:01:00Z"),
+      finished("ship", "2026-10-01T00:02:00Z"),
+      started("ship", "2026-10-02T00:00:00Z"),
+      probe("2026-10-02T00:01:00Z"),
+      { type: "ship-gate-refusal", workflow: "ship", at: "2026-10-02T00:02:00Z" },
+      probe("2026-10-02T00:03:00Z"),
+    ]);
+    const base = [
+      "counters",
+      "rows",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--type=ship-revalidate-dispatch",
+    ];
+    expect((await run([...base, "--position=count"])).json).toEqual({ value: 2, count: 2 });
+    expect((await run([...base, "--position=next"])).json).toEqual({ value: 3, count: 2 });
+  });
+
+  it("a resumed run does not inherit a crashed run's rows (no workflow-finished between)", async () => {
+    const file = log([
+      started("ship", "2026-10-01T00:00:00Z"),
+      probe("2026-10-01T00:10:00Z"),
+      probe("2026-10-01T00:20:00Z"),
+      started("ship", "2026-10-02T00:00:00Z"),
+    ]);
+    const res = await run([
+      "counters",
+      "rows",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--type=ship-revalidate-dispatch",
+      "--position=next",
+    ]);
+    expect(res.json).toEqual({ value: 1, count: 0 });
+  });
+
+  it("starts at 1 on a fresh run, and refuses a bad position or a missing log", async () => {
+    const file = log([started("ship", "2026-10-01T00:00:00Z")]);
+    const base = [
+      "counters",
+      "rows",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--type=ship-revalidate-dispatch",
+    ];
+    expect((await run([...base, "--position=next"])).json.value).toBe(1);
+    expect((await run([...base, "--position=current"])).code).toBe(2);
+    const missing = [
+      "counters",
+      "rows",
+      "--file=/nonexistent/status.jsonl",
+      "--workflow=ship",
+      "--type=x",
+      "--position=count",
+    ];
+    expect((await run(missing)).code).toBe(3);
+  });
+});

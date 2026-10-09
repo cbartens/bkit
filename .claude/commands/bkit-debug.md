@@ -828,9 +828,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    "$BKIT" comply --phase=debug || echo "[bkit-comply] grader unavailable, skipping" >&2
    WT=$(git rev-parse --show-toplevel)
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   ROADMAP_LINE=$(printf '%s' "$CLOSE" | jq -c --arg key "{FID}" '{ts:(now*1000|floor), kind:"feature", repo:.counterRow.repo, bkitVersion:.counterRow.bkitVersion, workflow:"debug", step:"debug-close-workflow", key:$key, category:"agentic", description:("Debug closed for " + $key), status:.featureStatus}')
-   printf '%s\n' "$ROADMAP_LINE" >> "$WT/.bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: $WT/.bkit/issues.jsonl"
-   "$BKIT" roadmap fold --root="$WT" >/dev/null || echo "[bkit-roadmap] fold skipped" >&2
+   ROADMAP_ROW=$("$BKIT" roadmap feature --root="$WT" --workflow=debug --fid={FID} | jq -c .row)
    (
      if [ "$WT" = "$REPO_ROOT" ]; then
        echo "[bkit-roadmap] skipping dev-side roadmap mirror — adopt mode (worktree == main checkout); a dev checkout here would swap the branch under the run (feat-side row already written)" >&2
@@ -842,8 +840,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      trap '"$BKIT" locks release --kind=dev --workflow=debug --fid={FID} --token="$DEV_TOKEN" >/dev/null' EXIT
      CUR_BRANCH=$(git branch --show-current)
      if git checkout dev 2>/dev/null && git pull --ff-only origin dev 2>/dev/null; then
-       printf '%s\n' "$ROADMAP_LINE" >> .bkit/issues.jsonl
-       "$BKIT" roadmap fold --root="$REPO_ROOT" >/dev/null || echo "[bkit-roadmap] fold skipped on dev" >&2
+       "$BKIT" roadmap feature --root=. --row="$ROADMAP_ROW" >/dev/null || echo "[bkit-roadmap] roadmap row skipped on dev" >&2
        git add -- .bkit/issues.jsonl docs/roadmap.md
        git commit --allow-empty -m "docs({FID}): debug roadmap update bkit [skip ci]" -- .bkit/issues.jsonl docs/roadmap.md
        "$BKIT" branches push --mode=dev >/dev/null || echo "[bkit-roadmap] dev push failed — feat-side row already written" >&2

@@ -18,9 +18,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execFileSync } from "node:child_process";
-import * as os from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const WORKFLOWS_DIR = path.resolve(REPO_ROOT, ".bkit/workflows");
@@ -141,8 +139,15 @@ describe("bkit-ship.md — Step 9 probes before dispatching (no duplicate CI run
     expect(poll).toBeGreaterThan(probe);
   });
 
-  it("records the probe outcome in a ship-revalidate-dispatch row", () => {
-    expect(step9!).toMatch(/type:"ship-revalidate-dispatch"[^\n]*dispatched:\.dispatched/);
+  it("records the probe outcome in a ship-revalidate-dispatch row through bkit status row", () => {
+    const row = step9!
+      .split("\n")
+      .find((l) => /"\$BKIT" status row [^\n]*--type=ship-revalidate-dispatch\b/.test(l));
+    expect(row, "ship-revalidate-dispatch status row not found").toBeDefined();
+    for (const field of ["head", "probe", "reason", "dispatched", "attempts"]) {
+      expect(row!).toMatch(new RegExp(`--field=${field}=`));
+    }
+    expect(step9!).toMatch(/PROBE_DISPATCHED=\$\(printf '%s' "\$PROBE" \| jq -r \.dispatched\)/);
   });
 
   it("keeps ship free of the gate's outcome vocabulary (probe is never a pass condition)", () => {
@@ -191,59 +196,16 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     expect(shipMd).not.toMatch(/^\s*MAX_REVALIDATE_ATTEMPT=/m);
   });
 
-  describe("the attempt counts only re-validate rows written since this run started", () => {
-    // An all-runs count would carry a prior ship's spent budget into a resumed
-    // run and refuse a legitimate first poll. Runs the derivation as written.
-    const dirs: string[] = [];
-    afterEach(() => {
-      for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
-    });
-
-    function attempt(rows: object[]): string {
-      const block = fences(shipMd).find((f) => /^\s*REVALIDATE_ATTEMPT=\$\(jq -s/m.test(f));
-      expect(block, "REVALIDATE_ATTEMPT derivation block not found").toBeDefined();
-      const derive = block!
-        .split("\n")
-        .filter((l) => !/"\$BKIT" counters route\b/.test(l))
-        .join("\n");
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-revalidate-"));
-      dirs.push(dir);
-      const status = path.join(dir, "status.jsonl");
-      fs.writeFileSync(status, rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
-      return execFileSync(
-        "bash",
-        ["-c", `${derive.replaceAll("{STATUS}", status)}\nprintf '%s' "$REVALIDATE_ATTEMPT"`],
-        { encoding: "utf-8" },
-      );
-    }
-
-    const start = (at: string) => ({
-      type: "step-done",
-      workflow: "ship",
-      step: "ship-start-workflow",
-      at,
-    });
-    const dispatch = (at: string) => ({ type: "ship-revalidate-dispatch", workflow: "ship", at });
-
-    it("a resumed run does not inherit the previous run's re-validate rows", () => {
-      expect(
-        attempt([
-          start("2026-10-01T00:00:00Z"),
-          dispatch("2026-10-01T00:10:00Z"),
-          dispatch("2026-10-01T00:20:00Z"),
-          start("2026-10-02T00:00:00Z"),
-        ]),
-      ).toBe("1");
-    });
-
-    it("counts this run's re-validate rows", () => {
-      expect(
-        attempt([
-          start("2026-10-02T00:00:00Z"),
-          dispatch("2026-10-02T00:10:00Z"),
-          dispatch("2026-10-02T00:20:00Z"),
-        ]),
-      ).toBe("3");
-    });
+  it("derives the attempt from this run's ship-revalidate-dispatch rows via bkit counters rows", () => {
+    // Run scoping (a resumed run does not inherit a prior run's rows) is
+    // pinned in commands/workflow/counters.test.ts 'bkit counters rows'.
+    const block = fences(shipMd).find((f) =>
+      /"\$BKIT" counters route --name=REVALIDATE_ATTEMPT\b/.test(f),
+    );
+    expect(block, "REVALIDATE_ATTEMPT routing block not found").toBeDefined();
+    expect(block!).toContain(
+      'REVALIDATE_ATTEMPT=$("$BKIT" counters rows --file="$STATUS" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2',
+    );
+    expect(block!).not.toMatch(/REVALIDATE_ATTEMPT=\$\(jq\b/);
   });
 });

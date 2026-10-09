@@ -18,9 +18,19 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { compareTs, parse } from "../../bkit-telemetry.js";
-import { EXIT, type CommandSpec, type RunContext } from "../lib.js";
+import { compareTs, parse, resolveRepoSlug, validate } from "../../bkit-telemetry.js";
+import { readBkitVersion } from "../../bkit-version.js";
+import { CommandError, EXIT, parseJson, type CommandSpec, type RunContext } from "../lib.js";
 import { str } from "./status.js";
+
+/** Roadmap status each workflow's close moves the feature to. */
+export const FEATURE_STATUS: Readonly<Record<string, string>> = {
+  design: "DESIGNED",
+  plan: "PLANNED",
+  build: "BUILT",
+  debug: "DEBUGGED",
+  ship: "SHIPPED",
+};
 
 export const MARKERS = {
   notesPreStart: "<!-- bkit:roadmap-notes-pre start -->",
@@ -268,19 +278,27 @@ function plansHaveMarkdown(root: string): boolean {
 
 const EMPTY: Projection = { designed: [], planned: [], built: [], debugged: [], shipped: [] };
 
-function fold(ctx: RunContext): number {
-  const root = path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
+export interface RoadmapFold {
+  path: string;
+  written: boolean;
+  counts: Record<string, number>;
+  malformed: number;
+}
+
+/** Re-render `<root>/docs/roadmap.md` from `<root>/.bkit/issues.jsonl`; never throws for a bad ledger or board. */
+export function foldRoadmap(root: string, log: (m: string) => void): RoadmapFold {
   const md = path.join(root, "docs", "roadmap.md");
   const ledger = path.join(root, ".bkit", "issues.jsonl");
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
   let projection = EMPTY;
   let malformed = 0;
-  const raw = fs.existsSync(ledger) ? fs.readFileSync(ledger, "utf-8") : "";
+  const raw =
+    fs.existsSync(ledger) && fs.statSync(ledger).isFile() ? fs.readFileSync(ledger, "utf-8") : "";
   if (raw === "") {
-    ctx.log(".bkit/issues.jsonl absent or empty — status board will be empty (never blocked)");
+    log(".bkit/issues.jsonl absent or empty — status board will be empty (never blocked)");
     if (plansHaveMarkdown(root)) {
-      ctx.log(
+      log(
         "docs/plans/** has in-flight artifacts but the ledger is empty — run 'bkit telemetry migrate' to bootstrap-seed it",
       );
     }
@@ -288,22 +306,93 @@ function fold(ctx: RunContext): number {
     const parsed = parse(raw);
     malformed = parsed.malformedLineCount;
     // One torn line skips that row only; the board keeps every row that parses.
-    if (malformed > 0) ctx.log(`.bkit/issues.jsonl: ${malformed} malformed line(s) skipped`);
+    if (malformed > 0) log(`.bkit/issues.jsonl: ${malformed} malformed line(s) skipped`);
     projection = project(parsed.events);
   }
 
   const current =
     fs.existsSync(md) && fs.statSync(md).isFile() ? fs.readFileSync(md, "utf-8") : undefined;
-  const { board, log } = foldBoard(projection, current, now);
-  for (const line of log) ctx.log(line);
+  const { board, log: foldLog } = foldBoard(projection, current, now);
+  for (const line of foldLog) log(line);
   const problem = writeBoard(md, board);
-  if (problem) ctx.log(`could not write ${md} — board left as-is (fail-open): ${problem}`);
-  ctx.emit({
+  if (problem) log(`could not write ${md} — board left as-is (fail-open): ${problem}`);
+  return {
     path: md,
     written: problem === undefined,
     counts: Object.fromEntries(SECTIONS.map(([bucket]) => [bucket, projection[bucket].length])),
     malformed,
-  });
+  };
+}
+
+function fold(ctx: RunContext): number {
+  ctx.emit({ ...foldRoadmap(path.resolve(ctx.cwd, str(ctx.flags.root) ?? "."), ctx.log) });
+  return EXIT.OK;
+}
+
+/** The `kind: "feature"` ledger row a phase writes when it moves the feature on. */
+export function featureRow(
+  root: string,
+  o: { workflow: string; fid: string; status: string; step: string },
+): Record<string, unknown> {
+  const phase = o.workflow.charAt(0).toUpperCase() + o.workflow.slice(1);
+  return {
+    ts: Date.now(),
+    kind: "feature",
+    repo: resolveRepoSlug(root) || "unknown/repo",
+    bkitVersion: readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown",
+    workflow: o.workflow,
+    step: o.step,
+    key: o.fid,
+    category: "agentic",
+    description: `${phase} closed for ${o.fid}`,
+    status: o.status,
+  };
+}
+
+/** Append one row to `<root>/.bkit/issues.jsonl`; the failure reason, or undefined. Fail-open by contract. */
+function appendLedgerRow(root: string, row: Record<string, unknown>): string | undefined {
+  const file = path.join(root, ".bkit", "issues.jsonl");
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+    return undefined;
+  } catch (err) {
+    // Fail-open: the caller logs it and the close carries on.
+    return (err as Error).message;
+  }
+}
+
+function feature(ctx: RunContext): number {
+  const root = path.resolve(ctx.cwd, str(ctx.flags.root) ?? ".");
+  const given = str(ctx.flags.row);
+  let row: Record<string, unknown>;
+  if (given !== undefined) {
+    const parsed = parseJson(given);
+    if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) {
+      throw new CommandError(EXIT.USAGE, "--row must be one JSON object");
+    }
+    row = parsed.value as Record<string, unknown>;
+  } else {
+    const workflow = str(ctx.flags.workflow);
+    const fid = str(ctx.flags.fid);
+    if (!workflow || !fid)
+      throw new CommandError(EXIT.USAGE, "give --row, or --workflow and --fid");
+    const status = str(ctx.flags.status) ?? FEATURE_STATUS[workflow];
+    if (!status)
+      throw new CommandError(EXIT.USAGE, `--status is required for workflow ${workflow}`);
+    row = featureRow(root, {
+      workflow,
+      fid,
+      status,
+      step: str(ctx.flags.step) ?? `${workflow}-close-workflow`,
+    });
+  }
+  const check = validate(row);
+  if (!check.ok) throw new CommandError(EXIT.USAGE, `not a valid feature row: ${check.reason}`);
+  const problem = appendLedgerRow(root, row);
+  if (problem) ctx.log(`append failed: ${path.join(root, ".bkit", "issues.jsonl")} — ${problem}`);
+  const board = foldRoadmap(root, ctx.log);
+  ctx.emit({ row, appended: problem === undefined, written: board.written, path: board.path });
   return EXIT.OK;
 }
 
@@ -341,6 +430,41 @@ export const roadmapCommand: CommandSpec = {
         malformed: "ledger lines that did not parse (skipped)",
       },
       run: (ctx) => fold(ctx),
+    },
+    feature: {
+      summary:
+        "Append the feature's roadmap row to .bkit/issues.jsonl, then re-render the board (fail-open).",
+      flags: [
+        {
+          name: "root",
+          type: "string",
+          help: "checkout holding docs/ and .bkit/ (default: the working directory)",
+        },
+        { name: "workflow", type: "string", help: "design|plan|build|debug|ship" },
+        { name: "fid", type: "string", help: "feature id (the row's key)" },
+        {
+          name: "status",
+          type: "string",
+          help: "roadmap status (default: the workflow's — DESIGNED, PLANNED, BUILT, DEBUGGED, SHIPPED)",
+        },
+        {
+          name: "step",
+          type: "string",
+          help: "step recorded on the row (default <workflow>-close-workflow)",
+        },
+        {
+          name: "row",
+          type: "string",
+          help: "append this row as given (a row an earlier call printed), instead of building one",
+        },
+      ],
+      output: {
+        row: "the row appended",
+        appended: "false when the ledger could not be written (logged; never fails)",
+        written: "false when the board could not be written",
+        path: "docs/roadmap.md, absolute",
+      },
+      run: (ctx) => feature(ctx),
     },
   },
 };

@@ -56,6 +56,22 @@ export const readStatusEvents = (file) => readStatusRows(file);
 export const readRuns = (file) => fold(readStatusEvents(file));
 /** `--file`, resolved against the command's working directory. */
 export const statusFile = (ctx) => path.resolve(ctx.cwd, String(ctx.flags.file));
+/** `--field key=value`: value parsed as JSON when it parses, else kept as a string. */
+export function extraField(spec) {
+    const eq = spec.indexOf("=");
+    if (eq <= 0)
+        throw new CommandError(EXIT.USAGE, `--field ${spec}: expected key=value`);
+    const key = spec.slice(0, eq);
+    const raw = spec.slice(eq + 1);
+    if (!/^[a-z][a-zA-Z0-9]*$/.test(key))
+        throw new CommandError(EXIT.USAGE, `--field key ${key} is not camelCase`);
+    return [key, parseJsonOrString(raw)];
+}
+/** Not JSON: a plain-text value, kept as written. */
+function parseJsonOrString(raw) {
+    const parsed = parseJson(raw);
+    return parsed.ok ? parsed.value : raw;
+}
 /** A positive-integer flag, or undefined when absent. */
 export function positiveInt(value, flag) {
     if (value === undefined)
@@ -138,6 +154,14 @@ const META_FIELDS = {
     "debug-attempt": { key: "debugAttempt", check: (v) => positiveInt(v, "debug-attempt") },
     "plan-source": { key: "planSource", check: (v) => oneOf(v, PLAN_SOURCES, "--plan-source") },
 };
+/** Row types the fold reads; each has its own verb (workflows start|fail|close, steps done, status meta). */
+const FOLDED_TYPES = new Set([
+    "workflow-started",
+    "step-done",
+    "workflow-meta",
+    "workflow-done",
+    "workflow-failed",
+]);
 /** Markers that record the row's own time or a fact, not a value. */
 const META_MARKS = {
     "soak-entry": (at) => ({ soakEntryAt: at }),
@@ -311,6 +335,50 @@ export const statusCommand = {
                     type: "workflow-meta",
                     workflow: String(ctx.flags.workflow),
                     at,
+                    ...fields,
+                };
+                fs.appendFileSync(file, appendLine(row));
+                ctx.emit({ row });
+                return EXIT.OK;
+            },
+        },
+        row: {
+            summary: "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI).",
+            flags: [
+                FILE_FLAG,
+                WORKFLOW_FLAG,
+                {
+                    name: "type",
+                    type: "string",
+                    required: true,
+                    help: "row type, kebab-case (the folded types have their own verbs)",
+                },
+                {
+                    name: "field",
+                    type: "string",
+                    repeatable: true,
+                    help: "row field key=value (value parsed as JSON when it is JSON)",
+                },
+            ],
+            output: { row: "the appended row" },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (a row never starts a log)" },
+            run: (ctx) => {
+                const type = String(ctx.flags.type);
+                if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(type))
+                    throw new CommandError(EXIT.USAGE, `--type ${type} is not kebab-case`);
+                if (FOLDED_TYPES.has(type))
+                    throw new CommandError(EXIT.USAGE, `--type ${type} is folded; write it with its own verb`);
+                const fields = Object.fromEntries((ctx.flags.field ?? []).map(extraField));
+                const clash = ["type", "workflow", "at"].filter((k) => k in fields);
+                if (clash.length > 0)
+                    throw new CommandError(EXIT.USAGE, `--field cannot set ${clash.join(", ")}`);
+                const file = statusFile(ctx);
+                if (!fs.existsSync(file))
+                    throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
+                const row = {
+                    type,
+                    workflow: String(ctx.flags.workflow),
+                    at: statusTimestamp(),
                     ...fields,
                 };
                 fs.appendFileSync(file, appendLine(row));

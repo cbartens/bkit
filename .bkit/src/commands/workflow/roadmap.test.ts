@@ -545,3 +545,67 @@ describe("project", () => {
     expect(p.planned.map((r) => r.key)).toEqual(["a"]);
   });
 });
+
+describe("bkit roadmap feature", () => {
+  async function feat(cwd: string, ...flags: string[]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand(["roadmap", "feature", ...flags], [roadmapCommand], {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+    });
+    return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+  }
+  const rows = (r: string) =>
+    fs
+      .readFileSync(path.join(r, ".bkit/issues.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("appends the workflow's feature row and re-renders the board", async () => {
+    const r = root();
+    const res = await feat(r, "--workflow=build", "--fid=12-csv");
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ appended: true, written: true });
+    expect(rows(r)).toEqual([res.json.row]);
+    expect(res.json.row).toMatchObject({
+      kind: "feature",
+      workflow: "build",
+      step: "build-close-workflow",
+      key: "12-csv",
+      category: "agentic",
+      description: "Build closed for 12-csv",
+      status: "BUILT",
+    });
+    expect(board(r)).toContain("12-csv");
+  });
+
+  it("takes --status and --step, and re-appends a printed row verbatim with --row", async () => {
+    const a = root();
+    const first = await feat(a, "--workflow=ship", "--fid=7-x", "--step=ship-update-docs");
+    expect(first.json.row).toMatchObject({ status: "SHIPPED", step: "ship-update-docs" });
+    const b = root();
+    const copy = await feat(b, `--row=${JSON.stringify(first.json.row)}`);
+    expect(copy.code).toBe(0);
+    expect(rows(b)).toEqual([first.json.row]);
+  });
+
+  it("refuses a missing fid, an unknown workflow without --status, and an invalid row", async () => {
+    const r = root();
+    expect((await feat(r, "--workflow=build")).code).toBe(2);
+    expect((await feat(r, "--workflow=audit", "--fid=1-x")).code).toBe(2);
+    expect((await feat(r, '--row={"kind":"feature"}')).code).toBe(2);
+    expect((await feat(r, "--row=nope")).code).toBe(2);
+  });
+
+  it("is fail-open: an unwritable ledger is logged and the command still exits 0", async () => {
+    const r = root();
+    fs.mkdirSync(path.join(r, ".bkit/issues.jsonl"));
+    const res = await feat(r, "--workflow=plan", "--fid=3-y");
+    expect(res.code).toBe(0);
+    expect(res.json.appended).toBe(false);
+    expect(res.err).toContain("append failed");
+  });
+});

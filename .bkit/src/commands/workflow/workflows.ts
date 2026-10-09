@@ -56,19 +56,11 @@ import {
   resolveMonth,
   workflowLockPath,
 } from "./locks.js";
+import { FEATURE_STATUS } from "./roadmap.js";
 import { EXIT_NO_STATUS, WORKFLOW_FLAG, positiveInt, readStatusEvents, str } from "./status.js";
 
 /** Sentinels a workflow leaves in its logs folder; either one existing means a handover is due. */
 export const SENTINELS = [".rebase-failed", ".deferred-blocked"] as const;
-
-/** Roadmap status each workflow's close moves the feature to. */
-export const FEATURE_STATUS: Readonly<Record<string, string>> = {
-  design: "DESIGNED",
-  plan: "PLANNED",
-  build: "BUILT",
-  debug: "DEBUGGED",
-  ship: "SHIPPED",
-};
 
 /** Exit code (start --lock-held): the lock is missing or belongs to another owner. */
 export const EXIT_LOCK_NOT_HELD = 6;

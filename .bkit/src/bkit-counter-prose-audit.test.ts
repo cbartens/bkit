@@ -2,7 +2,7 @@
  * bkit-counter-prose-audit.test.ts — WS3-T3 (#58 / #234), moved onto `bkit`
  * commands by #467.
  *
- * Attempt counters are derived from status.jsonl by `bkit counters derive|run`
+ * Attempt counters are derived from status.jsonl by `bkit counters derive|run|rows`
  * and compared to their cap by `bkit counters route`; what those commands
  * compute (positions, de-dupe, run boundaries, a resume keeping its run number,
  * the MAX_* values) is pinned in commands/workflow/counters.test.ts. This audit
@@ -20,7 +20,8 @@
  *   4. Completeness: every fenced block that reads `$COUNTER` (to route on it
  *      or write it) derives it in the same block through a command — shell
  *      state does not survive between orchestrator Bash calls, so a variable
- *      used without being set in-block is model-authored. Routing and writing
+ *      used without being set in-block is model-authored. No counter is
+ *      derived by raw jq over status.jsonl. Routing and writing
  *      flags never take a held `{COUNTER}` placeholder; display-only uses
  *      (filenames, comment headers) may, since a command printed that value
  *      earlier in the same step.
@@ -83,9 +84,9 @@ const realFiles = () =>
 
 type Corpus = Array<{ path: string; content: string }>;
 
-/** `NAME=$("$BKIT" counters derive|run ...)` — the in-block derive of NAME. */
+/** `NAME=$("$BKIT" counters derive|run|rows ...)` — the in-block derive of NAME. */
 const deriveAssign = (name: string) =>
-  new RegExp(`\\b${name}=\\$\\(\\s*"\\$BKIT" counters (?:derive|run)\\b`);
+  new RegExp(`\\b${name}=\\$\\(\\s*"\\$BKIT" counters (?:derive|run|rows)\\b`);
 
 /** Step names a `bkit counters derive` call reads, in a block or file. */
 function derivedSteps(text: string): string[] {
@@ -362,20 +363,6 @@ describe("3. commit cadence — every counted step commits in-block or is explic
 // 4. Completeness — a block that routes on or writes a counter derives it
 // ---------------------------------------------------------------------------
 
-/**
- * Counters derived from something other than step-done rows, which
- * `bkit counters derive` cannot count. Each is still derived IN-BLOCK, and the
- * entry says how — checked below, so the exemption cannot outlive its shape.
- */
-const NON_COMMAND_COUNTERS: Record<string, { derive: RegExp; reason: string }> = {
-  REVALIDATE_ATTEMPT: {
-    derive:
-      /\bREVALIDATE_ATTEMPT=\$\(jq [^\n]*\| length \+ 1'[^\n]*\)\n\s*case "\$REVALIDATE_ATTEMPT" in '' \| \*\[!0-9\]\*\)/,
-    reason:
-      "counts ship-revalidate-dispatch event rows (not step-done rows) since this run's start; derived in-block by a jq length count with a numeric case guard",
-  },
-};
-
 /** Every counter the corpus routes on or derives. */
 function counterNames(files: Corpus): string[] {
   const names = new Set<string>();
@@ -383,7 +370,7 @@ function counterNames(files: Corpus): string[] {
     for (const m of f.content.matchAll(/\bcounters route --name=([A-Z][A-Z0-9_]*)/g))
       names.add(m[1]!);
     for (const m of f.content.matchAll(
-      /\b([A-Z][A-Z0-9_]*)=\$\(\s*"\$BKIT" counters (?:derive|run)\b/g,
+      /\b([A-Z][A-Z0-9_]*)=\$\(\s*"\$BKIT" counters (?:derive|run|rows)\b/g,
     ))
       names.add(m[1]!);
   }
@@ -405,8 +392,7 @@ function findIncompleteBlocks(files: Corpus, names: string[]): CompletenessViola
         // Any `$`-prefixed reference — `$NAME`, `${NAME}`, quoted or not. The
         // `$` must be adjacent to the name, so `$MAX_NAME` never matches.
         if (!new RegExp(`\\$\\{?${name}\\b`).test(block)) continue;
-        const derive = NON_COMMAND_COUNTERS[name]?.derive ?? deriveAssign(name);
-        if (!derive.test(block)) {
+        if (!deriveAssign(name).test(block)) {
           violations.push({
             file: f.path,
             counter: name,
@@ -451,12 +437,38 @@ describe("4. completeness — every block that routes on or writes a counter der
     );
   });
 
-  it("each non-command counter is still routed, and still derived in-block the documented way", () => {
-    for (const [name, { derive }] of Object.entries(NON_COMMAND_COUNTERS)) {
-      expect(names, `stale exemption ${name}`).toContain(name);
-      const blocks = files.flatMap((f) => fencedBlocks(f.content).map((b) => b.block));
-      expect(blocks.some((b) => derive.test(b))).toBe(true);
-    }
+  it("REVALIDATE_ATTEMPT (ship-revalidate-dispatch rows, not step-done rows) is derived by `bkit counters rows`", () => {
+    expect(names).toContain("REVALIDATE_ATTEMPT");
+    const blocks = files.flatMap((f) => fencedBlocks(f.content).map((b) => b.block));
+    expect(
+      blocks.some((b) =>
+        /\bREVALIDATE_ATTEMPT=\$\("\$BKIT" counters rows [^\n]*--type=ship-revalidate-dispatch --position=next \| jq -er \.value\) \|\| exit 2/.test(
+          b,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("real corpus: no counter is derived by raw jq over status.jsonl", () => {
+    const hits = files.flatMap((f) =>
+      fencedBlocks(f.content).flatMap(({ block }) =>
+        names
+          .filter((n) => new RegExp(`\\b${n}=\\$\\(\\s*jq\\b`).test(block))
+          .map((n) => `${f.path} [${n}]`),
+      ),
+    );
+    expect(hits).toEqual([]);
+  });
+
+  it("RED-PROOF: a counter derived by a raw jq length count reds the completeness rule", () => {
+    const injected = [
+      "```bash",
+      `REVALIDATE_ATTEMPT=$(jq -s '[.[] | select(.type=="ship-revalidate-dispatch")] | length + 1' "$STATUS" 2>/dev/null)`,
+      '"$BKIT" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT',
+      "```",
+    ].join("\n");
+    const v = findIncompleteBlocks([{ path: "synthetic.md", content: injected }], names);
+    expect(v.some((x) => x.counter === "REVALIDATE_ATTEMPT")).toBe(true);
   });
 
   const injectionShapes = [

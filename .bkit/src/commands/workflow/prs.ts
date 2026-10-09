@@ -105,6 +105,7 @@ function prOutput(pr: PrInfo | undefined) {
     headRefName: pr?.headRefName ?? null,
     headRefOid: pr?.headRefOid ?? null,
     title: pr?.title ?? null,
+    titleSkipToken: (pr?.title !== undefined && SKIP_CI_TOKEN.exec(pr.title)?.[0]) || null,
     mergeCommitOid: pr?.mergeCommit?.oid ?? null,
     mergeable: pr?.mergeable ?? null,
   };
@@ -119,6 +120,8 @@ const PR_OUTPUT_KEYS: Record<string, string> = {
   headRefName: "head branch, or null",
   headRefOid: "head commit, or null",
   title: "PR title, or null",
+  titleSkipToken:
+    "the CI-suppressing token in the title, or null (a merge of this title would skip CI on dev)",
   mergeCommitOid: "squash/merge commit once merged, or null",
   mergeable: "MERGEABLE | CONFLICTING | UNKNOWN (with --number only), or null",
 };

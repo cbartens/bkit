@@ -273,14 +273,29 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     expect(stray).toEqual([]);
   });
 
-  it("every status append and every steps done targets that status log", () => {
+  it("every status row and every steps done targets that status log", () => {
     const lines = fencedLinesByStep(readShip()).map((l) => l.line);
-    const appends = lines.filter((l) => />>\s*"/.test(l) && /type:"/.test(l));
-    expect(appends.length).toBeGreaterThan(0);
-    for (const l of appends) {
-      expect(l, `status row appended outside $STATUS: ${l}`).toMatch(
-        />>\s*"(\$STATUS|\$OUTBOX\/[^"]+)"/,
-      );
+    const rows = lines.filter((l) => /"\$BKIT" status row\b/.test(l));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const l of rows) {
+      expect(l, `status row writes elsewhere: ${l}`).toMatch(/--file="\$STATUS" --workflow=ship\b/);
+    }
+    for (const type of [
+      "ship-merged-on-entry",
+      "ship-revalidate-dispatch",
+      "ship-revalidate-timeout",
+      "ship-gate-refusal",
+      "ship-merge-ci",
+    ]) {
+      expect(
+        rows.some((l) => l.includes(`--type=${type} `) || l.endsWith(`--type=${type}`)),
+        `no bkit status row writes ${type}`,
+      ).toBe(true);
+    }
+    // A hand-built jq row may only land in an outbox file, never status.jsonl.
+    const handBuilt = lines.filter((l) => />>\s*"/.test(l) && /type:"/.test(l));
+    for (const l of handBuilt) {
+      expect(l, `hand-built row appended outside {OUTBOX}: ${l}`).toMatch(/>>\s*"\$OUTBOX\/[^"]+"/);
     }
     const stepsDone = lines.filter((l) => /"\$BKIT" steps done\b/.test(l));
     expect(stepsDone.length).toBeGreaterThan(0);
@@ -314,35 +329,66 @@ describe("every workflow writes its own workflow-started row (#492)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — ship verdict reader resolves .bkit/issues.jsonl under BOOK_ROOT
+// NEGATIVE — no workflow hand-appends a status or ledger row (#467)
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — SHIPPED_HIT verdict reader resolves the ledger the writer wrote (#380)", () => {
-  it("the SHIPPED_HIT jq read targets $ISSUES_JSONL, never a bare relative path", () => {
-    const ship = readShip();
-    const lines = ship.split("\n");
-    const shippedHitLine = lines.find((l) => /SHIPPED_HIT=\$\(/.test(l));
-    expect(shippedHitLine, "SHIPPED_HIT assignment line not found").toBeTruthy();
-    // The writer appends to $ISSUES_JSONL (the worktree ledger, so the SHIPPED
-    // row rides the PR). The reader must resolve the SAME variable — a bare
-    // relative `.bkit/issues.jsonl` silently resolves against whatever the
-    // current working directory is and would FAIL to find a row the writer
-    // correctly wrote.
-    expect(shippedHitLine!).toMatch(/"\$ISSUES_JSONL"/);
-    expect(shippedHitLine!).not.toMatch(/[^/$]\.bkit\/issues\.jsonl/);
-  });
+describe("no workflow bash block appends to status.jsonl or .bkit/issues.jsonl with >> (#467)", () => {
+  // Status rows go through `bkit status row` / `steps done` / `workflows *` /
+  // `status meta`; feature rows through `bkit roadmap feature`. A raw `>>`
+  // bypasses the row shape and the fail-open contract those commands own.
+  const TARGET =
+    />>\s*"?[^\s"]*(?:\$STATUS\b|\{STATUS\}|status\.jsonl|issues\.jsonl|\$ISSUES_JSONL\b)/;
+  for (const workflow of ["design", "plan", "build", "debug", "ship"]) {
+    it(`bkit-${workflow}.md`, () => {
+      const content = fs.readFileSync(
+        path.join(REPO_ROOT, `.bkit/workflows/bkit-${workflow}.md`),
+        "utf-8",
+      );
+      const hits = fences(content)
+        .flatMap((f) => f.split("\n"))
+        .filter((l) => TARGET.test(l));
+      expect(hits).toEqual([]);
+    });
+  }
 
-  it("the SHIPPED feature-row append is mechanical at Step 6, into the worktree ledger, not the update-docs prompt", () => {
-    const ship = readShip();
-    expect(ship).toMatch(/--arg step "ship-update-docs"/);
-    expect(ship).toMatch(/WT="\{WORKTREE_PATH\}"/);
-    expect(ship).toMatch(/ISSUES_JSONL="\$WT\/\.bkit\/issues\.jsonl"/);
-    expect(ship).toMatch(/\.status="SHIPPED"/);
+  it("RED-PROOF: the retired append shapes are caught", () => {
+    for (const line of [
+      `jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"ship-merged-on-entry", workflow:"ship", at:$t}' >> "$STATUS"`,
+      `printf '%s\\n' "$ROADMAP_LINE" >> .bkit/issues.jsonl`,
+      `printf '%s\\n' "$ROADMAP_LINE" >> "$WT/.bkit/issues.jsonl"`,
+      `jq -nc '{}' >> "$ISSUES_JSONL"`,
+    ]) {
+      expect(TARGET.test(line), line).toBe(true);
+    }
+    expect(TARGET.test(`jq -nc '{}' >> "$OUTBOX/pre-merge-snapshot.jsonl"`)).toBe(false);
+  });
+});
+
+describe("bkit-ship.md — Step 6 SHIPPED row and docs verdict come from bkit roadmap feature (#380)", () => {
+  const step6 = () => section(readShip(), /^## .*Step 6 —/, /^### .*Gate 6/);
+
+  it("appends the SHIPPED row mechanically into the worktree ledger, not through the update-docs prompt", () => {
+    const block = fences(step6()).find((f) => /"\$BKIT" roadmap feature\b/.test(f));
+    expect(block, "Step 6 bkit roadmap feature block not found").toBeDefined();
+    expect(block!).toMatch(/WT="\{WORKTREE_PATH\}"/);
+    expect(block!).toMatch(
+      /ROADMAP=\$\("\$BKIT" roadmap feature --root="\$WT" --workflow=ship --fid="\{FID\}" --step=ship-update-docs\)/,
+    );
     const prompt = fs.readFileSync(
       path.join(REPO_ROOT, ".bkit/prompts/bkit-ship-update-docs.md"),
       "utf-8",
     );
     expect(prompt).not.toMatch(/issues\.jsonl/);
+  });
+
+  it("DOCS_VERDICT is PASS only when the command appended a SHIPPED row — no re-grep of the ledger", () => {
+    // A BUILT row from the build close must not green it, and a failed append
+    // (fail-open, `appended: false`) must not either.
+    const block = fences(step6()).find((f) => /"\$BKIT" roadmap feature\b/.test(f))!;
+    expect(block).toMatch(
+      /jq -e '\.appended == true and \.row\.status == "SHIPPED"'[^\n]*then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi/,
+    );
+    expect(block).not.toMatch(/SHIPPED_HIT|issues\.jsonl|roadmap fold/);
   });
 });
 

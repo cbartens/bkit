@@ -395,3 +395,49 @@ describe("bkit status meta", () => {
     expect(fs.existsSync(file)).toBe(false);
   });
 });
+
+describe("bkit status row", () => {
+  it("appends a typed row with fields parsed as JSON where they are JSON", async () => {
+    const file = log([started("ship", "2026-10-01T00:00:00Z")]);
+    const r = await run([
+      "status",
+      "row",
+      `--file=${file}`,
+      "--workflow=ship",
+      "--type=ship-gate-refusal",
+      "--field=exitCode=11",
+      "--field=head=abc123",
+      "--field=dispatched=true",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      type: "ship-gate-refusal",
+      workflow: "ship",
+      exitCode: 11,
+      head: "abc123",
+      dispatched: true,
+    });
+    const last = JSON.parse(fs.readFileSync(file, "utf-8").trim().split("\n").at(-1)!);
+    expect(last).toEqual(r.json.row);
+  });
+
+  it.each([
+    [["--type=step-done"], 2],
+    [["--type=Ship_Gate"], 2],
+    [["--type=x", "--field=at=now"], 2],
+    [["--type=x", "--field=Bad=1"], 2],
+  ])("refuses %j", async (flags, code) => {
+    const file = log([started("ship", "2026-10-01T00:00:00Z")]);
+    expect((await run(["status", "row", `--file=${file}`, "--workflow=ship", ...flags])).code).toBe(
+      code,
+    );
+  });
+
+  it("never starts a log (exit 3)", async () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-row-")), "status.jsonl");
+    expect(
+      (await run(["status", "row", `--file=${file}`, "--workflow=ship", "--type=x"])).code,
+    ).toBe(3);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+});

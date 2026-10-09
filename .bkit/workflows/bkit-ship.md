@@ -63,6 +63,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    RUNTIME_DEVPUSHES="{RUNTIME_DEVPUSHES}"
+   [ -n "$RUNTIME_DEVPUSHES" ] || RUNTIME_DEVPUSHES=$("$BKIT" runtime detect --fid="{FID}" | jq -r .runtimeDevPushes)
    MAX_EXCEEDED="{MAX_EXCEEDED}"
    DEVP=""; [ "$RUNTIME_DEVPUSHES" = "true" ] && DEVP="--dev-pushes"
    MX=""; [ "$MAX_EXCEEDED" = "true" ] && MX="--max-exceeded"
@@ -118,6 +119,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    RUNTIME_DEVPUSHES="{RUNTIME_DEVPUSHES}"
+   [ -n "$RUNTIME_DEVPUSHES" ] || RUNTIME_DEVPUSHES=$("$BKIT" runtime detect --fid="{FID}" | jq -r .runtimeDevPushes)
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    WT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || echo "$REPO_ROOT")
    if [ "$RUNTIME_DEVPUSHES" = "true" ]; then
@@ -378,9 +380,9 @@ description: "Ship Feature — Autonomous merge and archive"
 5. **Route:**
    - **If** `state` = MERGED → record the resume marker, then → Step 13:
      ```bash
+     BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
      STATUS="{STATUS}"
-     jq -nc --arg t "$(date -u +%FT%TZ)" \
-       '{type:"ship-merged-on-entry", workflow:"ship", at:$t}' >> "$STATUS"
+     "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-merged-on-entry >/dev/null
      ```
    - **Else** → next sub-step.
 6. Read PR head SHA (`ENTRY_HEAD`) and mergeable state:
@@ -621,14 +623,9 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    WT="{WORKTREE_PATH}"
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$WT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   ISSUES_JSONL="$WT/.bkit/issues.jsonl"
-   jq -nc --arg repo "{OWNER_REPO}" --arg bkitVersion "$BKIT_VER" --arg step "ship-update-docs" --arg key "{FID}" \
-     '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="ship" | .step=$step | .key=$key | .category="agentic" | .description="Ship closed for {FID}" | .status="SHIPPED"' \
-     >> "$ISSUES_JSONL" || echo "[bkit-roadmap] append failed: $ISSUES_JSONL"
-   "$BKIT" roadmap fold --root="$WT" || echo "[bkit-roadmap] fold skipped" >&2
-   SHIPPED_HIT=$(jq -c --arg fid "{FID}" 'select(.kind=="feature" and .key==$fid and .status=="SHIPPED")' "$ISSUES_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-   if [ "${SHIPPED_HIT:-0}" -gt 0 ]; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
+   ROADMAP=$("$BKIT" roadmap feature --root="$WT" --workflow=ship --fid="{FID}" --step=ship-update-docs)
+   if printf '%s' "$ROADMAP" | jq -e '.appended == true and .row.status == "SHIPPED"' >/dev/null 2>&1; then DOCS_VERDICT=PASS; else DOCS_VERDICT=FAIL; fi
+   echo "DOCS_VERDICT=$DOCS_VERDICT"
    ```
 
    **If** `DOCS_VERDICT` = FAIL → **Failure Path**.
@@ -674,7 +671,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Artifact written (`ship-summary.md`, non-empty)
 - [ ] `Verdict` extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
-- [ ] Ledger row appended in the worktree, mechanical `roadmap-status` board re-rendered after the subagents (`SHIPPED`, `$WT/.bkit/issues.jsonl`, `bkit roadmap fold --root="$WT"`, fail-open)
+- [ ] Ledger row appended in the worktree, mechanical `roadmap-status` board re-rendered after the subagents (`SHIPPED`, `$WT/.bkit/issues.jsonl`, `bkit roadmap feature --root="$WT"`, fail-open)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 
 <!-- bkit:tracker true start -->
@@ -803,15 +800,16 @@ description: "Ship Feature — Autonomous merge and archive"
      else
        echo "[bkit-ship] run already present at $VALIDATED_HEAD — not dispatching a duplicate"
      fi
-     printf '%s' "$PROBE" | jq -c --arg t "$(date -u +%FT%TZ)" --arg h "$VALIDATED_HEAD" --arg rr "${REVALIDATE_REASON:-head-move}" \
-       '{type:"ship-revalidate-dispatch", workflow:"ship", at:$t, head:$h, probe:.result, reason:$rr, dispatched:.dispatched, attempts:.attempts}' \
-       >> "$STATUS"
+     PROBE_RESULT=$(printf '%s' "$PROBE" | jq -r .result)
+     PROBE_DISPATCHED=$(printf '%s' "$PROBE" | jq -r .dispatched)
+     PROBE_ATTEMPTS=$(printf '%s' "$PROBE" | jq -r .attempts)
+     "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-revalidate-dispatch --field=head="$VALIDATED_HEAD" --field=probe="$PROBE_RESULT" --field=reason="${REVALIDATE_REASON:-head-move}" --field=dispatched="$PROBE_DISPATCHED" --field=attempts="$PROBE_ATTEMPTS" >/dev/null
      WAIT_EXIT=0
      WAIT=$("$BKIT" runs wait --head="$VALIDATED_HEAD" --branch="{SHIP_BRANCH}" --until=completed) || WAIT_EXIT=$?
      if [ "$WAIT_EXIT" = 1 ]; then
-       printf '%s' "$WAIT" | jq -c --arg t "$(date -u +%FT%TZ)" \
-         '{type:"ship-revalidate-timeout", workflow:"ship", at:$t, attempt:.attempts, timeout_s:.elapsedS}' \
-         >> "$STATUS"
+       WAIT_ATTEMPTS=$(printf '%s' "$WAIT" | jq -r .attempts)
+       WAIT_ELAPSED_S=$(printf '%s' "$WAIT" | jq -r .elapsedS)
+       "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-revalidate-timeout --field=attempt="$WAIT_ATTEMPTS" --field=timeoutS="$WAIT_ELAPSED_S" >/dev/null
        echo "[bkit-ship] CI did not complete at $VALIDATED_HEAD" >&2
      fi
      [ "$WAIT_EXIT" = 0 ] || exit "$WAIT_EXIT"
@@ -861,9 +859,10 @@ description: "Ship Feature — Autonomous merge and archive"
 3. Run HEAD-Subject Assertion:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
-   PR_TITLE=$("$BKIT" prs probe --number="{PR_NUMBER}" | jq -r '.title // empty')
-   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
-     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+   PR=$("$BKIT" prs probe --number="{PR_NUMBER}") || exit 1
+   TOKEN=$(printf '%s' "$PR" | jq -r '.titleSkipToken // empty')
+   if [ -n "$TOKEN" ]; then
+     echo "PR-title assertion FAILED: PR title '$(printf '%s' "$PR" | jq -r .title)' contains the CI-suppressing token $TOKEN." >&2
      exit 1
    fi
    ```
@@ -876,20 +875,17 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    **If** exit non-zero → hold the exit code as `{GATE_EXIT}`, write a status row carrying it, then route:
    ```bash
+   BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    STATUS="{STATUS}"
    GATE_EXIT="{GATE_EXIT}"
    GATE_HEAD="{GATE_HEAD}"
-   jq -nc --arg t "$(date -u +%FT%TZ)" --argjson code "$GATE_EXIT" --arg head "$GATE_HEAD" \
-     '{type:"ship-gate-refusal", workflow:"ship", at:$t, exitCode:$code, head:$head}' \
-     >> "$STATUS"
+   "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-gate-refusal --field=exitCode="$GATE_EXIT" --field=head="$GATE_HEAD" >/dev/null
    ```
    - A code 11 (in progress — poll), 14 (stale green), 10 (no run), or 17 (non-bookkeeping change past `VALIDATED_HEAD`) — run counter routing:
      ```bash
      BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
      STATUS="{STATUS}"
-     START_AT=$(jq -r 'select(.type=="step-done" and .step=="ship-start-workflow") | .at' "$STATUS" 2>/dev/null | tail -1)
-     REVALIDATE_ATTEMPT=$(jq -s --arg s "${START_AT:-}" '[.[] | select(.type=="ship-revalidate-dispatch" and .at > $s)] | length + 1' "$STATUS" 2>/dev/null)
-     case "$REVALIDATE_ATTEMPT" in '' | *[!0-9]*) echo "[bkit-ship] could not derive REVALIDATE_ATTEMPT from $STATUS" >&2; exit 2 ;; esac
+     REVALIDATE_ATTEMPT=$("$BKIT" counters rows --file="$STATUS" --workflow=ship --type=ship-revalidate-dispatch --position=next | jq -er .value) || exit 2
      "$BKIT" counters route --name=REVALIDATE_ATTEMPT --value="$REVALIDATE_ATTEMPT" --limit=MAX_REVALIDATE_ATTEMPT --continue=step-9 --exceeded=failure-path
      ```
      - **If** exit 0 (`next` = `step-9`) → set `{REVALIDATE_REASON}` = `gate-refusal` → Step 9.
@@ -958,7 +954,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Pre-merge snapshot written to outbox (PR head SHA, `VALIDATED_HEAD`, `origin/dev` SHA, ancestor verdict, capstone run, `mergeable`)
 - [ ] HEAD-Subject Assertion passed (no `[skip ci]` in PR title)
 - [ ] Gate asserted at current head (`bkit runs gate --validated`, exit 0)
-- [ ] Re-entry counter derived from `ship-revalidate-dispatch` rows since `ship-start-workflow`, bounded by `MAX_REVALIDATE_ATTEMPT`
+- [ ] Re-entry counter derived from `ship-revalidate-dispatch` rows since `workflow-started`, bounded by `MAX_REVALIDATE_ATTEMPT` (`bkit counters rows`)
 - [ ] PR merge attempted with `--match-head-commit` (server refuses on head drift)
 - [ ] State extracted (`state`, MERGED or not)
 - [ ] `Verdict` extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
@@ -1196,9 +1192,9 @@ description: "Ship Feature — Autonomous merge and archive"
    CI_EXIT=0
    CI=$("$BKIT" runs gate --head="$SQUASH_SHA" --repo="{OWNER_REPO}") || CI_EXIT=$?
    if [ "$CI_EXIT" = 0 ]; then CI_VERDICT=PASS; else CI_VERDICT=FAIL; fi
-   printf '%s' "$CI" | jq -c --arg t "$(date -u +%FT%TZ)" --arg sha "$SQUASH_SHA" --arg v "$CI_VERDICT" \
-     '{type:"ship-merge-ci", workflow:"ship", at:$t, sha:$sha, run:((.runId // "") | tostring), verdict:$v, reason:(if $v == "PASS" then "" else (.reason // "") end)}' \
-     >> "$STATUS"
+   CI_RUN=$(printf '%s' "$CI" | jq -c '(.runId // "") | tostring')
+   CI_REASON=$(printf '%s' "$CI" | jq -c --arg v "$CI_VERDICT" 'if $v == "PASS" then "" else (.reason // "") end')
+   "$BKIT" status row --file="$STATUS" --workflow=ship --type=ship-merge-ci --field=sha="$SQUASH_SHA" --field=run="$CI_RUN" --field=verdict="$CI_VERDICT" --field=reason="$CI_REASON" >/dev/null
    [ "$CI_EXIT" = 0 ] || { echo "[bkit-ship] squash merge $SQUASH_SHA not test-validated (gate exit $CI_EXIT)" >&2; exit 1; }
    echo "SQUASH_SHA=$SQUASH_SHA"
    ```

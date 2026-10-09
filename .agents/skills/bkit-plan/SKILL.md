@@ -698,8 +698,6 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
-   BKIT_VER=$(jq -r '.pinnedVersion // empty' "$REPO_ROOT/.bkit/version" 2>/dev/null); [ -z "$BKIT_VER" ] && BKIT_VER="unknown"
-   REPO_SLUG=$("$BKIT" repo info 2>/dev/null | jq -r '.ownerRepo // empty'); [ -z "$REPO_SLUG" ] && REPO_SLUG="unknown/repo"
    RUNTIME=$("$BKIT" runtime detect --fid={FID}) || exit 2
    if [ "$(printf '%s' "$RUNTIME" | jq -r .runtimeDevPushes)" = "true" ]; then
      cd "$REPO_ROOT"
@@ -718,10 +716,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      printf '%s\n' "$PLAN_DOCS" | grep -qx "docs/plans/{YYYYMM}/{FID}-plan.md" || { echo "feat/{FID} carries no docs/plans/{YYYYMM}/{FID}-plan.md — nothing committed or pushed; feat/{FID} kept" >&2; exit 1; }
      UNLANDED=$(printf '%s\n' "$PLAN_DOCS" | while IFS= read -r DOC; do [ "$(git rev-parse -q --verify ":$DOC")" = "$(git rev-parse "feat/{FID}:$DOC")" ] || printf '%s\n' "$DOC"; done)
      [ -z "$UNLANDED" ] || { echo "squash did not stage the feat/{FID} copy of:" >&2; echo "$UNLANDED" >&2; echo "nothing committed or pushed; feat/{FID} kept; the main checkout index still holds the squash" >&2; exit 1; }
-     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
-       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
-       >> "$REPO_ROOT/.bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: $REPO_ROOT/.bkit/issues.jsonl"
-     "$BKIT" roadmap fold || echo "[bkit-roadmap] fold skipped" >&2
+     "$BKIT" roadmap feature --root="$REPO_ROOT" --workflow=plan --fid={FID}
      "$BKIT" ledgers commit --scope=core --mode=commit-allow-empty --month={YYYYMM} --fid={FID} --squash-of="feat/{FID}" --message="docs({FID}): plan DONE bkit [skip ci]" \
        || { echo "[bkit-book] plan-close commit failed — nothing pushed; feat/{FID} kept" >&2; exit 1; }
      "$BKIT" branches push --mode=dev || { echo "dev push failed" >&2; exit 1; }
@@ -734,10 +729,7 @@ BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node
      git push origin --delete "feat/{FID}" 2>/dev/null || true
    else
      git fetch origin dev "{BRANCH}"
-     jq -nc --arg repo "$REPO_SLUG" --arg bkitVersion "$BKIT_VER" --arg step "plan-close-workflow" --arg key "{FID}" \
-       '. | .ts=(now*1000|floor) | .kind="feature" | .repo=$repo | .bkitVersion=$bkitVersion | .workflow="plan" | .step=$step | .key=$key | .category="agentic" | .description="Plan closed for {FID}" | .status="PLANNED"' \
-       >> ".bkit/issues.jsonl" || echo "[bkit-roadmap] append failed: .bkit/issues.jsonl"
-     "$BKIT" roadmap fold || echo "[bkit-roadmap] fold skipped" >&2
+     "$BKIT" roadmap feature --root=. --workflow=plan --fid={FID}
      "$BKIT" ledgers commit --scope=core --mode=commit-allow-empty --month={YYYYMM} --fid={FID} --message="docs({FID}): plan roadmap update bkit [skip ci]" \
        || { echo "[bkit-book] plan-close commit failed — nothing pushed" >&2; exit 1; }
      STRAY=$(git diff --name-only "origin/dev...{BRANCH}" | grep -vE '^docs/plans/|^docs/roadmap\.md$|^docs/[^/]+\.jsonl$|^\.bkit/[^/]+\.jsonl$' || true)
