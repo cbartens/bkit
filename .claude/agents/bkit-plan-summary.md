@@ -1,8 +1,8 @@
 ---
 name: bkit-plan-summary
 description: Senior reviewer evaluating completed plans for build-readiness.
-effort: low
-model: claude-haiku-4-5-20251001
+effort: high
+model: claude-haiku-5-5
 tools:
   - Read
   - Write

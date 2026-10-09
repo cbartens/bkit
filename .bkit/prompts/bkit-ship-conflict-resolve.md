@@ -1,7 +1,7 @@
 ---
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

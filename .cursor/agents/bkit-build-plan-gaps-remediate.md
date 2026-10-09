@@ -2,7 +2,7 @@
 name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 model: composer-2.5
-effort: medium
+effort: high
 tools:
   - Read
   - Grep

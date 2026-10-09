@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

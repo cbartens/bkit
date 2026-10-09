@@ -438,6 +438,7 @@ livebench.ai
 artificialanalysis.ai
 lmarena.ai
 designarena.ai
+datacurve.ai
 
 <!-- CI, containers, dependency bots -->
 

@@ -1,7 +1,7 @@
 name = "bkit-ship-summary"
 description = "Senior reviewer evaluating ship cycles for completion and follow-up needs."
-model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
+model = "gpt-6-luna"
+model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior reviewer evaluating ship cycles for completion and follow-up needs.
 **Scope:** As specified by input and Read / Update / Create section.

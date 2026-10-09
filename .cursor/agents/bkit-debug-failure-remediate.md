@@ -2,7 +2,7 @@
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
 model: composer-2.5
-effort: medium
+effort: high
 tools:
   - Read
   - Grep

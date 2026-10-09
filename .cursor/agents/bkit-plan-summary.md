@@ -2,7 +2,7 @@
 name: bkit-plan-summary
 description: Senior reviewer evaluating completed plans for build-readiness.
 model: composer-2.5
-effort: low
+effort: high
 tools:
   - Read
   - Write

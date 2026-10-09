@@ -1,8 +1,8 @@
 ---
 name: bkit-ship-summary
 description: Senior reviewer evaluating ship cycles for completion and follow-up needs.
-effort: low
-model: claude-haiku-4-5-20251001
+effort: high
+model: claude-haiku-5-5
 tools:
   - Read
   - Write

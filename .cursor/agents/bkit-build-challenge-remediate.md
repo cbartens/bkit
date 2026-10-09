@@ -2,7 +2,7 @@
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against prioritised review reports.
 model: composer-2.5
-effort: medium
+effort: high
 tools:
   - Read
   - Grep

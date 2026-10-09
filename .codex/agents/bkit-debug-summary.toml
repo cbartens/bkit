@@ -1,7 +1,7 @@
 name = "bkit-debug-summary"
 description = "Senior reviewer evaluating debug-loop outcome and remaining risk."
-model = "gpt-5.6-luna"
-model_reasoning_effort = "low"
+model = "gpt-6-luna"
+model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
 **Scope:** As specified by input and Read / Update / Create section.

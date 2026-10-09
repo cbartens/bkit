@@ -166,7 +166,7 @@ Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KE
 > [!NOTE]
 > **Native-default Cursor pins.** Defaults are first-party only (`cursor-grok-4.5-high` / `composer-2.5`) so zero API credits still runs the harness. API-pool IDs remain in the live `/v0/models` catalog for manual override. Residual: IDE **subagent-runner** ≠ Cloud Agents API; per-subagent dispatch via `Task` not empirically smoke-tested — confirm one dispatch per model ID before full validation.
 >
-> **Claude opus tier pins `claude-opus-5-5`.** Sonnet tier pins `claude-sonnet-5-5`. Both are 1M context, $4/$20 and $2/$10 per MTok. Haiku stays `claude-haiku-4-5-20251001`. The parity board still scores `claude-opus-5` at **65.2** and `claude-sonnet-5` at **59.4** — 5.5 is not on that CSV. Cursor's `/v0/models` catalog lists `claude-opus-5-thinking-high` / `-fast` and `claude-sonnet-5-thinking-high` / `-xhigh`, not the 5.5 IDs. Cursor defaults stay on native models per the native-only policy above.
+> **Claude opus tier pins `claude-opus-5-5`.** Sonnet tier pins `claude-sonnet-5-5`. Both are 1M context, $4/$20 and $2/$10 per MTok. Haiku tier pins `claude-haiku-5-5` — 1M context, $0.10/$0.50 per MTok up to 100K-token prompts, $0.50/$2.50 above. LiveBench now scores the 5.5 pins too, but the opus and sonnet targets stay at `claude-opus-5` **65.2** / `claude-sonnet-5` **59.4** — § Agentic-coding parity board says why. Cursor's `/v0/models` catalog lists `claude-opus-5-thinking-high` / `-fast` and `claude-sonnet-5-thinking-high` / `-xhigh`, not the 5.5 IDs. Cursor defaults stay on native models per the native-only policy above.
 
 ### Per-subagent model assignment
 
@@ -388,7 +388,7 @@ Installed provider catalog changes. Look up model IDs before pinning in `.openco
 
 **opencode-zen / opencode-go — two OpenCode built-in providers.** Both emit minimal `provider.<id>` with only `options.apiKey: "{env:BKIT_OPENCODE_API_KEY}"` (no npm driver, no baseURL). OpenCode resolves from models.dev — Go Qwen/MiniMax use Anthropic `/messages`, not openai-compatible `/chat/completions`. Zen keyed `opencode`; Go `opencode-go`. `bkit install --opencode=opencode-zen` (or `=opencode-go`) → `bkit.opencodeProvider` in `package.json`; legacy `opencode` → `opencode-zen` via `OPENCODE_PROVIDER_ALIASES`. Reinstall **replaces** seeded block (heals hijacked npm/baseURL). Set `BKIT_OPENCODE_API_KEY` in `.bkit/.env` (<https://opencode.ai/auth>). Columns from **models.dev**.
 
-**All four providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores on the board below (opus `claude-opus-5` **65.2**, sonnet `claude-sonnet-5` **59.4**, haiku ~35). Claude pins are `claude-opus-5-5` / `claude-sonnet-5-5`; those IDs are not on this CSV, so the targets stay the last measured generation. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
+**All four providers ship curated columns.** Tier design — **per-tier quality target, cheapest sufficient pin**. A tier cell is NOT "the same rung of this provider's ladder": it is the cheapest model that **reaches that tier's Claude score**, and reaching means _approaching_ — it does not have to beat it. Targets are the LiveBench Agentic Coding scores on the board below (opus `claude-opus-5` **65.2**, sonnet `claude-sonnet-5` **59.4**, haiku `claude-haiku-5-5` **~51**). The opus and sonnet targets stay the 5.0 scores although the 5.5 pins are now on the CSV: `claude-opus-5-5` lands level at `xhigh` (65.4), and the `claude-sonnet-5-5` rows don't read cleanly (see the board). The haiku target is Haiku 5.5 at `xhigh`, the closest measured rung to the `high` effort the summary writers run at. Where a provider's ceiling sits under the sonnet target, opus+sonnet **collapse onto that ceiling** — spreading them across two rungs buys nothing and costs quality on the sonnet half. Where a cheap model already clears the haiku target, the haiku cell **stays cheap** — a $5/task flagship serving a read-and-emit summariser is waste, not safety.
 
 ### Selecting pins
 
@@ -417,9 +417,10 @@ Filters (not above score): endpoint count; automatic prompt caching (bkit sends 
 | --- | --- | --- | --- |
 | 1 | LiveBench Agentic Coding | Pin score (JS / TS / PY mean) | https://livebench.ai/#/?cats=Agentic+Coding — CSV `https://raw.githubusercontent.com/LiveBench/new-livebench/main/public/table_2026_06_25.csv` |
 | 1 | AA Intelligence Index | General intelligence | https://artificialanalysis.ai/leaderboards/models |
-| 1 | DeepSWE | Long-horizon repo work — public board only | public DeepSWE listings |
+| 1 | DeepSWE | Long-horizon repo work — public board only | https://deepswe.datacurve.ai |
 | 1 | LMArena Code Arena — WebDev | Web-dev preference | https://lmarena.ai (Code / WebDev) |
 | 1 | Design Arena — Code | Web-app preference | https://designarena.ai/leaderboard/code |
+| 1 | CursorBench | Agentic coding at **every effort level** (`low` → `max`) with $/task — the source for choosing an agent's `effort:`; cross-checks LiveBench. Cursor's own `composer-*` rows count as vendor-only | https://cursor.com/cursorbench |
 | 2–3 | AA cost / latency | $/task, tok/s, TTFT, E2E | same AA leaderboard |
 | 2 | LiveBench cost table | Agentic $/task — rescale to billed provider | `cost_2026_06_25.csv` beside the LiveBench table |
 | 2 | OpenRouter model page | List in/out + cache-read | https://openrouter.ai/models/{slug} |
@@ -448,7 +449,9 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 <!-- prettier-ignore -->
 | Model | Score | $/task | Role in bkit |
 | --- | --- | --- | --- |
-| `deepseek-v4.1-flash` | **77.3** | $0.06 | `openrouter` opus+sonnet — 16+ endpoints, auto cache; clears 65.2 |
+| `deepseek-v4.1-flash` | **77.3** | $0.06 | `openrouter` opus+sonnet — 16+ endpoints, auto cache; clears 65.2. Haiku on `ollama` + `opencode-go` |
+| `claude-opus-5-5` (max) | 71.7 | $4.48 | Claude opus pin at `max` |
+| `claude-opus-5-5` (xhigh) | 65.4 | $1.40 | Claude opus pin at `xhigh` — level with the opus target at about a quarter of the cost |
 | `claude-opus-5` (max) | **65.2** | $5.34 | **opus target** |
 | `deepseek-v4-flash-vision-exp` | 65.1 | $0.11 | **not pinned** — experimental; its own datasheet claims text parity with `deepseek-v4-flash-0731`, which measures 46.8. Score not trusted |
 | `qwen3.8-max` | 64.6 | $1.75 | **not pinned** — single endpoint (Alibaba) and **no caching available**: Alibaba requires explicit breakpoints and this slug is absent from its supported list |
@@ -458,18 +461,23 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 | `glm-5.3` | 60.9 | $1.60 | **not pinned** — 27 endpoints, auto cache; dominated by V4.1 Flash |
 | `claude-sonnet-5` (xhigh) | **59.4** | $2.14 | **sonnet target** |
 | `gemini-3.7-flash` | 58.3 | $0.42 | **not pinned** — under V4.1 Flash |
+| `claude-haiku-5-5` (max) | 57.2 | $0.21 | Claude haiku pin at `max` |
 | `grok-4.6` | 57.0 | $1.79 | **not pinned** — under V4.1 Flash, higher cost |
-| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` haiku — 27 endpoints, auto cache; cheapest sufficient |
+| `glm-5.3-flash` | 56.8 | $0.11 | `openrouter` + `opencode-zen` haiku — 27 endpoints, auto cache; cheapest sufficient |
 | `grok-4.5` | 56.5 | $0.54 | `cursor` opus (ceiling; −2.9 vs sonnet target at a quarter the cost) |
+| `claude-sonnet-5-5` (max) | 56.3 | $5.57 | Claude sonnet pin at `max`. Python 35.0 at both efforts (n=20) |
 | `deepseek-v4-pro-0813` | 54.9 | $0.22 | **not pinned** — dominated by V4.1 Flash |
+| `claude-haiku-5-5` (xhigh) | **51.4** | $0.07 | **haiku target** — closest measured rung to bkit's `high` (CursorBench: `high` 42.3%, `xhigh` 44.3%) |
+| `gpt-6-luna` | 51.2 | $0.03 | `OpenAI` (Codex) haiku — existence via models.dev only |
 | `claude-opus-4-8` (max) | 50.5 | $4.96 | superseded — shows the 4.8 → 5 generational jump (+14.7) |
 | `kimi-k2.7-code` | 45.7 | $0.39 | `ollama`-cloud + `opencode-zen` opus+sonnet |
 | `qwen3.7-max` | 43.6 | $0.80 | not pinned (anchor for the unmeasured `qwen3.7-plus`) |
-| `deepseek-v4-pro` | 42.6 | $0.14 | convergent on `ollama` / both gateways; `opencode-go` opus+sonnet. **Frozen on the 0423 snapshot** — the undated slug does not float |
+| `deepseek-v4-pro` | 42.6 | $0.14 | convergent on `ollama` / both gateways; `opencode-go` opus+sonnet. Gone from Ollama's advertised catalog (2026-10-09) but still resolves — re-pin the `ollama` convergent cell before it stops. **Frozen on the 0423 snapshot** — the undated slug does not float |
 | `qwen3.6-plus` | 41.4 | $1.55 | **dropped** — strictly dominated by `kimi-k2.7-code` (lower score, 4x cost) |
 | `minimax-m3` | 40.7 | $0.42 | **dropped** — `deepseek-v4-pro` scores higher at a third the cost |
-| `deepseek-v4-flash` | 37.6 | **$0.03** | haiku on both opencode gateways — clears the haiku target at 1/180th of Opus 5 |
-| `claude-haiku-4-5` (thinking) | **~35 †** | — | **haiku target** |
+| `claude-sonnet-5-5` (xhigh) | 39.3 | $0.50 | **not read as a target** — Anthropic recalibrated effort on 5.5, and this run wrote about half Sonnet 5's output tokens before stopping. CursorBench, Artificial Analysis and Anthropic all put 5.5 above 5 at every effort |
+| `deepseek-v4-flash` | 37.6 | **$0.03** | **no longer pinned** — under the ~51 haiku target |
+| `claude-haiku-4-5` (thinking) | ~35 † | — | previous haiku pin and target |
 | `gpt-oss-120b` | ~10 † | — | **dropped everywhere** — below every target, haiku included |
 
 † **Estimated, not measured.** Model absent from the 2026-06-25 release; value bridged from its 2026-01-08 score via the mean delta of the three nearest-scoring models present in both releases. Cross-release scores are NOT comparable directly (LiveBench rotates questions — overlapping models moved −1.4 to −31.5), so treat † as a bracket, not a number. **Unmeasured entirely** (no anchor in either release, do not infer): `composer-2.5`, `qwen3.5-397b`, `qwen3-coder`, `qwen3.7-plus`, `glm-4.5-air`, `gpt-oss-20b`, `qwen3-coder:30b`.
@@ -479,14 +487,14 @@ Source: [LiveBench](https://livebench.ai/#/?cats=Agentic+Coding), release **2026
 Cells show pin · score · $/task. Deltas are against that column's target. Convergent (CoT lens for risk/diagnosis agents) rides the same board.
 
 <!-- prettier-ignore -->
-| Provider | opus — target 65.2 | sonnet — target 59.4 | haiku — target ~35 | convergent | Notes |
+| Provider | opus — target 65.2 | sonnet — target 59.4 | haiku — target ~51 | convergent | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `claude` | `claude-opus-5-5` **n/m** | `claude-sonnet-5-5` **n/m** | `claude-haiku-4-5` ~35 † | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, 1M context). Scores on this board are the previous generation: `claude-opus-5` **65.2** · $5.34, `claude-sonnet-5` **59.4** · $2.14. Targets stay those scores until 5.5 is measured. |
-| `openrouter` | `deepseek/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `z-ai/glm-5.3-flash` 56.8 · $0.11 | `moonshotai/kimi-k3` 62.2 · $1.76 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (clears 65.2). Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
-| `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ≈ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. |
-| `ollama` (cloud) | `kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `kimi-k2.7-code` (−13.7) | `deepseek-v4-pro` 42.6 · $0.14 | `deepseek-v4-pro` | **Whole column now needs a paid Ollama plan.** The free `qwen3.5:397b` / `gpt-oss:20b` pins it replaced were unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
-| `opencode-zen` | `opencode/kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `opencode/kimi-k2.7-code` (−13.7) | `opencode/deepseek-v4-flash` 37.6 · **$0.03** | `opencode/deepseek-v4-pro` | Best value in the matrix: the haiku cell clears its target at 1/180th of Opus 5. Existence-validated via models.dev. |
-| `opencode-go` | `opencode-go/deepseek-v4-pro` 42.6 · $0.14 (−22.6) | same (−16.8) | `opencode-go/deepseek-v4-flash` 37.6 · $0.03 | `opencode-go/deepseek-v4-pro` | Budget open-weight plan. `minimax-m3`/`qwen3.7-plus` dropped on the board. Prefer pins inside the Go 5h window. |
+| `claude` | `claude-opus-5-5` 65.4 at `xhigh` | `claude-sonnet-5-5` (see board) | `claude-haiku-5-5` at `high` (51.4 at `xhigh`) | (opus) | Pins are 5.5 ($4/$20 opus, $2/$10 sonnet, $0.10/$0.50 haiku, 1M context). Opus and sonnet targets stay the 5.0 scores (`claude-opus-5` **65.2** · $5.34, `claude-sonnet-5` **59.4** · $2.14): Opus 5.5 lands level at `xhigh`, and Sonnet 5.5's LiveBench rows don't read cleanly. Haiku target = Haiku 5.5 at `xhigh`. |
+| `openrouter` | `deepseek/deepseek-v4.1-flash` 77.3 · $0.06 (+12.1) | same (+17.9) | `z-ai/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `moonshotai/kimi-k3` 62.2 · $1.76 | Aggregator; broad catalog to re-pin from. Opus+sonnet collapse on V4.1 Flash (clears 65.2). Haiku = GLM-5.3 Flash (cheapest sufficient). Convergent = Kimi K3 (distinct CoT). All three auto-cache. Never pin `anthropic/*` — column carries Claude-quota overflow. |
+| `cursor` | `cursor-grok-4.5-high` 56.5 · $0.54 (−8.7) | `composer-2.5` **n/m** | `composer-2.5` **n/m** | (opus) | Ceiling is grok-4.5 — no Cursor model reaches the opus target, which is the correct outcome, not a gap. `composer-2.5` is the one unresolved cell in the matrix: vendor-claimed ≈ Opus 4.7 (which measures 50.7), never on LiveBench. Probe or override before relying on it for sonnet-tier work. Haiku stays `composer-2.5` too: the only measured first-party model over ~51 is `cursor-grok-4.5-high` (56.5), at about 8x the cost. |
+| `ollama` (cloud) | `kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `kimi-k2.7-code` (−13.7) | `deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `deepseek-v4-pro` | **Whole column now needs a paid Ollama plan.** `deepseek-v4-pro` (convergent) has left the advertised catalog but still resolves. The free `qwen3.5:397b` / `gpt-oss:20b` pins it replaced were unmeasured or ~10 — free-tier users re-pin in `prompts.md` § Model Overrides and accept unverified quality. |
+| `opencode-zen` | `opencode/kimi-k2.7-code` 45.7 · $0.39 (−19.5) | `opencode/kimi-k2.7-code` (−13.7) | `opencode/glm-5.3-flash` 56.8 · $0.11 (+5.4) | `opencode/deepseek-v4-pro` | Haiku = GLM-5.3 Flash: V4.1 Flash costs more here (Zen bills it at $0.30/$1.20). Existence-validated via models.dev. |
+| `opencode-go` | `opencode-go/deepseek-v4-pro` 42.6 · $0.14 (−22.6) | same (−16.8) | `opencode-go/deepseek-v4.1-flash` 77.3 · $0.06 (+25.9) | `opencode-go/deepseek-v4-pro` | Budget open-weight plan. `minimax-m3`/`qwen3.7-plus` dropped on the board. Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions". |
 
 **n/m** = not measured on LiveBench (see the unmeasured list above) — the cell is a catalog/constraint choice, not a scored one.
 

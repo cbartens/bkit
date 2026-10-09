@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

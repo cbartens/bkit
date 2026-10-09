@@ -1,7 +1,7 @@
 name = "bkit-ship-conflict-resolve"
 description = "Senior engineer resolving mechanical rebase conflicts before handover."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior engineer resolving mechanical rebase conflicts before handover.
 **Scope:** As specified by input and Read / Update / Create section.

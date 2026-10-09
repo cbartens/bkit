@@ -2,7 +2,7 @@
 name: bkit-ship-summary
 description: Senior reviewer evaluating ship cycles for completion and follow-up needs.
 model: composer-2.5
-effort: low
+effort: high
 tools:
   - Read
   - Write

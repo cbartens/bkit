@@ -10,7 +10,7 @@ tools:
   write: true
   edit: true
   bash: true
-reasoningEffort: high
+reasoningEffort: max
 ---
 <!-- bkit:managed v4.12.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
