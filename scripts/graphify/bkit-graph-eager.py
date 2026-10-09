@@ -75,7 +75,7 @@ SKIP_DIR = {"node_modules", "dist", ".next", ".turbo", "coverage", "build", ".gi
 # Test files are excluded as sources but kept as downstream consumers: a stub in
 # a test is the cost being measured, never a finding in its own right.
 SKIP_FILE = (".test.", ".test-d.", ".spec.", ".d.ts", ".config.", ".setup.")
-ROOTS = ("apps", "packages")
+ROOTS = (".bkit/src", "scripts")
 IS_TEST = re.compile(r"\.test\.|\.spec\.|/__tests__/|/e2e/")
 
 # Statement keywords and test-harness callables that a bare-call regex would

@@ -38,6 +38,7 @@
 - **Read files first:** ALWAYS read files BEFORE edits. NEVER edit on assumed contents.
 - **Verify changes first:** ALWAYS check what changes could break (callers / importers, DB schemas, APIs / SDKs) BEFORE touching symbols / signatures / contracts. NEVER assume blast radius.
 - **Verify symbols first:** ALWAYS confirm APIs / SDKs / flags / configs / imports exist as written BEFORE using (search code, read docs, check live endpoints). NEVER assume or invent.
+- **Code search:** Find existing code, callers, importers with text search (names, strings, near-miss helpers, sibling modules) PLUS language-server symbol lookup (definitions, references, implementations) when configured PLUS `docs/capabilities.md` when present. Language server / capability map confirm presence, NEVER absence → absence needs text search. SQL, workflows, configs, env names, string literals → text search only.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Edit tools only:** ALWAYS change file contents with edit / write tools; NEVER use shell commands to hand-edit source files or to bypass pre-edit gates. Exceptions: generating files from scripts, bulk mechanical file rewrites.
 - **Dead code:** Comments explain why, not what; NEVER narrate diff, leave placeholders / commented-out code / dead stubs. Match surrounding comment density.

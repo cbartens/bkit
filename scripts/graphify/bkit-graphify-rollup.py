@@ -107,11 +107,15 @@ def is_test_code(p):
 
 
 def by_package(p):
-    m = re.match(r"(apps/[^/]+|packages/[^/]+|tooling/[^/]+|scripts|supabase)", p)
+    m = re.match(r"(\.bkit/[^/]+|scripts/[^/]+)/", p)
     return m.group(1) if m else None
 
 
 def by_module(p):
+    # .bkit/src is one flat folder of ~70 engine files, so a folder key would draw it
+    # as a single box; one module per file is the level its structure lives at.
+    if p.startswith(".bkit/src/"):
+        return re.sub(r"\.[^./]+$", "", p)
     return "/".join(p.split("/")[:-1][:4]) or p.split("/")[0]
 
 
@@ -300,6 +304,9 @@ def style_lines(nodes, edge_target_keys):
 
 
 OV_START, OV_END = "<!-- overrides:start -->", "<!-- overrides:end -->"
+# Pasting the whole fenced block (or past its end) into an online editor fails to parse.
+VIEW_ONLINE = ("To view online, paste only the lines inside the block below — not the "
+               "fence lines — into [mermaid.live](https://mermaid.live/).")
 OV_DEFAULT = """{
   "rename": {},
   "note": {},
@@ -911,6 +918,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
         ROUTES_PROSE,
         "",
+        VIEW_ONLINE,
+        "",
         "```mermaid",
         ROUTES_MMD,
         "```",
@@ -919,6 +928,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
         "Grouped by the folder tree, not by a clustering algorithm. Edge labels are the number of",
         "underlying symbol edges. Drift status is painted onto the owning module.",
+        "",
+        VIEW_ONLINE,
         "",
         "```mermaid",
         as_mermaid(by_package, None, "package", min_weight, overlay).rstrip(),
@@ -929,6 +940,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         f"The same graph one level down: `apps/web` is a box, its subfolders are the nodes inside it.",
         f"Cross-group edges lighter than {min_weight} are dropped — see `MMD_MIN_WEIGHT` in",
         "`scripts/graphify/bkit-graphify.sh`.",
+        "",
+        VIEW_ONLINE,
         "",
         "```mermaid",
         as_mermaid(by_module, None, "module", min_weight, overlay).rstrip(),

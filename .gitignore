@@ -37,6 +37,11 @@ tmp/**
 # Vale downloaded packages (write-good, etc.) — not checked in; CI runs vale sync
 .vale/styles/write-good
 
+# Serena (only project.yml is tracked) and graphify raw output (only docs/capabilities.md is tracked)
+.serena/*
+!.serena/project.yml
+graphify-out/
+
 # <!-- bkit:start -->
 
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by

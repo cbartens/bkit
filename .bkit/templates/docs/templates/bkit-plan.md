@@ -305,7 +305,7 @@ Verify only when applicable.
 **CRITICAL:** Justify new file locations per `docs/architecture.md` topology.
 **CRITICAL:** Prefer `[MODIFY]` over `[NEW]`. Every `[NEW]` MUST trace to a `Reuse Inventory` `NEW` row and carry its reason — no parallel reimplementation. Superseded → `Supersession Inventory` as `DELETE`.
 **CRITICAL:** Frontend/Mobile → adhere to `docs/design.md`.
-**CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: grep callers/importers/schemas/consumers, list blast radius.
+**CRITICAL:** Verify `[MODIFY]` files exist (else `[NEW]`). Before changing exported symbol/signature/contract: find callers/importers/schemas/consumers (language-server references when configured + text search), list blast radius.
 **CRITICAL:** Include backend actions for new schema validations (e.g. Zod `schema.parse`).
 **CRITICAL:** NEVER weaken gate to pass: no `as any` / `as unknown as` / `@ts-ignore` / `.skip` / deleted assertions / empty `catch` / error-swallowing / mocking-away unit under test. Fix root causes; per-file opt-out needs explicit human sign-off.
 **CRITICAL:** Automated observability (log drains / CDC) still mandates `console.error("[Context] Message", payload)` for edge cases escaping auto-capture. See `docs/observability.md` for naming, severity, correlation IDs, label taxonomy.

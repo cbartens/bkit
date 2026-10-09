@@ -53,7 +53,7 @@ TEST_FILE = (".test.", ".spec.")
 # The same four roots a budget guard should read, so a register count and
 # the budget enforcing it are taken over one tree. scripts/ is in: a maintenance script
 # building its own client is the drift class.
-ROOTS = ("apps", "packages", "tooling", "scripts")
+ROOTS = (".bkit/src", ".bkit/scripts", "scripts")
 SURFACES = ("product", "tests", "all")
 
 ap = argparse.ArgumentParser()

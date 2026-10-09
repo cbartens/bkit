@@ -88,6 +88,8 @@ ls_specific_settings:
     indexing_timeout: 180.0
     # Match the repo's own TypeScript (package.json) instead of Serena's bundled
     # 5.9.3, so the server analyses the code with the compiler that compiles it.
+    # TypeScript 7+ ships no tsserver and the server will not start on it: keep
+    # 5.9.3 there. Ignored unless this project is trusted (see above).
     typescript_version: "5.9.3"
 
 # list of workspace folder paths (LSP backend only).
@@ -156,21 +158,39 @@ read_only: true
 # list of tool names to exclude.
 # This extends the existing exclusions (e.g. from the global configuration)
 # Find the list of tools here: https://oraios.github.io/serena/01-about/035_tools.html
-# read_only above already refuses the editing tools at call time, but it does NOT
-# remove them from the tools/list the client sees — measured on 1.7.0: 14
-# advertised, 7 callable. Listing them here is what stops the other seven from
-# costing tool-description tokens in every session and from being called and
-# failing. open_dashboard is separate: it opens a browser on the developer's
-# machine, which is not something an agent should be able to do.
+# bkit agents are granted every Serena tool (`mcp__serena__*`), so this list is
+# what keeps Serena read-only for them: it excludes every tool that writes files,
+# memories or project config, runs code or commands, or opens a browser, across
+# all contexts (claude-code, ide, codex). Serena edits bypass the Edit/Write hooks
+# that gate every other agent edit. read_only above refuses the editing tools at
+# call time but does NOT remove them from the tools/list the client sees (measured
+# on 1.7.0). Remove an entry only to let agents use that tool.
 excluded_tools:
-  - "open_dashboard"
+  - "activate_project"
+  - "create_text_file"
+  - "delete_lines"
+  - "delete_memory"
+  - "edit_memory"
+  - "execute_shell_command"
   - "insert_after_symbol"
+  - "insert_at_line"
   - "insert_before_symbol"
+  - "jet_brains_debug"
+  - "jet_brains_inline_symbol"
+  - "jet_brains_move"
+  - "jet_brains_rename"
+  - "jet_brains_safe_delete"
+  - "onboarding"
+  - "open_dashboard"
+  - "remove_project"
+  - "rename_memory"
   - "rename_symbol"
   - "replace_content"
   - "replace_in_files"
+  - "replace_lines"
   - "replace_symbol_body"
   - "safe_delete_symbol"
+  - "write_memory"
 
 # list of tools to include that would otherwise be disabled (particularly optional tools that are disabled by default).
 # This extends the existing inclusions (e.g. from the global configuration).

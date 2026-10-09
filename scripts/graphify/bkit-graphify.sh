@@ -55,7 +55,9 @@ R_SCOPED_PREFIX="scoped-"                 # + the subtree path, slashes to dashe
 # Cross-group edges below this weight are dropped from the Mermaid views only —
 # the HTML and GraphML views stay complete. Without it the module view is 322
 # edges and unreadable; at 12 it is 91 and still carries every heavy dependency.
-MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-12}"
+# bkit: one module per .bkit/src file, so the edges are thinner — 6 draws 21 files
+# and 32 links (12 drops to 11 files).
+MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-6}"
 
 # The two derived-view programs. They import networkx / graphify, so they run
 # under graphify's bundled interpreter (see graphify_python below), never the

@@ -1,0 +1,112 @@
+# Example. Copy to `.graphifyignore` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+# graphify corpus scope. Same syntax as .gitignore.
+# .gitignore is read automatically and merged with this file; patterns here are
+# evaluated last and only ever exclude more. Everything already ignored by
+# .gitignore (node_modules/, dist/, migration/, *.csv, tmp/, .worktrees/) needs
+# no entry here.
+
+# ---------------------------------------------------------------------------
+# 1. Everything an LLM would have to read.
+#
+# graphify parses code locally with tree-sitter and never calls a model for it.
+# Docs, PDFs, images, office files and video are the ONLY paths that reach a
+# backend. `--code-only` skips them per run, but that flag is per-invocation and
+# there is no persistent equivalent — .graphifyrc supports only viz_node_limit
+# and no GRAPHIFY_CODE_ONLY env var exists. Excluding the file types here makes
+# the corpus structurally code-only, so a bare `graphify extract .` or
+# `/graphify .` has nothing to send even without the flag.
+#
+# Counts at time of writing: 4148 .md, 52 .png, 27 .html, 22 .yaml/.yml, 8 .pdf,
+# 7 .txt, 5 .jpg/.jpeg, 2 .xlsx, 2 .docx. `*.md` alone leaves 125 files behind.
+*.md
+*.mdx
+*.qmd
+*.rst
+*.txt
+*.html
+*.yaml
+*.yml
+*.pdf
+*.docx
+*.xlsx
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+# graphify's image detection is wider than the extensions its README lists.
+# With only the four documented types excluded, a run still reported
+# "7 non-code file(s) (0 docs, 0 papers, 7 images)" — 3 .svg, 2 .heic, 2 .avif.
+# The rest of the raster set is listed so the guarantee survives someone
+# committing a .bmp rather than breaking silently.
+*.svg
+*.heic
+*.avif
+*.bmp
+*.tif
+*.tiff
+*.ico
+*.heif
+*.mp4
+*.mov
+*.mp3
+*.wav
+
+# Four binary image fixtures (photo.heic / photo.avif under
+# packages/services/src/inbound/__fixtures__/attachments/ and
+# apps/run/docling/benchmark/corpus/) still appear on the extract's
+# "skipping N non-code file(s)" line and do NOT respond to any ignore rule,
+# including excluding their directory outright. That counter is computed before
+# ignore filtering for the image class; graphify's source contains no reference
+# to "heic" or "avif", so it classifies them from the OS mime database. They
+# never enter manifest.json, so nothing reads them. Do NOT exclude those two
+# directories to zero the counter — both contain real TypeScript (corpus.ts,
+# expected.ts, manifest.ts) and dropping them costs 23 code nodes.
+
+# ---------------------------------------------------------------------------
+# 2. Agent harness — config, hooks and tool state, not application code.
+# Left in, these contributed ~450 nodes and dominated the god-node ranking:
+# .opencode/opencode.json alone yielded 112 nodes and .claude/settings.json 71.
+# .serena/ self-ignores only its cache and project.local.yml, so the rest of it
+# is visible to graphify; it is another agent's working state either way.
+.agents/skills/
+# bkit's own source is .bkit/src and .bkit/scripts, so only the install payload
+# (copied into .claude/, .cursor/, .opencode/ and scripts/) and the committed
+# compiler output of .bkit/src stay out.
+.bkit/templates/
+dist/
+.claude/
+.codex/
+.cursor/
+.opencode/
+.serena/
+
+# Generated plan and design artefacts. The markdown is already covered above;
+# this line is for the 27 .json and 59 .jsonl files under the same tree, which
+# graphify treats as code.
+docs/plans/
+
+# ---------------------------------------------------------------------------
+# 3. Build and tooling JSON. `.json` is a code extension to graphify, so these
+# are parsed as source and every top-level key becomes a node with no manifest
+# semantics behind it — 206 nodes of task and env-var names for turbo.json,
+# whose `globalEnv` key once ranked as a god node at 41 edges.
+#
+# package.json is NOT excluded, and must never be. graphify reads the workspace
+# `name` fields out of the CORPUS to resolve a workspace package specifier;
+# excluding package.json silently destroys cross-package resolution. Measured on
+# this repo with identical tsconfigs: 104 cross-package edges over 4 package
+# pairs with it excluded, 217 over 35 with it present. It is worth the two noise
+# nodes it costs (`scripts` and `test`, the JSON keys shared by 22 workspaces).
+#
+# tsconfig.json IS excluded and that is safe — graphify reads tsconfig `paths`
+# whether or not the file is in the corpus. Verified by A/B: identical
+# cross-package edge counts either way.
+**/turbo.json
+**/tsconfig.json
+
+# ---------------------------------------------------------------------------
+# Deliberately NOT excluded: apps/web/e2e/ (321 nodes) and **/*.test.ts. They
+# are real code with real call edges, and dropping them would blind the
+# `graphify affected` blast-radius query to its test callers.

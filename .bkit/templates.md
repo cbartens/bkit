@@ -43,9 +43,15 @@ brew install uv
 uv tool install serena
 ```
 
-- Set `project_name`, `typescript_version` in `.serena/project.yml`. `typescript_version` must match `package.json`, not Serena's bundled compiler.
+- Set `project_name`, `typescript_version` in `.serena/project.yml`. `typescript_version` must match `package.json`, not Serena's bundled compiler. TypeScript >= 7 ships no `tsserver` → language server fails to start (`Could not find a valid TypeScript installation`) → set `"5.9.3"` (Serena's bundled, last with `tsserver`).
+- Trust the project: add its path to `trusted_project_path_patterns` in `~/.serena/serena_config.yml`. Untrusted → Serena ignores all of `ls_specific_settings` (`typescript_version`, indexing waits) with only a log `WARNING`; lookups still answer on bundled defaults.
+- Adapt `ignored_paths` to the repo: index the code a change touches, skip committed build output and byte-copied payloads (each indexed copy answers every reference twice).
 - `.mcp.json` (Claude Code) calls `scripts/serena/bkit-serena-mcp.sh` → finds binary when GUI app has no login-shell `PATH`.
 - Cursor's `.cursor/mcp.json` cannot use that wrapper → point `command` at `${HOME}/.local/bin/serena`, pass `--context ide`.
+- Codex: `.codex/config.toml` → `[mcp_servers.serena]`, `command` = absolute path to `serena`, `args = ["start-mcp-server", "--context", "codex", "--project-from-cwd"]`. bkit writes no `.codex/config.toml`.
+- OpenCode: `.opencode/opencode.json` → `mcp.serena` = `{ "type": "local", "command": ["<absolute path to serena>", "start-mcp-server", "--context", "ide", "--project-from-cwd"] }`. `bkit upgrade` keeps custom `mcp` entries.
+- List `serena` in `.agents/context.md` `mcp-servers` block → every host runs its tools without a prompt; workflow subagents cannot answer one.
+- bkit code-reading subagents carry `mcp__serena__*` in `tools:`. Serena not wired → Claude Code drops the entry; agent runs on text search.
 
 `.gitignore`:
 
@@ -54,13 +60,15 @@ uv tool install serena
 !.serena/project.yml
 ```
 
-- Keep `read_only: true` and `added_modes: ["no-memories"]` from example.
-- Small / empty answer for an exported symbol = query did not resolve, NOT "nothing uses it" → corroborate with grep.
+- Keep `read_only: true`, `added_modes: ["no-memories"]`, and the full `excluded_tools` list from example → Serena stays lookup-only for agents. List excludes every tool that writes files / memories / project config, runs code or commands, or opens a browser. Serena edits bypass Edit / Write hooks. Removing an entry hands that tool to every bkit agent.
+- `--context codex` still lists excluded tools but refuses each call (`not active`).
+- Serena line numbers are 0-based → add 1 before citing `file:line`.
+- Small / empty answer for an exported symbol = query did not resolve, NOT "nothing uses it" → corroborate with text search.
 - pnpm monorepo: cross-package references need `composite` + `references` in TypeScript project graph before language server follows them.
 
 ## graphify — map
 
-On-demand, humans only — not an agent tool, CI job, or git hook. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`.
+On-demand only — not an MCP server, installed skill, CI job, or git hook. Agents read `docs/capabilities.md`; audit templates that need the graph build it via `scripts/graphify/bkit-graphify.sh`. Only tracked output: `docs/capabilities.md`. Mermaid views: `docs/graphify-out/reports/graph-packages.mmd`, `graph-modules.mmd`.
 
 ```bash
 uv tool install "graphifyy[sql]"
@@ -115,6 +123,7 @@ graphify-out/
 - `docs/graphify-out/` = raw `graph.json`; `docs/graphify-out/reports/` = derived views.
 - Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before first rollup (Overrides block must exist) → `pnpm graph:rollup` rewrites it after.
 - Add capability → rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. Shipped rules JSON = one example row; replace it.
+- Marker = a literal ONLY the owner should contain (a host, a header, a marker string) — NEVER the owner's exported function name: every legitimate caller then reads as `bypassed`.
 
 `MMD_MIN_WEIGHT` (default 12) drops light edges from `.mmd` files only. Iterate in mermaid.live; render internal-architecture diagram locally:
 
@@ -125,6 +134,8 @@ npx -y @mermaid-js/mermaid-cli -i docs/graphify-out/reports/graph-packages.mmd -
 - `bkit-graph-repair.py` runs between extract and cluster: restores `.js` specifiers pointing at `.tsx` files and workspace subpaths through an `exports` map. Bare `graphify update` drops that injection; `pnpm graph:update` restores it.
 - `bkit-graph-surface.py` = route layer. Assumes `apps/web` / `apps/mobile` page routes, `packages/api/src/v1.ts`, workspace scope `@scope/services/`. Replace `@scope` and route globs or section stays empty. Route reachability runs only when `scripts/ci/guards/assert-routes-reachable.mjs` exists; else skipped.
 - `bkit-graph-imports.py` picks `react-native` vs `default` export conditions from importer path (`apps/mobile` vs `apps/web`). Change prefixes if app roots differ.
+- Source roots are hard-coded for an `apps/` + `packages/` monorepo: `ROOTS` in `bkit-graph-drift.py` (files the drift rules scan), `by_package` / `by_module` in `bkit-graphify-rollup.py` (diagram boxes). Other layout → adapt all three, else capabilities read `gap` and diagrams come out empty. One flat source folder → `by_module` = one node per file. No web routes / no imports between top-level folders → route and package diagrams stay empty; that is the answer, not a fault.
+- Extract warning `had syntax errors and may be partially extracted` can fire on valid code → symbols after that line are missing from the graph; treat that file as unmapped.
 
 Do not run:
 

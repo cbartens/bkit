@@ -42,9 +42,15 @@ describe("bkit-mcp-toolsets — actions toolset (#341 C1)", () => {
     expect(toolsets.split(",")).toContain("actions");
   });
 
-  it("live .mcp.json equals the real github-tracker render of the template (buildMcpJson)", () => {
-    const rendered = buildMcpJson(TEMPLATE_MCP_JSON, "github");
-    const live = fs.readFileSync(LIVE_MCP_JSON, "utf-8");
-    expect(live).toBe(rendered);
+  // Per server: the live file may also carry consumer-added servers (bkit wires
+  // Serena from its copy-and-own template), which the seed never flags.
+  it("every server the github-tracker render seeds is identical in live .mcp.json (buildMcpJson)", () => {
+    type McpFile = { mcpServers: Record<string, unknown> };
+    const rendered = JSON.parse(buildMcpJson(TEMPLATE_MCP_JSON, "github")) as McpFile;
+    const live = JSON.parse(fs.readFileSync(LIVE_MCP_JSON, "utf-8")) as McpFile;
+    expect(Object.keys(rendered.mcpServers)).not.toHaveLength(0);
+    for (const [name, server] of Object.entries(rendered.mcpServers)) {
+      expect(live.mcpServers[name], `live .mcp.json server ${name}`).toEqual(server);
+    }
   });
 });

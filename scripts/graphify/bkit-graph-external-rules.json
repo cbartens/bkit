@@ -8,10 +8,15 @@
   ],
   "providers": [
     {
-      "provider": "Example",
-      "sdk": ["example-sdk"],
-      "hosts": ["api.example.com"],
+      "provider": "GitHub",
+      "sdk": [],
+      "hosts": ["api.github.com", "api.githubcopilot.com", "npm.pkg.github.com"],
       "env": []
-    }
+    },
+    { "provider": "Linear", "sdk": [], "hosts": ["api.linear.app", "mcp.linear.app"], "env": [] },
+    { "provider": "Cursor", "sdk": [], "hosts": ["api.cursor.com"], "env": [] },
+    { "provider": "OpenRouter", "sdk": [], "hosts": ["openrouter.ai"], "env": [] },
+    { "provider": "Vercel", "sdk": [], "hosts": ["api.vercel.com"], "env": [] },
+    { "provider": "Supabase", "sdk": [], "hosts": ["api.supabase.com"], "env": [] }
   ]
 }

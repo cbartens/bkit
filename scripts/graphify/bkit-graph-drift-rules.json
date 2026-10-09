@@ -13,11 +13,25 @@
   ],
   "rules": [
     {
-      "capability": "Example client",
-      "lane": "Platform",
-      "owner": "src/example-owner.ts",
-      "pattern": "new ExampleClient(",
-      "note": "Replace with a real mechanism marker and the one module every caller should use."
+      "capability": "Managed-version marker",
+      "lane": "Install",
+      "owner": ".bkit/src/bkit-version.ts",
+      "pattern": "do NOT edit; run",
+      "note": "Rendered mirrors are stamped through stampManagedVersion only."
+    },
+    {
+      "capability": "Tracker block substitution",
+      "lane": "Install",
+      "owner": ".bkit/src/bkit-trackers.ts",
+      "pattern": "bkit:tracker",
+      "note": "Prompts and workflows carry tracker blocks; only the trackers module resolves them."
+    },
+    {
+      "capability": "Cursor API access",
+      "lane": "Providers",
+      "owner": ".bkit/src/bkit-registry.ts",
+      "pattern": "api.cursor.com",
+      "note": "Model catalog probes go through the registry."
     }
   ]
 }
