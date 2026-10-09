@@ -21,9 +21,10 @@
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
+| Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 
 - `bkit.depUpdater: "none"` → skips install-time absence advisory for updaters.
-- No manifest key for Serena / graphify / secrets sync.
+- No manifest key for Serena / graphify / secrets sync / prettier tables.
 
 ## Dependabot and Renovate
 
@@ -174,3 +175,18 @@ How `drift` proves a value without printing it:
 - Vercel: branch-scoped preview vars left alone; an entry shared across environments is split before a write.
 
 New store type → entry in `STORES` of the template's `bkit-secrets.mjs` (`open` → `list` / `write` / `remove`; contract above it), never in a copy only.
+
+## Prettier tables — keep table diffs to the changed row
+
+Prettier aligns markdown tables with no config toggle; one edited cell re-pads every row. `bkit-insert-ignore.mjs` puts `<!-- prettier-ignore -->` directly above each table head (no blank line between), strips cell padding, normalises separators to `---`. Idempotent. Node >= 20, no dependencies.
+
+<!-- prettier-ignore -->
+| Command | Does |
+| --- | --- |
+| `node scripts/prettier/bkit-insert-ignore.mjs` | Rewrite `.agents/`, `docs/`, `README.md` (or the paths given). |
+| `node scripts/prettier/bkit-insert-ignore.mjs --check` | Write nothing; exit 1 if any file would change. Gate form. |
+
+- Walks skip `skills/` trees (vendored), `docs/audits/`, `docs/plans/` (records, kept as written). A file named on the command line is always processed.
+- Skips tables inside ``` / ~~~ fences and tables already wrapped.
+- A pipe inside an inline-code span is escaped to `\|` only when that restores the separator's column count; an existing `\|` stays literal.
+- Exit 1 on damage it cannot repair, with or without `--check`: `truncated-row` (more cells than the separator; GFM drops the overflow) and `unrendered-table` (header ≠ separator count; GFM renders raw text). A bare pipe in cell prose is indistinguishable from a delimiter → escape it as `\|` by hand.

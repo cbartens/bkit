@@ -544,6 +544,7 @@ describe("copy-paste code-graph examples", () => {
       "scripts/serena/bkit-serena-mcp.sh",
       "scripts/secrets/bkit-secrets.mjs",
       "scripts/secrets/bkit-secrets.config.mjs",
+      "scripts/prettier/bkit-insert-ignore.mjs",
       "scripts/graphify/bkit-graph-drift-rules.json",
       ".graphifyignore",
       ".serena/project.yml",
