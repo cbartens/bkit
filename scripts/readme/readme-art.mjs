@@ -1,5 +1,5 @@
 // Renders the root README images (hero, features grid, pipeline), light + dark,
-// into .github/assets/. Edit the copy below, then: node scripts/readme/readme-art.mjs
+// plus the repo's social preview card, into .github/assets/. Edit the copy below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -117,6 +117,72 @@ function hero(t) {
     H,
     b,
     "bkit — from vibe coding to production code. A senior engineering team's process, run by AI agents, signed off by you.",
+  );
+}
+
+// ---------- Social preview ----------
+// GitHub repo Settings → Social preview takes PNG/JPG only. To export:
+// "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+//   --window-size=1280,640 --hide-scrollbars --screenshot=.github/assets/bkit-social.png .github/assets/bkit-social.svg
+function social(t) {
+  const W = 1280,
+    H = 640,
+    L = 96;
+  const phases = ["design", "plan", "build", "debug", "ship"];
+  let b = `<rect width="${W}" height="${H}" fill="${t.bg}"/>`;
+  b += phases
+    .map((p, i) => `<circle cx="${L + 9 + i * 28}" cy="118" r="9" fill="${t[p]}"/>`)
+    .join("");
+  b += text(L - 6, 250, "bkit", { size: 140, weight: 800, fill: t.text, ls: -4 });
+  b += text(L, 330, "From vibe coding to", { size: 46, weight: 700, fill: t.text });
+  b += text(L, 386, "production code.", { size: 46, weight: 700, fill: t.text });
+  b += text(L, 446, "A senior engineering team's process.", { size: 26, fill: t.muted });
+  b += text(L, 482, "Run by AI agents. Signed off by you.", { size: 26, fill: t.muted });
+
+  // Terminal card
+  const cx = 704,
+    cy = 110,
+    cw = 480,
+    ch = 372;
+  b += `<rect x="${cx}" y="${cy}" width="${cw}" height="${ch}" rx="16" fill="${t.surface}" stroke="${t.border}"/>`;
+  b += ["#ff5f57", "#febc2e", "#28c840"]
+    .map((c, i) => `<circle cx="${cx + 28 + i * 22}" cy="${cy + 28}" r="7" fill="${c}"/>`)
+    .join("");
+  b += text(cx + cw / 2, cy + 34, "my-app", {
+    size: 17,
+    fill: t.muted,
+    anchor: "middle",
+    font: MONO,
+  });
+  b += `<line x1="${cx}" y1="${cy + 56}" x2="${cx + cw}" y2="${cy + 56}" stroke="${t.border}"/>`;
+  const rows = [
+    ["/bkit-design", "design", [3, 2], "approved"],
+    ["/bkit-plan", "plan", [3, 2], "approved"],
+    ["/bkit-build", "build", [2, 2], "tests pass"],
+    ["/bkit-ship", "ship", [1, 2], "live"],
+  ];
+  rows.forEach(([cmd, p, [a, z], status], i) => {
+    const y = cy + 118 + i * 70;
+    b += text(cx + 28, y, cmd, { size: 22, fill: t[p], font: MONO, weight: 600 });
+    b += dots(cx + 222, y - 7, a, t[p], 7, 20);
+    b += dots(cx + 222 + a * 20 + 12, y - 7, z, t[p], 7, 20);
+    b += text(cx + cw - 28, y, `✓ ${status}`, { size: 19, fill: t.ok, anchor: "end", weight: 600 });
+  });
+
+  // Hosts band
+  b += text(L, 572, "Works with", { size: 21, fill: t.muted, weight: 600 });
+  let hx = L + 124;
+  for (const h of ["Claude Code", "Cursor", "Codex", "opencode"]) {
+    const w = h.length * 11.4 + 34;
+    b += `<rect x="${hx}" y="546" width="${w}" height="40" rx="20" fill="${t.surface}" stroke="${t.border}"/>`;
+    b += text(hx + w / 2, 573, h, { size: 19, fill: t.text, anchor: "middle", weight: 600 });
+    hx += w + 12;
+  }
+  return svg(
+    W,
+    H,
+    b,
+    "bkit — from vibe coding to production code. A senior engineering team's process, run by AI agents, signed off by you. Works with Claude Code, Cursor, Codex and opencode.",
   );
 }
 
@@ -348,4 +414,6 @@ for (const [name, t] of Object.entries(THEMES)) {
   writeFileSync(join(OUT, `bkit-pipeline-${name}.svg`), pipeline(t));
   writeFileSync(join(OUT, `bkit-features-${name}.svg`), features(t));
 }
+// One image: link previews have no light/dark switch, and dark reads on both.
+writeFileSync(join(OUT, "bkit-social.svg"), social(THEMES.dark));
 console.log("ok");
